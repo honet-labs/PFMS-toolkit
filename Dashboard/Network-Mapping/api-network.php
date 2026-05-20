@@ -203,7 +203,7 @@ try {
                                 SELECT MIN(e.estado) 
                                 FROM tagente_modulo m 
                                 JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
-                                WHERE m.id_agente = a.id_agente AND m.disabled = 0 AND m.nombre LIKE 'ifOperStatus_%'
+                                WHERE m.id_agente = a.id_agente AND m.disabled = 0 AND m.nombre LIKE '%ifOperStatus%'
                             ), 0) as worst_port_status
                      FROM tagente a 
                      WHERE a.disabled = 0";
@@ -243,7 +243,7 @@ try {
         $portsSql = "SELECT m.id_agente_modulo, m.id_agente, m.nombre, e.estado, e.datos 
                      FROM tagente_modulo m 
                      JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo 
-                     WHERE m.nombre LIKE 'ifOperStatus_%' AND m.disabled = 0";
+                     WHERE m.nombre LIKE '%ifOperStatus%' AND m.disabled = 0";
         $portsStmt = $pdo->query($portsSql);
         $portsDb = [];
         while ($p = $portsStmt->fetch()) {
@@ -381,14 +381,14 @@ try {
         $stmt = $pdo->prepare("SELECT m.id_agente_modulo AS id, m.nombre AS name, e.estado, e.datos 
                                FROM tagente_modulo m 
                                JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
-                               WHERE m.id_agente = ? AND m.nombre LIKE 'ifOperStatus_%' AND m.disabled = 0
+                               WHERE m.id_agente = ? AND m.nombre LIKE '%ifOperStatus%' AND m.disabled = 0
                                ORDER BY m.nombre ASC");
         $stmt->execute([$id_agent]);
         $ports = $stmt->fetchAll();
 
         foreach ($ports as &$p) {
             $p['name'] = pretty_text($p['name']);
-            $p['clean_name'] = str_replace('ifOperStatus_', '', $p['name']);
+            $p['clean_name'] = str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus'], '', $p['name']);
         }
         echo json_encode($ports);
         exit;
@@ -431,10 +431,10 @@ try {
                 $packetLoss = $mod['current_value'] . ($mod['unit'] ?: '%');
             }
 
-            if (stripos($nameLower, 'ifoperstatus_') !== false) {
+            if (stripos($nameLower, 'ifoperstatus') !== false) {
                 $portStatuses[] = [
                     'id' => $mod['id'],
-                    'port' => str_replace('ifOperStatus_', '', $mod['name']),
+                    'port' => str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus'], '', $mod['name']),
                     'status' => (int)$mod['estado'],
                     'value' => $mod['current_value']
                 ];
