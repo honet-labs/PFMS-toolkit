@@ -296,6 +296,99 @@ try {
             }
         }
 
+        // --- ADVANCED NETWORK TOPOLOGY AUTO-DISCOVERY ENGINE ---
+        // Strategy A: LLDP / CDP Module Data Matching (Reads peer device names via SNMP)
+        $lldpSql = "SELECT m.id_agente, m.nombre AS module_name, e.datos AS remote_sysname
+                    FROM tagente_modulo m
+                    JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
+                    WHERE m.disabled = 0 
+                      AND (m.nombre LIKE '%lldpRemSysName%' 
+                           OR m.nombre LIKE '%cdpCacheDeviceId%' 
+                           OR m.nombre LIKE '%lldpRemPortId%')";
+        $lldpStmt = $pdo->query($lldpSql);
+        $lldpData = $lldpStmt->fetchAll();
+
+        // Strategy B: Interface Port Name to Agent Alias matching (Fuzzy heuristics, e.g. eth5-LANtoSW01 -> SW01)
+        $allPortsSql = "SELECT m.id_agente_modulo AS port_id, m.id_agente, m.nombre AS port_name, e.estado AS port_status
+                        FROM tagente_modulo m
+                        JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
+                        WHERE m.disabled = 0 AND m.nombre LIKE '%ifOperStatus%'";
+        $allPortsStmt = $pdo->query($allPortsSql);
+        $allPorts = $allPortsStmt->fetchAll();
+
+        // Index agents by normalized alias for ultra-fast matching
+        $agentsByNormalizedAlias = [];
+        foreach ($nodes as $n) {
+            $norm = strtolower(trim($n['label']));
+            if (strlen($norm) >= 3) {
+                $agentsByNormalizedAlias[$norm] = $n['id'];
+            }
+        }
+
+        $discoveredLinks = [];
+
+        // Apply Strategy A: LLDP/CDP matches
+        foreach ($lldpData as $lldp) {
+            $remoteName = trim($lldp['remote_sysname']);
+            if (empty($remoteName)) continue;
+            
+            $normRemote = strtolower($remoteName);
+            foreach ($agentsByNormalizedAlias as $alias => $targetAgentId) {
+                if ($lldp['id_agente'] == $targetAgentId) continue;
+
+                if (stripos($normRemote, $alias) !== false || stripos($alias, $normRemote) !== false) {
+                    $key = min($lldp['id_agente'], $targetAgentId) . '_' . max($lldp['id_agente'], $targetAgentId);
+                    if (!isset($discoveredLinks[$key])) {
+                        $discoveredLinks[$key] = [
+                            'id' => 'auto_lldp_' . $key,
+                            'from' => (int)$lldp['id_agente'],
+                            'to' => (int)$targetAgentId,
+                            'type' => 'auto',
+                            'status' => 'normal',
+                            'label' => 'LLDP: ' . pretty_text($remoteName)
+                        ];
+                    }
+                }
+            }
+        }
+
+        // Apply Strategy B: Heuristic Interface Port Name matching
+        foreach ($allPorts as $port) {
+            $portName = $port['port_name'];
+            $cleanPort = str_ireplace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus'], '', $portName);
+            $cleanPort = pretty_text($cleanPort);
+            $normPort = strtolower($cleanPort);
+            
+            foreach ($agentsByNormalizedAlias as $alias => $targetAgentId) {
+                if ($port['id_agente'] == $targetAgentId) continue;
+
+                // Match if clean interface port name contains target agent alias as a distinct term
+                if (stripos($normPort, $alias) !== false) {
+                    $pStatus = (int)$port['port_status'];
+                    $linkStatus = 'normal';
+                    if ($pStatus === 1) $linkStatus = 'critical';
+                    elseif ($pStatus === 2) $linkStatus = 'warning';
+                    
+                    $key = min($port['id_agente'], $targetAgentId) . '_' . max($port['id_agente'], $targetAgentId);
+                    if (!isset($discoveredLinks[$key])) {
+                        $discoveredLinks[$key] = [
+                            'id' => 'auto_port_' . $key,
+                            'from' => (int)$port['id_agente'],
+                            'to' => (int)$targetAgentId,
+                            'type' => 'auto',
+                            'status' => $linkStatus,
+                            'label' => $cleanPort
+                        ];
+                    }
+                }
+            }
+        }
+
+        // Merge discovered auto-links into topology edges
+        foreach ($discoveredLinks as $dl) {
+            $edges[] = $dl;
+        }
+
         // Manual Links mapped to SNMP operational ports
         foreach ($manualLinks as $ml) {
             $srcPortId = (int)($ml['source_port'] ?? 0);
