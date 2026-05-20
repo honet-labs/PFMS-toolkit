@@ -413,7 +413,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
 <script>
     const CSRF = "<?= $csrf_token ?>";
-    const API_URL = "Dashboard/Network-Mapping/api-network.php";
+    const API_URL = "api-network.php";
 
     let masterDashboards = [];
     let currentDashId = '';
