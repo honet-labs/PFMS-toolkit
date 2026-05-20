@@ -206,7 +206,13 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
                     $response['commit_message'] = "Latest GitHub Commit:\n" . trim($commit_msg);
                     $response['method'] = 'zip';
                 }
+            } else {
+                $response['ok'] = false;
+                $response['error'] = 'Invalid response from GitHub API. Please try again.';
             }
+        } else {
+            $response['ok'] = false;
+            $response['error'] = 'Web server cannot connect to api.github.com. Internet access is restricted or blocked on this server.';
         }
     }
 
@@ -1002,6 +1008,17 @@ if (!empty($current_page)) {
             const remoteTag = document.getElementById('remoteVersionTag');
             const changelog = document.getElementById('updateChangelog');
             const execBtn = document.getElementById('updateExecuteBtn');
+
+            if (!data.ok) {
+                stateIcon.innerText = 'error';
+                stateIcon.style.color = '#ef4444';
+                stateTitle.innerText = 'Update Check Failed';
+                changelog.innerText = data.error || 'Connection failed: Web server cannot reach api.github.com. Verify internet access.';
+                localTag.innerText = 'N/A';
+                remoteTag.innerText = 'N/A';
+                execBtn.style.display = 'none';
+                return;
+            }
             
             localTag.innerText = 'v' + data.local_version;
             remoteTag.innerText = 'v' + data.remote_version;
