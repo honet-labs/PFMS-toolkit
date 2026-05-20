@@ -1,8 +1,10 @@
 <?php
 /**
  * PANDORA FMS - CUSTOM EXTENSIONS PORTAL
- * Version: 2.2 (Architecture Update & Standalone Fixes)
+ * Version: 2.3 (Architecture Update & Auto-Updater)
  */
+
+define('PORTAL_VERSION', '2.3');
 
 // 1. SECURITY HEADERS
 header("X-Frame-Options: SAMEORIGIN");
@@ -106,6 +108,294 @@ if (isset($_GET['api']) && $_GET['api'] === 'save_settings') {
         echo json_encode(['ok' => false, 'error' => 'Invalid data']);
     }
     exit;
+}
+
+if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $response = [
+        'ok' => true,
+        'update_available' => false,
+        'local_version' => PORTAL_VERSION,
+        'remote_version' => PORTAL_VERSION,
+        'commit_message' => 'Your system is up to date.',
+        'method' => 'git'
+    ];
+
+    $cache_file = $base_dir . '/temp/update_cache.json';
+    $cache_lifetime = 10800; // 3 hours
+    $force = isset($_GET['force']) && $_GET['force'] === '1';
+
+    if (!$force && file_exists($cache_file) && (time() - filemtime($cache_file)) < $cache_lifetime) {
+        $cached = json_decode(file_get_contents($cache_file), true);
+        if (is_array($cached)) {
+            echo json_encode($cached);
+            exit;
+        }
+    }
+
+    $is_git = is_dir($base_dir . '/.git');
+    $git_available = false;
+    if ($is_git) {
+        @exec('git --version', $out, $status);
+        if ($status === 0) {
+            $git_available = true;
+        }
+    }
+
+    if ($git_available) {
+        $fetch_output = [];
+        $fetch_status = -1;
+        @exec('git fetch origin main 2>&1', $fetch_output, $fetch_status);
+
+        if ($fetch_status === 0) {
+            $local_sha = trim(@shell_exec('git rev-parse HEAD'));
+            $remote_sha = trim(@shell_exec('git rev-parse origin/main'));
+
+            if ($local_sha !== $remote_sha && !empty($remote_sha)) {
+                $count = trim(@shell_exec('git rev-list --count HEAD..origin/main'));
+                $commits_log = @shell_exec('git log HEAD..origin/main --oneline -n 3');
+
+                $response['update_available'] = true;
+                $response['remote_version'] = substr($remote_sha, 0, 7);
+                $response['local_version'] = substr($local_sha, 0, 7);
+                $response['commit_message'] = "Found " . $count . " new commit(s) on GitHub:\n" . trim($commits_log);
+                $response['method'] = 'git';
+            }
+        } else {
+            $git_available = false;
+        }
+    }
+
+    if (!$git_available) {
+        $repo = 'aannddrrii294/cumtom-panel-pfms';
+        $url = "https://api.github.com/repos/{$repo}/commits/main";
+        
+        $opts = [
+            'http' => [
+                'method' => 'GET',
+                'header' => [
+                    'User-Agent: PandoraFMS-Custom-Portal-Updater',
+                    'Accept: application/vnd.github.v3+json'
+                ],
+                'timeout' => 5
+            ]
+        ];
+        
+        $context = stream_context_create($opts);
+        $result = @file_get_contents($url, false, $context);
+        
+        if ($result !== false) {
+            $data = json_decode($result, true);
+            if (is_array($data) && isset($data['sha'])) {
+                $remote_sha = $data['sha'];
+                $commit_msg = $data['commit']['message'] ?? '';
+                
+                $local_sha = '';
+                if ($is_git) {
+                    $local_sha = trim(@shell_exec('git rev-parse HEAD'));
+                }
+                
+                if (empty($local_sha)) {
+                    $response['update_available'] = false;
+                } else if ($local_sha !== $remote_sha) {
+                    $response['update_available'] = true;
+                    $response['remote_version'] = substr($remote_sha, 0, 7);
+                    $response['local_version'] = substr($local_sha, 0, 7);
+                    $response['commit_message'] = "Latest GitHub Commit:\n" . trim($commit_msg);
+                    $response['method'] = 'zip';
+                }
+            }
+        }
+    }
+
+    if (!is_dir(dirname($cache_file))) {
+        @mkdir(dirname($cache_file), 0777, true);
+    }
+    @file_put_contents($cache_file, json_encode($response));
+
+    echo json_encode($response);
+    exit;
+}
+
+if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if ($client_token !== $csrf_token) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh page.']);
+        exit;
+    }
+
+    @set_time_limit(0);
+
+    $logs = [];
+    $logs[] = "[1/4] Checking environment...";
+
+    $method = $_GET['method'] ?? 'git';
+    $success = false;
+
+    if ($method === 'git') {
+        $logs[] = "[2/4] Pulling latest code using Git...";
+        
+        $is_git = is_dir($base_dir . '/.git');
+        if (!$is_git) {
+            $logs[] = "ERROR: Local directory is not a Git repository.";
+            echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+            exit;
+        }
+
+        $fetch_out = [];
+        $fetch_status = -1;
+        $logs[] = "Executing: git fetch origin main";
+        @exec("git fetch origin main 2>&1", $fetch_out, $fetch_status);
+        $logs = array_merge($logs, $fetch_out);
+
+        if ($fetch_status !== 0) {
+            $logs[] = "ERROR: git fetch failed with status code " . $fetch_status;
+            echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+            exit;
+        }
+
+        $reset_out = [];
+        $reset_status = -1;
+        $logs[] = "Executing: git reset --hard origin/main";
+        @exec("git reset --hard origin/main 2>&1", $reset_out, $reset_status);
+        $logs = array_merge($logs, $reset_out);
+
+        if ($reset_status === 0) {
+            $success = true;
+            $logs[] = "Git reset completed successfully.";
+        } else {
+            $logs[] = "ERROR: git reset failed with status code " . $reset_status;
+        }
+    } else {
+        $logs[] = "[2/4] Downloading update ZIP from GitHub...";
+        
+        $zip_url = "https://github.com/aannddrrii294/cumtom-panel-pfms/archive/refs/heads/main.zip";
+        $zip_file = $base_dir . '/temp/update.zip';
+        $extract_dir = $base_dir . '/temp/patch/';
+
+        $opts = [
+            'http' => [
+                'method' => 'GET',
+                'header' => ['User-Agent: PandoraFMS-Custom-Portal-Updater'],
+                'timeout' => 30
+            ]
+        ];
+        $context = stream_context_create($opts);
+        $zip_data = @file_get_contents($zip_url, false, $context);
+
+        if ($zip_data === false) {
+            $logs[] = "ERROR: Failed to download update ZIP from GitHub.";
+            echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+            exit;
+        }
+
+        if (!is_dir(dirname($zip_file))) {
+            @mkdir(dirname($zip_file), 0777, true);
+        }
+        @file_put_contents($zip_file, $zip_data);
+        $logs[] = "Downloaded ZIP (" . number_format(strlen($zip_data)) . " bytes).";
+
+        if (!class_exists('ZipArchive')) {
+            $logs[] = "ERROR: PHP ZipArchive extension is not enabled.";
+            @unlink($zip_file);
+            echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+            exit;
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($zip_file) === TRUE) {
+            if (is_dir($extract_dir)) {
+                self_delete_dir_helper($extract_dir);
+            }
+            @mkdir($extract_dir, 0777, true);
+            $zip->extractTo($extract_dir);
+            $zip->close();
+            $logs[] = "ZIP extracted to temp/patch/.";
+        } else {
+            $logs[] = "ERROR: Failed to open ZIP file.";
+            @unlink($zip_file);
+            echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+            exit;
+        }
+
+        $subdirs = glob($extract_dir . '*', GLOB_ONLYDIR);
+        if (empty($subdirs)) {
+            $logs[] = "ERROR: Extracted folder unexpected format.";
+            @unlink($zip_file);
+            self_delete_dir_helper($extract_dir);
+            echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+            exit;
+        }
+        $patch_source = $subdirs[0];
+
+        $logs[] = "Copying patch files to production...";
+        $copy_success = copy_directory_helper($patch_source, $base_dir, ['portal_config.json', 'temp', 'cache']);
+
+        @unlink($zip_file);
+        self_delete_dir_helper($extract_dir);
+
+        if ($copy_success) {
+            $success = true;
+            $logs[] = "ZIP update completed successfully.";
+        } else {
+            $logs[] = "ERROR: Failed to copy files. Check directory permissions.";
+        }
+    }
+
+    if ($success) {
+        $logs[] = "[3/4] Clearing cache files...";
+        $menu_cache_file = $base_dir . '/temp/menu_cache.json';
+        $update_cache_file = $base_dir . '/temp/update_cache.json';
+        if (file_exists($menu_cache_file)) @unlink($menu_cache_file);
+        if (file_exists($update_cache_file)) @unlink($update_cache_file);
+
+        $logs[] = "[4/4] UPDATE COMPLETED SUCCESSFULLY!";
+        echo json_encode(['ok' => true, 'logs' => implode("\n", $logs)]);
+    } else {
+        echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+    }
+    exit;
+}
+
+function self_delete_dir_helper($dir) {
+    if (!is_dir($dir)) return;
+    $items = array_diff(scandir($dir), ['.', '..']);
+    foreach ($items as $item) {
+        $path = $dir . '/' . $item;
+        if (is_dir($path)) {
+            self_delete_dir_helper($path);
+        } else {
+            @unlink($path);
+        }
+    }
+    @rmdir($dir);
+}
+
+function copy_directory_helper($src, $dst, $exclude = []) {
+    $success = true;
+    $dir = opendir($src);
+    @mkdir($dst, 0777, true);
+    while (false !== ($file = readdir($dir))) {
+        if (($file != '.') && ($file != '..')) {
+            if (in_array($file, $exclude)) {
+                continue;
+            }
+            if (is_dir($src . '/' . $file)) {
+                $res = copy_directory_helper($src . '/' . $file, $dst . '/' . $file, $exclude);
+                if (!$res) $success = false;
+            } else {
+                $res = @copy($src . '/' . $file, $dst . '/' . $file);
+                if (!$res) $success = false;
+            }
+        }
+    }
+    closedir($dir);
+    return $success;
 }
 
 // =====================================================================
@@ -286,6 +576,19 @@ if (!empty($current_page)) {
         .docs-tab { padding: 10px 0; cursor: pointer; font-weight: normal; color: #7f8c8d; border-bottom: 2px solid transparent; transition: 0.2s; }
         .docs-tab.active { color: #004d40; border-bottom-color: #004d40; }
         .docs-content-area { overflow-y: auto; flex-grow: 1; padding: 10px 5px; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace !important; font-size: 12px !important; line-height: 1.6; background: #fafafa; border-radius: 4px; border: 1px solid #eee; }
+        
+        /* UPDATER STYLES */
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .badge-pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .updater-console { background: #0b1622 !important; color: #a5b4fc !important; border: 1px solid #1e293b; border-radius: 6px; padding: 15px; font-family: 'Courier New', Courier, monospace !important; font-size: 12px !important; height: 160px; overflow-y: auto; margin-bottom: 20px; white-space: pre-wrap; line-height: 1.5; }
+        .update-badge { position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%; }
+        .version-tag { background: #e2e8f0; color: #475569; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .version-tag.latest { background: #d1fae5; color: #065f46; }
     </style>
 </head>
 <body>
@@ -314,6 +617,10 @@ if (!empty($current_page)) {
         </button>
         <button class="nav-icon-btn" title="Documentation & Changelog" onclick="openDocs()">
             <span class="material-symbols-outlined">menu_book</span>
+        </button>
+        <button class="nav-icon-btn" id="updateNavBtn" title="Check for Updates" onclick="openUpdater()" style="position: relative;">
+            <span class="material-symbols-outlined">system_update_alt</span>
+            <span id="updateBadge" class="update-badge badge-pulse" style="display: none;"></span>
         </button>
         <button class="nav-icon-btn" title="Portal Settings" onclick="openSettings()">
             <span class="material-symbols-outlined">settings</span>
@@ -437,6 +744,63 @@ if (!empty($current_page)) {
         <div class="docs-content-area" id="docsContent">Loading content...</div>
         <div style="display:flex; justify-content:flex-end; margin-top:20px;">
             <button class="btn-apply" onclick="closeDocs()">Close</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="updaterModal">
+    <div class="modal-box" style="width: 550px; max-width: 95%; padding: 25px;">
+        <div class="modal-header">
+            <h5 class="modal-title"><span class="material-symbols-outlined" style="color:#004d40;">system_update_alt</span> System Updater</h5>
+            <button class="nav-icon-btn" id="closeUpdaterBtn" onclick="closeUpdater()" style="height:28px; width:28px;"><span class="material-symbols-outlined" style="font-size:16px!important;">close</span></button>
+        </div>
+        
+        <div id="updaterCheckState" style="padding: 20px 0; text-align: center;">
+            <span class="material-symbols-outlined" style="font-size:48px!important; color:#004d40; animation: spin 2s linear infinite;">sync</span>
+            <p style="margin-top: 15px; color:#4a5568; font-size:14px;">Checking for updates from GitHub...</p>
+        </div>
+        
+        <div id="updaterViewState" style="display: none;">
+            <div style="display: flex; gap: 20px; align-items: center; background: #f8f9fa; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                <span class="material-symbols-outlined" id="updateStateIcon" style="font-size: 36px !important; color: #004d40;">check_circle</span>
+                <div style="flex-grow: 1;">
+                    <div style="font-weight: 600; color: #0b1a26; font-size: 15px;" id="updateStateTitle">Your system is up to date!</div>
+                    <div style="margin-top: 4px; display: flex; gap: 15px; font-size: 12px; color: #64748b;">
+                        <span>Current: <span class="version-tag" id="localVersionTag">v<?= PORTAL_VERSION ?></span></span>
+                        <span id="latestVersionWrapper">Latest: <span class="version-tag latest" id="remoteVersionTag">v<?= PORTAL_VERSION ?></span></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label class="form-label" style="margin-bottom: 8px;">Release Notes / Commits</label>
+                <div style="background: #fafafa; border: 1px solid #eee; border-radius: 4px; padding: 12px; font-family: monospace; font-size: 12px; line-height: 1.5; max-height: 120px; overflow-y: auto; white-space: pre-wrap; color: #475569;" id="updateChangelog">
+                    No new updates.
+                </div>
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e0e4e8; padding-top: 20px;">
+                <button class="btn-outline" onclick="closeUpdater()">Cancel</button>
+                <button class="btn-apply" id="updateExecuteBtn" onclick="runUpdate()">
+                    <span class="material-symbols-outlined" style="font-size:16px!important;">system_update_alt</span> Update Now
+                </button>
+            </div>
+        </div>
+        
+        <div id="updaterProgressState" style="display: none;">
+            <h5 style="margin-top:0; color:#0b1a26; font-size: 15px; font-weight: 600; display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="animation: spin 2s linear infinite; color:#004d40;">sync</span> Updating System
+            </h5>
+            <p style="font-size: 12px; color: #64748b; margin-top: 5px;">Executing script pull and clearing local caches...</p>
+            
+            <div class="updater-console" id="updaterConsole">
+                Initializing console...
+            </div>
+            
+            <div style="font-size: 11px; color:#94a3b8; display:flex; align-items:center; gap:5px; justify-content:center;">
+                <span class="material-symbols-outlined" style="font-size:12px!important;">warning</span>
+                <span>Please do not close this modal or refresh the page until the update finishes.</span>
+            </div>
         </div>
     </div>
 </div>
@@ -584,6 +948,132 @@ if (!empty($current_page)) {
             }
         } catch (e) {
             contentArea.innerText = 'Error loading documentation file.';
+        }
+    }
+
+    // --- SYSTEM UPDATER LOGIC ---
+    let updateMethod = 'git';
+    let isUpdateChecked = false;
+
+    // Check for updates silently on load
+    window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(checkUpdateSilently, 1500); // Debounce check on slow loads
+    });
+
+    async function checkUpdateSilently() {
+        try {
+            const response = await fetch('?api=check_update');
+            const data = await response.json();
+            if (data.ok && data.update_available) {
+                document.getElementById('updateBadge').style.display = 'block';
+                document.getElementById('updateNavBtn').style.color = '#ef4444';
+            }
+        } catch (e) {
+            console.error('Silent update check failed:', e);
+        }
+    }
+
+    function openUpdater() {
+        document.getElementById('updaterModal').style.display = 'flex';
+        document.getElementById('updaterCheckState').style.display = 'block';
+        document.getElementById('updaterViewState').style.display = 'none';
+        document.getElementById('updaterProgressState').style.display = 'none';
+        document.getElementById('closeUpdaterBtn').disabled = false;
+        
+        // Always force fresh check when modal is explicitly opened
+        checkUpdate(true);
+    }
+
+    function closeUpdater() {
+        document.getElementById('updaterModal').style.display = 'none';
+    }
+
+    async function checkUpdate(force = false) {
+        try {
+            const response = await fetch('?api=check_update' + (force ? '&force=1' : ''));
+            const data = await response.json();
+            
+            document.getElementById('updaterCheckState').style.display = 'none';
+            document.getElementById('updaterViewState').style.display = 'block';
+            
+            const stateIcon = document.getElementById('updateStateIcon');
+            const stateTitle = document.getElementById('updateStateTitle');
+            const localTag = document.getElementById('localVersionTag');
+            const remoteTag = document.getElementById('remoteVersionTag');
+            const changelog = document.getElementById('updateChangelog');
+            const execBtn = document.getElementById('updateExecuteBtn');
+            
+            localTag.innerText = 'v' + data.local_version;
+            remoteTag.innerText = 'v' + data.remote_version;
+            updateMethod = data.method;
+
+            if (data.update_available) {
+                // Update Available!
+                document.getElementById('updateBadge').style.display = 'block';
+                document.getElementById('updateNavBtn').style.color = '#ef4444';
+                stateIcon.innerText = 'system_update_alt';
+                stateIcon.style.color = '#ef4444';
+                stateTitle.innerText = 'New Update Available!';
+                changelog.innerText = data.commit_message;
+                execBtn.style.display = 'flex';
+            } else {
+                // Up to Date
+                document.getElementById('updateBadge').style.display = 'none';
+                document.getElementById('updateNavBtn').style.color = '';
+                stateIcon.innerText = 'check_circle';
+                stateIcon.style.color = '#10b981';
+                stateTitle.innerText = 'Your system is up to date!';
+                changelog.innerText = 'No new changes found. You are running the latest version.';
+                execBtn.style.display = 'none';
+            }
+        } catch (e) {
+            document.getElementById('updaterCheckState').style.display = 'none';
+            document.getElementById('updaterViewState').style.display = 'block';
+            document.getElementById('updateStateIcon').innerText = 'error';
+            document.getElementById('updateStateIcon').style.color = '#ef4444';
+            document.getElementById('updateStateTitle').innerText = 'Error checking updates';
+            document.getElementById('updateChangelog').innerText = 'Could not fetch update status. Please verify networking or GitHub API access.';
+            document.getElementById('updateExecuteBtn').style.display = 'none';
+        }
+    }
+
+    async function runUpdate() {
+        if (!confirm('Are you sure you want to update the portal? Your uncommitted changes (if any) will be lost.')) {
+            return;
+        }
+
+        document.getElementById('updaterViewState').style.display = 'none';
+        document.getElementById('updaterProgressState').style.display = 'block';
+        document.getElementById('closeUpdaterBtn').disabled = true;
+
+        const consoleArea = document.getElementById('updaterConsole');
+        consoleArea.innerText = 'Initializing updater...\n';
+
+        try {
+            consoleArea.innerText += 'Connecting to backend... (Method: ' + updateMethod + ')\n';
+            
+            const response = await fetch('?api=execute_update&method=' + updateMethod, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '<?= $csrf_token ?>'
+                }
+            });
+            
+            const result = await response.json();
+            consoleArea.innerText += '\nExecution log:\n' + result.logs + '\n';
+            
+            if (result.ok) {
+                consoleArea.innerText += '\nSUCCESS! Reloading in 3 seconds...\n';
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
+            } else {
+                consoleArea.innerText += '\nERROR: Update execution failed. Please verify git write permissions or server logs.\n';
+                document.getElementById('closeUpdaterBtn').disabled = false;
+            }
+        } catch (e) {
+            consoleArea.innerText += '\nERROR: Network request failed during update. Check server logs.\n';
+            document.getElementById('closeUpdaterBtn').disabled = false;
         }
     }
 </script>
