@@ -16,13 +16,9 @@ if (!function_exists('h')) {
     }
 }
 
-$dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / NETWORK MAPPING";
-$PANDORA_BASE_URL = "/pandora_console";
+require_once __DIR__ . '/../../includes/db-connection.php';
 
-// CSRF check & db-connection
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+$PANDORA_BASE_URL = "/pandora_console";
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
 ?>
