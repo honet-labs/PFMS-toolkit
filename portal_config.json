@@ -5,7 +5,8 @@
         "assets",
         "includes",
         "scanning-mib",
-        "snmp-explorer"
+        "snmp-explorer",
+        "scratch"
     ],
     "exclude_files": [
         "nfx_local_config.php",
