@@ -1,0 +1,488 @@
+<?php
+/**
+ * PANDORA FMS - CUSTOM INVENTORY DEVICE DASHBOARD
+ * Version: 2.4 (Clean Layout + Fixed ColVis Checkbox UI)
+ */
+
+$DEFAULT_TZ = "Asia/Jakarta";
+date_default_timezone_set($DEFAULT_TZ);
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+
+// =====================================================================
+// 1. DYNAMIC BREADCRUMB LOGIC
+// =====================================================================
+$raw_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH); 
+$dir_only = dirname($raw_path); 
+$clean_path = trim($dir_only, '/'); 
+
+$path_array = explode('/', $clean_path);
+$formatted_array = array_map(function($p) {
+    return ucwords(str_replace(['_', '-'], ' ', $p));
+}, $path_array);
+$dynamic_breadcrumb = implode(' / ', $formatted_array);
+
+// =====================================================================
+// 2. FAST CONFIG LOADING
+// =====================================================================
+$config_paths = ['/var/www/html/pandora_console/include/config.php', '../../include/config.php', '../include/config.php'];
+$config_loaded = false;
+foreach ($config_paths as $path) { 
+    if (file_exists($path)) { 
+        require_once($path); 
+        $config_loaded = true; 
+        break; 
+    } 
+}
+
+// =====================================================================
+// 3. DATABASE CONNECTION & OPTIMIZED QUERY
+// =====================================================================
+$inventoryData = [];
+$serialsMap = [];
+
+try {
+    $dsn = "mysql:host=" . $config["dbhost"] . ";dbname=" . $config["dbname"] . ";charset=utf8";
+    $options = [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false,
+        PDO::ATTR_PERSISTENT         => false // Non-persistent untuk menghindari pool exhaustion
+    ];
+    $pdo = new PDO($dsn, $config["dbuser"], $config["dbpass"], $options);
+
+    // OPTIMASI 1: Ambil Serial Number secara bulk
+    $serialSql = "SELECT tm.id_agente, e.datos
+                  FROM tagente_modulo tm
+                  INNER JOIN tagente_estado e ON tm.id_agente_modulo = e.id_agente_modulo
+                  WHERE tm.nombre IN (
+                      'SNMPv2-SMI::mib-2.47.1.1.1.1.11.1',
+                      'SNMPv2-SMI::mib-2.47.1.1.1.1.11.67108867',
+                      'SNMPv2-SMI::enterprises.3902.1082.500.10.2.3.3.1.18.285278465.1'
+                  )";
+    $serialStmt = $pdo->query($serialSql);
+    while ($row = $serialStmt->fetch()) {
+        if (!isset($serialsMap[$row['id_agente']])) {
+            $serialsMap[$row['id_agente']] = $row['datos']; 
+        }
+    }
+
+    // OPTIMASI 2: Query Utama bersih dari subquery string-matching
+    $sql = "SELECT
+                a.id_agente AS agent_id,
+                a.alias AS agent_alias,
+                a.direccion AS ip_address,
+                g.nombre AS group_agent,
+                os.name AS os_name,
+                os.icon_name AS brand_icon,
+                a.intervalo AS agent_interval,
+                a.ultimo_contacto AS last_contact,
+                (SELECT timestamp FROM tagente_estado WHERE id_agente = a.id_agente ORDER BY timestamp DESC LIMIT 1) AS last_status_change
+            FROM tagente a
+            LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo
+            LEFT JOIN tconfig_os os ON a.id_os = os.id_os
+            WHERE a.disabled = 0
+            ORDER BY a.alias ASC";
+    
+    $stmt = $pdo->query($sql);
+    $inventoryData = $stmt->fetchAll();
+    
+    $pdo = null;
+
+} catch(PDOException $e) {
+    die("<div style='font-family:Lato, sans-serif; font-weight:700; padding:20px; text-align:center; color:#e74c3c;'>Database Connection Failed: " . $e->getMessage() . "</div>");
+}
+
+// =====================================================================
+// 4. HELPERS FORMATTING
+// =====================================================================
+function cleanPandoraText($text) {
+    if ($text === null || $text === '') return 'Unknown';
+    $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    return str_replace('&#x20;', ' ', $text);
+}
+
+function formatInterval($seconds) {
+    $seconds = (int)$seconds;
+    if ($seconds <= 0) return 'N/A';
+    if ($seconds >= 86400) return ($seconds / 86400) . " days";
+    if ($seconds >= 3600) return ($seconds / 3600) . " hours";
+    if ($seconds >= 60) return ($seconds / 60) . " minutes";
+    return $seconds . " seconds";
+}
+
+function timeAgo($datetime) {
+    if (empty($datetime) || $datetime == '0000-00-00 00:00:00') return 'N/A';
+    $time = strtotime($datetime);
+    $diff = time() - $time;
+    if ($diff < 0) $diff = 0;
+    if ($diff < 10) return "Now";
+
+    $days = floor($diff / 86400);
+    $hours = floor(($diff % 86400) / 3600);
+    $minutes = floor(($diff % 3600) / 60);
+
+    if ($days > 0) return $days . " days" . ($hours > 0 ? " " . $hours . " hours" : "");
+    if ($hours > 0) return $hours . " hours" . ($minutes > 0 ? " " . $minutes . " minutes" : "");
+    if ($minutes > 0) return $minutes . " minutes";
+    return $diff . " seconds";
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PandoraFMS - Inventory Devices</title>
+
+    <link rel="icon" href="/pandora_console/images/pandora.ico" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css" rel="stylesheet">
+
+    <style>
+        /* Base Global Styling */
+        * { font-family: 'Lato', sans-serif !important; color: #333; font-size: 13px !important; }
+        body { background-color: #f4f6f8; margin: 0; padding: 0; }
+
+        /* MATERIAL SYMBOLS FIX */
+        .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-weight: normal !important; font-style: normal !important; font-size: 18px !important; line-height: 1 !important; display: inline-block; vertical-align: middle; color: inherit !important; }
+
+        /* NAVBAR 1: GLOBAL TOP HEADER */
+        .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; position: relative; z-index: 10; }
+        .header-left { display: flex; align-items: center; }
+        .header-logo { height: 24px; width: auto; object-fit: contain; }
+        .header-divider { width: 1px; height: 28px; background-color: #dce1e5; margin: 0 20px; }
+        .header-title-box { display: flex; flex-direction: column; line-height: 1.2; margin-right: 40px; }
+        .header-title-box .main-title { font-size: 14px !important; font-weight: 700 !important; color: #0b1a26 !important; }
+        .header-title-box .sub-title { font-size: 12px !important; font-weight: 400 !important; color: #7f8c8d !important; }
+
+        .custom-search-container { position: relative; width: 450px; }
+        .custom-search-container .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #7f8c8d !important; font-size: 20px !important; pointer-events: none; }
+        .custom-search-container input { width: 100%; height: 36px; padding: 8px 15px 8px 40px; border-radius: 18px; border: 1px solid transparent; background-color: #f4f6f8; font-size: 13px !important; color: #333 !important; transition: all 0.2s ease; }
+        .custom-search-container input:focus { background-color: #ffffff; border-color: #b5c1c9; outline: none; box-shadow: 0 0 0 3px rgba(181, 193, 201, 0.2); }
+
+        .header-right { display: flex; align-items: center; gap: 15px; }
+        .nav-icon-btn { color: #4a5568 !important; text-decoration: none; display: flex; align-items: center; justify-content: center; height: 36px; width: 36px; border-radius: 50%; transition: 0.2s; }
+        .nav-icon-btn:hover { background-color: #f4f6f8; color: #1a252f !important; }
+
+        /* NAVBAR 2: MODULE SUB-HEADER */
+        .pandora-header-bottom { background-color: #f4f6f8; padding: 15px 30px; display: flex; align-items: flex-start; justify-content: space-between; }
+        .breadcrumb-box { display: flex; flex-direction: column; }
+        .page-breadcrumb { font-size: 12px !important; font-weight: 400 !important; color: #4a5568 !important; margin-bottom: 2px; }
+        .page-title { font-size: 18px !important; font-weight: 400 !important; color: #0b1a26 !important; margin: 0; padding: 0; }
+
+        /* MAIN CONTENT & CARDS */
+        .main-content { padding: 0 30px 30px 30px; }
+        .dashboard-card { background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #f0f3f5; }
+        .dashboard-card-body { padding: 20px; flex-grow: 1; overflow-x: auto; }
+
+        /* TABLE STYLING */
+        table.table-pfms { border-collapse: collapse !important; margin: 0 !important; width: 100% !important; min-width: 1200px;}
+        table.table-pfms thead th { background-color: #ffffff !important; border-bottom: 2px solid #e0e4e8 !important; text-transform: uppercase; padding: 12px 15px !important; white-space: nowrap; font-weight: 700 !important; color: #7f8c8d !important; font-size: 11px !important; }
+        table.table-pfms tbody tr { transition: all 0.2s ease-in-out; }
+        table.table-pfms tbody td { font-weight: 700 !important; vertical-align: middle; border-bottom: 1px solid #f0f3f5; padding: 12px 15px !important; white-space: nowrap; color: #0b1a26 !important; }
+        table.table-pfms tbody tr:hover td { background-color: #f8f9fa !important; }
+
+        .agent-link { font-weight: 700 !important; color: #1976d2 !important; text-decoration: none; transition: 0.2s; }
+        .agent-link:hover { text-decoration: underline; color: #0d47a1 !important; }
+
+        .os-icon { height: 22px; width: auto; max-width: 40px; object-fit: contain; vertical-align: middle; background: transparent !important; }
+        code.serial-text { color: #d63384 !important; background: transparent !important; padding: 0 !important; font-size: 13px !important; }
+
+        /* DATATABLES CUSTOMIZATION - SEARCH BAR & EXPORT BUTTONS ALIGNMENT */
+        .top-controls-wrapper { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 20px; gap: 15px; flex-wrap: wrap; width: 100%; }
+        
+        /* Local Search Bar Styling */
+        .dataTables_filter { margin: 0 !important; }
+        .dataTables_filter label { display: flex; align-items: center; position: relative; font-size: 0; margin: 0; }
+        .dataTables_filter label::before { content: "\e8b6"; font-family: 'Material Symbols Outlined'; position: absolute; left: 10px; font-size: 18px; color: #7f8c8d; pointer-events: none; }
+        .dataTables_filter input { width: 300px; height: 34px; padding: 6px 15px 6px 35px !important; border-radius: 4px; border: 1px solid #dce1e5; background-color: #fff; font-size: 13px !important; color: #333 !important; outline: none; transition: 0.2s; font-weight: normal !important; margin-left: 0 !important; }
+        .dataTables_filter input:focus { border-color: #004d40; box-shadow: 0 0 0 2px rgba(0,77,64,0.1); }
+        .dataTables_filter input::placeholder { color: #95a5a6; font-weight: normal; }
+
+        /* EXPORT BUTTONS STYLING */
+        .dt-buttons { margin: 0 !important; display: flex; gap: 10px; }
+        .dt-buttons .btn { background: #fff !important; color: #4a5568 !important; border: 1px solid #dce1e5 !important; padding: 6px 15px !important; border-radius: 4px !important; font-weight: bold !important; transition: 0.2s !important; display: flex; align-items: center; gap: 6px; }
+        .dt-buttons .btn:hover { background: #f4f6f8 !important; color: #0b1a26 !important; border-color: #b5c1c9 !important; }
+
+        /* ========================================================
+           CSS KHUSUS WIDGET DROPDOWN CHECKBOX (COLVIS FIX) 
+           ======================================================== */
+        div.dt-button-collection { padding: 0 !important; border-radius: 6px; border: 1px solid #dce1e5; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        
+        div.dt-button-collection .dropdown-item, 
+        div.dt-button-collection .dt-button { 
+            position: relative !important; 
+            padding: 8px 15px 8px 35px !important; /* Spasi untuk checkbox di sisi kiri */
+            text-align: left !important; 
+            border-bottom: 1px solid #eee !important; 
+            display: block !important; 
+            background-color: #fff !important; 
+            color: #000 !important; 
+            font-weight: 700 !important; 
+            transition: background 0.2s;
+        }
+        
+        div.dt-button-collection .dropdown-item:last-child,
+        div.dt-button-collection .dt-button:last-child { border-bottom: none !important; }
+        
+        div.dt-button-collection .dropdown-item:hover,
+        div.dt-button-collection .dt-button:hover { background-color: #f8f9fa !important; }
+        
+        /* 1. Hapus checkmark bawaan DataTables yang ada di sisi kanan (jika ada) */
+        div.dt-button-collection .dropdown-item::after, 
+        div.dt-button-collection .dt-button::after,
+        div.dt-button-collection .dropdown-item span::after,
+        div.dt-button-collection .dt-button span::after { display: none !important; content: none !important; }
+        
+        /* 2. STATE UNCHECKED (Kotak Kosong) di sisi Kiri */
+        div.dt-button-collection .dropdown-item::before,
+        div.dt-button-collection .dt-button::before { 
+            content: "\f0c8" !important; /* fa-square (FontAwesome) */
+            font-family: "Font Awesome 6 Free" !important; 
+            font-weight: 400 !important; 
+            position: absolute !important; 
+            left: 12px !important; 
+            top: 50% !important; 
+            transform: translateY(-50%) !important; 
+            color: #b5c1c9 !important; 
+            font-size: 15px !important;
+        }
+
+        /* 3. STATE CHECKED (Kotak Tercentang) - Menerima berbagai jenis class 'active' bawaan DT/BS5 */
+        div.dt-button-collection .dropdown-item.active::before, 
+        div.dt-button-collection .dt-button.active::before,
+        div.dt-button-collection .dropdown-item.dt-button-active::before,
+        div.dt-button-collection .dt-button.dt-button-active::before { 
+            content: "\f14a" !important; /* fa-square-check (FontAwesome) */
+            font-family: "Font Awesome 6 Free" !important; 
+            font-weight: 900 !important; /* Harus 900 untuk solid icon FA6 */
+            color: #004d40 !important; 
+        }
+        
+        /* Timpa warna backgound active bawaan Bootstrap agar tidak biru/abu gelap */
+        div.dt-button-collection .dropdown-item.active,
+        div.dt-button-collection .dt-button.active,
+        div.dt-button-collection .dropdown-item.dt-button-active,
+        div.dt-button-collection .dt-button.dt-button-active {
+            background-color: #fff !important;
+            color: #000 !important;
+        }
+
+        /* BOTTOM PAGINATION */
+        .bottom-controls-wrapper { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; width: 100%; font-weight: 700 !important; color: #7f8c8d !important; }
+        .dataTables_info { padding-top: 0 !important; font-size: 12px; }
+        .dataTables_paginate { margin: 0 !important; }
+        .page-item.active .page-link { background-color: #0b1a26 !important; border-color: #0b1a26 !important; color: #fff !important; }
+        .page-link { color: #0b1a26 !important; border: 1px solid #dce1e5; margin: 0 3px; border-radius: 4px; font-weight: 700 !important; }
+        .dataTables_length label { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 700 !important; color: #7f8c8d !important; }
+        .dataTables_length select { padding: 4px 28px 4px 12px !important; border-radius: 4px; border: 1px solid #dce1e5; font-weight: 700 !important; color: #0b1a26 !important;}
+    </style>
+</head>
+<body>
+
+<div class="pandora-header-top">
+    <div class="header-left">
+        <img src="/pandora_console/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Pandora Logo" class="header-logo" onerror="this.style.display='none'">
+        <div class="header-divider"></div>
+        <div class="header-title-box">
+            <span class="main-title">Pandora FMS</span>
+            <span class="sub-title">the Flexible Monitoring System</span>
+        </div>
+        <div class="custom-search-container">
+            <span class="material-symbols-outlined search-icon">search</span>
+            <input type="text" id="globalSearch" placeholder="Search devices, IP, or serial...">
+        </div>
+    </div>
+    <div class="header-right">
+        <a href="/pandora_console/index.php" class="nav-icon-btn" title="Back to Home"><span class="material-symbols-outlined">home</span></a>
+    </div>
+</div>
+
+<div class="pandora-header-bottom">
+    <div class="breadcrumb-box">
+        <span class="page-breadcrumb"><?= htmlspecialchars($dynamic_breadcrumb) ?></span>
+        <h1 class="page-title">Inventory Devices</h1>
+    </div>
+</div>
+
+<div class="main-content pt-4">
+    <div class="dashboard-card">
+        <div class="dashboard-card-body">
+            <table id="inventoryTable" class="table-pfms">
+                <thead>
+                    <tr>
+                        <th class="text-center">ID</th>
+                        <th>Agent</th>
+                        <th>IP Address</th>
+                        <th>Serial Number</th>
+                        <th class="text-center">Brand</th>
+                        <th>OS</th>
+                        <th>Group</th>
+                        <th>Interval</th>
+                        <th>Last Contact</th>
+                        <th>Last Status Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($inventoryData as $row): 
+                        $serial = isset($serialsMap[$row['agent_id']]) ? $serialsMap[$row['agent_id']] : 'N/A';
+                        if (strpos($serial, 'No Such Instance') !== false) $serial = 'N/A';
+                        if (empty($serial)) $serial = 'N/A';
+
+                        $agent_alias = cleanPandoraText($row['agent_alias']);
+                        $group_agent = cleanPandoraText($row['group_agent']);
+                        $os = cleanPandoraText($row['os_name']);
+                        $ip = !empty($row['ip_address']) ? $row['ip_address'] : 'N/A';
+
+                        $icon_file = $row['brand_icon'];
+                        $brand_text = 'Unknown';
+                        $final_icon_path = "";
+
+                        if (!empty($icon_file)) {
+                            $final_icon_path = "/pandora_console/images/os_icons/" . $icon_file;
+                            $brand_text = ucfirst(pathinfo($icon_file, PATHINFO_FILENAME));
+                            if (substr(strtolower($brand_text), 0, 3) === 'so_') {
+                                $brand_text = ucfirst(substr($brand_text, 3));
+                            }
+                        }
+
+                        $search_key = strtolower($brand_text . " " . $os);
+                        if (strpos($search_key, 'cisco') !== false) {
+                            $final_icon_path = "/pandora_console/images/cisco@os.svg";
+                            $brand_text = "Cisco";
+                        } elseif (strpos($search_key, 'windows') !== false) {
+                            $final_icon_path = "/pandora_console/images/windows@os.svg";
+                            $brand_text = "Windows";
+                        } elseif (strpos($search_key, 'linux') !== false) {
+                            $final_icon_path = "/pandora_console/images/linux@os.svg";
+                            $brand_text = "Linux";
+                        }
+
+                        $interval_val = formatInterval($row['agent_interval']);
+                        $last_contact_val = timeAgo($row['last_contact']);
+                        $status_change_raw = !empty($row['last_status_change']) ? $row['last_status_change'] : $row['last_contact'];
+                        $last_status_change_val = timeAgo($status_change_raw);
+                    ?>
+                    <tr>
+                        <td class="text-center" style="color:#7f8c8d !important;"><?= $row['agent_id'] ?></td>
+                        <td>
+                            <a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=<?= $row['agent_id'] ?>" target="_blank" class="agent-link">
+                                <?= htmlspecialchars($agent_alias) ?>
+                            </a>
+                        </td>
+                        <td><?= htmlspecialchars($ip) ?></td>
+                        <td><code class="serial-text"><?= htmlspecialchars(str_replace('"', '', $serial)) ?></code></td>
+                        <td class="text-center" title="<?= htmlspecialchars($brand_text) ?>">
+                            <span style="display:none;"><?= htmlspecialchars($brand_text) ?></span>
+                            <?php if (!empty($final_icon_path)): ?>
+                                <img src="<?= htmlspecialchars($final_icon_path) ?>" class="os-icon" onerror="this.style.display='none'" alt="Brand Icon">
+                            <?php else: ?>
+                                <span style="color:#b5c1c9; font-size:20px;">-</span>
+                            <?php endif; ?>
+                        </td>
+                        <td style="color:#64748b !important;"><?= htmlspecialchars($os) ?></td>
+                        <td style="color:#64748b !important;"><?= htmlspecialchars($group_agent) ?></td>
+                        <td><?= htmlspecialchars($interval_val) ?></td>
+                        <td><?= htmlspecialchars($last_contact_val) ?></td>
+                        <td><?= htmlspecialchars($last_status_change_val) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    var exportFormatConfig = {
+        body: function ( data, row, column, node ) {
+            return $('<div>').html(data).text().trim();
+        }
+    };
+
+    var table = $('#inventoryTable').DataTable({
+        "lengthMenu": [[15, 30, 50, 100, -1], [15, 30, 50, 100, "All"]],
+        "pageLength": 30,
+        // DOM diubah agar Filter (f) dan Buttons (B) berada di dalam top-controls-wrapper
+        "dom": "<'top-controls-wrapper'Bf>" +
+               "<'row'<'col-sm-12'tr>>" +
+               "<'bottom-controls-wrapper'<'spacer-left'i><'center-pagination'p><'right-length'l>>",
+        "language": {
+            "lengthMenu": "Show _MENU_ entries",
+            "search": "", 
+            "searchPlaceholder": "Search table data..."
+        },
+        "buttons": [
+            {
+                extend: 'csvHtml5',
+                text: '<span class="material-symbols-outlined" style="font-size:16px!important;">download</span> CSV',
+                className: 'btn-secondary-custom',
+                fieldSeparator: '|',
+                title: 'Inventory_PandoraFMS_' + new Date().toISOString().slice(0,10),
+                exportOptions: { columns: ':visible', format: exportFormatConfig }
+            },
+            {
+                extend: 'csvHtml5',
+                text: '<span class="material-symbols-outlined" style="font-size:16px!important;">description</span> TXT',
+                className: 'btn-secondary-custom',
+                fieldSeparator: '|',
+                extension: '.txt',
+                title: 'Inventory_PandoraFMS_' + new Date().toISOString().slice(0,10),
+                quoteChar: '',
+                exportOptions: { columns: ':visible', format: exportFormatConfig }
+            },
+            {
+                extend: 'pdfHtml5',
+                text: '<span class="material-symbols-outlined" style="font-size:16px!important;">picture_as_pdf</span> PDF',
+                className: 'btn-secondary-custom',
+                orientation: 'landscape',
+                pageSize: 'A4',
+                exportOptions: { columns: ':visible', format: exportFormatConfig },
+                customize: function (doc) {
+                    doc.styles.title.fontSize = 14;
+                    doc.styles.title.alignment = 'center';
+                    doc.styles.title.margin = [0, 0, 0, 15];
+                    doc.styles.tableHeader.fillColor = '#f8f9fa';
+                    doc.styles.tableHeader.color = '#000000';
+                    doc.styles.tableHeader.alignment = 'center';
+                    doc.defaultStyle.color = '#000000';
+                    doc.defaultStyle.fontSize = 8;
+                    doc.content[1].table.widths = ['5%', '15%', '10%', '15%', '8%', '7%', '10%', '10%', '10%', '10%'];
+                }
+            },
+            {
+                extend: 'colvis',
+                text: '<span class="material-symbols-outlined" style="font-size:16px!important;">view_column</span> Columns',
+                className: 'btn-secondary-custom'
+            }
+        ]
+    });
+
+    // Mengaktifkan fitur Global Search dari Top Navbar
+    $('#globalSearch').on('keyup', function () {
+        table.search(this.value).draw();
+    });
+});
+</script>
+</body>
+</html>

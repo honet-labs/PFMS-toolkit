@@ -1,0 +1,28 @@
+{
+    "dynamic_columns": [
+        {
+            "id": "col_serial_default",
+            "title": "Serial Number",
+            "keywords": [
+                "SerialNumber",
+                "Serial Number",
+                "SNMPv2-SMI::mib-2.47.1.1.1.1.11.1",
+                "SNMPv2-SMI::mib-2.47.1.1.1.1.11.67108867",
+                "SNMPv2-SMI::enterprises.3902.1082.500.10.2.3.3.1.18.285278465.1",
+                "SNMPv2-SMI::mib-2.47.1.1.1.1.11.8384513"
+            ],
+            "position": "after_ip",
+            "format": "raw"
+        },
+        {
+            "id": "col_1777450609896",
+            "title": "Uptime",
+            "keywords": [
+                "uptime",
+                "sysuptime"
+            ],
+            "position": "after_ip",
+            "format": "uptime_ticks"
+        }
+    ]
+}

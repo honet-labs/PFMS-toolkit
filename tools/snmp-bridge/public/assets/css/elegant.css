@@ -1,0 +1,748 @@
+/* ============================================================================
+   ELEGANT THEME FOR SNMP BRIDGE
+   Modern, professional, and sophisticated design
+   ============================================================================ */
+
+:root {
+    /* Primary Colors - Sophisticated Blue */
+    --primary: #1e3a8a;
+    --primary-light: #3b82f6;
+    --primary-lighter: #dbeafe;
+    
+    /* Secondary Colors - Elegant Teal */
+    --secondary: #0d9488;
+    --secondary-light: #14b8a6;
+    
+    /* Accent Colors */
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #06b6d4;
+    
+    /* Neutral Colors */
+    --white: #ffffff;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    
+    /* Spacing & Sizing */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+}
+
+/* ============================================================================
+   GLOBAL STYLES
+   ============================================================================ */
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+    color: var(--gray-800);
+    line-height: 1.6;
+}
+
+/* ============================================================================
+   NAVBAR - ELEGANT HEADER
+   ============================================================================ */
+
+.navbar {
+    background: var(--white) !important;
+    border-bottom: 2px solid var(--gray-100) !important;
+    box-shadow: var(--shadow-md);
+    padding: 1rem 0;
+}
+
+.navbar-brand {
+    font-size: 1.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary-light) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.5px;
+    margin-bottom: 0 !important;
+}
+
+.navbar-brand:hover {
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
+}
+
+.navbar-nav .nav-link {
+    font-weight: 500;
+    color: var(--gray-600) !important;
+    position: relative;
+    margin: 0 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.navbar-nav .nav-link:hover {
+    color: var(--primary-light) !important;
+}
+
+.navbar-nav .nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: -0.5rem;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary-light), var(--secondary-light));
+    transition: width 0.3s ease;
+}
+
+.navbar-nav .nav-link:hover::after {
+    width: 100%;
+}
+
+/* ============================================================================
+   MAIN CONTAINER & LAYOUT
+   ============================================================================ */
+
+main {
+    min-height: 100vh;
+    padding: 2rem 1rem !important;
+}
+
+.container-fluid {
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+/* ============================================================================
+   CARDS & COMPONENTS
+   ============================================================================ */
+
+.card {
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-md) !important;
+    transition: all 0.3s ease;
+    background: var(--white) !important;
+}
+
+.card:hover {
+    box-shadow: var(--shadow-lg) !important;
+    transform: translateY(-2px);
+}
+
+.card-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary-light) 100%) !important;
+    color: var(--white) !important;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+    border: none !important;
+    padding: 1.5rem !important;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.card-body {
+    padding: 1.5rem !important;
+}
+
+.card-footer {
+    background: var(--gray-50) !important;
+    border-top: 1px solid var(--gray-200) !important;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg) !important;
+}
+
+/* ============================================================================
+   BUTTONS
+   ============================================================================ */
+
+.btn {
+    font-weight: 600;
+    border-radius: var(--radius-md) !important;
+    transition: all 0.3s ease;
+    border: none !important;
+    padding: 0.75rem 1.5rem !important;
+    font-size: 0.95rem;
+    letter-spacing: 0.3px;
+}
+
+.btn:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Primary Button */
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%) !important;
+    color: var(--white) !important;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px -5px rgba(30, 58, 138, 0.3) !important;
+}
+
+/* Secondary Button */
+.btn-secondary {
+    background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-light) 100%) !important;
+    color: var(--white) !important;
+}
+
+.btn-secondary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px -5px rgba(13, 148, 136, 0.3) !important;
+}
+
+/* Outline Button */
+.btn-outline-primary {
+    color: var(--primary) !important;
+    border: 2px solid var(--primary) !important;
+    background: var(--white) !important;
+}
+
+.btn-outline-primary:hover {
+    background: var(--primary-lighter) !important;
+    border-color: var(--primary-light) !important;
+    color: var(--primary) !important;
+}
+
+/* Small Button */
+.btn-sm {
+    padding: 0.5rem 1rem !important;
+    font-size: 0.85rem;
+}
+
+/* Button Group */
+.btn-group {
+    gap: 0.5rem;
+}
+
+/* ============================================================================
+   FORM CONTROLS
+   ============================================================================ */
+
+.form-label {
+    font-weight: 600;
+    color: var(--gray-700);
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.form-control,
+.form-select {
+    border: 2px solid var(--gray-200) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--primary-light) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+.form-control::placeholder {
+    color: var(--gray-400);
+}
+
+.input-group {
+    gap: 0.5rem;
+}
+
+.input-group-text {
+    background: var(--gray-100) !important;
+    border: 2px solid var(--gray-200) !important;
+    color: var(--gray-600);
+    font-weight: 500;
+}
+
+/* ============================================================================
+   BADGES & TAGS
+   ============================================================================ */
+
+.badge {
+    font-weight: 600;
+    padding: 0.5rem 1rem !important;
+    border-radius: var(--radius-md) !important;
+    font-size: 0.85rem;
+    letter-spacing: 0.3px;
+}
+
+.badge-primary {
+    background: var(--primary-lighter) !important;
+    color: var(--primary) !important;
+}
+
+.badge-success {
+    background: #d1fae5 !important;
+    color: #065f46 !important;
+}
+
+.badge-warning {
+    background: #fef3c7 !important;
+    color: #92400e !important;
+}
+
+.badge-danger {
+    background: #fee2e2 !important;
+    color: #991b1b !important;
+}
+
+.badge-info {
+    background: #cffafe !important;
+    color: #164e63 !important;
+}
+
+/* ============================================================================
+   TABLES
+   ============================================================================ */
+
+.table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.table thead th {
+    background: linear-gradient(180deg, var(--gray-700) 0%, var(--gray-600) 100%);
+    color: var(--white);
+    font-weight: 700;
+    border: none;
+    padding: 1rem 0.75rem !important;
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.table tbody tr {
+    border-bottom: 1px solid var(--gray-200);
+    transition: all 0.3s ease;
+}
+
+.table tbody tr:hover {
+    background: var(--gray-50);
+    box-shadow: inset 0 0 0 1px var(--gray-200);
+}
+
+.table td {
+    padding: 1rem 0.75rem !important;
+    vertical-align: middle;
+    color: var(--gray-700);
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background: var(--white);
+}
+
+.table-striped tbody tr:nth-of-type(even) {
+    background: var(--gray-50);
+}
+
+/* ============================================================================
+   ALERTS
+   ============================================================================ */
+
+.alert {
+    border: none !important;
+    border-radius: var(--radius-lg) !important;
+    border-left: 4px solid;
+    padding: 1rem 1.5rem !important;
+    box-shadow: var(--shadow-md);
+}
+
+.alert-success {
+    background: #ecfdf5 !important;
+    color: #065f46 !important;
+    border-left-color: var(--success) !important;
+}
+
+.alert-danger {
+    background: #fef2f2 !important;
+    color: #991b1b !important;
+    border-left-color: var(--danger) !important;
+}
+
+.alert-warning {
+    background: #fffbeb !important;
+    color: #92400e !important;
+    border-left-color: var(--warning) !important;
+}
+
+.alert-info {
+    background: #ecf0ff !important;
+    color: #1e3a8a !important;
+    border-left-color: var(--primary) !important;
+}
+
+.alert-heading {
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+/* ============================================================================
+   LOADING SPINNERS & ANIMATIONS
+   ============================================================================ */
+
+.spinner-border {
+    border-color: var(--primary-lighter) !important;
+    border-right-color: var(--primary-light) !important;
+}
+
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.2em;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* ============================================================================
+   MODALS
+   ============================================================================ */
+
+.modal-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary-light) 100%);
+    color: var(--white);
+    border: none !important;
+}
+
+.modal-header .btn-close {
+    filter: brightness(0) invert(1);
+}
+
+.modal-content {
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-xl);
+}
+
+/* ============================================================================
+   TABS & PILLS
+   ============================================================================ */
+
+.nav-tabs {
+    border-bottom: 2px solid var(--gray-200) !important;
+}
+
+.nav-tabs .nav-link {
+    color: var(--gray-600) !important;
+    border: none !important;
+    font-weight: 600;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.nav-tabs .nav-link:hover {
+    color: var(--primary-light) !important;
+    border-bottom-color: var(--primary-light) !important;
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--primary) !important;
+    background: none !important;
+    border-bottom-color: var(--primary-light) !important;
+}
+
+.nav-pills .nav-link {
+    background: var(--gray-100);
+    color: var(--gray-700);
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.nav-pills .nav-link:hover {
+    background: var(--primary-lighter);
+    color: var(--primary);
+}
+
+.nav-pills .nav-link.active {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+    color: var(--white);
+}
+
+/* ============================================================================
+   PROGRESS BARS
+   ============================================================================ */
+
+.progress {
+    height: 0.75rem;
+    background: var(--gray-200);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.progress-bar {
+    background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+    transition: width 0.6s ease;
+}
+
+/* ============================================================================
+   BREADCRUMB
+   ============================================================================ */
+
+.breadcrumb {
+    background: transparent !important;
+    padding: 0.5rem 0 !important;
+}
+
+.breadcrumb-item {
+    color: var(--gray-600);
+}
+
+.breadcrumb-item.active {
+    color: var(--gray-900);
+    font-weight: 600;
+}
+
+.breadcrumb-item a {
+    color: var(--primary-light);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.breadcrumb-item a:hover {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+/* ============================================================================
+   UTILITIES
+   ============================================================================ */
+
+.text-muted {
+    color: var(--gray-500) !important;
+}
+
+.text-primary {
+    color: var(--primary) !important;
+}
+
+.text-secondary {
+    color: var(--secondary) !important;
+}
+
+.text-success {
+    color: var(--success) !important;
+}
+
+.text-danger {
+    color: var(--danger) !important;
+}
+
+.text-warning {
+    color: var(--warning) !important;
+}
+
+.bg-light {
+    background: var(--gray-50) !important;
+}
+
+.bg-lighter {
+    background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%) !important;
+}
+
+.border-primary {
+    border-color: var(--primary) !important;
+}
+
+.border-secondary {
+    border-color: var(--secondary) !important;
+}
+
+/* Shadow utilities */
+.shadow-sm {
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.shadow-md {
+    box-shadow: var(--shadow-md) !important;
+}
+
+.shadow-lg {
+    box-shadow: var(--shadow-lg) !important;
+}
+
+/* Rounded utilities */
+.rounded-lg {
+    border-radius: var(--radius-lg) !important;
+}
+
+.rounded-xl {
+    border-radius: var(--radius-xl) !important;
+}
+
+/* ============================================================================
+   DATATABLE STYLING
+   ============================================================================ */
+
+.dataTables_wrapper .dataTables_filter input {
+    border: 2px solid var(--gray-200) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 0.5rem 1rem !important;
+}
+
+.dataTables_wrapper .dataTables_filter input:focus {
+    border-color: var(--primary-light) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    border-radius: var(--radius-md);
+    margin: 0 0.25rem;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%) !important;
+    color: var(--white) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: var(--gray-100) !important;
+    color: var(--primary) !important;
+}
+
+/* ============================================================================
+   RESPONSIVE & BREAKPOINTS
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    main {
+        padding: 1rem 0.5rem !important;
+    }
+
+    .card {
+        margin-bottom: 1rem;
+    }
+
+    .btn {
+        padding: 0.6rem 1.2rem !important;
+        font-size: 0.9rem;
+    }
+
+    .table {
+        font-size: 0.85rem;
+    }
+
+    .navbar-brand {
+        font-size: 1.25rem;
+    }
+}
+
+@media (max-width: 576px) {
+    main {
+        padding: 1rem 0.25rem !important;
+    }
+
+    .card-body {
+        padding: 1rem !important;
+    }
+
+    .table td {
+        padding: 0.75rem 0.5rem !important;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem !important;
+        font-size: 0.85rem;
+    }
+}
+
+/* ============================================================================
+   CUSTOM COMPONENTS
+   ============================================================================ */
+
+.stat-card {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--gray-200);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-md);
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-4px);
+}
+
+.stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.stat-card .stat-label {
+    font-size: 0.9rem;
+    color: var(--gray-600);
+    font-weight: 500;
+    margin-top: 0.5rem;
+}
+
+.gradient-text {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary-light) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.hover-lift {
+    transition: all 0.3s ease;
+}
+
+.hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ============================================================================
+   PRINT STYLES
+   ============================================================================ */
+
+@media print {
+    .navbar,
+    .btn,
+    .pagination {
+        display: none !important;
+    }
+
+    .card {
+        border: 1px solid #ccc !important;
+        page-break-inside: avoid;
+    }
+}

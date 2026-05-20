@@ -1,0 +1,192 @@
+/**
+ * Pandora FMS - Universal Dashboard Theme
+ * Faithfully replicating the "Availability Node & Modules" UI/UX
+ */
+
+:root {
+  --primary: #006b54; /* Pandora Green */
+  --bg: #f2f5f7;
+  --panel-bg: #ffffff;
+  --border: #dee5e7;
+  --text-main: #2f353b;
+  --text-muted: #76838f;
+  
+  --ok: #2ecc71;
+  --crit: #e74c3c;
+  --warn: #f1c40f;
+  --na: #95a5a6;
+  
+  --shadow-sm: 0 1px 1px rgba(0,0,0,.05);
+}
+
+body {
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  background-color: var(--bg);
+  color: var(--text-main);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* TOPBAR / BREADCRUMB AREA */
+.dash-header {
+  padding: 15px 25px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.dash-title-box .breadcrumb {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 5px;
+  letter-spacing: 0.5px;
+}
+.dash-title-box h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  color: #111;
+}
+
+/* ACTION BUTTONS (TOP RIGHT) */
+.dash-actions {
+  display: flex;
+  gap: 10px;
+}
+.btn-dash {
+  padding: 6px 14px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-main);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+.btn-dash.primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.btn-dash:hover {
+  filter: brightness(0.95);
+  box-shadow: var(--shadow-sm);
+}
+
+/* STAT CARDS (BIG NUMBERS) */
+.stat-container {
+  display: flex;
+  gap: 15px;
+  padding: 0 25px 20px 25px;
+}
+.stat-card {
+  background: #fff;
+  flex: 1;
+  padding: 15px;
+  border-radius: 3px;
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.stat-card .num { font-size: 28px; font-weight: 300; display: block; }
+.stat-card .label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+.stat-card.ok { border-bottom: 3px solid var(--ok); }
+.stat-card.crit { border-bottom: 3px solid var(--crit); }
+.stat-card.warn { border-bottom: 3px solid var(--warn); }
+.stat-card.na { border-bottom: 3px solid var(--na); }
+
+/* GRID PANELS */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+  gap: 20px;
+  padding: 0 25px 25px 25px;
+}
+
+.panel {
+  background: #fff;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  padding: 10px 15px;
+  border-bottom: 1px solid #f0f3f4;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.panel-title i { color: var(--text-muted); }
+
+.panel-content {
+  padding: 20px;
+  flex: 1;
+}
+
+/* HEATMAP STYLE (For status dots) */
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 15px;
+}
+.status-box {
+  width: 35px;
+  height: 22px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+/* MODAL / OVERLAY */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-card {
+  background: #fff;
+  width: 500px;
+  border-radius: 4px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+/* TOP LOGO BAR */
+.header-top-bar {
+  background: #fff;
+  height: 50px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 15px;
+}
+.header-top-bar img { height: 20px; }
+.header-top-bar .sep { width: 1px; height: 20px; background: var(--border); }
+.header-top-bar .subtitle { font-size: 13px; color: var(--text-muted); }

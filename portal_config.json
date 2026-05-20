@@ -1,0 +1,26 @@
+{
+    "exclude_dirs": [
+        "temp",
+        "cache",
+        "assets",
+        "includes",
+        "scanning-mib",
+        "snmp-explorer"
+    ],
+    "exclude_files": [
+        "nfx_local_config.php",
+        "pdb_local_config.php",
+        "config.php",
+        "utils.php",
+        "check_schema.php",
+        "check_schema_v2.php",
+        "temp_query.php",
+        "pfms_latency_map.php",
+        "api_network.php",
+        "cron.php",
+        "pfms_latency_map.php",
+        "pfms_lib.php",
+        "mib-webui-(beta).php",
+        "mibs-converter-%28beta%29.php"
+    ]
+}
