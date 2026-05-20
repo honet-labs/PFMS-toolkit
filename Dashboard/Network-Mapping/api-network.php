@@ -94,7 +94,7 @@ try {
 
     if ($api === 'save_config') {
         ob_clean();
-        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_SERVER['HTTP_HTTP_X_CSRF_TOKEN'] ?? '';
+        $client_token = $_GET['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_SERVER['HTTP_HTTP_X_CSRF_TOKEN'] ?? '';
         if (empty($csrf_token) || $client_token !== $csrf_token) {
             echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
             exit;
@@ -337,7 +337,7 @@ try {
 
     if ($api === 'save_layout') {
         ob_clean();
-        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_SERVER['HTTP_HTTP_X_CSRF_TOKEN'] ?? '';
+        $client_token = $_GET['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_SERVER['HTTP_HTTP_X_CSRF_TOKEN'] ?? '';
         if (empty($csrf_token) || $client_token !== $csrf_token) {
             echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh panel.']);
             exit;

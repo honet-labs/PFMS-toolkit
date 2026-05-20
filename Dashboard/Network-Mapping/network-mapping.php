@@ -602,7 +602,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
 
         try {
-            const res = await fetch(`${API_URL}?api=save_config`, {
+            const res = await fetch(`${API_URL}?api=save_config&csrf_token=${encodeURIComponent(CSRF)}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -633,7 +633,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         masterDashboards.push(newMap);
 
         try {
-            const res = await fetch(`${API_URL}?api=save_config`, {
+            const res = await fetch(`${API_URL}?api=save_config&csrf_token=${encodeURIComponent(CSRF)}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -656,7 +656,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         masterDashboards = masterDashboards.filter(x => x.id !== id);
 
         try {
-            const res = await fetch(`${API_URL}?api=save_config`, {
+            const res = await fetch(`${API_URL}?api=save_config&csrf_token=${encodeURIComponent(CSRF)}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -953,7 +953,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         };
 
         try {
-            const res = await fetch(`${API_URL}?api=save_layout&dash_id=${currentDashId}`, {
+            const res = await fetch(`${API_URL}?api=save_layout&dash_id=${currentDashId}&csrf_token=${encodeURIComponent(CSRF)}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
