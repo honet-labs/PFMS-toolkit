@@ -1,10 +1,10 @@
 <?php
 /**
  * PANDORA FMS - CUSTOM EXTENSIONS PORTAL
- * Version: 2.3 (Architecture Update & Auto-Updater)
+ * Version: 1.0.4 (Architecture Update & Auto-Updater)
  */
 
-define('PORTAL_VERSION', '2.3');
+define('PORTAL_VERSION', '1.0.4');
 
 // 1. SECURITY HEADERS
 header("X-Frame-Options: SAMEORIGIN");
