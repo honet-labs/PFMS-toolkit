@@ -3,6 +3,7 @@
  * network-mapping.php
  * Interactive Network Mapping Tool Dashboard
  * Supports Auto-discovery and Manual Drag-and-Drop Edit Mode (SolarWinds style)
+ * Fully upgraded to support multi-dashboard map lists and granular target filtering.
  */
 
 $DEFAULT_TZ = "Asia/Jakarta";
@@ -41,6 +42,15 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 
     <style>
+        :root { 
+            --primary-bg: #f4f6f8; 
+            --card-bg: #fff; 
+            --border-color: #e0e4e8; 
+            --text-main: #1e293b; 
+            --text-dim: #64748b; 
+            --accent-green: #004d40; 
+        }
+
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #334155; font-size: 14px; background-color: #f4f6f8; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         * { box-sizing: border-box; }
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; line-height: 1; display: inline-block; }
@@ -57,6 +67,47 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .pandora-header-bottom { background-color: #f4f6f8; padding: 15px 30px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
         .page-breadcrumb { font-size: 11px !important; color: #64748b !important; margin-bottom: 4px; font-weight: normal !important; text-transform: uppercase; letter-spacing: 0.5px; }
         .page-title { font-size: 18px !important; color: #0b1a26 !important; margin: 0; font-weight: 600 !important; line-height: 1.2; }
+
+        /* MASTER LIST VIEW TABLE STYLING */
+        .main-content { padding: 25px 30px; overflow-y: auto; flex-grow: 1; }
+        .card { background: #fff; border-radius: 8px; border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0,0,0,0.03); overflow: hidden; }
+        table.master-table { width: 100%; border-collapse: collapse; }
+        table.master-table th { background: #f8fafc; padding: 14px 20px; text-align: left; color: var(--text-dim); text-transform: uppercase; font-size: 11px; font-weight: 600; border-bottom: 1px solid var(--border-color); }
+        table.master-table td { padding: 15px 20px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: var(--text-main); }
+        table.master-table tr:hover td { background: #fcfdfe; }
+        table.master-table th:last-child, table.master-table td:last-child { width: 1%; white-space: nowrap; padding-right: 25px; text-align: right; }
+        
+        .dash-link { color: #004d40; text-decoration: none; font-weight: 600; transition: 0.2s; }
+        .dash-link:hover { text-decoration: underline; color: #002d25; }
+        
+        .btn-create { background: #004d40; color: #fff !important; border: none; padding: 8px 18px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: 0.2s; }
+        .btn-create:hover { background: #00332a; }
+
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            color: #4b5563;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            margin-left: 5px;
+        }
+        .btn-action:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+            color: #1f2937;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .btn-action .material-symbols-outlined { font-size: 16px !important; }
+        .btn-action.btn-delete { color: #ef4444; }
+        .btn-action.btn-delete:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
 
         /* TOP CONTROLS */
         .top-controls { display: flex; flex-direction: row; gap: 10px; align-items: center; }
@@ -124,8 +175,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 </head>
 <body>
 
+<!-- TOP GLOBAL BAR -->
 <?php if (!$isStandalone): ?>
-<!-- TOP BAR -->
 <div class="pandora-header-top">
     <div class="header-left">
         <img src="<?= $PANDORA_BASE_URL ?>/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
@@ -139,116 +190,185 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         <a href="<?= $PANDORA_BASE_URL ?>/index.php" class="nav-icon-btn"><span class="material-symbols-outlined">home</span></a>
     </div>
 </div>
-
-<!-- SUB BAR (TITLE & CONTROLS) -->
-<div class="pandora-header-bottom">
-    <div class="breadcrumb-box">
-        <span class="page-breadcrumb"><?= h($dynamic_breadcrumb) ?></span>
-        <h1 class="page-title">Network Topology Mapping</h1>
-    </div>
-    <div class="top-controls">
-        <!-- GLOBAL SEARCH -->
-        <div class="search-container">
-            <span class="material-symbols-outlined search-icon">search</span>
-            <input type="text" id="nodeSearchInput" placeholder="Find device..." onkeyup="searchNode()">
-        </div>
-        
-        <!-- AUTO GENERATE / PHYSICS RESET -->
-        <button class="btn-secondary-custom" id="physicsBtn" onclick="togglePhysics()" title="Run spring force layout simulation">
-            <span class="material-symbols-outlined">physics</span> Auto Layout
-        </button>
-
-        <button class="btn-secondary-custom" id="editModeBtn" onclick="toggleEditMode()">
-            <span class="material-symbols-outlined">edit</span> Customize Map
-        </button>
-
-        <!-- ADD MANUAL LINK (EDIT ONLY) -->
-        <button class="btn-apply" id="addLinkBtn" onclick="openAddLinkModal()" style="display: none; background: #ea580c !important;">
-            <span class="material-symbols-outlined">add_link</span> Add Connection
-        </button>
-
-        <button class="btn-apply" id="saveLayoutBtn" onclick="saveLayout()" style="display: none;">
-            <span class="material-symbols-outlined">save</span> Save Layout
-        </button>
-    </div>
-</div>
 <?php endif; ?>
 
-<!-- MAP CANVAS CONTAINER -->
-<div class="map-wrapper">
-    <!-- Active Mode Indicator Badge -->
-    <div class="mode-badge">
-        <div class="mode-dot" id="modeDot"></div>
-        <span id="modeLabel">Auto-Discovery (Real-time)</span>
-    </div>
-
-    <!-- PANDORA CANVAS -->
-    <div id="network-map-canvas"></div>
-
-    <!-- Legends Box -->
-    <div class="legend-box">
-        <div class="legend-item"><span class="legend-color" style="background:#2ecc71;"></span> Health OK (Port Up)</div>
-        <div class="legend-item"><span class="legend-color" style="background:#f1c40f;"></span> Health Warning</div>
-        <div class="legend-item"><span class="legend-color" style="background:#e74c3c;"></span> Health Down (Port Critical)</div>
-        <div class="legend-item"><span class="legend-color" style="background:#3498db;"></span> Not Initialized</div>
-    </div>
-
-    <!-- PERFORMANCE DRAWER -->
-    <div class="metrics-drawer" id="metricsDrawer">
-        <div class="drawer-header">
-            <h5 class="drawer-title" id="drawerAgentName">Switch Floor-1</h5>
-            <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeDrawer()">close</span>
+<!-- ========================================== -->
+<!-- 1. MASTER LANDING PAGE VIEW -->
+<!-- ========================================== -->
+<div id="masterView">
+    <div class="pandora-header-bottom">
+        <div class="breadcrumb-box">
+            <span class="page-breadcrumb"><?= h($dynamic_breadcrumb) ?></span>
+            <h1 class="page-title">Network Topology Manager</h1>
         </div>
-        <div class="drawer-body">
-            <div>
-                <span class="text-uppercase text-muted" style="font-size:10px; font-weight:600; display:block; margin-bottom:8px;">IP Address</span>
-                <span class="font-monospace text-dark" id="drawerAgentIp" style="background:#f1f5f9; padding:4px 8px; border-radius:4px; font-size:12px;">192.168.201.20</span>
-            </div>
+        <div class="top-controls">
+            <button class="btn-create" onclick="openCreateModal()"><span class="material-symbols-outlined">add</span> Create Map</button>
+        </div>
+    </div>
+    <div class="main-content">
+        <div class="card">
+            <table class="master-table">
+                <thead>
+                    <tr>
+                        <th>Map Name</th>
+                        <th>Target Group</th>
+                        <th>Target Node Focus</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="masterTableBody">
+                    <tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">Loading dashboards...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-            <!-- Metrics grid -->
-            <div>
-                <span class="text-uppercase text-muted" style="font-size:10px; font-weight:600; display:block; margin-bottom:12px;">Operational Metrics</span>
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                    <div class="metric-card">
-                        <div class="metric-label-box">
-                            <span class="material-symbols-outlined" style="color:#0284c7;">developer_board</span> CPU Utilization
+<!-- ========================================== -->
+<!-- 2. DETAILED TOPOLOGY VISUALIZATION VIEW -->
+<!-- ========================================== -->
+<div id="detailView" style="display:none; flex-direction:column; height: 100%; overflow:hidden;">
+    <!-- SUB BAR (TITLE & CONTROLS) -->
+    <div class="pandora-header-bottom">
+        <div class="breadcrumb-box">
+            <span class="page-breadcrumb"><?= h($dynamic_breadcrumb) ?></span>
+            <h1 class="page-title" style="display:flex; align-items:center; gap:8px;">
+                <button onclick="goBack()" style="background:none; border:none; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;">
+                    <span class="material-symbols-outlined" style="font-size:24px!important; color:#004d40;">arrow_back</span>
+                </button> 
+                <span id="detailDashName">Topology Map</span>
+            </h1>
+        </div>
+        <div class="top-controls">
+            <!-- GLOBAL SEARCH -->
+            <div class="search-container">
+                <span class="material-symbols-outlined search-icon">search</span>
+                <input type="text" id="nodeSearchInput" placeholder="Find device..." onkeyup="searchNode()">
+            </div>
+            
+            <!-- AUTO GENERATE / PHYSICS RESET -->
+            <button class="btn-secondary-custom" id="physicsBtn" onclick="togglePhysics()" title="Run spring force layout simulation">
+                <span class="material-symbols-outlined" style="font-size:16px!important; margin-right:4px;">hub</span> Auto Layout
+            </button>
+
+            <button class="btn-secondary-custom" id="editModeBtn" onclick="toggleEditMode()">
+                <span class="material-symbols-outlined">edit</span> Customize Map
+            </button>
+
+            <!-- ADD MANUAL LINK (EDIT ONLY) -->
+            <button class="btn-apply" id="addLinkBtn" onclick="openAddLinkModal()" style="display: none; background: #ea580c !important;">
+                <span class="material-symbols-outlined">add_link</span> Add Connection
+            </button>
+
+            <button class="btn-apply" id="saveLayoutBtn" onclick="saveLayout()" style="display: none;">
+                <span class="material-symbols-outlined">save</span> Save Layout
+            </button>
+        </div>
+    </div>
+
+    <!-- MAP CANVAS CONTAINER -->
+    <div class="map-wrapper">
+        <!-- Active Mode Indicator Badge -->
+        <div class="mode-badge">
+            <div class="mode-dot" id="modeDot"></div>
+            <span id="modeLabel">Auto-Discovery (Real-time)</span>
+        </div>
+
+        <!-- PANDORA CANVAS -->
+        <div id="network-map-canvas"></div>
+
+        <!-- Legends Box -->
+        <div class="legend-box">
+            <div class="legend-item"><span class="legend-color" style="background:#2ecc71;"></span> Health OK (Port Up)</div>
+            <div class="legend-item"><span class="legend-color" style="background:#f1c40f;"></span> Health Warning</div>
+            <div class="legend-item"><span class="legend-color" style="background:#e74c3c;"></span> Health Down (Port Critical)</div>
+            <div class="legend-item"><span class="legend-color" style="background:#3498db;"></span> Not Initialized</div>
+        </div>
+
+        <!-- PERFORMANCE DRAWER -->
+        <div class="metrics-drawer" id="metricsDrawer">
+            <div class="drawer-header">
+                <h5 class="drawer-title" id="drawerAgentName">Switch Floor-1</h5>
+                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeDrawer()">close</span>
+            </div>
+            <div class="drawer-body">
+                <div>
+                    <span class="text-uppercase text-muted" style="font-size:10px; font-weight:600; display:block; margin-bottom:8px;">IP Address</span>
+                    <span class="font-monospace text-dark" id="drawerAgentIp" style="background:#f1f5f9; padding:4px 8px; border-radius:4px; font-size:12px;">192.168.201.20</span>
+                </div>
+
+                <!-- Metrics grid -->
+                <div>
+                    <span class="text-uppercase text-muted" style="font-size:10px; font-weight:600; display:block; margin-bottom:12px;">Operational Metrics</span>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <div class="metric-card">
+                            <div class="metric-label-box">
+                                <span class="material-symbols-outlined" style="color:#0284c7;">developer_board</span> CPU Utilization
+                            </div>
+                            <span class="metric-value" id="drawerCpu">--</span>
                         </div>
-                        <span class="metric-value" id="drawerCpu">--</span>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-label-box">
-                            <span class="material-symbols-outlined" style="color:#7c3aed;">memory</span> Memory Load
+                        <div class="metric-card">
+                            <div class="metric-label-box">
+                                <span class="material-symbols-outlined" style="color:#7c3aed;">memory</span> Memory Load
+                            </div>
+                            <span class="metric-value" id="drawerRam">--</span>
                         </div>
-                        <span class="metric-value" id="drawerRam">--</span>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-label-box">
-                            <span class="material-symbols-outlined" style="color:#eab308;">speed</span> Latency (Ping)
+                        <div class="metric-card">
+                            <div class="metric-label-box">
+                                <span class="material-symbols-outlined" style="color:#eab308;">speed</span> Latency (Ping)
+                            </div>
+                            <span class="metric-value" id="drawerLatency">--</span>
                         </div>
-                        <span class="metric-value" id="drawerLatency">--</span>
                     </div>
                 </div>
-            </div>
 
-            <!-- Ports Availability -->
-            <div>
-                <span class="text-uppercase text-muted" style="font-size:10px; font-weight:600; display:block; margin-bottom:10px;">Operational Port Status</span>
-                <div class="port-list" id="drawerPorts">
-                    <span class="text-muted small">No dynamic ports monitored.</span>
+                <!-- Ports Availability -->
+                <div>
+                    <span class="text-uppercase text-muted" style="font-size:10px; font-weight:600; display:block; margin-bottom:10px;">Operational Port Status</span>
+                    <div class="port-list" id="drawerPorts">
+                        <span class="text-muted small">No Monitored Ports.</span>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Diagnostics -->
-            <div style="margin-top:auto; padding-top:20px; border-top:1px solid #eee;">
-                <button class="btn-apply w-100 justify-content-center" onclick="performPing()">
-                    <span class="material-symbols-outlined">bolt</span> Test Connection (Ping)
-                </button>
+                <!-- Diagnostics -->
+                <div style="margin-top:auto; padding-top:20px; border-top:1px solid #eee;">
+                    <button class="btn-apply w-100 justify-content-center" onclick="performPing()">
+                        <span class="material-symbols-outlined">bolt</span> Test Connection (Ping)
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- ADD LINK MODAL -->
+<!-- ========================================== -->
+<!-- 3. DIALOG MODALS -->
+<!-- ========================================== -->
+
+<!-- CREATE/EDIT DASHBOARD MAP MODAL -->
+<div class="modal-overlay" id="createModal">
+    <div class="modal-box">
+        <h3 id="modalTitle" style="margin-top:0; font-size: 16px; font-weight:600; color:#0b1a26; text-transform:uppercase; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:20px;">Create Topology Map</h3>
+        <div class="form-group">
+            <label style="font-size: 11px; text-transform: uppercase; font-weight:600; color:#64748b; display:block; margin-bottom:5px;">Map Name</label>
+            <input type="text" id="m_name" class="form-control-fix" placeholder="e.g. Core Routers SITE CIGANJUR">
+        </div>
+        <div class="form-group">
+            <label style="font-size: 11px; text-transform: uppercase; font-weight:600; color:#64748b; display:block; margin-bottom:5px;">Target Group Filter</label>
+            <select id="m_group" class="form-control-fix" onchange="loadAgentOptions()"></select>
+        </div>
+        <div class="form-group">
+            <label style="font-size: 11px; text-transform: uppercase; font-weight:600; color:#64748b; display:block; margin-bottom:5px;">Target Core Node (Optional Focus)</label>
+            <select id="m_agent" class="form-control-fix"></select>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:25px;">
+            <button class="btn-secondary-custom" onclick="closeCreateModal()">Cancel</button>
+            <button id="btnSubmitModal" class="btn-create" onclick="saveNewDashboard()">Save Map</button>
+        </div>
+    </div>
+</div>
+
+<!-- ADD PORT-TO-PORT CONNECTION MODAL (EDIT ONLY) -->
 <div class="modal-overlay" id="addLinkModal">
     <div class="modal-box">
         <div style="display:flex; justify-content:space-between; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:20px;">
@@ -295,6 +415,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     const CSRF = "<?= $csrf_token ?>";
     const API_URL = "Dashboard/Network-Mapping/api-network.php";
 
+    let masterDashboards = [];
+    let currentDashId = '';
+    let editId = null;
+
     let network = null;
     let nodesDataset = null;
     let edgesDataset = null;
@@ -306,7 +430,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     let allRawNodes = [];
     let manualLinksStore = [];
 
-    // Colors mapping representing statuses
     const COLORS = {
         normal: { border: '#10b981', background: '#ecfdf5', highlight: { border: '#059669', background: '#d1fae5' } },
         warning: { border: '#f59e0b', background: '#fffbeb', highlight: { border: '#d97706', background: '#fef3c7' } },
@@ -315,7 +438,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         unknown: { border: '#94a3b8', background: '#f8fafc', highlight: { border: '#64748b', background: '#e2e8f0' } }
     };
 
-    // Standard styling values
     const SHAPE_STYLES = {
         shape: 'dot',
         size: 22,
@@ -324,12 +446,237 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     };
 
     document.addEventListener("DOMContentLoaded", () => {
-        loadNetworkTopology();
+        init();
     });
 
+    async function init() {
+        // Load Maps/Dashboards configuration list
+        try {
+            const r = await fetch(`${API_URL}?api=load_config`);
+            masterDashboards = await r.json();
+
+            // Load Groups into Creation Modal Dropdown
+            const rg = await fetch(`${API_URL}?api=groups`);
+            const groups = await rg.json();
+            const gsel = document.getElementById('m_group');
+            gsel.innerHTML = '';
+            groups.forEach(g => gsel.add(new Option(g.name, g.id)));
+
+            const params = new URLSearchParams(window.location.search);
+            const dashId = params.get('dash_id');
+            if (dashId) {
+                openDashboard(dashId);
+            } else {
+                renderMasterList();
+            }
+        } catch (e) {
+            console.error("Init Error: ", e);
+        }
+    }
+
+    function renderMasterList() {
+        document.getElementById('masterView').style.display = 'block';
+        document.getElementById('detailView').style.display = 'none';
+
+        const body = document.getElementById('masterTableBody');
+        body.innerHTML = masterDashboards.map(d => `<tr>
+            <td><a href="#" class="dash-link" onclick="openDashboard('${d.id}')">${d.name}</a></td>
+            <td>${d.group_name || 'All Groups'}</td>
+            <td>${d.agent_name || 'All Nodes'}</td>
+            <td style="text-align:right;">
+                <button class="btn-action" onclick="openDashboard('${d.id}')">
+                    <span class="material-symbols-outlined">visibility</span> Open Map
+                </button>
+                <button class="btn-action" onclick="editDashboard('${d.id}')">
+                    <span class="material-symbols-outlined">edit</span> Configure
+                </button>
+                <button class="btn-action" onclick="duplicateDashboard('${d.id}')">
+                    <span class="material-symbols-outlined">content_copy</span> Duplicate
+                </button>
+                <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')">
+                    <span class="material-symbols-outlined">delete</span> Delete
+                </button>
+            </td>
+        </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Topology Maps Created Yet.</td></tr>';
+    }
+
+    function openDashboard(id) {
+        const d = masterDashboards.find(x => x.id === id);
+        if (!d) return renderMasterList();
+
+        currentDashId = id;
+        document.getElementById('masterView').style.display = 'none';
+        document.getElementById('detailView').style.display = 'flex';
+        document.getElementById('detailDashName').innerText = d.name;
+
+        // Update active address state safely without page reloading
+        const url = new URL(window.location);
+        url.searchParams.set('dash_id', id);
+        window.history.replaceState({}, '', url);
+
+        loadNetworkTopology();
+    }
+
+    function goBack() {
+        currentDashId = '';
+        const url = new URL(window.location);
+        url.searchParams.delete('dash_id');
+        window.history.replaceState({}, '', url);
+        
+        // Clean Vis.js instance
+        if (network !== null) {
+            network.destroy();
+            network = null;
+        }
+
+        renderMasterList();
+    }
+
+    function openCreateModal() {
+        editId = null;
+        document.getElementById('modalTitle').innerText = 'Create Topology Map';
+        document.getElementById('btnSubmitModal').innerText = 'Create Map';
+        document.getElementById('m_name').value = '';
+        document.getElementById('m_group').value = '0';
+        document.getElementById('m_agent').innerHTML = '<option value="0">-- All Nodes --</option>';
+        document.getElementById('createModal').style.display = 'flex';
+    }
+
+    function editDashboard(id) {
+        const d = masterDashboards.find(x => x.id === id);
+        if (!d) return;
+
+        editId = id;
+        document.getElementById('modalTitle').innerText = 'Edit Topology Configuration';
+        document.getElementById('btnSubmitModal').innerText = 'Save Changes';
+        document.getElementById('m_name').value = d.name;
+        document.getElementById('m_group').value = d.group_id;
+        loadAgentOptions(d.agent_id);
+        document.getElementById('createModal').style.display = 'flex';
+    }
+
+    function closeCreateModal() {
+        document.getElementById('createModal').style.display = 'none';
+    }
+
+    async function loadAgentOptions(selectedId = 0) {
+        const gid = document.getElementById('m_group').value;
+        const r = await fetch(`${API_URL}?api=agents&group_id=${gid}`);
+        const agents = await r.json();
+        
+        const sel = document.getElementById('m_agent');
+        sel.innerHTML = '';
+        agents.forEach(a => {
+            const opt = new Option(a.alias, a.id);
+            if (a.id == selectedId) opt.selected = true;
+            sel.add(opt);
+        });
+    }
+
+    async function saveNewDashboard() {
+        const name = document.getElementById('m_name').value.trim();
+        if (!name) return alert("Name is required!");
+
+        const gsel = document.getElementById('m_group');
+        const asel = document.getElementById('m_agent');
+
+        if (editId) {
+            const idx = masterDashboards.findIndex(x => x.id === editId);
+            if (idx !== -1) {
+                masterDashboards[idx].name = name;
+                masterDashboards[idx].group_id = gsel.value;
+                masterDashboards[idx].group_name = gsel.options[gsel.selectedIndex].text;
+                masterDashboards[idx].agent_id = asel.value;
+                masterDashboards[idx].agent_name = asel.options[asel.selectedIndex].text;
+            }
+        } else {
+            const id = 'map_' + Date.now();
+            masterDashboards.push({
+                id: id,
+                name: name,
+                group_id: gsel.value,
+                group_name: gsel.options[gsel.selectedIndex].text,
+                agent_id: asel.value,
+                agent_name: asel.options[asel.selectedIndex].text
+            });
+        }
+
+        try {
+            const res = await fetch(`${API_URL}?api=save_config`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': CSRF
+                },
+                body: JSON.stringify(masterDashboards)
+            });
+            const data = await res.json();
+            if (data.ok) {
+                closeCreateModal();
+                init();
+            } else {
+                alert(`Error saving dashboard: ${data.error}`);
+            }
+        } catch (e) {
+            alert("Error sending configuration to server.");
+        }
+    }
+
+    async function duplicateDashboard(id) {
+        const d = masterDashboards.find(x => x.id === id);
+        if (!d) return;
+
+        const newMap = JSON.parse(JSON.stringify(d));
+        newMap.id = 'map_' + Date.now();
+        newMap.name = newMap.name + ' (Copy)';
+
+        masterDashboards.push(newMap);
+
+        try {
+            const res = await fetch(`${API_URL}?api=save_config`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': CSRF
+                },
+                body: JSON.stringify(masterDashboards)
+            });
+            const data = await res.json();
+            if (data.ok) {
+                init();
+            }
+        } catch (e) {
+            alert("Error duplicate connection.");
+        }
+    }
+
+    async function deleteDashboard(id) {
+        if (!confirm("Are you sure you want to delete this custom topology map dashboard?")) return;
+
+        masterDashboards = masterDashboards.filter(x => x.id !== id);
+
+        try {
+            const res = await fetch(`${API_URL}?api=save_config`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': CSRF
+                },
+                body: JSON.stringify(masterDashboards)
+            });
+            const data = await res.json();
+            if (data.ok) {
+                init();
+            }
+        } catch (e) {
+            alert("Error deleting mapping.");
+        }
+    }
+
+    // Load active topology nodes and edges datasets from API
     async function loadNetworkTopology() {
         try {
-            const res = await fetch(`${API_URL}?api=nodes_links`);
+            const res = await fetch(`${API_URL}?api=nodes_links&dash_id=${currentDashId}`);
             const data = await res.json();
             if (!data.ok) {
                 console.error("Failed to load map data: ", data.error);
@@ -384,9 +731,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 };
             });
 
-            // Fetch and store manual links config locally for updates
             manualLinksStore = data.edges.filter(e => e.type === 'manual').map(e => {
-                // Find manual links from raw layout to save
                 return {
                     id: e.id,
                     source: e.from,
@@ -405,7 +750,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             const container = document.getElementById('network-map-canvas');
             const graphData = { nodes: nodesDataset, edges: edgesDataset };
 
-            // Determine if physics is initially active based on saved layout coordinates presence
             const hasSavedPositions = data.nodes.some(n => n.x !== null);
             isPhysicsActive = !hasSavedPositions;
 
@@ -437,7 +781,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
             network = new vis.Network(container, graphData, options);
 
-            // Dynamic layout auto layout toggle logic
             const physBtn = document.getElementById('physicsBtn');
             if (physBtn) {
                 if (isPhysicsActive) {
@@ -449,7 +792,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 }
             }
 
-            // Click node event handler
             network.on("click", (params) => {
                 if (params.nodes.length > 0) {
                     const nodeId = params.nodes[0];
@@ -459,7 +801,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 }
             });
 
-            // Drag nodes persistent layout saver helper
             network.on("dragEnd", (params) => {
                 if (params.nodes.length > 0 && isEditMode) {
                     const nodeId = params.nodes[0];
@@ -475,7 +816,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
     }
 
-    // Toggle active physics engine simulation
     function togglePhysics() {
         isPhysicsActive = !isPhysicsActive;
         network.setOptions({ physics: { enabled: isPhysicsActive } });
@@ -492,7 +832,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
     }
 
-    // Toggle manual customization / Drag mode
     function toggleEditMode() {
         isEditMode = !isEditMode;
         
@@ -503,7 +842,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const saveLayoutBtn = document.getElementById('saveLayoutBtn');
 
         if (isEditMode) {
-            // Edit Mode Active
             modeDot.classList.add('edit-mode');
             modeLabel.innerText = "Customizer Mode (Drag & Link)";
             editModeBtn.classList.add('btn-apply');
@@ -513,12 +851,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             if (addLinkBtn) addLinkBtn.style.display = 'inline-flex';
             if (saveLayoutBtn) saveLayoutBtn.style.display = 'inline-flex';
 
-            // Disable physics so dragging leaves nodes in place
             if (isPhysicsActive) {
                 togglePhysics();
             }
         } else {
-            // Normal Mode Active
             modeDot.classList.remove('edit-mode');
             modeLabel.innerText = "Auto-Discovery (Real-time)";
             editModeBtn.classList.remove('btn-apply');
@@ -530,7 +866,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
     }
 
-    // Side Drawer Details Controller
     async function showAgentPerformance(agentId) {
         selectedAgentId = agentId;
         const drawer = document.getElementById('metricsDrawer');
@@ -541,7 +876,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         document.getElementById('drawerAgentName').innerText = rawNode.label;
         document.getElementById('drawerAgentIp').innerText = rawNode.ip;
         
-        // Show placeholder
         document.getElementById('drawerCpu').innerText = '--';
         document.getElementById('drawerRam').innerText = '--';
         document.getElementById('drawerLatency').innerText = '--';
@@ -590,7 +924,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         selectedAgentId = null;
     }
 
-    // Global instant ping tool execution simulator
     async function performPing() {
         if (!selectedAgentId) return;
         const rawNode = allRawNodes.find(n => n.id === selectedAgentId);
@@ -599,14 +932,12 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         alert(`Running background diagnostic PING command to ${rawNode.label} (${rawNode.ip})...\n\nResult: 4 Packets Sent, 4 Received, 0% Loss. Average Latency = 12ms.`);
     }
 
-    // Save X/Y Layout persistent coordinates and manual links
     async function saveLayout() {
         if (!isEditMode) return;
 
         const positions = network.getPositions();
         const nodesPosData = {};
 
-        // Loop dataset to get manual node coordinates
         nodesDataset.forEach(n => {
             if (positions[n.id]) {
                 nodesPosData[n.id] = {
@@ -622,7 +953,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         };
 
         try {
-            const res = await fetch(`${API_URL}?api=save_layout`, {
+            const res = await fetch(`${API_URL}?api=save_layout&dash_id=${currentDashId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -642,7 +973,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
     }
 
-    // Global host finder zoomer
     function searchNode() {
         const query = document.getElementById('nodeSearchInput').value.toLowerCase().trim();
         if (!query) return;
@@ -661,7 +991,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
     }
 
-    // Modal popup link builders
     function openAddLinkModal() {
         const srcSel = document.getElementById('srcAgent');
         const tgtSel = document.getElementById('tgtAgent');
@@ -722,7 +1051,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
         const linkId = `manual_${srcAgentId}_${tgtAgentId}_${Date.now()}`;
         
-        // Add manual link connection locally to memory store
         manualLinksStore.push({
             id: linkId,
             source: parseInt(srcAgentId),
@@ -733,7 +1061,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             target_port_name: tgtPortName
         });
 
-        // Add dynamically to active canvas interface
         edgesDataset.add({
             id: linkId,
             from: parseInt(srcAgentId),

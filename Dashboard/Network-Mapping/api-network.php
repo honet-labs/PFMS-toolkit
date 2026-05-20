@@ -2,6 +2,7 @@
 /**
  * api-network.php
  * High-performance backend API for Custom Network Mapping Dashboard
+ * Supports dynamic multi-dashboard configurations, coordinates, and manual links
  */
 
 require_once __DIR__ . '/../../includes/db-connection.php';
@@ -24,18 +25,48 @@ $layout_file = __DIR__ . '/mapping_layout.json';
 
 $api = $_GET['api'] ?? '';
 
-// Helper to load current layout layout X/Y positions and manual links
-function get_mapping_layout($file) {
+// Multi-dashboard layout helper that upgrades legacy single-layout structures on the fly
+function load_multi_dashboard_config($file) {
     if (file_exists($file)) {
         $data = json_decode(file_get_contents($file), true);
         if (is_array($data)) {
+            if (isset($data['dashboards'])) {
+                return $data;
+            }
+            // Upgrade legacy single layout schema safely without losing custom positions
+            $legacy_nodes = $data['nodes'] ?? [];
+            $legacy_links = $data['manual_links'] ?? [];
             return [
-                'nodes' => $data['nodes'] ?? [],
-                'manual_links' => $data['manual_links'] ?? []
+                'dashboards' => [
+                    [
+                        'id' => 'dash_default',
+                        'name' => 'Global Topology Map',
+                        'group_id' => '0',
+                        'group_name' => 'All Groups',
+                        'agent_id' => '0',
+                        'agent_name' => 'All Nodes',
+                        'nodes' => $legacy_nodes,
+                        'manual_links' => $legacy_links
+                    ]
+                ]
             ];
         }
     }
-    return ['nodes' => [], 'manual_links' => []];
+    // Return default empty dashboards template
+    return [
+        'dashboards' => [
+            [
+                'id' => 'dash_default',
+                'name' => 'Global Topology Map',
+                'group_id' => '0',
+                'group_name' => 'All Groups',
+                'agent_id' => '0',
+                'agent_name' => 'All Nodes',
+                'nodes' => [],
+                'manual_links' => []
+            ]
+        ]
+    ];
 }
 
 if (!$db_status) {
@@ -44,8 +75,129 @@ if (!$db_status) {
 }
 
 try {
+    if ($api === 'load_config') {
+        $config = load_multi_dashboard_config($layout_file);
+        $dashes = [];
+        foreach ($config['dashboards'] as $d) {
+            $dashes[] = [
+                'id' => $d['id'],
+                'name' => $d['name'],
+                'group_id' => $d['group_id'] ?? '0',
+                'group_name' => $d['group_name'] ?? 'All Groups',
+                'agent_id' => $d['agent_id'] ?? '0',
+                'agent_name' => $d['agent_name'] ?? 'All Nodes'
+            ];
+        }
+        echo json_encode($dashes);
+        exit;
+    }
+
+    if ($api === 'save_config') {
+        ob_clean();
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_SERVER['HTTP_HTTP_X_CSRF_TOKEN'] ?? '';
+        if (empty($csrf_token) || $client_token !== $csrf_token) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
+            exit;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($input)) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid dashboards data received.']);
+            exit;
+        }
+
+        $existing = load_multi_dashboard_config($layout_file);
+        $new_dashboards = [];
+
+        foreach ($input as $in) {
+            $id = $in['id'];
+            $found = null;
+            foreach ($existing['dashboards'] as $ex) {
+                if ($ex['id'] === $id) {
+                    $found = $ex;
+                    break;
+                }
+            }
+
+            $new_dashboards[] = [
+                'id' => $id,
+                'name' => $in['name'],
+                'group_id' => $in['group_id'] ?? '0',
+                'group_name' => $in['group_name'] ?? 'All Groups',
+                'agent_id' => $in['agent_id'] ?? '0',
+                'agent_name' => $in['agent_name'] ?? 'All Nodes',
+                'nodes' => $found ? ($found['nodes'] ?? []) : [],
+                'manual_links' => $found ? ($found['manual_links'] ?? []) : []
+            ];
+        }
+
+        $bytes = file_put_contents($layout_file, json_encode(['dashboards' => $new_dashboards], JSON_PRETTY_PRINT));
+        echo json_encode(['ok' => $bytes !== false]);
+        exit;
+    }
+
+    if ($api === 'groups') {
+        $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+        $dropdown = [['id' => '0', 'name' => '-- All Groups --']];
+        while ($g = $stmt->fetch()) {
+            $dropdown[] = [
+                'id' => (string)$g['id'],
+                'name' => pretty_text($g['name'])
+            ];
+        }
+        echo json_encode($dropdown);
+        exit;
+    }
+
+    if ($api === 'agents') {
+        $groupId = (int)($_GET['group_id'] ?? 0);
+        $params = [];
+        $sql = "SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0";
+        if ($groupId > 0) {
+            $sql .= " AND id_grupo = ?";
+            $params[] = $groupId;
+        }
+        $sql .= " ORDER BY alias ASC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $agents = [['id' => '0', 'alias' => '-- All Nodes --']];
+        while ($row = $stmt->fetch()) {
+            $agents[] = [
+                'id' => (string)$row['id'],
+                'alias' => pretty_text($row['alias'])
+            ];
+        }
+        echo json_encode($agents);
+        exit;
+    }
+
     if ($api === 'nodes_links') {
-        // 1. Fetch active agents
+        $dash_id = $_GET['dash_id'] ?? '';
+        $config = load_multi_dashboard_config($layout_file);
+        $active_dash = null;
+
+        foreach ($config['dashboards'] as $d) {
+            if ($d['id'] === $dash_id) {
+                $active_dash = $d;
+                break;
+            }
+        }
+
+        if (!$active_dash && !empty($config['dashboards'])) {
+            $active_dash = $config['dashboards'][0];
+        }
+
+        if (!$active_dash) {
+            echo json_encode(['ok' => false, 'error' => 'No active dashboard found. Please create one.']);
+            exit;
+        }
+
+        $group_id = (int)($active_dash['group_id'] ?? 0);
+        $agent_id = (int)($active_dash['agent_id'] ?? 0);
+
+        // 1. Fetch active agents with optional dynamic dashboard filtering
+        $params = [];
         $agentSql = "SELECT a.id_agente AS id, a.alias, a.direccion AS ip, a.id_parent, a.id_grupo, 
                             COALESCE((
                                 SELECT MIN(e.estado) 
@@ -54,15 +206,24 @@ try {
                                 WHERE m.id_agente = a.id_agente AND m.disabled = 0 AND m.nombre LIKE 'ifOperStatus_%'
                             ), 0) as worst_port_status
                      FROM tagente a 
-                     WHERE a.disabled = 0 
-                     ORDER BY a.alias ASC";
+                     WHERE a.disabled = 0";
         
-        $agentsStmt = $pdo->query($agentSql);
+        if ($group_id > 0) {
+            $agentSql .= " AND a.id_grupo = :gid";
+            $params[':gid'] = $group_id;
+        }
+        if ($agent_id > 0) {
+            // Star topology centered around core Node: Core Node + immediate Children + Parent core
+            $agentSql .= " AND (a.id_agente = :aid OR a.id_parent = :aid OR a.id_agente = (SELECT COALESCE(id_parent, 0) FROM tagente WHERE id_agente = :aid))";
+            $params[':aid'] = $agent_id;
+        }
+        $agentSql .= " ORDER BY a.alias ASC";
+        
+        $agentsStmt = $pdo->prepare($agentSql);
+        $agentsStmt->execute($params);
         $rawAgents = $agentsStmt->fetchAll();
 
         // 2. Fetch worst global health of each agent (Pandora FMS default status)
-        // Usually, worst module state or global state. We can query tagente_estado or tagente agent status column if available.
-        // Let's also check worst module state from tagente_modulo
         $agentHealthSql = "SELECT m.id_agente, MAX(e.estado) as worst_status 
                            FROM tagente_modulo m 
                            JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo 
@@ -74,12 +235,11 @@ try {
             $healths[$h['id_agente']] = (int)$h['worst_status'];
         }
 
-        // 3. Load layout coordinates and manual links
-        $layout = get_mapping_layout($layout_file);
-        $savedNodes = $layout['nodes'];
-        $manualLinks = $layout['manual_links'];
+        // 3. Load layout coordinates and manual links specifically for this dashboard
+        $savedNodes = $active_dash['nodes'] ?? [];
+        $manualLinks = $active_dash['manual_links'] ?? [];
 
-        // 4. Fetch all active port module values to dynamic coloring
+        // 4. Fetch active ports for SNMP status coloring
         $portsSql = "SELECT m.id_agente_modulo, m.id_agente, m.nombre, e.estado, e.datos 
                      FROM tagente_modulo m 
                      JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo 
@@ -101,7 +261,6 @@ try {
             $agentsIndexed[$id] = $agent;
 
             // Health Status Mapping (Green, Red, Yellow, Blue)
-            // Default health is from worst module state, fall back to worst port status or normal
             $worstModule = $healths[$id] ?? 0;
             $healthLabel = 'normal'; // green
             if ($worstModule === 1) $healthLabel = 'critical'; // red
@@ -131,7 +290,7 @@ try {
                     'from' => $n['id_parent'],
                     'to' => $n['id'],
                     'type' => 'auto',
-                    'status' => 'normal', // default parent child link
+                    'status' => 'normal',
                     'label' => 'Parent-Child'
                 ];
             }
@@ -142,18 +301,17 @@ try {
             $srcPortId = (int)($ml['source_port'] ?? 0);
             $tgtPortId = (int)($ml['target_port'] ?? 0);
 
-            // Fetch operational statuses from dynamic DB query
             $srcStatus = isset($portsDb[$srcPortId]) ? $portsDb[$srcPortId]['status'] : 4;
             $tgtStatus = isset($portsDb[$tgtPortId]) ? $portsDb[$tgtPortId]['status'] : 4;
 
-            // Dynamic color determination: if either is critical (down), link is critical
-            $linkStatus = 'normal'; // green
+            // Dynamic color: critical if either is down
+            $linkStatus = 'normal';
             if ($srcStatus === 1 || $tgtStatus === 1) {
-                $linkStatus = 'critical'; // red
+                $linkStatus = 'critical';
             } elseif ($srcStatus === 2 || $tgtStatus === 2) {
-                $linkStatus = 'warning'; // yellow
+                $linkStatus = 'warning';
             } elseif ($srcStatus === 4 || $tgtStatus === 4) {
-                $linkStatus = 'unknown'; // grey/blue
+                $linkStatus = 'unknown';
             }
 
             $edges[] = [
@@ -170,6 +328,7 @@ try {
 
         echo json_encode([
             'ok' => true,
+            'dash_name' => $active_dash['name'],
             'nodes' => $nodes,
             'edges' => $edges
         ]);
@@ -178,8 +337,7 @@ try {
 
     if ($api === 'save_layout') {
         ob_clean();
-        // CSRF Token Check
-        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_SERVER['HTTP_HTTP_X_CSRF_TOKEN'] ?? '';
         if (empty($csrf_token) || $client_token !== $csrf_token) {
             echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh panel.']);
             exit;
@@ -191,13 +349,25 @@ try {
             exit;
         }
 
-        $save_data = [
-            'nodes' => $input['nodes'] ?? [],
-            'manual_links' => $input['manual_links'] ?? []
-        ];
+        $dash_id = $_GET['dash_id'] ?? '';
+        $config = load_multi_dashboard_config($layout_file);
+        $found_idx = -1;
 
-        $bytes = @file_put_contents($layout_file, json_encode($save_data, JSON_PRETTY_PRINT));
-        echo json_encode(['ok' => $bytes !== false, 'error' => $bytes === false ? 'Save failed: Check permissions on Dashboard/Network-Mapping directory.' : '']);
+        foreach ($config['dashboards'] as $idx => $d) {
+            if ($d['id'] === $dash_id) {
+                $found_idx = $idx;
+                break;
+            }
+        }
+
+        if ($found_idx !== -1) {
+            $config['dashboards'][$found_idx]['nodes'] = $input['nodes'] ?? [];
+            $config['dashboards'][$found_idx]['manual_links'] = $input['manual_links'] ?? [];
+            $bytes = file_put_contents($layout_file, json_encode($config, JSON_PRETTY_PRINT));
+            echo json_encode(['ok' => $bytes !== false, 'error' => $bytes === false ? 'Save failed: Check permissions on Dashboard/Network-Mapping directory.' : '']);
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard not found.']);
+        }
         exit;
     }
 
@@ -208,7 +378,6 @@ try {
             exit;
         }
 
-        // Fetch all SNMP status ports for a specific agent
         $stmt = $pdo->prepare("SELECT m.id_agente_modulo AS id, m.nombre AS name, e.estado, e.datos 
                                FROM tagente_modulo m 
                                JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
@@ -219,7 +388,6 @@ try {
 
         foreach ($ports as &$p) {
             $p['name'] = pretty_text($p['name']);
-            // Standardize output name (clean 'ifOperStatus_' prefix if needed)
             $p['clean_name'] = str_replace('ifOperStatus_', '', $p['name']);
         }
         echo json_encode($ports);
@@ -233,7 +401,6 @@ try {
             exit;
         }
 
-        // Fetch all modules for sidebar drawer
         $stmt = $pdo->prepare("SELECT m.id_agente_modulo AS id, m.nombre AS name, e.datos AS current_value, 
                                       e.timestamp, e.estado, COALESCE(m.unit, '') as unit
                                FROM tagente_modulo m 
@@ -254,7 +421,6 @@ try {
             $val = (float)$mod['current_value'];
             $nameLower = strtolower($mod['name']);
 
-            // Detect performance markers
             if (stripos($nameLower, 'cpu') !== false || stripos($nameLower, 'processor') !== false) {
                 $cpu = $mod['current_value'] . ($mod['unit'] ?: '%');
             } elseif (stripos($nameLower, 'ram') !== false || stripos($nameLower, 'memory') !== false) {
@@ -284,7 +450,7 @@ try {
                 'loss' => $packetLoss
             ],
             'ports' => $portStatuses,
-            'modules' => array_slice($modules, 0, 30) // cap to 30 modules for preview
+            'modules' => array_slice($modules, 0, 30)
         ]);
         exit;
     }
