@@ -1276,6 +1276,24 @@ if ($api === 'series') {
         newUrl.searchParams.set('fs', fs);
         if(currentDashId) newUrl.searchParams.set('dash_id', currentDashId);
         window.history.replaceState({}, '', newUrl);
+
+        // Synchronize with the parent window's URL so browser reload/refresh works perfectly
+        try {
+            if (window.parent && window.parent !== window && window.parent.location.host === window.location.host) {
+                const parentUrl = new URL(window.parent.location.href);
+                parentUrl.searchParams.set('unit', unit);
+                parentUrl.searchParams.set('sort', sort);
+                parentUrl.searchParams.set('speed_filter', speedFilter);
+                parentUrl.searchParams.set('search', search);
+                parentUrl.searchParams.set('warn', warn);
+                parentUrl.searchParams.set('crit', crit);
+                parentUrl.searchParams.set('fs', fs);
+                if(currentDashId) parentUrl.searchParams.set('dash_id', currentDashId);
+                window.parent.history.replaceState({}, '', parentUrl);
+            }
+        } catch (e) {
+            console.warn("Could not sync state to parent URL:", e);
+        }
     }
 
     function openCreateModal() { 

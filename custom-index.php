@@ -473,7 +473,13 @@ if (!empty($current_page)) {
     $target_file = $base_dir . '/' . $current_page;
     if (file_exists($target_file) && pathinfo($target_file, PATHINFO_EXTENSION) === 'php') {
         $v = filemtime($target_file);
-        $iframe_src = $base_url . '/' . $current_page . '?v=' . $v;
+        
+        // Forward all query parameters except 'page' and 't' to the iframe
+        $get_params = $_GET;
+        unset($get_params['page'], $get_params['t']);
+        $query_str = !empty($get_params) ? '&' . http_build_query($get_params) : '';
+        
+        $iframe_src = $base_url . '/' . $current_page . '?v=' . $v . $query_str;
     }
 }
 ?>
