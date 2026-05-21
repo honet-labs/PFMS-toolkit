@@ -608,9 +608,35 @@ if ($api === 'series') {
         #masterView table.master-table th { font-size: 10px; padding: 12px 15px; }
         #masterView table.master-table td { font-size: 12px; padding: 12px 15px; }
 
-        /* Detail Dashboard (Customizable Size) */
-        #detailView table.master-table th { font-size: calc(var(--table-font-size, 12px) - 2px); }
-        #detailView table.master-table td { font-size: var(--table-font-size, 12px); }
+        /* Detail Dashboard (Customizable Size & Resizable Column Layout) */
+        #detailView table.master-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+        #detailView table.master-table th {
+            font-size: calc(var(--table-font-size, 12px) - 2px);
+            position: relative;
+        }
+        #detailView table.master-table td {
+            font-size: var(--table-font-size, 12px);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        .col-resize-handle {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 6px;
+            cursor: col-resize;
+            user-select: none;
+            z-index: 10;
+        }
+        .col-resize-handle:hover,
+        .col-resize-handle.resizing {
+            background: rgba(0, 77, 64, 0.25);
+            border-right: 2px solid #004d40;
+        }
 
         table.master-table th { background: #f8fafc; padding: 10px 15px; text-align: left; color: var(--text-dim); text-transform: uppercase; border-bottom: 1px solid var(--border-color); }
         table.master-table td { padding: 10px 15px; border-bottom: 1px solid #f1f5f9; }
@@ -774,7 +800,7 @@ if ($api === 'series') {
     </div>
         <div class="main-content">
             <div class="card">
-                <table class="master-table"><thead><tr><th>Status</th><th>Agent</th><th>Interface</th><th>Speed</th><th>RECEIVE (RX)</th><th>TRANSMIT (TX)</th><th>Graph (history)</th></tr></thead><tbody id="detailTableBody"></tbody></table>
+                <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 18%;">Agent</th><th style="width: 22%;">Interface</th><th style="width: 12%;">Speed</th><th style="width: 17%;">RECEIVE (RX)</th><th style="width: 17%;">TRANSMIT (TX)</th><th style="width: 6%;">Graph (history)</th></tr></thead><tbody id="detailTableBody"></tbody></table>
                 <div id="paginationControls" style="padding:15px 20px; border-top:1px solid #e0e4e8; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;"></div>
             </div>
         </div>
@@ -959,6 +985,61 @@ if ($api === 'series') {
         const url = new URL(window.location); url.searchParams.set('dash_id', id); window.history.replaceState({}, '', url);
         setupTimer();
         fetchData();
+
+        setTimeout(() => {
+            const table = document.querySelector('#detailView table.master-table');
+            if (table) {
+                table.querySelectorAll('.col-resize-handle').forEach(h => h.remove());
+                makeTableResizable(table);
+            }
+        }, 150);
+    }
+
+    function makeTableResizable(table) {
+        const cols = table.querySelectorAll('thead th');
+        const savedWidths = JSON.parse(localStorage.getItem('pfms_table_widths_' + currentDashId) || '{}');
+        
+        cols.forEach((col, index) => {
+            if (savedWidths[index]) {
+                col.style.width = savedWidths[index];
+            }
+            
+            if (index === cols.length - 1) return; // Skip Graph (history)
+            
+            const resizer = document.createElement('div');
+            resizer.classList.add('col-resize-handle');
+            col.appendChild(resizer);
+            
+            let startX, startWidth;
+            
+            resizer.addEventListener('mousedown', function(e) {
+                startX = e.pageX;
+                startWidth = col.offsetWidth;
+                
+                resizer.classList.add('resizing');
+                
+                function onMouseMove(e) {
+                    const width = startWidth + (e.pageX - startX);
+                    col.style.width = Math.max(50, width) + 'px';
+                }
+                
+                function onMouseUp() {
+                    resizer.classList.remove('resizing');
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    
+                    const widths = {};
+                    cols.forEach((c, idx) => {
+                        widths[idx] = c.style.width || (c.offsetWidth + 'px');
+                    });
+                    localStorage.setItem('pfms_table_widths_' + currentDashId, JSON.stringify(widths));
+                }
+                
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+                e.preventDefault();
+            });
+        });
     }
 
     function goBack() { currentDashId = ''; const url = new URL(window.location); url.searchParams.delete('dash_id'); window.history.replaceState({}, '', url); renderMasterList(); }
