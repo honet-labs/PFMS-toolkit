@@ -69,6 +69,59 @@ function load_multi_dashboard_config($file) {
     ];
 }
 
+function get_port_traffic_label($pdo, $agent_id, $port_name) {
+    $suffix = str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus'], '', $port_name);
+    if (empty($suffix)) return '';
+    
+    $stmt = $pdo->prepare("
+        SELECT m.nombre, e.datos 
+        FROM tagente_modulo m 
+        JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo 
+        WHERE m.id_agente = ? 
+          AND m.disabled = 0 
+          AND (
+              m.nombre LIKE ? 
+              OR m.nombre LIKE ?
+          )
+    ");
+    
+    $likeIn = "%InOctets%{$suffix}%";
+    $likeOut = "%OutOctets%{$suffix}%";
+    
+    $stmt->execute([$agent_id, $likeIn, $likeOut]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $rx_bps = 0.0;
+    $tx_bps = 0.0;
+    $has_data = false;
+    
+    foreach ($rows as $row) {
+        $name = $row['nombre'];
+        $val = (float)$row['datos'];
+        $is_mbps = (stripos($name, 'Mbps') !== false);
+        
+        if (stripos($name, 'in') !== false) {
+            $rx_bps = $is_mbps ? ($val * 1000000.0) : ($val * 8.0);
+            $has_data = true;
+        } elseif (stripos($name, 'out') !== false) {
+            $tx_bps = $is_mbps ? ($val * 1000000.0) : ($val * 8.0);
+            $has_data = true;
+        }
+    }
+    
+    if (!$has_data) return '';
+    
+    $format_bps = function($bps) {
+        if ($bps <= 0) return '0 bps';
+        if ($bps < 1000.0) return number_format($bps, 0) . ' bps';
+        if ($bps < 1000000.0) return number_format($bps / 1000.0, 1) . ' Kbps';
+        if ($bps < 1000000000.0) return number_format($bps / 1000000.0, 1) . ' Mbps';
+        return number_format($bps / 1000000000.0, 1) . ' Gbps';
+    };
+    
+    return "▲ " . $format_bps($tx_bps) . " | ▼ " . $format_bps($rx_bps);
+}
+
 if (!$db_status) {
     echo json_encode(['ok' => false, 'error' => 'Database connection failed: ' . $db_error]);
     exit;
@@ -339,13 +392,14 @@ try {
                 if (stripos($normRemote, $alias) !== false || stripos($alias, $normRemote) !== false) {
                     $key = min($lldp['id_agente'], $targetAgentId) . '_' . max($lldp['id_agente'], $targetAgentId);
                     if (!isset($discoveredLinks[$key])) {
+                        $trafficLabel = get_port_traffic_label($pdo, $lldp['id_agente'], $lldp['module_name']);
                         $discoveredLinks[$key] = [
                             'id' => 'auto_lldp_' . $key,
                             'from' => (int)$lldp['id_agente'],
                             'to' => (int)$targetAgentId,
                             'type' => 'auto',
                             'status' => 'normal',
-                            'label' => 'LLDP: ' . pretty_text($remoteName)
+                            'label' => 'LLDP: ' . pretty_text($remoteName) . ($trafficLabel ? "\n(" . $trafficLabel . ")" : "")
                         ];
                     }
                 }
@@ -371,13 +425,14 @@ try {
                     
                     $key = min($port['id_agente'], $targetAgentId) . '_' . max($port['id_agente'], $targetAgentId);
                     if (!isset($discoveredLinks[$key])) {
+                        $trafficLabel = get_port_traffic_label($pdo, $port['id_agente'], $port['port_name']);
                         $discoveredLinks[$key] = [
                             'id' => 'auto_port_' . $key,
                             'from' => (int)$port['id_agente'],
                             'to' => (int)$targetAgentId,
                             'type' => 'auto',
                             'status' => $linkStatus,
-                            'label' => $cleanPort
+                            'label' => $cleanPort . ($trafficLabel ? "\n(" . $trafficLabel . ")" : "")
                         ];
                     }
                 }
@@ -407,6 +462,7 @@ try {
                 $linkStatus = 'unknown';
             }
 
+            $trafficLabel = get_port_traffic_label($pdo, (int)$ml['source'], $ml['source_port_name']);
             $edges[] = [
                 'id' => $ml['id'],
                 'from' => (int)$ml['source'],
@@ -415,7 +471,7 @@ try {
                 'status' => $linkStatus,
                 'source_port_name' => $ml['source_port_name'] ?? '',
                 'target_port_name' => $ml['target_port_name'] ?? '',
-                'label' => ($ml['source_port_name'] ? basename($ml['source_port_name']) : '') . ' - ' . ($ml['target_port_name'] ? basename($ml['target_port_name']) : '')
+                'label' => ($ml['source_port_name'] ? basename($ml['source_port_name']) : '') . ' - ' . ($ml['target_port_name'] ? basename($ml['target_port_name']) : '') . ($trafficLabel ? "\n(" . $trafficLabel . ")" : "")
             ];
         }
 

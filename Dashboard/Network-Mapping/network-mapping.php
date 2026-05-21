@@ -710,7 +710,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                     from: e.from,
                     to: e.to,
                     label: e.label || '',
-                    font: { size: 9, face: 'Inter', color: '#64748b' },
+                    font: { size: 9, face: 'Inter', color: '#0f172a', background: '#ffffff', strokeWidth: 2, strokeColor: '#ffffff' },
                     color: { color: color, highlight: '#2563eb', hover: '#3b82f6' },
                     width: width,
                     dashes: dashes,
