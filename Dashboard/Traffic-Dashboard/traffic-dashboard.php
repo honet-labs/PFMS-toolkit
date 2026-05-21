@@ -1003,20 +1003,26 @@ if ($api === 'series') {
         document.getElementById('search_wrapper').style.display = 'flex';
         document.getElementById('detailDashName').innerText = d.name;
         
-        // Load per-dashboard settings
+        // Check URL search parameters first
+        const params = new URLSearchParams(window.location.search);
+        
+        // Load per-dashboard settings from localStorage
         const saved = JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
-        document.getElementById('f_warn').value = saved.warn || 70;
-        document.getElementById('f_crit').value = saved.crit || 80;
-        document.getElementById('f_fontsize').value = saved.fs || 12;
+        
+        // Prioritize URL parameters (useful for shared/embedded links), fallback to localStorage, fallback to default
+        document.getElementById('f_warn').value = params.get('warn') || saved.warn || 70;
+        document.getElementById('f_crit').value = params.get('crit') || saved.crit || 80;
+        document.getElementById('f_fontsize').value = params.get('fs') || saved.fs || 12;
 
-        // Load unit, sort, speed filter, and search from localStorage
-        document.getElementById('f_unit').value = saved.unit || 'Auto';
-        document.getElementById('f_sort').value = saved.sort || 'default';
-        document.getElementById('f_speed_filter').value = saved.speed_filter || 'all';
-        document.getElementById('f_search').value = saved.search || '';
+        document.getElementById('f_unit').value = params.get('unit') || saved.unit || 'Auto';
+        document.getElementById('f_sort').value = params.get('sort') || saved.sort || 'default';
+        document.getElementById('f_speed_filter').value = params.get('speed_filter') || saved.speed_filter || 'all';
+        
+        const searchVal = params.has('search') ? params.get('search') : (saved.search || '');
+        document.getElementById('f_search').value = searchVal;
 
         const fsInput = document.getElementById('f_search');
-        if (saved.search) {
+        if (searchVal) {
             fsInput.classList.add('active');
         } else {
             fsInput.classList.remove('active');
