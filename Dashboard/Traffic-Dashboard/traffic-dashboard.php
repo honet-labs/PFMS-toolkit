@@ -647,7 +647,7 @@ if ($api === 'series') {
         #detailView table.master-table td:last-child {
             width: 6% !important;
             white-space: nowrap;
-            padding: 10px 15px !important;
+            padding: 10px 25px 10px 15px !important;
             text-align: center !important;
         }
         .dash-link { color: #1976d2; text-decoration: none; font-weight: 600; }
