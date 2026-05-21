@@ -622,6 +622,25 @@ if ($api === 'series') {
             word-wrap: break-word;
             overflow-wrap: break-word;
         }
+        #detailView table.master-table th:first-child,
+        #detailView table.master-table td:first-child {
+            text-align: center;
+        }
+        #detailView table.master-table th:nth-child(4),
+        #detailView table.master-table td:nth-child(4) {
+            text-align: center;
+        }
+        #detailView table.master-table th:nth-child(4) > div,
+        #detailView table.master-table td:nth-child(4) > div {
+            justify-content: center;
+        }
+        #detailView table.master-table th:last-child,
+        #detailView table.master-table td:last-child {
+            width: 6% !important;
+            white-space: nowrap;
+            padding: 10px 15px !important;
+            text-align: center !important;
+        }
         .col-resize-handle {
             position: absolute;
             right: 0;
