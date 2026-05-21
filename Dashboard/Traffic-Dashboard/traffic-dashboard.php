@@ -23,36 +23,6 @@ $PANDORA_BASE_URL = "/pandora_console";
 // 2. CENTRALIZED DB & SECURITY
 require_once __DIR__ . '/../../includes/db-connection.php';
 
-// Pandora FMS Group Security Checker
-if (!function_exists('get_user_allowed_groups')) {
-    function get_user_allowed_groups($pdo, $userId) {
-        if (empty($userId)) return [];
-        
-        // Admin user by default has full access
-        if (strtolower($userId) === 'admin') {
-            return null; 
-        }
-        
-        try {
-            // Check admin flag in tusuario
-            $stmt = $pdo->prepare("SELECT admin FROM tusuario WHERE id_usuario = ?");
-            $stmt->execute([$userId]);
-            $isAdmin = (int)$stmt->fetchColumn();
-            if ($isAdmin === 1) {
-                return null; 
-            }
-            
-            // Retrieve explicit groups for standard user
-            $stmt = $pdo->prepare("SELECT DISTINCT id_grupo FROM tusuario_perfil WHERE id_usuario = ?");
-            $stmt->execute([$userId]);
-            $groups = $stmt->fetchAll(PDO::FETCH_COLUMN);
-            return !empty($groups) ? array_map('intval', $groups) : [999999]; // Fallback to invalid group ID if none assigned
-        } catch (Exception $e) {
-            return null; // Safe fallback in case of table structure differences
-        }
-    }
-}
-
 $CONFIG_FILE = __DIR__ . '/interface-traffic-master.json';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -129,21 +99,8 @@ $api = $_GET['api'] ?? '';
 
 if ($api === 'load_config') {
     ob_clean(); header('Content-Type: application/json');
-    $config_content = file_exists($CONFIG_FILE) ? file_get_contents($CONFIG_FILE) : '[]';
-    $dashboards = json_decode($config_content, true) ?: [];
-    
-    $user_id = $_SESSION['id_usuario'] ?? '';
-    $allowed = get_user_allowed_groups($pdo, $user_id);
-    
-    if ($allowed !== null) {
-        $dashboards = array_values(array_filter($dashboards, function($d) use ($allowed) {
-            $gid = (int)($d['group_id'] ?? 0);
-            // Allow dashboards with groupId 0 (All) or that are explicitly allowed for this user
-            return $gid === 0 || in_array($gid, $allowed);
-        }));
-    }
-    
-    echo json_encode($dashboards);
+    if(file_exists($CONFIG_FILE)) { echo file_get_contents($CONFIG_FILE); } 
+    else { echo json_encode([]); } 
     exit;
 }
 
@@ -274,55 +231,18 @@ if ($api === 'export') {
 
 if ($api === 'groups') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
-    $user_id = $_SESSION['id_usuario'] ?? '';
-    $allowed = get_user_allowed_groups($pdo, $user_id);
-    
-    $sql = "SELECT id_grupo AS id, nombre AS name FROM tgrupo";
-    $params = [];
-    if ($allowed !== null) {
-        $placeholders = implode(',', array_fill(0, count($allowed), '?'));
-        $sql .= " WHERE id_grupo IN ($placeholders)";
-        $params = $allowed;
-    }
-    $sql .= " ORDER BY name ASC";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    
-    $dropdown = [];
-    if ($allowed === null) {
-        $dropdown[] = ['id' => '0', 'name' => '-- Select Default Group --'];
-    }
-    while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
-        $dropdown[] = ['id' => $g['id'], 'name' => html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
-    }
+    $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+    $dropdown = [['id' => '0', 'name' => '-- Pilih Default Group --']];
+    while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { $dropdown[] = ['id' => $g['id'], 'name' => html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; }
     echo json_encode($dropdown); exit;
 }
 
 if ($api === 'agents') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
     $groupId = (int)($_GET['group_id'] ?? 0);
-    $user_id = $_SESSION['id_usuario'] ?? '';
-    $allowed = get_user_allowed_groups($pdo, $user_id);
-    
     $params = [];
     $sql = "SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0";
-    
-    if ($allowed !== null) {
-        if ($groupId > 0 && in_array($groupId, $allowed)) {
-            $sql .= " AND id_grupo = ?";
-            $params[] = $groupId;
-        } else {
-            $placeholders = implode(',', array_fill(0, count($allowed), '?'));
-            $sql .= " AND id_grupo IN ($placeholders)";
-            $params = array_merge($params, $allowed);
-        }
-    } else {
-        if ($groupId > 0) {
-            $sql .= " AND id_grupo = ?";
-            $params[] = $groupId;
-        }
-    }
+    if ($groupId > 0) { $sql .= " AND id_grupo = ?"; $params[] = $groupId; }
     $sql .= " ORDER BY alias ASC";
     $stmt = $pdo->prepare($sql); $stmt->execute($params);
     echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC)); exit;
@@ -356,26 +276,7 @@ if ($api === 'data') {
                 FROM tagente_modulo am JOIN tagente a ON a.id_agente = am.id_agente 
                 WHERE am.disabled = 0 AND a.disabled = 0 AND ({$allLikes})";
 
-        $user_id = $_SESSION['id_usuario'] ?? '';
-        $allowed = get_user_allowed_groups($pdo, $user_id);
-
-        if ($allowed !== null) {
-            if ($groupId > 0 && in_array($groupId, $allowed)) {
-                $sql .= " AND a.id_grupo = :gid";
-                $params[':gid'] = $groupId;
-            } else {
-                $placeholders = [];
-                foreach ($allowed as $idx => $gid) {
-                    $key = ":allowed_gid_{$idx}";
-                    $placeholders[] = $key;
-                    $params[$key] = $gid;
-                }
-                $sql .= " AND a.id_grupo IN (" . implode(',', $placeholders) . ")";
-            }
-        } else {
-            if ($groupId > 0) { $sql .= " AND a.id_grupo = :gid"; $params[':gid'] = $groupId; }
-        }
-        
+        if ($groupId > 0) { $sql .= " AND a.id_grupo = :gid"; $params[':gid'] = $groupId; }
         if ($agentId > 0) { $sql .= " AND a.id_agente = :aid"; $params[':aid'] = $agentId; }
 
 
@@ -488,38 +389,6 @@ if ($api === 'data') {
                 elseif ($u === 'gbps') $cap_bps = $speed_raw * 1000000000.0;
                 else $cap_bps = $speed_raw;
             } elseif ($iface['desc_speed'] > 0) { $cap_bps = $iface['desc_speed']; }
-
-            $is_estimated = false;
-            if ($cap_bps <= 0.0) {
-                $iface_lower = strtolower($iface['interface']);
-                
-                if (strpos($iface_lower, 'hundredgig') !== false || strpos($iface_lower, '100g') !== false) {
-                    $cap_bps = 100000000000.0; // 100 Gbps
-                    $is_estimated = true;
-                } elseif (strpos($iface_lower, 'fortygig') !== false || strpos($iface_lower, '40g') !== false) {
-                    $cap_bps = 40000000000.0; // 40 Gbps
-                    $is_estimated = true;
-                } elseif (strpos($iface_lower, 'tengig') !== false || strpos($iface_lower, '10g') !== false || strpos($iface_lower, 'sfp+') !== false || strpos($iface_lower, 'xgig') !== false || strpos($iface_lower, 'xe-') === 0 || strpos($iface_lower, 'xe/') !== false) {
-                    $cap_bps = 10000000000.0; // 10 Gbps
-                    $is_estimated = true;
-                } elseif (strpos($iface_lower, 'gig') !== false || strpos($iface_lower, 'gi') !== false || strpos($iface_lower, 'sfp') !== false || strpos($iface_lower, 'ether') !== false || strpos($iface_lower, 'ge-') === 0 || strpos($iface_lower, 'ge/') !== false) {
-                    if (strpos($iface_lower, 'bundle-ether') !== false || strpos($iface_lower, 'ae') === 0) {
-                        $cap_bps = 10000000000.0; // 10 Gbps default for aggregated bundle links
-                    } else {
-                        $cap_bps = 1000000000.0; // 1 Gbps
-                    }
-                    $is_estimated = true;
-                } elseif (strpos($iface_lower, 'fast') !== false || strpos($iface_lower, 'fa') !== false || strpos($iface_lower, 'fe-') === 0) {
-                    $cap_bps = 100000000.0; // 100 Mbps
-                    $is_estimated = true;
-                } elseif (strpos($iface_lower, 'wlan') !== false || strpos($iface_lower, 'ath') !== false) {
-                    $cap_bps = 300000000.0; // 300 Mbps
-                    $is_estimated = true;
-                } elseif (strpos($iface_lower, 'pptp') !== false || strpos($iface_lower, 'l2tp') !== false || strpos($iface_lower, 'sstp') !== false || strpos($iface_lower, 'ovpn') !== false || strpos($iface_lower, 'tun') !== false || strpos($iface_lower, 'vlan') !== false) {
-                    $cap_bps = 100000000.0; // 100 Mbps
-                    $is_estimated = true;
-                }
-            }
             $iface['cap_bps'] = $cap_bps;
 
             if ($cap_bps > 0) {
@@ -596,9 +465,9 @@ if ($api === 'data') {
                 }
                 return 0;
             }
-            elseif ($sort === 'rx_desc' || $sort === 'top10_rx') return $b['rx_bps'] <=> $a['rx_bps'];
+            elseif ($sort === 'rx_desc') return $b['rx_bps'] <=> $a['rx_bps'];
             elseif ($sort === 'rx_asc') return $a['rx_bps'] <=> $b['rx_bps'];
-            elseif ($sort === 'tx_desc' || $sort === 'top10_tx') return $b['tx_bps'] <=> $a['tx_bps'];
+            elseif ($sort === 'tx_desc') return $b['tx_bps'] <=> $a['tx_bps'];
             elseif ($sort === 'tx_asc') return $a['tx_bps'] <=> $b['tx_bps'];
             elseif ($sort === 'rx_pct_desc') return $b['rx_pct'] <=> $a['rx_pct'];
             elseif ($sort === 'rx_pct_asc') return $a['rx_pct'] <=> $b['rx_pct'];
@@ -607,27 +476,20 @@ if ($api === 'data') {
             return 0;
         };
 
-        if ($sort === 'top10_rx' || $sort === 'top10_tx') {
-            // Sort the entire list directly without pinning
-            usort($interfaces, $sorter);
-            // Limit to Top 10
-            $interfaces = array_slice($interfaces, 0, 10);
-        } else {
-            // Sort pinned group: Critical always floats above Warning
-            usort($pinned, function($a, $b) use ($sorter) {
-                if ($a['rowLevel'] !== $b['rowLevel']) {
-                    if ($a['rowLevel'] === 'crit') return -1;
-                    if ($b['rowLevel'] === 'crit') return 1;
-                }
-                return $sorter($a, $b);
-            });
+        // Sort pinned group: Critical always floats above Warning
+        usort($pinned, function($a, $b) use ($sorter) {
+            if ($a['rowLevel'] !== $b['rowLevel']) {
+                if ($a['rowLevel'] === 'crit') return -1;
+                if ($b['rowLevel'] === 'crit') return 1;
+            }
+            return $sorter($a, $b);
+        });
 
-            // Sort normal group
-            usort($normal, $sorter);
+        // Sort normal group
+        usort($normal, $sorter);
 
-            // Recombine, ensuring Pinned interfaces are on top
-            $interfaces = array_merge($pinned, $normal);
-        }
+        // Recombine, ensuring Pinned interfaces are on top
+        $interfaces = array_merge($pinned, $normal);
 
         echo json_encode(['ok'=>true, 'data'=>array_slice($interfaces, ($page-1)*$perPage, $perPage), 'pagination'=>['total'=>count($interfaces), 'page'=>$page, 'total_pages'=>ceil(count($interfaces)/$perPage)], 'updated_at'=>date('H:i:s')]);
     } catch(Exception $e) { echo json_encode(['ok'=>false, 'error'=>$e->getMessage()]); }
@@ -722,56 +584,9 @@ if ($api === 'series') {
         #masterView table.master-table th { font-size: 10px; padding: 12px 15px; }
         #masterView table.master-table td { font-size: 12px; padding: 12px 15px; }
 
-        /* Detail Dashboard (Customizable Size & Resizable Column Layout) */
-        #detailView table.master-table {
-            table-layout: fixed;
-            width: 100%;
-        }
-        #detailView table.master-table th {
-            font-size: calc(var(--table-font-size, 12px) - 2px);
-            position: relative;
-        }
-        #detailView table.master-table td {
-            font-size: var(--table-font-size, 12px);
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-        }
-        #detailView table.master-table th:first-child,
-        #detailView table.master-table td:first-child {
-            text-align: center;
-        }
-        #detailView table.master-table th:nth-child(4),
-        #detailView table.master-table td:nth-child(4) {
-            text-align: center;
-        }
-        #detailView table.master-table th:nth-child(4) > div,
-        #detailView table.master-table td:nth-child(4) > div {
-            justify-content: center;
-        }
-        #detailView table.master-table th:last-child,
-        #detailView table.master-table td:last-child {
-            width: 80px !important;
-            min-width: 80px !important;
-            max-width: 80px !important;
-            white-space: nowrap;
-            padding: 10px 30px 10px 15px !important;
-            text-align: center !important;
-        }
-        .col-resize-handle {
-            position: absolute;
-            right: 0;
-            top: 0;
-            bottom: 0;
-            width: 6px;
-            cursor: col-resize;
-            user-select: none;
-            z-index: 10;
-        }
-        .col-resize-handle:hover,
-        .col-resize-handle.resizing {
-            background: rgba(0, 77, 64, 0.25);
-            border-right: 2px solid #004d40;
-        }
+        /* Detail Dashboard (Customizable Size) */
+        #detailView table.master-table th { font-size: calc(var(--table-font-size, 12px) - 2px); }
+        #detailView table.master-table td { font-size: var(--table-font-size, 12px); }
 
         table.master-table th { background: #f8fafc; padding: 10px 15px; text-align: left; color: var(--text-dim); text-transform: uppercase; border-bottom: 1px solid var(--border-color); }
         table.master-table td { padding: 10px 15px; border-bottom: 1px solid #f1f5f9; }
@@ -835,7 +650,7 @@ if ($api === 'series') {
         .form-input { width: 100%; height: 36px; border: 1px solid #dce1e5; border-radius: 4px; padding: 0 10px; font-size: 13px; }
         .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
-        .status-badge { /* padding: 2px 8px; */ border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+        .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .badge-ok { background: #ecfdf5; color: #059669; }
         .badge-warn { background: #fff7ed; color: #ea580c; }
         .badge-crit { background: #fef2f2; color: #dc2626; }
@@ -899,7 +714,7 @@ if ($api === 'series') {
     <div class="toolbar">
         <div class="toolbar-left" style="display:flex; align-items:center; gap:8px;">
             <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="fetchData()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
-            <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="top10_rx">Top 10 RX Rate</option><option value="top10_tx">Top 10 TX Rate</option><option value="rx_desc">Max RX Rate</option><option value="rx_asc">Min RX Rate</option><option value="tx_desc">Max TX Rate</option><option value="tx_asc">Min TX Rate</option><option value="rx_pct_desc">Max % RX Util</option><option value="rx_pct_asc">Min % RX Util</option><option value="tx_pct_desc">Max % TX Util</option><option value="tx_pct_asc">Min % TX Util</option></select></div>
+            <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="rx_desc">RX Terbesar (Max)</option><option value="rx_asc">RX Terkecil (Min)</option><option value="tx_desc">TX Terbesar (Max)</option><option value="tx_asc">TX Terkecil (Min)</option><option value="rx_pct_desc">% RX Terbesar (Max)</option><option value="rx_pct_asc">% RX Terkecil (Min)</option><option value="tx_pct_desc">% TX Terbesar (Max)</option><option value="tx_pct_asc">% TX Terkecil (Min)</option></select></div>
             <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="fetchData()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
             <div class="toolbar-item" id="search_wrapper" style="display:flex; align-items:center;">
                 <button class="btn-neutral" style="width:32px; padding:0;" onclick="toggleSearch()" title="Search">
@@ -935,7 +750,7 @@ if ($api === 'series') {
     </div>
         <div class="main-content">
             <div class="card">
-                <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 18%;">Agent</th><th style="width: 22%;">Interface</th><th style="width: 12%;">Speed</th><th style="width: 18%;">RECEIVE (RX)</th><th style="width: 18%;">TRANSMIT (TX)</th><th style="width: 80px;">Graph (history)</th></tr></thead><tbody id="detailTableBody"></tbody></table>
+                <table class="master-table"><thead><tr><th>Status</th><th>Agent</th><th>Interface</th><th>Speed</th><th>RECEIVE (RX)</th><th>TRANSMIT (TX)</th><th>Graph (history)</th></tr></thead><tbody id="detailTableBody"></tbody></table>
                 <div id="paginationControls" style="padding:15px 20px; border-top:1px solid #e0e4e8; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;"></div>
             </div>
         </div>
@@ -1069,7 +884,7 @@ if ($api === 'series') {
         applyFontSize();
 
         const dashId = params.get('dash_id');
-        if (dashId) openDashboard(dashId, true); else renderMasterList();
+        if (dashId) openDashboard(dashId); else renderMasterList();
     }
 
     function renderMasterList() {
@@ -1101,7 +916,7 @@ if ($api === 'series') {
         </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Dashboards Created Yet.</td></tr>';
     }
 
-    function openDashboard(id, isInitial = false) {
+    function openDashboard(id) {
         const d = masterDashboards.find(x => x.id === id); if(!d) return renderMasterList();
         currentDashId = id;
         document.getElementById('masterView').style.display = 'none';
@@ -1110,92 +925,16 @@ if ($api === 'series') {
         document.getElementById('search_wrapper').style.display = 'flex';
         document.getElementById('detailDashName').innerText = d.name;
         
-        // Check URL search parameters first
-        const params = new URLSearchParams(window.location.search);
-        
-        // Load per-dashboard settings from localStorage
+        // Load per-dashboard settings
         const saved = JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
-        
-        // Prioritize URL parameters ONLY if this is the initial load (useful for shared/embedded links)
-        // Otherwise, load exclusively from localStorage (saved config) to prevent state leaks when switching dashboards
-        document.getElementById('f_warn').value = (isInitial ? params.get('warn') : null) || saved.warn || 70;
-        document.getElementById('f_crit').value = (isInitial ? params.get('crit') : null) || saved.crit || 80;
-        document.getElementById('f_fontsize').value = (isInitial ? params.get('fs') : null) || saved.fs || 12;
-
-        document.getElementById('f_unit').value = (isInitial ? params.get('unit') : null) || saved.unit || 'Auto';
-        document.getElementById('f_sort').value = (isInitial ? params.get('sort') : null) || saved.sort || 'default';
-        document.getElementById('f_speed_filter').value = (isInitial ? params.get('speed_filter') : null) || saved.speed_filter || 'all';
-        
-        const searchVal = (isInitial && params.has('search')) ? params.get('search') : (saved.search || '');
-        document.getElementById('f_search').value = searchVal;
-
-        const fsInput = document.getElementById('f_search');
-        if (searchVal) {
-            fsInput.classList.add('active');
-        } else {
-            fsInput.classList.remove('active');
-        }
-
+        document.getElementById('f_warn').value = saved.warn || 70;
+        document.getElementById('f_crit').value = saved.crit || 80;
+        document.getElementById('f_fontsize').value = saved.fs || 12;
         applyFontSize();
 
         const url = new URL(window.location); url.searchParams.set('dash_id', id); window.history.replaceState({}, '', url);
         setupTimer();
         fetchData();
-
-        setTimeout(() => {
-            const table = document.querySelector('#detailView table.master-table');
-            if (table) {
-                table.querySelectorAll('.col-resize-handle').forEach(h => h.remove());
-                makeTableResizable(table);
-            }
-        }, 150);
-    }
-
-    function makeTableResizable(table) {
-        const cols = table.querySelectorAll('thead th');
-        const savedWidths = JSON.parse(localStorage.getItem('pfms_table_widths_' + currentDashId) || '{}');
-        
-        cols.forEach((col, index) => {
-            if (savedWidths[index]) {
-                col.style.width = savedWidths[index];
-            }
-            
-            if (index === cols.length - 1) return; // Skip Graph (history)
-            
-            const resizer = document.createElement('div');
-            resizer.classList.add('col-resize-handle');
-            col.appendChild(resizer);
-            
-            let startX, startWidth;
-            
-            resizer.addEventListener('mousedown', function(e) {
-                startX = e.pageX;
-                startWidth = col.offsetWidth;
-                
-                resizer.classList.add('resizing');
-                
-                function onMouseMove(e) {
-                    const width = startWidth + (e.pageX - startX);
-                    col.style.width = Math.max(50, width) + 'px';
-                }
-                
-                function onMouseUp() {
-                    resizer.classList.remove('resizing');
-                    document.removeEventListener('mousemove', onMouseMove);
-                    document.removeEventListener('mouseup', onMouseUp);
-                    
-                    const widths = {};
-                    cols.forEach((c, idx) => {
-                        widths[idx] = c.style.width || (c.offsetWidth + 'px');
-                    });
-                    localStorage.setItem('pfms_table_widths_' + currentDashId, JSON.stringify(widths));
-                }
-                
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-                e.preventDefault();
-            });
-        });
     }
 
     function goBack() { currentDashId = ''; const url = new URL(window.location); url.searchParams.delete('dash_id'); window.history.replaceState({}, '', url); renderMasterList(); }
@@ -1227,28 +966,14 @@ if ($api === 'series') {
 
     async function fetchData() {
         const d = masterDashboards.find(x => x.id === currentDashId); if(!d) return;
-
-        const unit = document.getElementById('f_unit').value;
-        const speed_filter = document.getElementById('f_speed_filter').value;
-        const search = document.getElementById('f_search').value;
-        const sort = document.getElementById('f_sort').value;
-
-        // Save current filter values to localStorage to persist on page refresh/reload
-        const saved = JSON.parse(localStorage.getItem('pfms_settings_' + currentDashId) || '{}');
-        saved.unit = unit;
-        saved.sort = sort;
-        saved.speed_filter = speed_filter;
-        saved.search = search;
-        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify(saved));
-
         const body = document.getElementById('detailTableBody'); body.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading...</td></tr>';
         const payload = { 
             group_id: d.group_id, 
             agent_id: d.agent_id, 
-            unit: unit, 
-            speed_filter: speed_filter, 
-            search: search, 
-            sort: sort,  
+            unit: document.getElementById('f_unit').value, 
+            speed_filter: document.getElementById('f_speed_filter').value, 
+            search: document.getElementById('f_search').value, 
+            sort: document.getElementById('f_sort').value,  
             page: currentPage, 
             per_page: 20,
             warn: parseFloat(document.getElementById('f_warn').value) || 70,
@@ -1384,24 +1109,6 @@ if ($api === 'series') {
         newUrl.searchParams.set('fs', fs);
         if(currentDashId) newUrl.searchParams.set('dash_id', currentDashId);
         window.history.replaceState({}, '', newUrl);
-
-        // Synchronize with the parent window's URL so browser reload/refresh works perfectly
-        try {
-            if (window.parent && window.parent !== window && window.parent.location.host === window.location.host) {
-                const parentUrl = new URL(window.parent.location.href);
-                parentUrl.searchParams.set('unit', unit);
-                parentUrl.searchParams.set('sort', sort);
-                parentUrl.searchParams.set('speed_filter', speedFilter);
-                parentUrl.searchParams.set('search', search);
-                parentUrl.searchParams.set('warn', warn);
-                parentUrl.searchParams.set('crit', crit);
-                parentUrl.searchParams.set('fs', fs);
-                if(currentDashId) parentUrl.searchParams.set('dash_id', currentDashId);
-                window.parent.history.replaceState({}, '', parentUrl);
-            }
-        } catch (e) {
-            console.warn("Could not sync state to parent URL:", e);
-        }
     }
 
     function openCreateModal() { 
