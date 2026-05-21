@@ -23,6 +23,36 @@ $PANDORA_BASE_URL = "/pandora_console";
 // 2. CENTRALIZED DB & SECURITY
 require_once __DIR__ . '/../../includes/db-connection.php';
 
+// Pandora FMS Group Security Checker
+if (!function_exists('get_user_allowed_groups')) {
+    function get_user_allowed_groups($pdo, $userId) {
+        if (empty($userId)) return [];
+        
+        // Admin user by default has full access
+        if (strtolower($userId) === 'admin') {
+            return null; 
+        }
+        
+        try {
+            // Check admin flag in tusuario
+            $stmt = $pdo->prepare("SELECT admin FROM tusuario WHERE id_usuario = ?");
+            $stmt->execute([$userId]);
+            $isAdmin = (int)$stmt->fetchColumn();
+            if ($isAdmin === 1) {
+                return null; 
+            }
+            
+            // Retrieve explicit groups for standard user
+            $stmt = $pdo->prepare("SELECT DISTINCT id_grupo FROM tusuario_perfil WHERE id_usuario = ?");
+            $stmt->execute([$userId]);
+            $groups = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            return !empty($groups) ? array_map('intval', $groups) : [999999]; // Fallback to invalid group ID if none assigned
+        } catch (Exception $e) {
+            return null; // Safe fallback in case of table structure differences
+        }
+    }
+}
+
 $CONFIG_FILE = __DIR__ . '/interface-traffic-master.json';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -99,8 +129,21 @@ $api = $_GET['api'] ?? '';
 
 if ($api === 'load_config') {
     ob_clean(); header('Content-Type: application/json');
-    if(file_exists($CONFIG_FILE)) { echo file_get_contents($CONFIG_FILE); } 
-    else { echo json_encode([]); } 
+    $config_content = file_exists($CONFIG_FILE) ? file_get_contents($CONFIG_FILE) : '[]';
+    $dashboards = json_decode($config_content, true) ?: [];
+    
+    $user_id = $_SESSION['id_usuario'] ?? '';
+    $allowed = get_user_allowed_groups($pdo, $user_id);
+    
+    if ($allowed !== null) {
+        $dashboards = array_values(array_filter($dashboards, function($d) use ($allowed) {
+            $gid = (int)($d['group_id'] ?? 0);
+            // Allow dashboards with groupId 0 (All) or that are explicitly allowed for this user
+            return $gid === 0 || in_array($gid, $allowed);
+        }));
+    }
+    
+    echo json_encode($dashboards);
     exit;
 }
 
@@ -231,18 +274,55 @@ if ($api === 'export') {
 
 if ($api === 'groups') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
-    $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
-    $dropdown = [['id' => '0', 'name' => '-- Select Default Group --']];
-    while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { $dropdown[] = ['id' => $g['id'], 'name' => html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; }
+    $user_id = $_SESSION['id_usuario'] ?? '';
+    $allowed = get_user_allowed_groups($pdo, $user_id);
+    
+    $sql = "SELECT id_grupo AS id, nombre AS name FROM tgrupo";
+    $params = [];
+    if ($allowed !== null) {
+        $placeholders = implode(',', array_fill(0, count($allowed), '?'));
+        $sql .= " WHERE id_grupo IN ($placeholders)";
+        $params = $allowed;
+    }
+    $sql .= " ORDER BY name ASC";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    
+    $dropdown = [];
+    if ($allowed === null) {
+        $dropdown[] = ['id' => '0', 'name' => '-- Select Default Group --'];
+    }
+    while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
+        $dropdown[] = ['id' => $g['id'], 'name' => html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
+    }
     echo json_encode($dropdown); exit;
 }
 
 if ($api === 'agents') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
     $groupId = (int)($_GET['group_id'] ?? 0);
+    $user_id = $_SESSION['id_usuario'] ?? '';
+    $allowed = get_user_allowed_groups($pdo, $user_id);
+    
     $params = [];
     $sql = "SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0";
-    if ($groupId > 0) { $sql .= " AND id_grupo = ?"; $params[] = $groupId; }
+    
+    if ($allowed !== null) {
+        if ($groupId > 0 && in_array($groupId, $allowed)) {
+            $sql .= " AND id_grupo = ?";
+            $params[] = $groupId;
+        } else {
+            $placeholders = implode(',', array_fill(0, count($allowed), '?'));
+            $sql .= " AND id_grupo IN ($placeholders)";
+            $params = array_merge($params, $allowed);
+        }
+    } else {
+        if ($groupId > 0) {
+            $sql .= " AND id_grupo = ?";
+            $params[] = $groupId;
+        }
+    }
     $sql .= " ORDER BY alias ASC";
     $stmt = $pdo->prepare($sql); $stmt->execute($params);
     echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC)); exit;
@@ -276,7 +356,26 @@ if ($api === 'data') {
                 FROM tagente_modulo am JOIN tagente a ON a.id_agente = am.id_agente 
                 WHERE am.disabled = 0 AND a.disabled = 0 AND ({$allLikes})";
 
-        if ($groupId > 0) { $sql .= " AND a.id_grupo = :gid"; $params[':gid'] = $groupId; }
+        $user_id = $_SESSION['id_usuario'] ?? '';
+        $allowed = get_user_allowed_groups($pdo, $user_id);
+
+        if ($allowed !== null) {
+            if ($groupId > 0 && in_array($groupId, $allowed)) {
+                $sql .= " AND a.id_grupo = :gid";
+                $params[':gid'] = $groupId;
+            } else {
+                $placeholders = [];
+                foreach ($allowed as $idx => $gid) {
+                    $key = ":allowed_gid_{$idx}";
+                    $placeholders[] = $key;
+                    $params[$key] = $gid;
+                }
+                $sql .= " AND a.id_grupo IN (" . implode(',', $placeholders) . ")";
+            }
+        } else {
+            if ($groupId > 0) { $sql .= " AND a.id_grupo = :gid"; $params[':gid'] = $groupId; }
+        }
+        
         if ($agentId > 0) { $sql .= " AND a.id_agente = :aid"; $params[':aid'] = $agentId; }
 
 
