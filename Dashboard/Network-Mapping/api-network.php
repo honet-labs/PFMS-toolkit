@@ -579,39 +579,41 @@ try {
         $portStatuses = [];
 
         foreach ($modules as &$mod) {
-            $mod['name'] = pretty_text($mod['name']);
-            $val = (float)$mod['current_value'];
-            $nameLower = strtolower($mod['name']);
+            $mod['name'] = pretty_text($mod['name'] ?? '');
+            $val = (float)($mod['current_value'] ?? 0.0);
+            $nameLower = strtolower((string)($mod['name'] ?? ''));
 
             if (stripos($nameLower, 'cpu') !== false || stripos($nameLower, 'processor') !== false) {
-                $cpu_val = is_numeric($mod['current_value']) ? round((float)$mod['current_value'], 2) : $mod['current_value'];
-                $cpu = $cpu_val . ($mod['unit'] ?: '%');
+                $cpu_val = is_numeric($mod['current_value'] ?? '') ? round((float)$mod['current_value'], 2) : ($mod['current_value'] ?? '');
+                $cpu = $cpu_val . (($mod['unit'] ?? '') ?: '%');
             } elseif (stripos($nameLower, 'ram') !== false || stripos($nameLower, 'memory') !== false) {
-                $ram_val = is_numeric($mod['current_value']) ? round((float)$mod['current_value'], 2) : $mod['current_value'];
-                $ram = $ram_val . ($mod['unit'] ?: '%');
+                $ram_val = is_numeric($mod['current_value'] ?? '') ? round((float)$mod['current_value'], 2) : ($mod['current_value'] ?? '');
+                $ram = $ram_val . (($mod['unit'] ?? '') ?: '%');
             } elseif (stripos($nameLower, 'host alive') !== false || stripos($nameLower, 'hostalive') !== false || stripos($nameLower, 'alive') !== false) {
-                $status_val = trim($mod['current_value']);
-                if ($status_val === '1' || strtolower($status_val) === 'up') {
+                $status_val = trim((string)($mod['current_value'] ?? ''));
+                $status_num = is_numeric($status_val) ? (int)(float)$status_val : -1;
+                if ($status_num === 1 || strtolower($status_val) === 'up' || $status_val === '1') {
                     $hostAliveVal = 'UP';
-                } elseif ($status_val === '0' || strtolower($status_val) === 'down') {
+                } elseif ($status_num === 0 || strtolower($status_val) === 'down' || $status_val === '0') {
                     $hostAliveVal = 'DOWN';
                 } else {
-                    $hostAliveVal = strtoupper($status_val);
+                    $hostAliveVal = strtoupper((string)($status_val ?? ''));
                 }
             } elseif (stripos($nameLower, 'latency') !== false || stripos($nameLower, 'ping') !== false) {
-                $lat_val = is_numeric($mod['current_value']) ? round((float)$mod['current_value'], 2) : $mod['current_value'];
-                $latencyVal = $lat_val . ($mod['unit'] ?: ' ms');
+                $lat_val = is_numeric($mod['current_value'] ?? '') ? round((float)$mod['current_value'], 2) : ($mod['current_value'] ?? '');
+                $latencyVal = $lat_val . (($mod['unit'] ?? '') ?: ' ms');
             } elseif (stripos($nameLower, 'packet loss') !== false) {
-                $loss_val = is_numeric($mod['current_value']) ? round((float)$mod['current_value'], 2) : $mod['current_value'];
-                $packetLoss = $loss_val . ($mod['unit'] ?: '%');
+                $loss_val = is_numeric($mod['current_value'] ?? '') ? round((float)$mod['current_value'], 2) : ($mod['current_value'] ?? '');
+                $packetLoss = $loss_val . (($mod['unit'] ?? '') ?: '%');
             }
 
             if (stripos($nameLower, 'ifoperstatus') !== false) {
+                $clean_val = is_numeric($mod['current_value'] ?? '') ? (int)(float)$mod['current_value'] : ($mod['current_value'] ?? '');
                 $portStatuses[] = [
-                    'id' => $mod['id'],
-                    'port' => str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus'], '', $mod['name']),
-                    'status' => (int)$mod['estado'],
-                    'value' => $mod['current_value']
+                    'id' => $mod['id'] ?? 0,
+                    'port' => str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus'], '', $mod['name'] ?? ''),
+                    'status' => (int)($mod['estado'] ?? 0),
+                    'value' => $clean_val
                 ];
             }
         }
@@ -632,7 +634,7 @@ try {
         exit;
     }
 
-} catch (Exception $e) {
+} catch (Throwable $e) {
     echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
     exit;
 }

@@ -913,7 +913,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         
                         div.innerHTML = `
                             <span>${p.port}</span>
-                            <span class="port-pill ${pillClass}">${pillLabel} (${p.value})</span>
+                            <span class="port-pill ${pillClass}">${pillLabel}</span>
                         `;
                         pList.appendChild(div);
                     });
