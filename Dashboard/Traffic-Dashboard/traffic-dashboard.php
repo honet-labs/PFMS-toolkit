@@ -896,7 +896,7 @@ if ($api === 'series') {
         applyFontSize();
 
         const dashId = params.get('dash_id');
-        if (dashId) openDashboard(dashId); else renderMasterList();
+        if (dashId) openDashboard(dashId, true); else renderMasterList();
     }
 
     function renderMasterList() {
@@ -928,7 +928,7 @@ if ($api === 'series') {
         </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Dashboards Created Yet.</td></tr>';
     }
 
-    function openDashboard(id) {
+    function openDashboard(id, isInitial = false) {
         const d = masterDashboards.find(x => x.id === id); if(!d) return renderMasterList();
         currentDashId = id;
         document.getElementById('masterView').style.display = 'none';
@@ -939,9 +939,31 @@ if ($api === 'series') {
         
         // Load per-dashboard settings
         const saved = JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
-        document.getElementById('f_warn').value = saved.warn || 70;
-        document.getElementById('f_crit').value = saved.crit || 80;
-        document.getElementById('f_fontsize').value = saved.fs || 12;
+        const params = new URLSearchParams(window.location.search);
+
+        const warn = (isInitial && params.has('warn')) ? params.get('warn') : (saved.warn || 70);
+        const crit = (isInitial && params.has('crit')) ? params.get('crit') : (saved.crit || 80);
+        const fs = (isInitial && params.has('fs')) ? params.get('fs') : (saved.fs || 12);
+        const unit = (isInitial && params.has('unit')) ? params.get('unit') : (saved.unit || 'Auto');
+        const sort = (isInitial && params.has('sort')) ? params.get('sort') : (saved.sort || 'default');
+        const speed_filter = (isInitial && params.has('speed_filter')) ? params.get('speed_filter') : (saved.speed_filter || 'all');
+        const search = (isInitial && params.has('search')) ? params.get('search') : (saved.search || '');
+
+        document.getElementById('f_warn').value = warn;
+        document.getElementById('f_crit').value = crit;
+        document.getElementById('f_fontsize').value = fs;
+        document.getElementById('f_unit').value = unit;
+        document.getElementById('f_sort').value = sort;
+        document.getElementById('f_speed_filter').value = speed_filter;
+
+        const searchEl = document.getElementById('f_search');
+        searchEl.value = search;
+        if (search) {
+            searchEl.classList.add('active');
+        } else {
+            searchEl.classList.remove('active');
+        }
+
         applyFontSize();
 
         const url = new URL(window.location); url.searchParams.set('dash_id', id); window.history.replaceState({}, '', url);
@@ -978,18 +1000,32 @@ if ($api === 'series') {
 
     async function fetchData() {
         const d = masterDashboards.find(x => x.id === currentDashId); if(!d) return;
+
+        // Save current UI state to localStorage
+        const warn = document.getElementById('f_warn').value;
+        const crit = document.getElementById('f_crit').value;
+        const fs = document.getElementById('f_fontsize').value;
+        const unit = document.getElementById('f_unit').value;
+        const sort = document.getElementById('f_sort').value;
+        const speed_filter = document.getElementById('f_speed_filter').value;
+        const search = document.getElementById('f_search').value;
+
+        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({
+            warn, crit, fs, unit, sort, speed_filter, search
+        }));
+
         const body = document.getElementById('detailTableBody'); body.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading...</td></tr>';
         const payload = { 
             group_id: d.group_id, 
             agent_id: d.agent_id, 
-            unit: document.getElementById('f_unit').value, 
-            speed_filter: document.getElementById('f_speed_filter').value, 
-            search: document.getElementById('f_search').value, 
-            sort: document.getElementById('f_sort').value,  
+            unit: unit, 
+            speed_filter: speed_filter, 
+            search: search, 
+            sort: sort,  
             page: currentPage, 
             per_page: 20,
-            warn: parseFloat(document.getElementById('f_warn').value) || 70,
-            crit: parseFloat(document.getElementById('f_crit').value) || 80
+            warn: parseFloat(warn) || 70,
+            crit: parseFloat(crit) || 80
         };
         const r = await fetch('?api=data', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':CSRF_TOKEN}, body:JSON.stringify(payload) });
         const res = await r.json();
@@ -1086,9 +1122,13 @@ if ($api === 'series') {
         const warn = document.getElementById('f_warn').value;
         const crit = document.getElementById('f_crit').value;
         const fs = document.getElementById('f_fontsize').value;
+        const unit = document.getElementById('f_unit').value;
+        const sort = document.getElementById('f_sort').value;
+        const speed_filter = document.getElementById('f_speed_filter').value;
+        const search = document.getElementById('f_search').value;
 
         // Save to LocalStorage with Dashboard ID as Key
-        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({ warn, crit, fs }));
+        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({ warn, crit, fs, unit, sort, speed_filter, search }));
         
         applyFontSize();
         fetchData();
