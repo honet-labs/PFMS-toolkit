@@ -232,7 +232,7 @@ if ($api === 'export') {
 if ($api === 'groups') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
     $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
-    $dropdown = [['id' => '0', 'name' => '-- Pilih Default Group --']];
+    $dropdown = [['id' => '0', 'name' => '-- Select Default Group --']];
     while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { $dropdown[] = ['id' => $g['id'], 'name' => html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; }
     echo json_encode($dropdown); exit;
 }
@@ -714,7 +714,7 @@ if ($api === 'series') {
     <div class="toolbar">
         <div class="toolbar-left" style="display:flex; align-items:center; gap:8px;">
             <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="fetchData()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
-            <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="rx_desc">RX Terbesar (Max)</option><option value="rx_asc">RX Terkecil (Min)</option><option value="tx_desc">TX Terbesar (Max)</option><option value="tx_asc">TX Terkecil (Min)</option><option value="rx_pct_desc">% RX Terbesar (Max)</option><option value="rx_pct_asc">% RX Terkecil (Min)</option><option value="tx_pct_desc">% TX Terbesar (Max)</option><option value="tx_pct_asc">% TX Terkecil (Min)</option></select></div>
+            <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="rx_desc">Max RX Rate</option><option value="rx_asc">Min RX Rate</option><option value="tx_desc">Max TX Rate</option><option value="tx_asc">Min TX Rate</option><option value="rx_pct_desc">Max % RX Util</option><option value="rx_pct_asc">Min % RX Util</option><option value="tx_pct_desc">Max % TX Util</option><option value="tx_pct_asc">Min % TX Util</option></select></div>
             <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="fetchData()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
             <div class="toolbar-item" id="search_wrapper" style="display:flex; align-items:center;">
                 <button class="btn-neutral" style="width:32px; padding:0;" onclick="toggleSearch()" title="Search">
