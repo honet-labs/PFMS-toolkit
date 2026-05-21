@@ -721,7 +721,7 @@ if ($api === 'series') {
         .form-input { width: 100%; height: 36px; border: 1px solid #dce1e5; border-radius: 4px; padding: 0 10px; font-size: 13px; }
         .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
-        .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+        .status-badge { /* padding: 2px 8px; */ border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .badge-ok { background: #ecfdf5; color: #059669; }
         .badge-warn { background: #fff7ed; color: #ea580c; }
         .badge-crit { background: #fef2f2; color: #dc2626; }
