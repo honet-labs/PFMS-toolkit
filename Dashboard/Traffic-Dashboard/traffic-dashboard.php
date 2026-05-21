@@ -636,10 +636,13 @@ if ($api === 'series') {
         }
         #detailView table.master-table th:last-child,
         #detailView table.master-table td:last-child {
-            width: 6% !important;
+            width: 75px !important;
+            min-width: 75px !important;
+            max-width: 75px !important;
             white-space: nowrap;
-            padding: 10px 15px !important;
-            text-align: center !important;
+            padding: 10px 0 !important;
+            padding-right: 20px !important;
+            text-align: right !important;
         }
         .col-resize-handle {
             position: absolute;
@@ -819,7 +822,7 @@ if ($api === 'series') {
     </div>
         <div class="main-content">
             <div class="card">
-                <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 18%;">Agent</th><th style="width: 22%;">Interface</th><th style="width: 12%;">Speed</th><th style="width: 17%;">RECEIVE (RX)</th><th style="width: 17%;">TRANSMIT (TX)</th><th style="width: 6%;">Graph (history)</th></tr></thead><tbody id="detailTableBody"></tbody></table>
+                <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 18%;">Agent</th><th style="width: 22%;">Interface</th><th style="width: 12%;">Speed</th><th style="width: 18%;">RECEIVE (RX)</th><th style="width: 18%;">TRANSMIT (TX)</th><th style="width: 75px;">Graph (history)</th></tr></thead><tbody id="detailTableBody"></tbody></table>
                 <div id="paginationControls" style="padding:15px 20px; border-top:1px solid #e0e4e8; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;"></div>
             </div>
         </div>
