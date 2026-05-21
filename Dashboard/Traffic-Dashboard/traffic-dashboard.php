@@ -640,7 +640,7 @@ if ($api === 'series') {
             min-width: 80px !important;
             max-width: 80px !important;
             white-space: nowrap;
-            padding: 10px 15px !important;
+            padding: 10px 30px 10px 15px !important;
             text-align: center !important;
         }
         .col-resize-handle {
