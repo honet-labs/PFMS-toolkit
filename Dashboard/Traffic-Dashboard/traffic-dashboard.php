@@ -492,20 +492,31 @@ if ($api === 'data') {
             $is_estimated = false;
             if ($cap_bps <= 0.0) {
                 $iface_lower = strtolower($iface['interface']);
-                if (strpos($iface_lower, '10g') !== false || strpos($iface_lower, '10gb') !== false || strpos($iface_lower, 'sfp+') !== false) {
+                
+                if (strpos($iface_lower, 'hundredgig') !== false || strpos($iface_lower, '100g') !== false) {
+                    $cap_bps = 100000000000.0; // 100 Gbps
+                    $is_estimated = true;
+                } elseif (strpos($iface_lower, 'fortygig') !== false || strpos($iface_lower, '40g') !== false) {
+                    $cap_bps = 40000000000.0; // 40 Gbps
+                    $is_estimated = true;
+                } elseif (strpos($iface_lower, 'tengig') !== false || strpos($iface_lower, '10g') !== false || strpos($iface_lower, 'sfp+') !== false || strpos($iface_lower, 'xgig') !== false || strpos($iface_lower, 'xe-') === 0 || strpos($iface_lower, 'xe/') !== false) {
                     $cap_bps = 10000000000.0; // 10 Gbps
                     $is_estimated = true;
-                } elseif (strpos($iface_lower, 'gig') !== false || strpos($iface_lower, 'gi') !== false || strpos($iface_lower, 'sfp') !== false || strpos($iface_lower, 'ether') !== false) {
-                    $cap_bps = 1000000000.0; // 1 Gbps
+                } elseif (strpos($iface_lower, 'gig') !== false || strpos($iface_lower, 'gi') !== false || strpos($iface_lower, 'sfp') !== false || strpos($iface_lower, 'ether') !== false || strpos($iface_lower, 'ge-') === 0 || strpos($iface_lower, 'ge/') !== false) {
+                    if (strpos($iface_lower, 'bundle-ether') !== false || strpos($iface_lower, 'ae') === 0) {
+                        $cap_bps = 10000000000.0; // 10 Gbps default for aggregated bundle links
+                    } else {
+                        $cap_bps = 1000000000.0; // 1 Gbps
+                    }
                     $is_estimated = true;
-                } elseif (strpos($iface_lower, 'fast') !== false || strpos($iface_lower, 'fa') !== false) {
+                } elseif (strpos($iface_lower, 'fast') !== false || strpos($iface_lower, 'fa') !== false || strpos($iface_lower, 'fe-') === 0) {
                     $cap_bps = 100000000.0; // 100 Mbps
                     $is_estimated = true;
                 } elseif (strpos($iface_lower, 'wlan') !== false || strpos($iface_lower, 'ath') !== false) {
                     $cap_bps = 300000000.0; // 300 Mbps
                     $is_estimated = true;
                 } elseif (strpos($iface_lower, 'pptp') !== false || strpos($iface_lower, 'l2tp') !== false || strpos($iface_lower, 'sstp') !== false || strpos($iface_lower, 'ovpn') !== false || strpos($iface_lower, 'tun') !== false || strpos($iface_lower, 'vlan') !== false) {
-                    $cap_bps = 100000000.0; // 100 Mbps (Default for VPN/Virtual interfaces)
+                    $cap_bps = 100000000.0; // 100 Mbps
                     $is_estimated = true;
                 }
             }
