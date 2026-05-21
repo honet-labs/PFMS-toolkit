@@ -489,9 +489,9 @@ if ($api === 'data') {
                 }
                 return 0;
             }
-            elseif ($sort === 'rx_desc') return $b['rx_bps'] <=> $a['rx_bps'];
+            elseif ($sort === 'rx_desc' || $sort === 'top10_rx') return $b['rx_bps'] <=> $a['rx_bps'];
             elseif ($sort === 'rx_asc') return $a['rx_bps'] <=> $b['rx_bps'];
-            elseif ($sort === 'tx_desc') return $b['tx_bps'] <=> $a['tx_bps'];
+            elseif ($sort === 'tx_desc' || $sort === 'top10_tx') return $b['tx_bps'] <=> $a['tx_bps'];
             elseif ($sort === 'tx_asc') return $a['tx_bps'] <=> $b['tx_bps'];
             elseif ($sort === 'rx_pct_desc') return $b['rx_pct'] <=> $a['rx_pct'];
             elseif ($sort === 'rx_pct_asc') return $a['rx_pct'] <=> $b['rx_pct'];
@@ -500,20 +500,27 @@ if ($api === 'data') {
             return 0;
         };
 
-        // Sort pinned group: Critical always floats above Warning
-        usort($pinned, function($a, $b) use ($sorter) {
-            if ($a['rowLevel'] !== $b['rowLevel']) {
-                if ($a['rowLevel'] === 'crit') return -1;
-                if ($b['rowLevel'] === 'crit') return 1;
-            }
-            return $sorter($a, $b);
-        });
+        if ($sort === 'top10_rx' || $sort === 'top10_tx') {
+            // Sort the entire list directly without pinning
+            usort($interfaces, $sorter);
+            // Limit to Top 10
+            $interfaces = array_slice($interfaces, 0, 10);
+        } else {
+            // Sort pinned group: Critical always floats above Warning
+            usort($pinned, function($a, $b) use ($sorter) {
+                if ($a['rowLevel'] !== $b['rowLevel']) {
+                    if ($a['rowLevel'] === 'crit') return -1;
+                    if ($b['rowLevel'] === 'crit') return 1;
+                }
+                return $sorter($a, $b);
+            });
 
-        // Sort normal group
-        usort($normal, $sorter);
+            // Sort normal group
+            usort($normal, $sorter);
 
-        // Recombine, ensuring Pinned interfaces are on top
-        $interfaces = array_merge($pinned, $normal);
+            // Recombine, ensuring Pinned interfaces are on top
+            $interfaces = array_merge($pinned, $normal);
+        }
 
         echo json_encode(['ok'=>true, 'data'=>array_slice($interfaces, ($page-1)*$perPage, $perPage), 'pagination'=>['total'=>count($interfaces), 'page'=>$page, 'total_pages'=>ceil(count($interfaces)/$perPage)], 'updated_at'=>date('H:i:s')]);
     } catch(Exception $e) { echo json_encode(['ok'=>false, 'error'=>$e->getMessage()]); }
@@ -785,7 +792,7 @@ if ($api === 'series') {
     <div class="toolbar">
         <div class="toolbar-left" style="display:flex; align-items:center; gap:8px;">
             <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="fetchData()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
-            <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="rx_desc">Max RX Rate</option><option value="rx_asc">Min RX Rate</option><option value="tx_desc">Max TX Rate</option><option value="tx_asc">Min TX Rate</option><option value="rx_pct_desc">Max % RX Util</option><option value="rx_pct_asc">Min % RX Util</option><option value="tx_pct_desc">Max % TX Util</option><option value="tx_pct_asc">Min % TX Util</option></select></div>
+            <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="top10_rx">Top 10 RX Rate</option><option value="top10_tx">Top 10 TX Rate</option><option value="rx_desc">Max RX Rate</option><option value="rx_asc">Min RX Rate</option><option value="tx_desc">Max TX Rate</option><option value="tx_asc">Min TX Rate</option><option value="rx_pct_desc">Max % RX Util</option><option value="rx_pct_asc">Min % RX Util</option><option value="tx_pct_desc">Max % TX Util</option><option value="tx_pct_asc">Min % TX Util</option></select></div>
             <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="fetchData()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
             <div class="toolbar-item" id="search_wrapper" style="display:flex; align-items:center;">
                 <button class="btn-neutral" style="width:32px; padding:0;" onclick="toggleSearch()" title="Search">
