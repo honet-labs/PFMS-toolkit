@@ -1061,7 +1061,7 @@ if ($api === 'series') {
         applyFontSize();
 
         const dashId = params.get('dash_id');
-        if (dashId) openDashboard(dashId); else renderMasterList();
+        if (dashId) openDashboard(dashId, true); else renderMasterList();
     }
 
     function renderMasterList() {
@@ -1093,7 +1093,7 @@ if ($api === 'series') {
         </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Dashboards Created Yet.</td></tr>';
     }
 
-    function openDashboard(id) {
+    function openDashboard(id, isInitial = false) {
         const d = masterDashboards.find(x => x.id === id); if(!d) return renderMasterList();
         currentDashId = id;
         document.getElementById('masterView').style.display = 'none';
@@ -1108,16 +1108,17 @@ if ($api === 'series') {
         // Load per-dashboard settings from localStorage
         const saved = JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
         
-        // Prioritize URL parameters (useful for shared/embedded links), fallback to localStorage, fallback to default
-        document.getElementById('f_warn').value = params.get('warn') || saved.warn || 70;
-        document.getElementById('f_crit').value = params.get('crit') || saved.crit || 80;
-        document.getElementById('f_fontsize').value = params.get('fs') || saved.fs || 12;
+        // Prioritize URL parameters ONLY if this is the initial load (useful for shared/embedded links)
+        // Otherwise, load exclusively from localStorage (saved config) to prevent state leaks when switching dashboards
+        document.getElementById('f_warn').value = (isInitial ? params.get('warn') : null) || saved.warn || 70;
+        document.getElementById('f_crit').value = (isInitial ? params.get('crit') : null) || saved.crit || 80;
+        document.getElementById('f_fontsize').value = (isInitial ? params.get('fs') : null) || saved.fs || 12;
 
-        document.getElementById('f_unit').value = params.get('unit') || saved.unit || 'Auto';
-        document.getElementById('f_sort').value = params.get('sort') || saved.sort || 'default';
-        document.getElementById('f_speed_filter').value = params.get('speed_filter') || saved.speed_filter || 'all';
+        document.getElementById('f_unit').value = (isInitial ? params.get('unit') : null) || saved.unit || 'Auto';
+        document.getElementById('f_sort').value = (isInitial ? params.get('sort') : null) || saved.sort || 'default';
+        document.getElementById('f_speed_filter').value = (isInitial ? params.get('speed_filter') : null) || saved.speed_filter || 'all';
         
-        const searchVal = params.has('search') ? params.get('search') : (saved.search || '');
+        const searchVal = (isInitial && params.has('search')) ? params.get('search') : (saved.search || '');
         document.getElementById('f_search').value = searchVal;
 
         const fsInput = document.getElementById('f_search');
