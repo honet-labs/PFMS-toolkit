@@ -439,68 +439,61 @@ if ($api === 'data') {
 
         $sort = $input['sort'] ?? 'default';
 
-        if ($sort === 'top_10_rx_pct') {
-            usort($interfaces, function($a, $b) {
-                return $b['rx_pct'] <=> $a['rx_pct'];
-            });
-            $interfaces = array_slice($interfaces, 0, 10);
-        } elseif ($sort === 'top_10_tx_pct') {
-            usort($interfaces, function($a, $b) {
-                return $b['tx_pct'] <=> $a['tx_pct'];
-            });
-            $interfaces = array_slice($interfaces, 0, 10);
-        } else {
-            // Separate interfaces into Pinned (Warning/Critical) and Normal (OK)
-            $pinned = [];
-            $normal = [];
-            foreach ($interfaces as $iface) {
-                if ($iface['rowLevel'] === 'crit' || $iface['rowLevel'] === 'warn') {
-                    $pinned[] = $iface;
-                } else {
-                    $normal[] = $iface;
+        // Helper sorting function based on the selected option
+        $sorter = function($a, $b) use ($sort) {
+            if ($sort === 'default') {
+                $aPct = max((float)$a['rx_pct'], (float)$a['tx_pct']);
+                $bPct = max((float)$b['rx_pct'], (float)$b['tx_pct']);
+                if ($aPct !== $bPct) {
+                    return $bPct <=> $aPct; // Highest utilization percentage first
                 }
-            }
-
-            // Helper sorting function based on the selected option
-            $sorter = function($a, $b) use ($sort) {
-                if ($sort === 'default') {
-                    $aPct = max((float)$a['rx_pct'], (float)$a['tx_pct']);
-                    $bPct = max((float)$b['rx_pct'], (float)$b['tx_pct']);
-                    if ($aPct !== $bPct) {
-                        return $bPct <=> $aPct; // Highest utilization percentage first
-                    }
-                    $aCap = (float)($a['cap_bps'] ?? 0.0);
-                    $bCap = (float)($b['cap_bps'] ?? 0.0);
-                    if ($aCap !== $bCap) {
-                        return $bCap <=> $aCap; // Highest bandwidth speed first
-                    }
-                    return 0;
+                $aCap = (float)($a['cap_bps'] ?? 0.0);
+                $bCap = (float)($b['cap_bps'] ?? 0.0);
+                if ($aCap !== $bCap) {
+                    return $bCap <=> $aCap; // Highest bandwidth speed first
                 }
-                elseif ($sort === 'rx_desc') return $b['rx_bps'] <=> $a['rx_bps'];
-                elseif ($sort === 'rx_asc') return $a['rx_bps'] <=> $b['rx_bps'];
-                elseif ($sort === 'tx_desc') return $b['tx_bps'] <=> $a['tx_bps'];
-                elseif ($sort === 'tx_asc') return $a['tx_bps'] <=> $b['tx_bps'];
-                elseif ($sort === 'rx_pct_desc') return $b['rx_pct'] <=> $a['rx_pct'];
-                elseif ($sort === 'rx_pct_asc') return $a['rx_pct'] <=> $b['rx_pct'];
-                elseif ($sort === 'tx_pct_desc') return $b['tx_pct'] <=> $a['tx_pct'];
-                elseif ($sort === 'tx_pct_asc') return $a['tx_pct'] <=> $b['tx_pct'];
                 return 0;
-            };
+            }
+            elseif ($sort === 'rx_desc') return $b['rx_bps'] <=> $a['rx_bps'];
+            elseif ($sort === 'rx_asc') return $a['rx_bps'] <=> $b['rx_bps'];
+            elseif ($sort === 'tx_desc') return $b['tx_bps'] <=> $a['tx_bps'];
+            elseif ($sort === 'tx_asc') return $a['tx_bps'] <=> $b['tx_bps'];
+            elseif ($sort === 'rx_pct_desc' || $sort === 'top_10_rx_pct') return $b['rx_pct'] <=> $a['rx_pct'];
+            elseif ($sort === 'rx_pct_asc') return $a['rx_pct'] <=> $b['rx_pct'];
+            elseif ($sort === 'tx_pct_desc' || $sort === 'top_10_tx_pct') return $b['tx_pct'] <=> $a['tx_pct'];
+            elseif ($sort === 'tx_pct_asc') return $a['tx_pct'] <=> $b['tx_pct'];
+            return 0;
+        };
 
-            // Sort pinned group: Critical always floats above Warning
-            usort($pinned, function($a, $b) use ($sorter) {
-                if ($a['rowLevel'] !== $b['rowLevel']) {
-                    if ($a['rowLevel'] === 'crit') return -1;
-                    if ($b['rowLevel'] === 'crit') return 1;
-                }
-                return $sorter($a, $b);
-            });
+        // Separate interfaces into Pinned (Warning/Critical) and Normal (OK)
+        $pinned = [];
+        $normal = [];
+        foreach ($interfaces as $iface) {
+            if ($iface['rowLevel'] === 'crit' || $iface['rowLevel'] === 'warn') {
+                $pinned[] = $iface;
+            } else {
+                $normal[] = $iface;
+            }
+        }
 
-            // Sort normal group
-            usort($normal, $sorter);
+        // Sort pinned group: Critical always floats above Warning
+        usort($pinned, function($a, $b) use ($sorter) {
+            if ($a['rowLevel'] !== $b['rowLevel']) {
+                if ($a['rowLevel'] === 'crit') return -1;
+                if ($b['rowLevel'] === 'crit') return 1;
+            }
+            return $sorter($a, $b);
+        });
 
-            // Recombine, ensuring Pinned interfaces are on top
-            $interfaces = array_merge($pinned, $normal);
+        // Sort normal group
+        usort($normal, $sorter);
+
+        // Recombine, ensuring Pinned interfaces are on top
+        $interfaces = array_merge($pinned, $normal);
+
+        // If it is a top 10 option, slice the combined list to the first 10 items
+        if ($sort === 'top_10_rx_pct' || $sort === 'top_10_tx_pct') {
+            $interfaces = array_slice($interfaces, 0, 10);
         }
 
         echo json_encode(['ok'=>true, 'data'=>array_slice($interfaces, ($page-1)*$perPage, $perPage), 'pagination'=>['total'=>count($interfaces), 'page'=>$page, 'total_pages'=>ceil(count($interfaces)/$perPage)], 'updated_at'=>date('H:i:s')]);
