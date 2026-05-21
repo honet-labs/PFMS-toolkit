@@ -389,11 +389,35 @@ if ($api === 'data') {
                 elseif ($u === 'gbps') $cap_bps = $speed_raw * 1000000000.0;
                 else $cap_bps = $speed_raw;
             } elseif ($iface['desc_speed'] > 0) { $cap_bps = $iface['desc_speed']; }
+
+            $is_estimated = false;
+            if ($cap_bps <= 0.0) {
+                $iface_lower = strtolower($iface['interface']);
+                if (strpos($iface_lower, '10g') !== false || strpos($iface_lower, '10gb') !== false || strpos($iface_lower, 'sfp+') !== false) {
+                    $cap_bps = 10000000000.0; // 10 Gbps
+                    $is_estimated = true;
+                } elseif (strpos($iface_lower, 'gig') !== false || strpos($iface_lower, 'gi') !== false || strpos($iface_lower, 'sfp') !== false || strpos($iface_lower, 'ether') !== false) {
+                    $cap_bps = 1000000000.0; // 1 Gbps
+                    $is_estimated = true;
+                } elseif (strpos($iface_lower, 'fast') !== false || strpos($iface_lower, 'fa') !== false) {
+                    $cap_bps = 100000000.0; // 100 Mbps
+                    $is_estimated = true;
+                } elseif (strpos($iface_lower, 'wlan') !== false || strpos($iface_lower, 'ath') !== false) {
+                    $cap_bps = 300000000.0; // 300 Mbps
+                    $is_estimated = true;
+                } elseif (strpos($iface_lower, 'pptp') !== false || strpos($iface_lower, 'l2tp') !== false || strpos($iface_lower, 'sstp') !== false || strpos($iface_lower, 'ovpn') !== false || strpos($iface_lower, 'tun') !== false || strpos($iface_lower, 'vlan') !== false) {
+                    $cap_bps = 100000000.0; // 100 Mbps (Default for VPN/Virtual interfaces)
+                    $is_estimated = true;
+                }
+            }
             $iface['cap_bps'] = $cap_bps;
 
             if ($cap_bps > 0) {
                 $iface['rx_pct'] = ($iface['rx_bps'] / $cap_bps) * 100.0; $iface['tx_pct'] = ($iface['tx_bps'] / $cap_bps) * 100.0;
                 $iface['speed_disp'] = ($cap_bps >= 1000000000.0) ? round($cap_bps / 1000000000.0, 1) . ' Gbps' : round($cap_bps / 1000000.0, 1) . ' Mbps';
+                if ($is_estimated) {
+                    $iface['speed_disp'] .= ' (Auto)';
+                }
                 $iface['rx_pct_disp'] = number_format($iface['rx_pct'], 2) . '%'; $iface['tx_pct_disp'] = number_format($iface['tx_pct'], 2) . '%';
                 $iface['rxLevel'] = util_level($iface['rx_pct'], $warnThreshold, $critThreshold); $iface['txLevel'] = util_level($iface['tx_pct'], $warnThreshold, $critThreshold);
             } else {
