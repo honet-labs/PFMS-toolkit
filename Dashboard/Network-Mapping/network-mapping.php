@@ -302,7 +302,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         </div>
                         <div class="metric-card">
                             <div class="metric-label-box">
-                                <span class="material-symbols-outlined" style="color:#eab308;">speed</span> Latency (Ping)
+                                <span class="material-symbols-outlined" style="color:#10b981;">sensors</span> Host Alive
                             </div>
                             <span class="metric-value" id="drawerLatency">--</span>
                         </div>

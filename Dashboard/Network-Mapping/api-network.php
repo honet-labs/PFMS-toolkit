@@ -570,6 +570,8 @@ try {
         $cpu = 'N/A';
         $ram = 'N/A';
         $latency = 'N/A';
+        $hostAliveVal = 'N/A';
+        $latencyVal = 'N/A';
         $packetLoss = 'N/A';
         $portStatuses = [];
 
@@ -579,13 +581,26 @@ try {
             $nameLower = strtolower($mod['name']);
 
             if (stripos($nameLower, 'cpu') !== false || stripos($nameLower, 'processor') !== false) {
-                $cpu = $mod['current_value'] . ($mod['unit'] ?: '%');
+                $cpu_val = is_numeric($mod['current_value']) ? round((float)$mod['current_value'], 2) : $mod['current_value'];
+                $cpu = $cpu_val . ($mod['unit'] ?: '%');
             } elseif (stripos($nameLower, 'ram') !== false || stripos($nameLower, 'memory') !== false) {
-                $ram = $mod['current_value'] . ($mod['unit'] ?: '%');
+                $ram_val = is_numeric($mod['current_value']) ? round((float)$mod['current_value'], 2) : $mod['current_value'];
+                $ram = $ram_val . ($mod['unit'] ?: '%');
+            } elseif (stripos($nameLower, 'host alive') !== false || stripos($nameLower, 'hostalive') !== false || stripos($nameLower, 'alive') !== false) {
+                $status_val = trim($mod['current_value']);
+                if ($status_val === '1' || strtolower($status_val) === 'up') {
+                    $hostAliveVal = 'UP';
+                } elseif ($status_val === '0' || strtolower($status_val) === 'down') {
+                    $hostAliveVal = 'DOWN';
+                } else {
+                    $hostAliveVal = strtoupper($status_val);
+                }
             } elseif (stripos($nameLower, 'latency') !== false || stripos($nameLower, 'ping') !== false) {
-                $latency = $mod['current_value'] . ($mod['unit'] ?: ' ms');
+                $lat_val = is_numeric($mod['current_value']) ? round((float)$mod['current_value'], 2) : $mod['current_value'];
+                $latencyVal = $lat_val . ($mod['unit'] ?: ' ms');
             } elseif (stripos($nameLower, 'packet loss') !== false) {
-                $packetLoss = $mod['current_value'] . ($mod['unit'] ?: '%');
+                $loss_val = is_numeric($mod['current_value']) ? round((float)$mod['current_value'], 2) : $mod['current_value'];
+                $packetLoss = $loss_val . ($mod['unit'] ?: '%');
             }
 
             if (stripos($nameLower, 'ifoperstatus') !== false) {
@@ -597,6 +612,8 @@ try {
                 ];
             }
         }
+
+        $latency = ($hostAliveVal !== 'N/A') ? $hostAliveVal : $latencyVal;
 
         echo json_encode([
             'ok' => true,
