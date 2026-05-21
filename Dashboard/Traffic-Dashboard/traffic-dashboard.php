@@ -514,9 +514,6 @@ if ($api === 'data') {
             if ($cap_bps > 0) {
                 $iface['rx_pct'] = ($iface['rx_bps'] / $cap_bps) * 100.0; $iface['tx_pct'] = ($iface['tx_bps'] / $cap_bps) * 100.0;
                 $iface['speed_disp'] = ($cap_bps >= 1000000000.0) ? round($cap_bps / 1000000000.0, 1) . ' Gbps' : round($cap_bps / 1000000.0, 1) . ' Mbps';
-                if ($is_estimated) {
-                    $iface['speed_disp'] .= ' (Auto)';
-                }
                 $iface['rx_pct_disp'] = number_format($iface['rx_pct'], 2) . '%'; $iface['tx_pct_disp'] = number_format($iface['tx_pct'], 2) . '%';
                 $iface['rxLevel'] = util_level($iface['rx_pct'], $warnThreshold, $critThreshold); $iface['txLevel'] = util_level($iface['tx_pct'], $warnThreshold, $critThreshold);
             } else {
