@@ -289,8 +289,15 @@ try {
         }
 
         // 3. Load layout coordinates and manual links specifically for this dashboard
-        $savedNodes = $active_dash['nodes'] ?? [];
+        $savedNodesRaw = $active_dash['nodes'] ?? [];
         $manualLinks = $active_dash['manual_links'] ?? [];
+
+        $savedNodes = [];
+        foreach ($savedNodesRaw as $sn) {
+            if (isset($sn['id'])) {
+                $savedNodes[(int)$sn['id']] = $sn;
+            }
+        }
 
         // 4. Fetch active ports for SNMP status coloring
         $portsSql = "SELECT m.id_agente_modulo, m.id_agente, m.nombre, e.estado, e.datos 
