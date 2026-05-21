@@ -299,11 +299,11 @@ try {
             }
         }
 
-        // 4. Fetch active ports for SNMP status coloring
+        // 4. Fetch active ports for SNMP status coloring (ifOperStatus or ifAdminStatus)
         $portsSql = "SELECT m.id_agente_modulo, m.id_agente, m.nombre, e.estado, e.datos 
                      FROM tagente_modulo m 
                      JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo 
-                     WHERE m.nombre LIKE '%ifOperStatus%' AND m.disabled = 0";
+                     WHERE (m.nombre LIKE '%ifOperStatus%' OR m.nombre LIKE '%ifAdminStatus%') AND m.disabled = 0";
         $portsStmt = $pdo->query($portsSql);
         $portsDb = [];
         while ($p = $portsStmt->fetch()) {
@@ -460,10 +460,11 @@ try {
             $tgtStatus = isset($portsDb[$tgtPortId]) ? $portsDb[$tgtPortId]['status'] : 4;
 
             // Dynamic color: critical if either is down
+            // In Pandora FMS module state: 0 = normal (Green), 1 = warning (Yellow), 2 = critical (Red), 4 = unknown (Blue/Gray)
             $linkStatus = 'normal';
-            if ($srcStatus === 1 || $tgtStatus === 1) {
+            if ($srcStatus === 2 || $tgtStatus === 2) {
                 $linkStatus = 'critical';
-            } elseif ($srcStatus === 2 || $tgtStatus === 2) {
+            } elseif ($srcStatus === 1 || $tgtStatus === 1) {
                 $linkStatus = 'warning';
             } elseif ($srcStatus === 4 || $tgtStatus === 4) {
                 $linkStatus = 'unknown';
@@ -537,14 +538,14 @@ try {
         $stmt = $pdo->prepare("SELECT m.id_agente_modulo AS id, m.nombre AS name, e.estado, e.datos 
                                FROM tagente_modulo m 
                                JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
-                               WHERE m.id_agente = ? AND m.nombre LIKE '%ifOperStatus%' AND m.disabled = 0
+                               WHERE m.id_agente = ? AND (m.nombre LIKE '%ifOperStatus%' OR m.nombre LIKE '%ifAdminStatus%') AND m.disabled = 0
                                ORDER BY m.nombre ASC");
         $stmt->execute([$id_agent]);
         $ports = $stmt->fetchAll();
 
         foreach ($ports as &$p) {
             $p['name'] = pretty_text($p['name']);
-            $p['clean_name'] = str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus'], '', $p['name']);
+            $p['clean_name'] = str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus', 'ifAdminStatus_', '_ifAdminStatus', 'ifAdminStatus'], '', $p['name']);
         }
         echo json_encode($ports);
         exit;
