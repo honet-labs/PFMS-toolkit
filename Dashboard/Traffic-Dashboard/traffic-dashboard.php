@@ -1008,6 +1008,20 @@ if ($api === 'series') {
         document.getElementById('f_warn').value = saved.warn || 70;
         document.getElementById('f_crit').value = saved.crit || 80;
         document.getElementById('f_fontsize').value = saved.fs || 12;
+
+        // Load unit, sort, speed filter, and search from localStorage
+        document.getElementById('f_unit').value = saved.unit || 'Auto';
+        document.getElementById('f_sort').value = saved.sort || 'default';
+        document.getElementById('f_speed_filter').value = saved.speed_filter || 'all';
+        document.getElementById('f_search').value = saved.search || '';
+
+        const fsInput = document.getElementById('f_search');
+        if (saved.search) {
+            fsInput.classList.add('active');
+        } else {
+            fsInput.classList.remove('active');
+        }
+
         applyFontSize();
 
         const url = new URL(window.location); url.searchParams.set('dash_id', id); window.history.replaceState({}, '', url);
@@ -1099,14 +1113,28 @@ if ($api === 'series') {
 
     async function fetchData() {
         const d = masterDashboards.find(x => x.id === currentDashId); if(!d) return;
+
+        const unit = document.getElementById('f_unit').value;
+        const speed_filter = document.getElementById('f_speed_filter').value;
+        const search = document.getElementById('f_search').value;
+        const sort = document.getElementById('f_sort').value;
+
+        // Save current filter values to localStorage to persist on page refresh/reload
+        const saved = JSON.parse(localStorage.getItem('pfms_settings_' + currentDashId) || '{}');
+        saved.unit = unit;
+        saved.sort = sort;
+        saved.speed_filter = speed_filter;
+        saved.search = search;
+        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify(saved));
+
         const body = document.getElementById('detailTableBody'); body.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading...</td></tr>';
         const payload = { 
             group_id: d.group_id, 
             agent_id: d.agent_id, 
-            unit: document.getElementById('f_unit').value, 
-            speed_filter: document.getElementById('f_speed_filter').value, 
-            search: document.getElementById('f_search').value, 
-            sort: document.getElementById('f_sort').value,  
+            unit: unit, 
+            speed_filter: speed_filter, 
+            search: search, 
+            sort: sort,  
             page: currentPage, 
             per_page: 20,
             warn: parseFloat(document.getElementById('f_warn').value) || 70,
