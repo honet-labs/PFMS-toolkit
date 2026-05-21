@@ -78,6 +78,10 @@ function format_rate_ui(float $bytesPerSec, string $unit): string {
         if ($v > 0 && $v < 0.01) return number_format($v, 4) . ' GB/s'; 
         return number_format($v, 2) . ' GB/s'; 
     }
+    if ($unit === 'Gbps') {
+        $v = ($bytesPerSec * 8.0) / 1000000000.0;
+        return number_format($v, 2) . ' Gbps';
+    }
     $v = ($bytesPerSec * 8.0) / 1000000.0; return number_format($v, 2) . ' Mbps';
 }
 
@@ -254,6 +258,7 @@ if ($api === 'data') {
     $agentId = (int)($input['agent_id'] ?? 0);
     $search = trim($input['search'] ?? '');
     $unit = $input['unit'] ?? 'Mbps';
+    $speed_filter = $input['speed_filter'] ?? 'all';
     $page = max(1, (int)($input['page'] ?? 1));
     $perPage = max(5, (int)($input['per_page'] ?? 25));
     $warnThreshold = (float)($input['warn'] ?? 70.0);
@@ -403,6 +408,22 @@ if ($api === 'data') {
 
         $interfaces = array_values(array_filter($interfaces, function($i) { return ($i['rx_disp'] !== '0.00 Mbps' || $i['tx_disp'] !== '0.00 Mbps' || $i['speed_disp'] !== 'N/A'); }));
 
+        if ($speed_filter !== 'all') {
+            $interfaces = array_values(array_filter($interfaces, function($iface) use ($speed_filter) {
+                $cap = (float)$iface['cap_bps'];
+                if ($speed_filter === 'gbps') {
+                    return ($cap >= 1000000000.0);
+                } elseif ($speed_filter === 'mbps') {
+                    return ($cap >= 1000000.0 && $cap < 1000000000.0);
+                } elseif ($speed_filter === 'gbps_mbps') {
+                    return ($cap >= 1000000.0);
+                } elseif ($speed_filter === 'na') {
+                    return ($cap <= 0);
+                }
+                return true;
+            }));
+        }
+
         if ($search !== '') {
             $interfaces = array_values(array_filter($interfaces, function($iface) use ($search) {
                 return (
@@ -490,6 +511,7 @@ if ($api === 'series') {
         
         if ($selected_unit === 'Auto') return $is_mbps_mod ? 125000.0 : 1.0; // Return as Bytes/s for Auto
         if ($selected_unit === 'Mbps') return $is_mbps_mod ? 1.0 : (8.0 / 1000000.0);
+        if ($selected_unit === 'Gbps') return $is_mbps_mod ? 0.001 : (8.0 / 1000000000.0);
         if ($selected_unit === 'Bps') return $is_mbps_mod ? (1000000.0 / 8.0) : 1.0;
         if ($selected_unit === 'MBps') return $is_mbps_mod ? (1.0 / 8.0) : (1.0 / 1000000.0);
         if ($selected_unit === 'GBps') return $is_mbps_mod ? (1.0 / 8000.0) : (1.0 / 1000000000.0);
@@ -691,8 +713,9 @@ if ($api === 'series') {
     </div>
     <div class="toolbar">
         <div class="toolbar-left" style="display:flex; align-items:center; gap:8px;">
-            <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="fetchData()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
+            <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="fetchData()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
             <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="rx_desc">RX Terbesar (Max)</option><option value="rx_asc">RX Terkecil (Min)</option><option value="tx_desc">TX Terbesar (Max)</option><option value="tx_asc">TX Terkecil (Min)</option><option value="rx_pct_desc">% RX Terbesar (Max)</option><option value="rx_pct_asc">% RX Terkecil (Min)</option><option value="tx_pct_desc">% TX Terbesar (Max)</option><option value="tx_pct_asc">% TX Terkecil (Min)</option></select></div>
+            <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="fetchData()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
             <div class="toolbar-item" id="search_wrapper" style="display:flex; align-items:center;">
                 <button class="btn-neutral" style="width:32px; padding:0;" onclick="toggleSearch()" title="Search">
                     <span class="material-symbols-outlined">search</span>
@@ -848,6 +871,7 @@ if ($api === 'series') {
         // URL Params override saved settings
         if(params.has('unit')) document.getElementById('f_unit').value = params.get('unit');
         if(params.has('sort')) document.getElementById('f_sort').value = params.get('sort');
+        if(params.has('speed_filter')) document.getElementById('f_speed_filter').value = params.get('speed_filter');
         if(params.has('search')) {
             const fs = document.getElementById('f_search');
             fs.value = params.get('search');
@@ -947,8 +971,9 @@ if ($api === 'series') {
             group_id: d.group_id, 
             agent_id: d.agent_id, 
             unit: document.getElementById('f_unit').value, 
+            speed_filter: document.getElementById('f_speed_filter').value, 
             search: document.getElementById('f_search').value, 
-            sort: document.getElementById('f_sort').value, 
+            sort: document.getElementById('f_sort').value,  
             page: currentPage, 
             per_page: 20,
             warn: parseFloat(document.getElementById('f_warn').value) || 70,
@@ -1068,6 +1093,7 @@ if ($api === 'series') {
     function updateURLState() {
         const unit = document.getElementById('f_unit').value;
         const sort = document.getElementById('f_sort').value;
+        const speedFilter = document.getElementById('f_speed_filter').value;
         const search = document.getElementById('f_search').value;
         const warn = document.getElementById('f_warn').value;
         const crit = document.getElementById('f_crit').value;
@@ -1076,6 +1102,7 @@ if ($api === 'series') {
         const newUrl = new URL(window.location);
         newUrl.searchParams.set('unit', unit);
         newUrl.searchParams.set('sort', sort);
+        newUrl.searchParams.set('speed_filter', speedFilter);
         newUrl.searchParams.set('search', search);
         newUrl.searchParams.set('warn', warn);
         newUrl.searchParams.set('crit', crit);
