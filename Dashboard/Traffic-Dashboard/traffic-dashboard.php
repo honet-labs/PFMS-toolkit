@@ -716,30 +716,31 @@ if ($api === 'series') {
         .btn-action {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 6px 14px;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            padding: 0;
             background: #ffffff;
-            border: 1px solid #d1d5db;
+            border: 1px solid #e2e8f0;
             border-radius: 6px;
-            color: #4b5563;
-            font-size: 13px;
-            font-weight: 600;
+            color: #64748b;
             cursor: pointer;
             transition: all 0.2s;
             text-decoration: none;
             margin-left: 5px;
+            box-sizing: border-box;
         }
         .btn-action:hover {
-            background: #f9fafb;
-            border-color: #9ca3af;
-            color: #1f2937;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #0f172a;
         }
         .btn-action .material-symbols-outlined {
-            font-size: 18px !important;
+            font-size: 16px !important;
         }
         .btn-action.btn-delete {
             color: #ef4444;
+            border-color: #fee2e2;
         }
         .btn-action.btn-delete:hover {
             background: #fef2f2;
@@ -1038,14 +1039,17 @@ if ($api === 'series') {
             <td>${d.group_name || 'All Groups'}</td>
             <td>${d.agent_name || 'All Nodes'}</td>
             <td style="text-align:right;">
-                <button class="btn-action" onclick="openDashboard('${d.id}')">
-                    <span class="material-symbols-outlined">edit</span> Edit
+                <button class="btn-action" onclick="openDashboard('${d.id}')" title="Open Dashboard">
+                    <span class="material-symbols-outlined">visibility</span>
                 </button>
-                <button class="btn-action" onclick="duplicateDashboardFromList('${d.id}')">
-                    <span class="material-symbols-outlined">content_copy</span> Duplicate
+                <button class="btn-action" onclick="editDashboard('${d.id}')" title="Configure">
+                    <span class="material-symbols-outlined">settings</span>
                 </button>
-                <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')">
-                    <span class="material-symbols-outlined">delete</span> Delete
+                <button class="btn-action" onclick="duplicateDashboardFromList('${d.id}')" title="Duplicate">
+                    <span class="material-symbols-outlined">content_copy</span>
+                </button>
+                <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')" title="Delete">
+                    <span class="material-symbols-outlined">delete</span>
                 </button>
             </td>
         </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Dashboards Created Yet.</td></tr>';

@@ -275,10 +275,31 @@ if ($isPure && $target_panel_id) {
         .dash-link { color: #1976d2; text-decoration: none; font-weight: 600; transition: 0.2s; }
         .dash-link:hover { color: #0d47a1; text-decoration: underline; }
         
-        .btn-action { background: #fff; border: 1px solid #dce1e5; color: #64748b; padding: 6px 12px; border-radius: 4px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; cursor: pointer; text-decoration: none; }
-        .btn-action:hover { background: #f1f5f9; color: #0b1a26; border-color: #b5c1c9; }
-        .btn-action.btn-delete:hover { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            margin-left: 5px;
+            box-sizing: border-box;
+        }
+        .btn-action:hover {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #0f172a;
+        }
         .btn-action .material-symbols-outlined { font-size: 16px !important; }
+        .btn-action.btn-delete { color: #ef4444; border-color: #fee2e2; }
+        .btn-action.btn-delete:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
 
         .breadcrumb-link { color: #64748b; text-decoration: none; transition: 0.2s; font-weight: 500; }
         .breadcrumb-link:hover { color: #004d40; }
@@ -383,14 +404,17 @@ if ($isPure && $target_panel_id) {
                                 <span class="badge bg-light text-dark border fw-normal" style="font-size:11px;"><?= count($d['panels'] ?? []) ?> Racks</span>
                             </td>
                             <td style="text-align:right;">
-                                <button class="btn-action" onclick="openDashMetaModal(<?= $idx ?>)">
-                                    <span class="material-symbols-outlined">edit</span> Edit
+                                <a class="btn-action" href="?dash_id=<?= $d['id'] ?>" title="Open Dashboard">
+                                    <span class="material-symbols-outlined">visibility</span>
+                                </a>
+                                <button class="btn-action" onclick="openDashMetaModal(<?= $idx ?>)" title="Configure">
+                                    <span class="material-symbols-outlined">settings</span>
                                 </button>
-                                <button class="btn-action" onclick="duplicateDashboard(<?= $idx ?>)">
-                                    <span class="material-symbols-outlined">content_copy</span> Duplicate
+                                <button class="btn-action" onclick="duplicateDashboard(<?= $idx ?>)" title="Duplicate">
+                                    <span class="material-symbols-outlined">content_copy</span>
                                 </button>
-                                <button class="btn-action btn-delete" onclick="deleteDashboard(<?= $idx ?>)">
-                                    <span class="material-symbols-outlined">delete</span> Delete
+                                <button class="btn-action btn-delete" onclick="deleteDashboard(<?= $idx ?>)" title="Delete">
+                                    <span class="material-symbols-outlined">delete</span>
                                 </button>
                             </td>
                         </tr>
