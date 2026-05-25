@@ -251,17 +251,6 @@ try {
 
         $group_id = (int)($active_dash['group_id'] ?? 0);
         $agent_id = (int)($active_dash['agent_id'] ?? 0);
-        $mapType = $active_dash['map_type'] ?? 'auto';
-        $isBlankCanvas = ($mapType === 'blank');
-        $savedNodesRaw = $active_dash['nodes'] ?? [];
-        $savedNodes = [];
-        foreach ($savedNodesRaw as $id => $pos) {
-            $savedNodes[(int)$id] = [
-                'id' => (int)$id,
-                'x' => $pos['x'] ?? 0,
-                'y' => $pos['y'] ?? 0
-            ];
-        }
 
         // 1. Fetch active agents with optional dynamic dashboard filtering
         $params = [];
@@ -275,24 +264,14 @@ try {
                      FROM tagente a 
                      WHERE a.disabled = 0";
         
-        if ($isBlankCanvas) {
-            if (!empty($savedNodes)) {
-                $savedIds = array_keys($savedNodes);
-                $inQuery = implode(',', array_map('intval', $savedIds));
-                $agentSql .= " AND a.id_agente IN ($inQuery)";
-            } else {
-                $agentSql .= " AND 1 = 0";
-            }
-        } else {
-            if ($group_id > 0) {
-                $agentSql .= " AND a.id_grupo = :gid";
-                $params[':gid'] = $group_id;
-            }
-            if ($agent_id > 0) {
-                // Star topology centered around core Node: Core Node + immediate Children + Parent core
-                $agentSql .= " AND (a.id_agente = :aid OR a.id_parent = :aid OR a.id_agente = (SELECT COALESCE(id_parent, 0) FROM tagente WHERE id_agente = :aid))";
-                $params[':aid'] = $agent_id;
-            }
+        if ($group_id > 0) {
+            $agentSql .= " AND a.id_grupo = :gid";
+            $params[':gid'] = $group_id;
+        }
+        if ($agent_id > 0) {
+            // Star topology centered around core Node: Core Node + immediate Children + Parent core
+            $agentSql .= " AND (a.id_agente = :aid OR a.id_parent = :aid OR a.id_agente = (SELECT COALESCE(id_parent, 0) FROM tagente WHERE id_agente = :aid))";
+            $params[':aid'] = $agent_id;
         }
         $agentSql .= " ORDER BY a.alias ASC";
         
@@ -315,6 +294,13 @@ try {
         // 3. Load layout coordinates and manual links specifically for this dashboard
         $savedNodesRaw = $active_dash['nodes'] ?? [];
         $manualLinks = $active_dash['manual_links'] ?? [];
+
+        $savedNodes = [];
+        foreach ($savedNodesRaw as $sn) {
+            if (isset($sn['id'])) {
+                $savedNodes[(int)$sn['id']] = $sn;
+            }
+        }
 
         // 4. Fetch active ports for SNMP status coloring (ifOperStatus or ifAdminStatus)
         $portsSql = "SELECT m.id_agente_modulo, m.id_agente, m.nombre, e.estado, e.datos 

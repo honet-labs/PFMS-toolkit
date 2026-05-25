@@ -28,7 +28,9 @@ $dynamic_breadcrumb = implode(' / ', $formatted_array);
 $PANDORA_BASE_URL = "/pandora_console";
 
 // 2. SEARCH AND LOAD PANDORA CONFIG
-$config = [];
+if (!isset($config) || !is_array($config)) {
+    $config = [];
+}
 $config_loaded = false;
 $config_paths = [
     __DIR__ . '/../../../include/config.php',
@@ -77,6 +79,7 @@ function h($s) {
 function pretty_text($s) {
     if ($s === null || $s === '') return '';
     $text = html_entity_decode((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     return str_replace(['&#x20;', '&nbsp;'], ' ', $text);
 }
 

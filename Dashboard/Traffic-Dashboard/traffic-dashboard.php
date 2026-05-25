@@ -881,6 +881,33 @@ if ($api === 'series') {
                     <span style="font-size:12px; color:var(--text-dim);">px</span>
                 </div>
             </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:12px;">
+                <span style="font-size:13px;">Show Unit Suffixes</span>
+                <input type="checkbox" id="f_showunits" checked style="width:18px; height:18px; cursor:pointer;">
+            </div>
+        </div>
+        <div class="form-group" style="margin-top:15px; border-top: 1px solid #f1f5f9; padding-top:12px;">
+            <label style="font-weight:600; color:#475569; font-size:12px;">ENABLED UNITS IN FILTER</label>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:8px;">
+                <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer; font-size:12px;">
+                    <input type="checkbox" id="unit_opt_Auto" value="Auto" checked> Auto
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer; font-size:12px;">
+                    <input type="checkbox" id="unit_opt_Mbps" value="Mbps" checked> Mbps
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer; font-size:12px;">
+                    <input type="checkbox" id="unit_opt_Gbps" value="Gbps" checked> Gbps
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer; font-size:12px;">
+                    <input type="checkbox" id="unit_opt_Bps" value="Bps" checked> B/s
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer; font-size:12px;">
+                    <input type="checkbox" id="unit_opt_MBps" value="MBps" checked> MB/s
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer; font-size:12px;">
+                    <input type="checkbox" id="unit_opt_GBps" value="GBps" checked> GB/s
+                </label>
+            </div>
         </div>
         <div class="form-actions" style="margin-top:30px;">
             <button class="btn-neutral" onclick="closeSettingsModal()">Cancel</button>
@@ -907,6 +934,49 @@ if ($api === 'series') {
     let masterDashboards = [], currentDashId = '', currentAgents = [], currentPage = 1, chartInstance = null;
     let timerInterval = null, countdown = 60, editId = null;
 
+    const ALL_UNITS = [
+        { value: 'Auto', label: 'Auto' },
+        { value: 'Mbps', label: 'Mbps' },
+        { value: 'Gbps', label: 'Gbps' },
+        { value: 'Bps', label: 'B/s' },
+        { value: 'MBps', label: 'MB/s' },
+        { value: 'GBps', label: 'GB/s' }
+    ];
+
+    function updateUnitDropdown(enabledValues) {
+        const select = document.getElementById('f_unit');
+        if (!select) return;
+        
+        const currentValue = select.value;
+        select.innerHTML = '';
+        
+        const activeUnits = ALL_UNITS.filter(u => !enabledValues || enabledValues.length === 0 || enabledValues.includes(u.value));
+        
+        activeUnits.forEach(u => {
+            const opt = new Option(u.label, u.value);
+            if (u.value === currentValue) opt.selected = true;
+            select.add(opt);
+        });
+        
+        if (!activeUnits.some(u => u.value === currentValue) && activeUnits.length > 0) {
+            select.value = activeUnits[0].value;
+        }
+    }
+
+    function syncEnabledUnitsUI(list) {
+        ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
+            const cb = document.getElementById('unit_opt_' + u);
+            if (cb) cb.checked = !list || list.length === 0 || list.includes(u);
+        });
+    }
+
+    function decodeHtml(str) {
+        if (!str) return '';
+        var txt = document.createElement("textarea");
+        txt.innerHTML = str;
+        return txt.value;
+    }
+
     function toggleSearch() {
         const input = document.getElementById('f_search');
         input.classList.toggle('active');
@@ -916,7 +986,7 @@ if ($api === 'series') {
     async function init() {
         const r = await fetch('?api=load_config'); masterDashboards = await r.json();
         const rg = await fetch('?api=groups'); const groups = await rg.json();
-        const gsel = document.getElementById('m_group'); groups.forEach(g => gsel.add(new Option(g.name, g.id)));
+        const gsel = document.getElementById('m_group'); groups.forEach(g => gsel.add(new Option(decodeHtml(g.name), g.id)));
 
         const params = new URLSearchParams(window.location.search);
         
@@ -925,6 +995,9 @@ if ($api === 'series') {
         if (savedSettings.warn) document.getElementById('f_warn').value = savedSettings.warn;
         if (savedSettings.crit) document.getElementById('f_crit').value = savedSettings.crit;
         if (savedSettings.fs) document.getElementById('f_fontsize').value = savedSettings.fs;
+        if (savedSettings.show_units !== undefined) document.getElementById('f_showunits').checked = savedSettings.show_units;
+
+        let activeUnitsList = savedSettings.enabled_units || null;
 
         // URL Params override saved settings
         if(params.has('unit')) document.getElementById('f_unit').value = params.get('unit');
@@ -938,7 +1011,11 @@ if ($api === 'series') {
         if(params.has('warn')) document.getElementById('f_warn').value = params.get('warn');
         if(params.has('crit')) document.getElementById('f_crit').value = params.get('crit');
         if(params.has('fs')) document.getElementById('f_fontsize').value = params.get('fs');
+        if(params.has('show_units')) document.getElementById('f_showunits').checked = params.get('show_units') !== '0';
+        if(params.has('enabled_units')) activeUnitsList = params.get('enabled_units').split(',');
         
+        syncEnabledUnitsUI(activeUnitsList);
+        updateUnitDropdown(activeUnitsList);
         applyFontSize();
 
         const dashId = params.get('dash_id');
@@ -994,6 +1071,9 @@ if ($api === 'series') {
         const sort = (isInitial && params.has('sort')) ? params.get('sort') : (saved.sort || 'default');
         const speed_filter = (isInitial && params.has('speed_filter')) ? params.get('speed_filter') : (saved.speed_filter || 'all');
         const search = (isInitial && params.has('search')) ? params.get('search') : (saved.search || '');
+        const showUnits = (isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (saved.show_units !== false);
+
+        const enabledUnits = (isInitial && params.has('enabled_units')) ? params.get('enabled_units').split(',') : (saved.enabled_units || null);
 
         document.getElementById('f_warn').value = warn;
         document.getElementById('f_crit').value = crit;
@@ -1001,6 +1081,10 @@ if ($api === 'series') {
         document.getElementById('f_unit').value = unit;
         document.getElementById('f_sort').value = sort;
         document.getElementById('f_speed_filter').value = speed_filter;
+        document.getElementById('f_showunits').checked = showUnits;
+
+        syncEnabledUnitsUI(enabledUnits);
+        updateUnitDropdown(enabledUnits);
 
         const searchEl = document.getElementById('f_search');
         searchEl.value = search;
@@ -1102,7 +1186,6 @@ if ($api === 'series') {
     async function fetchData() {
         const d = masterDashboards.find(x => x.id === currentDashId); if(!d) return;
 
-        // Save current UI state to localStorage
         const warn = document.getElementById('f_warn').value;
         const crit = document.getElementById('f_crit').value;
         const fs = document.getElementById('f_fontsize').value;
@@ -1110,9 +1193,20 @@ if ($api === 'series') {
         const sort = document.getElementById('f_sort').value;
         const speed_filter = document.getElementById('f_speed_filter').value;
         const search = document.getElementById('f_search').value;
+        const showUnits = document.getElementById('f_showunits').checked;
+        const stripUnit = (text) => {
+            if (!text || text === 'N/A') return text;
+            return text.replace(/\s*(gbps|mbps|kbps|bps|mb\/s|gb\/s|b\/s|kb\/s|B\/s|KB\/s|MB\/s|GB\/s)\s*$/i, '').trim();
+        };
+
+        const enabled_units = [];
+        ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
+            const cb = document.getElementById('unit_opt_' + u);
+            if (cb && cb.checked) enabled_units.push(u);
+        });
 
         localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({
-            warn, crit, fs, unit, sort, speed_filter, search
+            warn, crit, fs, unit, sort, speed_filter, search, show_units: showUnits, enabled_units: enabled_units
         }));
 
         const body = document.getElementById('detailTableBody'); body.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading...</td></tr>';
@@ -1140,6 +1234,10 @@ if ($api === 'series') {
         body.innerHTML = res.data.map(r => {
             const rxLevel = r.rx_pct >= critT ? 'crit' : (r.rx_pct >= warnT ? 'warn' : 'ok');
             const txLevel = r.tx_pct >= critT ? 'crit' : (r.tx_pct >= warnT ? 'warn' : 'ok');
+            const speedDisp = showUnits ? r.speed_disp : stripUnit(r.speed_disp);
+            const rxDisp = showUnits ? r.rx_disp : stripUnit(r.rx_disp);
+            const txDisp = showUnits ? r.tx_disp : stripUnit(r.tx_disp);
+
             return `<tr>
             <td><span class="status-badge ${r.status_badge}">${r.status_text}</span></td>
             <td>
@@ -1160,12 +1258,12 @@ if ($api === 'series') {
             </td>
             <td>
                 <div style="display:flex; align-items:center; gap:5px; font-weight:500;">
-                    ${r.speed_disp}
+                    ${speedDisp}
                     ${r.speed_disp === 'N/A' ? `<span class="material-symbols-outlined table-icon" style="color:#f59e0b; cursor:pointer;" onclick="alert('Please check if the IfSpeed/IfHighSpeed module is available?')">info</span>` : ''}
                 </div>
             </td>
-            <td><div class="col-${rxLevel}" style="font-weight:600;">${r.rx_disp} <span class="pct-text">(${r.rx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${rxLevel}" style="width:${r.rx_pct}%"></div></div></td>
-            <td><div class="col-${txLevel}" style="font-weight:600;">${r.tx_disp} <span class="pct-text">(${r.tx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${txLevel}" style="width:${r.tx_pct}%"></div></div></td>
+            <td><div class="col-${rxLevel}" style="font-weight:600;">${rxDisp} <span class="pct-text">(${r.rx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${rxLevel}" style="width:${r.rx_pct}%"></div></div></td>
+            <td><div class="col-${txLevel}" style="font-weight:600;">${txDisp} <span class="pct-text">(${r.tx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${txLevel}" style="width:${r.tx_pct}%"></div></div></td>
             <td>
                 <button class="btn-dash" onclick="openChart(${r.mod_in}, ${r.mod_out}, '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}')" style="padding:4px; border:1px solid #e2e8f0; border-radius:4px; background:#fff;">
                     <span class="material-symbols-outlined table-icon" style="color:#3b82f6;">show_chart</span>
@@ -1227,10 +1325,18 @@ if ($api === 'series') {
         const sort = document.getElementById('f_sort').value;
         const speed_filter = document.getElementById('f_speed_filter').value;
         const search = document.getElementById('f_search').value;
+        const show_units = document.getElementById('f_showunits').checked;
+
+        const enabled_units = [];
+        ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
+            const cb = document.getElementById('unit_opt_' + u);
+            if (cb && cb.checked) enabled_units.push(u);
+        });
 
         // Save to LocalStorage with Dashboard ID as Key
-        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({ warn, crit, fs, unit, sort, speed_filter, search }));
+        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({ warn, crit, fs, unit, sort, speed_filter, search, show_units, enabled_units }));
         
+        updateUnitDropdown(enabled_units);
         applyFontSize();
         fetchData();
         closeSettingsModal();
@@ -1251,6 +1357,13 @@ if ($api === 'series') {
         const warn = document.getElementById('f_warn').value;
         const crit = document.getElementById('f_crit').value;
         const fs = document.getElementById('f_fontsize').value;
+        const showUnits = document.getElementById('f_showunits').checked ? '1' : '0';
+
+        const enabled_units = [];
+        ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
+            const cb = document.getElementById('unit_opt_' + u);
+            if (cb && cb.checked) enabled_units.push(u);
+        });
 
         const newUrl = new URL(window.location);
         newUrl.searchParams.set('unit', unit);
@@ -1260,6 +1373,8 @@ if ($api === 'series') {
         newUrl.searchParams.set('warn', warn);
         newUrl.searchParams.set('crit', crit);
         newUrl.searchParams.set('fs', fs);
+        newUrl.searchParams.set('show_units', showUnits);
+        newUrl.searchParams.set('enabled_units', enabled_units.join(','));
         if(currentDashId) newUrl.searchParams.set('dash_id', currentDashId);
         window.history.replaceState({}, '', newUrl);
     }
@@ -1292,7 +1407,7 @@ if ($api === 'series') {
         const r = await fetch(`?api=agents&group_id=${gid}`); const agents = await r.json();
         const sel = document.getElementById('m_agent'); sel.innerHTML = '<option value="0">-- All Nodes --</option>';
         agents.forEach(a => {
-            const opt = new Option(a.alias, a.id);
+            const opt = new Option(decodeHtml(a.alias), a.id);
             if(a.id == selectedId) opt.selected = true;
             sel.add(opt);
         });

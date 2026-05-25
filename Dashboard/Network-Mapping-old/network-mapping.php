@@ -10,9 +10,6 @@ require_once __DIR__ . '/../../includes/db-connection.php';
 
 
 $PANDORA_BASE_URL = "/pandora_console";
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
 ?>
@@ -34,77 +31,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
 
     <style>
-        /* Blank Canvas Helper Overlay styling */
-        .blank-helper-overlay {
-            position: absolute;
-            top: 45%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(255, 255, 255, 0.95);
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
-            border-radius: 12px;
-            padding: 30px;
-            text-align: center;
-            max-width: 480px;
-            z-index: 10;
-            pointer-events: auto;
-            font-family: 'Inter', sans-serif;
-            backdrop-filter: blur(8px);
-        }
-        .blank-helper-overlay .helper-icon {
-            font-size: 48px !important;
-            color: #004d40;
-            margin-bottom: 12px;
-        }
-        .blank-helper-overlay h3 {
-            margin: 0 0 8px 0;
-            font-size: 18px;
-            font-weight: 700;
-            color: #1e293b;
-        }
-        .blank-helper-overlay p {
-            margin: 0 0 20px 0;
-            font-size: 13px;
-            color: #64748b;
-            line-height: 1.6;
-        }
-        .blank-helper-overlay .helper-steps {
-            text-align: left;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .blank-helper-overlay .helper-step {
-            display: flex;
-            gap: 12px;
-            align-items: flex-start;
-        }
-        .blank-helper-overlay .step-num {
-            background: #e0f2fe;
-            color: #0369a1;
-            font-weight: 700;
-            font-size: 12px;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-        .blank-helper-overlay .helper-step strong {
-            display: block;
-            font-size: 13px;
-            color: #334155;
-            margin-bottom: 2px;
-        }
-        .blank-helper-overlay .helper-step p {
-            margin: 0;
-            font-size: 12px;
-            color: #64748b;
-        }
-
         :root { 
             --primary-bg: #f4f6f8; 
             --card-bg: #fff; 
@@ -149,156 +75,41 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .btn-action {
             display: inline-flex;
             align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            padding: 0;
+            gap: 6px;
+            padding: 6px 12px;
             background: #ffffff;
-            border: 1px solid #e2e8f0;
+            border: 1px solid #d1d5db;
             border-radius: 6px;
-            color: #64748b;
+            color: #4b5563;
+            font-size: 12px;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
             text-decoration: none;
             margin-left: 5px;
-            box-sizing: border-box;
         }
         .btn-action:hover {
-            background: #f1f5f9;
-            border-color: #cbd5e1;
-            color: #0f172a;
+            background: #f9fafb;
+            border-color: #9ca3af;
+            color: #1f2937;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         .btn-action .material-symbols-outlined { font-size: 16px !important; }
-        .btn-action.btn-delete { color: #ef4444; border-color: #fee2e2; }
+        .btn-action.btn-delete { color: #ef4444; }
         .btn-action.btn-delete:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
 
         /* TOP CONTROLS */
-        .top-controls {
-            display: flex;
-            flex-direction: row;
-            gap: 10px;
-            align-items: center;
-            flex-grow: 1;
-            justify-content: flex-end;
-            flex-wrap: nowrap;
-        }
-        .btn-apply {
-            background: #004d40;
-            color: #fff !important;
-            border: none;
-            padding: 0 18px;
-            height: 36px;
-            border-radius: 6px;
-            font-weight: 600 !important;
-            font-size: 12px !important;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            white-space: nowrap;
-            transition: 0.2s;
-            box-sizing: border-box;
-        }
-        .btn-apply:hover {
-            background: #00332a;
-        }
-        .btn-secondary-custom {
-            background: #fff;
-            color: #4a5568 !important;
-            border: 1px solid #dce1e5;
-            padding: 0 16px;
-            height: 36px;
-            border-radius: 6px;
-            font-weight: 600 !important;
-            font-size: 12px !important;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            white-space: nowrap;
-            transition: 0.2s;
-            box-sizing: border-box;
-        }
-        .btn-secondary-custom:hover {
-            background: #f8fafc;
-            color: #0b1a26 !important;
-            border-color: #cbd5e1;
-        }
-
-        /* SEGMENTED CONTROL TAB STYLING */
-        .segmented-control {
-            display: inline-flex;
-            background: #f1f5f9;
-            padding: 3px;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            height: 36px;
-            box-sizing: border-box;
-            align-items: center;
-        }
-        .segment-btn {
-            border: none;
-            background: transparent;
-            padding: 0 16px;
-            height: 30px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #64748b;
-            cursor: pointer;
-            transition: all 0.2s;
-            white-space: nowrap;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            box-sizing: border-box;
-        }
-        .segment-btn:hover {
-            color: #334155;
-        }
-        .segment-btn.active {
-            background: #ffffff;
-            color: #004d40;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-        }
+        .top-controls { display: flex; flex-direction: row; gap: 10px; align-items: center; }
+        .btn-apply { background: #004d40; color: #fff !important; border: none; padding: 8px 20px; border-radius: 4px; font-weight: 500 !important; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; transition:0.2s;}
+        .btn-apply:hover { background: #00332a; }
+        .btn-secondary-custom { background: #fff; color: #4a5568 !important; border: 1px solid #dce1e5; padding: 8px 18px; border-radius: 4px; font-weight: 500 !important; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; transition:0.2s;}
+        .btn-secondary-custom:hover { background: #f8f9fa; color: #0b1a26 !important; }
         
         /* SEARCH BAR */
-        .search-container {
-            position: relative;
-            max-width: 200px;
-            width: 100%;
-            height: 36px;
-            box-sizing: border-box;
-        }
-        .search-container .search-icon {
-            position: absolute;
-            left: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #94a3b8 !important;
-            font-size: 16px !important;
-            pointer-events: none;
-        }
-        .search-container input {
-            width: 100%;
-            height: 36px;
-            padding: 0 12px 0 32px;
-            border-radius: 6px;
-            border: 1px solid #dce1e5;
-            background-color: #ffffff;
-            font-size: 12px !important;
-            font-weight: 500 !important;
-            color: #333 !important;
-            outline: none;
-            box-sizing: border-box;
-            transition: 0.2s;
-        }
-        .search-container input:focus {
-            border-color: #004d40;
-            box-shadow: 0 0 0 2px rgba(0, 77, 64, 0.1);
-        }
+        .search-container { position: relative; max-width: 250px; width: 100%; }
+        .search-container .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #7f8c8d !important; font-size: 16px !important; pointer-events: none; }
+        .search-container input { width: 100%; height: 36px; padding: 8px 15px 8px 32px; border-radius: 4px; border: 1px solid #dce1e5; background-color: #ffffff; font-size: 13px !important; color: #333 !important; outline: none; }
+        .search-container input:focus { border-color: #004d40; box-shadow: 0 0 0 2px rgba(0, 77, 64, 0.1); }
 
         /* GRAPH LAYOUT */
         .map-wrapper { display: flex; flex-grow: 1; overflow: hidden; position: relative; }
@@ -419,10 +230,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         </div>
         <div class="top-controls">
             <!-- TOPOLOGY MODE TABS -->
-            <div class="segmented-control" style="margin-right: 10px;">
-                <button class="segment-btn active" id="tabL2" onclick="switchMode('layer2')">Layer 2</button>
-                <button class="segment-btn" id="tabL3" onclick="switchMode('layer3')">Layer 3</button>
-                <button class="segment-btn" id="tabEP" onclick="switchMode('endpoint')">Endpoints</button>
+            <div class="btn-group" style="display:flex; border: 1px solid #dce1e5; border-radius: 4px; overflow: hidden; margin-right: 15px;">
+                <button class="btn-action" style="border:none; border-radius:0; margin:0; background:#004d40; color:#fff;" id="tabL2" onclick="switchMode('layer2')">Layer 2</button>
+                <button class="btn-action" style="border:none; border-radius:0; margin:0;" id="tabL3" onclick="switchMode('layer3')">Layer 3</button>
+                <button class="btn-action" style="border:none; border-radius:0; margin:0;" id="tabEP" onclick="switchMode('endpoint')">Endpoints</button>
             </div>
             <!-- GLOBAL SEARCH -->
             <div class="search-container">
@@ -431,18 +242,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             </div>
             
             <!-- AUTO GENERATE / PHYSICS RESET -->
-            <div style="display:flex; align-items:center; gap:8px;">
-                <label style="font-size: 11px; font-weight: 600; color: #64748b; margin: 0; text-transform: uppercase;">Layout:</label>
-                <select id="layoutSelect" class="form-control-fix" onchange="applySelectedLayout()" style="width: 140px; height: 32px; font-size: 12px; padding: 2px 8px; border: 1px solid #dce1e5; border-radius: 4px; background-color: #fff; outline: none;">
-                    <option value="cose">Force-Directed (Spring)</option>
-                    <option value="dagre">Hierarchical (Tree)</option>
-                    <option value="breadthfirst">Concentric (Radial)</option>
-                    <option value="circle">Circular (Ring)</option>
-                </select>
-                <button class="btn-secondary-custom" id="physicsBtn" onclick="applySelectedLayout()" title="Re-run selected layout" style="height: 32px; padding: 0 10px; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                    <span class="material-symbols-outlined" style="font-size:16px!important;">sync</span> Run
-                </button>
-            </div>
+            <button class="btn-secondary-custom" id="physicsBtn" onclick="togglePhysics()" title="Run spring force layout simulation">
+                <span class="material-symbols-outlined" style="font-size:16px!important; margin-right:4px;">hub</span> Auto Layout
+            </button>
 
             <button class="btn-secondary-custom" id="editModeBtn" onclick="toggleEditMode()">
                 <span class="material-symbols-outlined">edit</span> Customize Map
@@ -457,11 +259,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 <span class="material-symbols-outlined">add_link</span> Add Connection
             </button>
 
-            <button class="btn-apply" id="discoverLinksBtn" onclick="discoverLinksFromCanvas()" style="display: none; background: #004d40 !important;" title="Discover physical connections using LLDP/CDP/FDB cache">
-                <span class="material-symbols-outlined">explore</span> Auto-Connect LLDP
-            </button>
-
-            <button class="btn-apply" id="saveLayoutBtn" onclick="saveLayout(true)" style="display: none;">
+            <button class="btn-apply" id="saveLayoutBtn" onclick="saveLayout()" style="display: none;">
                 <span class="material-symbols-outlined">save</span> Save Layout
             </button>
         </div>
@@ -469,29 +267,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
     <!-- MAP CANVAS CONTAINER -->
     <div class="map-wrapper">
-        <!-- Blank Canvas Helper Overlay -->
-        <div id="blankCanvasHelper" class="blank-helper-overlay" style="display: none;">
-            <span class="material-symbols-outlined helper-icon">schema</span>
-            <h3>Manual Topology Builder</h3>
-            <p>This is a blank canvas. Start building your custom map in two simple steps:</p>
-            <div class="helper-steps">
-                <div class="helper-step">
-                    <span class="step-num">1</span>
-                    <div>
-                        <strong>Activate Customizer Mode</strong>
-                        <p>Click the <b>"Customize Map"</b> button in the top-right toolbar.</p>
-                    </div>
-                </div>
-                <div class="helper-step">
-                    <span class="step-num">2</span>
-                    <div>
-                        <strong>Add & Connect Peripherals</strong>
-                        <p>Click <b>"Add Node"</b> to place devices. Then click <b>"Auto-Connect LLDP"</b> to link them instantly!</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Active Mode Indicator Badge -->
         <div class="mode-badge">
             <div class="mode-dot" id="modeDot"></div>
@@ -666,18 +441,18 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
 <!-- DIAGNOSTIC PING MODAL -->
 <div class="modal-overlay" id="pingModal" style="display:none;">
-    <div class="modal-box" style="width: 550px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:20px;">
-            <h5 style="font-weight:600; margin:0; color:#0b1a26; text-transform:uppercase; font-size:14px; display:flex; align-items:center; gap:8px;">
-                <span class="material-symbols-outlined" style="font-size:18px; color: #004d40;">terminal</span> Connection Diagnostic Ping
+    <div class="modal-box" style="background:#0f172a; width: 550px; border:1px solid rgba(255,255,255,0.1); border-radius:12px; box-shadow:0 20px 40px rgba(0,0,0,0.5); padding:20px; font-family:'Courier New', Courier, monospace;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px; margin-bottom:15px;">
+            <h5 style="font-weight:600; margin:0; color:#38bdf8; font-size:14px; display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="font-size:18px;">terminal</span> CONNECTION DIAGNOSTIC PING
             </h5>
-            <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size:18px;" onclick="closePingModal()">close</span>
+            <span class="material-symbols-outlined" style="cursor:pointer; color:#94a3b8; font-size:18px;" onclick="closePingModal()">close</span>
         </div>
         
-        <div id="pingConsole" style="background:#0f172a; border-radius:6px; padding:15px; min-height:220px; max-height:300px; overflow-y:auto; color:#38bdf8; font-family:'Courier New', Courier, monospace; font-size:12px; line-height:1.6; white-space:pre-wrap; margin-bottom:20px; border:1px solid rgba(0,0,0,0.1); text-align:left;"></div>
+        <div id="pingConsole" style="background:#020617; border-radius:6px; padding:15px; min-height:220px; max-height:300px; overflow-y:auto; color:#38bdf8; font-size:12px; line-height:1.6; white-space:pre-wrap; margin-bottom:15px; border:1px solid rgba(255,255,255,0.05); text-align:left;"></div>
         
         <div style="display:flex; justify-content:flex-end; gap:10px;">
-            <button id="pingCloseBtn" class="btn-secondary-custom" onclick="closePingModal()" style="display:none;">Close</button>
+            <button id="pingCloseBtn" class="btn-apply" onclick="closePingModal()" style="display:none; background:#3b82f6;">Close</button>
         </div>
     </div>
 </div>
@@ -693,7 +468,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
     let cy = null; // Cytoscape instance
     let currentTopologyMode = 'layer2';
-    let currentMapType = 'auto';
 
     let isEditMode = false;
     let isPhysicsActive = true;
@@ -710,13 +484,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         unknown: { border: '#94a3b8', background: '#f8fafc', highlight: { border: '#64748b', background: '#e2e8f0' } }
     };
 
-    function decodeHtml(str) {
-        if (!str) return '';
-        var txt = document.createElement("textarea");
-        txt.innerHTML = str;
-        return txt.value;
-    }
-
     const SHAPE_STYLES = {
         shape: 'dot',
         size: 22,
@@ -731,15 +498,15 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     async function init() {
         // Load Maps/Dashboards configuration list
         try {
-            const r = await fetch(`${LEGACY_API}?api=load_config&t=${Date.now()}`);
+            const r = await fetch(`${LEGACY_API}?api=load_config`);
             masterDashboards = await r.json();
 
             // Load Groups into Creation Modal Dropdown
-            const rg = await fetch(`${LEGACY_API}?api=groups&t=${Date.now()}`);
+            const rg = await fetch(`${LEGACY_API}?api=groups`);
             const groups = await rg.json();
             const gsel = document.getElementById('m_group');
             gsel.innerHTML = '';
-            groups.forEach(g => gsel.add(new Option(decodeHtml(g.name), g.id)));
+            groups.forEach(g => gsel.add(new Option(g.name, g.id)));
 
             const params = new URLSearchParams(window.location.search);
             const dashId = params.get('dash_id');
@@ -763,17 +530,17 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             <td>${d.group_name || 'All Groups'}</td>
             <td>${d.agent_name || 'All Nodes'}</td>
             <td style="text-align:right;">
-                <button class="btn-action" onclick="openDashboard('${d.id}')" title="Open Map">
-                    <span class="material-symbols-outlined">visibility</span>
+                <button class="btn-action" onclick="openDashboard('${d.id}')">
+                    <span class="material-symbols-outlined">visibility</span> Open Map
                 </button>
-                <button class="btn-action" onclick="editDashboard('${d.id}')" title="Configure">
-                    <span class="material-symbols-outlined">settings</span>
+                <button class="btn-action" onclick="editDashboard('${d.id}')">
+                    <span class="material-symbols-outlined">edit</span> Configure
                 </button>
-                <button class="btn-action" onclick="duplicateDashboard('${d.id}')" title="Duplicate">
-                    <span class="material-symbols-outlined">content_copy</span>
+                <button class="btn-action" onclick="duplicateDashboard('${d.id}')">
+                    <span class="material-symbols-outlined">content_copy</span> Duplicate
                 </button>
-                <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')" title="Delete">
-                    <span class="material-symbols-outlined">delete</span>
+                <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')">
+                    <span class="material-symbols-outlined">delete</span> Delete
                 </button>
             </td>
         </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Topology Maps Created Yet.</td></tr>';
@@ -784,7 +551,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (!d) return renderMasterList();
 
         currentDashId = id;
-        currentMapType = d.map_type || 'auto';
         document.getElementById('masterView').style.display = 'none';
         document.getElementById('detailView').style.display = 'flex';
         document.getElementById('detailDashName').innerText = d.name;
@@ -831,7 +597,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         document.getElementById('modalTitle').innerText = 'Edit Topology Configuration';
         document.getElementById('btnSubmitModal').innerText = 'Save Changes';
         document.getElementById('m_name').value = d.name;
-        document.getElementById('m_type').value = d.map_type || 'auto';
+        document.getElementById('m_type').value = d.map_type || ((d.group_id === '0' && d.agent_id === '0' && d.nodes && Object.keys(d.nodes).length > 0) ? 'blank' : 'auto');
         document.getElementById('m_group').value = d.group_id;
         loadAgentOptions(d.agent_id);
         document.getElementById('createModal').style.display = 'flex';
@@ -843,13 +609,13 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
     async function loadAgentOptions(selectedId = 0) {
         const gid = document.getElementById('m_group').value;
-        const r = await fetch(`${LEGACY_API}?api=agents&group_id=${gid}&t=${Date.now()}`);
+        const r = await fetch(`${LEGACY_API}?api=agents&group_id=${gid}`);
         const agents = await r.json();
         
         const sel = document.getElementById('m_agent');
         sel.innerHTML = '';
         agents.forEach(a => {
-            const opt = new Option(decodeHtml(a.alias), a.id);
+            const opt = new Option(a.alias, a.id);
             if (a.id == selectedId) opt.selected = true;
             sel.add(opt);
         });
@@ -972,26 +738,15 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 cy.destroy();
             }
 
-            const res = await fetch(`${API_URL}?api=get_topology&dash_id=${currentDashId}&mode=${currentTopologyMode}&t=${Date.now()}`);
+            const res = await fetch(`${API_URL}?api=get_topology&dash_id=${currentDashId}&mode=${currentTopologyMode}`);
             const data = await res.json();
             if (!data.ok) {
                 console.error("Failed to load map data: ", data.error);
                 return;
             }
 
-            // Show/Hide Blank Canvas Helper Overlay dynamically
-            const helper = document.getElementById('blankCanvasHelper');
-            if (helper) {
-                const nodeCount = (data.elements || []).filter(el => el.group === 'nodes').length;
-                if (currentMapType === 'blank' && nodeCount === 0) {
-                    helper.style.display = 'block';
-                } else {
-                    helper.style.display = 'none';
-                }
-            }
-
             // Also fetch raw nodes for legacy sidebar details mapping
-            const legacyRes = await fetch(`${LEGACY_API}?api=nodes_links&dash_id=${currentDashId}&t=${Date.now()}`);
+            const legacyRes = await fetch(`api-network.php?api=nodes_links&dash_id=${currentDashId}`);
             const legacyData = await legacyRes.json();
             if (legacyData.ok) {
                 allRawNodes = legacyData.nodes || [];
@@ -1001,8 +756,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             cy = cytoscape({
                 container: document.getElementById('network-map-canvas'),
                 elements: data.elements,
-                minZoom: 0.3,
-                maxZoom: 1.1,
                 style: [
                     {
                         selector: 'node',
@@ -1054,50 +807,16 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         }
                     }
                 ],
-                layout: { name: 'null' }
-            });
-
-            // Determine and apply layout algorithm dynamically
-            let hasPresetPositions = false;
-            if (data.elements) {
-                hasPresetPositions = data.elements.some(el => el.group === 'nodes' && el.position);
-            }
-
-            const defaultLayoutName = hasPresetPositions ? 'preset' : (document.getElementById('layoutSelect') ? document.getElementById('layoutSelect').value : 'cose');
-            
-            const selectEl = document.getElementById('layoutSelect');
-            if (selectEl) {
-                if (!hasPresetPositions) {
-                    selectEl.value = defaultLayoutName;
+                layout: {
+                    name: 'breadthfirst',
+                    circle: true, // Creates radial star pattern like OpManager
+                    directed: true,
+                    spacingFactor: 1.5,
+                    padding: 40,
+                    animate: true,
+                    animationDuration: 700
                 }
-            }
-
-            let layoutConfig = {
-                name: defaultLayoutName,
-                animate: !hasPresetPositions,
-                animationDuration: 700,
-                padding: 40
-            };
-
-            if (defaultLayoutName === 'breadthfirst') {
-                layoutConfig.circle = true;
-                layoutConfig.spacingFactor = 1.5;
-            } else if (defaultLayoutName === 'cose') {
-                layoutConfig.nodeRepulsion = function(node) { return 4096; };
-                layoutConfig.componentSpacing = 80;
-                layoutConfig.idealEdgeLength = function(edge) { return 100; };
-                layoutConfig.edgeElasticity = function(edge) { return 32; };
-                layoutConfig.nestingFactor = 1.2;
-                layoutConfig.gravity = 1;
-                layoutConfig.numIter = 1000;
-                layoutConfig.refresh = 20;
-            } else if (defaultLayoutName === 'dagre') {
-                layoutConfig.rankDir = 'TB';
-                layoutConfig.nodeSep = 50;
-                layoutConfig.rankSep = 100;
-            }
-
-            cy.layout(layoutConfig).run();
+            });
 
             // Interaction Events
             cy.on('tap', 'node', function(evt){
@@ -1119,36 +838,23 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
     }
 
-    function applySelectedLayout() {
+    function togglePhysics() {
         if (!cy) return;
-        const selectedLayout = document.getElementById('layoutSelect').value;
-        
-        let layoutConfig = {
-            name: selectedLayout,
-            animate: true,
-            animationDuration: 700,
-            padding: 40
-        };
-        
-        if (selectedLayout === 'breadthfirst') {
-            layoutConfig.circle = true;
-            layoutConfig.spacingFactor = 1.5;
-        } else if (selectedLayout === 'cose') {
-            layoutConfig.nodeRepulsion = function(node) { return 4096; };
-            layoutConfig.componentSpacing = 80;
-            layoutConfig.idealEdgeLength = function(edge) { return 100; };
-            layoutConfig.edgeElasticity = function(edge) { return 32; };
-            layoutConfig.nestingFactor = 1.2;
-            layoutConfig.gravity = 1;
-            layoutConfig.numIter = 1000;
-            layoutConfig.refresh = 20;
-        } else if (selectedLayout === 'dagre') {
-            layoutConfig.rankDir = 'TB';
-            layoutConfig.nodeSep = 50;
-            layoutConfig.rankSep = 100;
+        isPhysicsActive = !isPhysicsActive;
+        if(isPhysicsActive) {
+            cy.layout({ name: 'dagre', animate: true, animationDuration: 500 }).run();
         }
         
-        cy.layout(layoutConfig).run();
+        const physBtn = document.getElementById('physicsBtn');
+        if (physBtn) {
+            if (isPhysicsActive) {
+                physBtn.classList.add('btn-apply');
+                physBtn.classList.remove('btn-secondary-custom');
+            } else {
+                physBtn.classList.remove('btn-apply');
+                physBtn.classList.add('btn-secondary-custom');
+            }
+        }
     }
 
     function toggleEditMode() {
@@ -1162,40 +868,39 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const editModeBtn = document.getElementById('editModeBtn');
             const addNodeBtn = document.getElementById('addNodeBtn');
             const addLinkBtn = document.getElementById('addLinkBtn');
-            const discoverLinksBtn = document.getElementById('discoverLinksBtn');
             const saveLayoutBtn = document.getElementById('saveLayoutBtn');
 
             if (isEditMode) {
                 modeDot.classList.add('edit-mode');
-                modeLabel.innerText = currentMapType === 'blank' ? "Customizer Mode (Blank Canvas)" : "Customizer Mode (Drag & Link)";
+                modeLabel.innerText = "Customizer Mode (Drag & Link)";
                 editModeBtn.classList.add('btn-apply');
                 editModeBtn.classList.remove('btn-secondary-custom');
                 editModeBtn.innerHTML = `<span class="material-symbols-outlined">visibility</span> View Mode`;
                 
                 if (addNodeBtn) addNodeBtn.style.display = 'inline-flex';
                 if (addLinkBtn) addLinkBtn.style.display = 'inline-flex';
-                if (discoverLinksBtn) discoverLinksBtn.style.display = 'inline-flex';
                 if (saveLayoutBtn) saveLayoutBtn.style.display = 'inline-flex';
             } else {
                 modeDot.classList.remove('edit-mode');
-                modeLabel.innerText = currentMapType === 'blank' ? "Blank Canvas (Manual Build)" : "Auto-Discovery (Real-time)";
+                modeLabel.innerText = "Auto-Discovery (Real-time)";
                 editModeBtn.classList.remove('btn-apply');
                 editModeBtn.classList.add('btn-secondary-custom');
                 editModeBtn.innerHTML = `<span class="material-symbols-outlined">edit</span> Customize Map`;
                 
                 if (addNodeBtn) addNodeBtn.style.display = 'none';
                 if (addLinkBtn) addLinkBtn.style.display = 'none';
-                if (discoverLinksBtn) discoverLinksBtn.style.display = 'none';
                 if (saveLayoutBtn) saveLayoutBtn.style.display = 'none';
             }
     }
 
     function switchMode(mode) {
         currentTopologyMode = mode;
-        document.querySelectorAll('.segment-btn').forEach(btn => btn.classList.remove('active'));
-        if (mode === 'layer2') document.getElementById('tabL2').classList.add('active');
-        if (mode === 'layer3') document.getElementById('tabL3').classList.add('active');
-        if (mode === 'endpoint') document.getElementById('tabEP').classList.add('active');
+        document.getElementById('tabL2').style.background = mode === 'layer2' ? '#004d40' : '#f8fafc';
+        document.getElementById('tabL2').style.color = mode === 'layer2' ? '#fff' : '#4b5563';
+        document.getElementById('tabL3').style.background = mode === 'layer3' ? '#004d40' : '#f8fafc';
+        document.getElementById('tabL3').style.color = mode === 'layer3' ? '#fff' : '#4b5563';
+        document.getElementById('tabEP').style.background = mode === 'endpoint' ? '#004d40' : '#f8fafc';
+        document.getElementById('tabEP').style.color = mode === 'endpoint' ? '#fff' : '#4b5563';
         loadNetworkTopology();
     }
 
@@ -1325,7 +1030,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         printNextLine();
     }
 
-    async function saveLayout(showAlert = false) {
+    async function saveLayout() {
         if (!isEditMode || !cy) return;
 
         const nodesPosData = {};
@@ -1354,9 +1059,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             });
             const data = await res.json();
             if (data.ok) {
-                if (showAlert) {
-                    alert("Topology layout and manual connections successfully saved to mapping_layout.json!");
-                }
+                alert("Topology layout and manual connections successfully saved to mapping_layout.json!");
             } else {
                 alert(`Error saving layout: ${data.error}`);
             }
@@ -1392,14 +1095,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         srcSel.innerHTML = '<option value="">-- Select Source Agent --</option>';
         tgtSel.innerHTML = '<option value="">-- Select Target Agent --</option>';
 
-        if (cy) {
-            cy.nodes().forEach(node => {
-                const id = node.data('id');
-                const label = node.data('label');
-                srcSel.add(new Option(decodeHtml(label), id));
-                tgtSel.add(new Option(decodeHtml(label), id));
-            });
-        }
+        allRawNodes.forEach(n => {
+            srcSel.add(new Option(n.label, n.id));
+            tgtSel.add(new Option(n.label, n.id));
+        });
 
         document.getElementById('addLinkModal').style.display = 'flex';
     }
@@ -1421,7 +1120,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             const ports = await res.json();
 
             ports.forEach(p => {
-                portSel.add(new Option(decodeHtml(p.clean_name), p.id));
+                portSel.add(new Option(p.clean_name, p.id));
             });
         } catch (e) {
             console.error("Ports query failed: ", e);
@@ -1472,35 +1171,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         saveLayout();
     }
 
-    let addNodeAgentsStore = [];
-
-    async function openAddNodeModal() {
+    function openAddNodeModal() {
         const sel = document.getElementById('newNodeAgent');
-        sel.innerHTML = '<option value="">Loading devices...</option>';
-        
-        const d = masterDashboards.find(x => x.id === currentDashId);
-        const groupId = d ? (d.group_id || '0') : '0';
-        
-        try {
-            const res = await fetch(`${LEGACY_API}?api=agents&group_id=${groupId}&t=${Date.now()}`);
-            addNodeAgentsStore = await res.json();
-            
-            sel.innerHTML = '<option value="">-- Select Device --</option>';
-            addNodeAgentsStore.forEach(a => {
-                if (a.id === '0' || a.id === 0) return; // Skip All Nodes placeholder
-                
-                const existsOnCanvas = cy && cy.getElementById(a.id.toString()).length > 0;
-                if (!existsOnCanvas) {
-                    const decodedAlias = decodeHtml(a.alias);
-                    const label = a.ip ? `${decodedAlias} (${a.ip})` : decodedAlias;
-                    sel.add(new Option(label, a.id));
-                }
-            });
-        } catch (e) {
-            sel.innerHTML = '<option value="">-- Error loading devices --</option>';
-            console.error(e);
-        }
-        
+        sel.innerHTML = '<option value="">-- Select Device --</option>';
+        allRawNodes.forEach(n => {
+            if (cy && cy.getElementById(n.id.toString()).length === 0) {
+                sel.add(new Option(n.label, n.id));
+            }
+        });
         document.getElementById('addNodeModal').style.display = 'flex';
     }
 
@@ -1513,131 +1191,21 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const agentId = sel.value;
         if (!agentId || !cy) return;
 
-        const rawNode = addNodeAgentsStore.find(n => n.id == agentId);
+        const rawNode = allRawNodes.find(n => n.id == agentId);
         if (rawNode) {
-            if (cy.getElementById(rawNode.id.toString()).length > 0) return;
-
             cy.add({
                 group: 'nodes',
                 data: {
                     id: rawNode.id.toString(),
-                    label: rawNode.alias,
+                    label: rawNode.label,
                     ip: rawNode.ip,
                     type: 'switch'
                 },
-                position: { x: 250, y: 250 }
+                position: { x: 0, y: 0 }
             });
-
-            if (!allRawNodes.find(n => n.id == rawNode.id)) {
-                allRawNodes.push({
-                    id: parseInt(rawNode.id),
-                    label: rawNode.alias,
-                    ip: rawNode.ip,
-                    worst_status: 0
-                });
-            }
-
+            cy.layout({ name: 'breadthfirst', circle: true, animate: true, animationDuration: 500 }).run();
             closeAddNodeModal();
             saveLayout();
-        }
-    }
-
-    async function discoverLinksFromCanvas() {
-        if (!cy) return;
-        
-        const nodes = cy.nodes();
-        if (nodes.length < 2) {
-            alert("Please add at least two devices (agents) to the canvas first.");
-            return;
-        }
-
-        const btn = document.getElementById('discoverLinksBtn');
-        const origText = btn.innerHTML;
-        btn.innerHTML = `<span class="material-symbols-outlined animate-spin" style="font-size:16px!important; animation: spin 1s linear infinite;">sync</span> Discovering...`;
-        btn.disabled = true;
-
-        // Dynamic spin animation inject safely
-        if (!document.getElementById('spinAnimationInject')) {
-            const style = document.createElement('style');
-            style.id = 'spinAnimationInject';
-            style.innerHTML = `@keyframes spin { 100% { transform: rotate(360deg); } }`;
-            document.head.appendChild(style);
-        }
-
-        try {
-            // 1. Silently save current manual positions first so backend knows about any newly added nodes
-            await saveLayout(false);
-
-            // 2. Fetch all physical connections discovered by LLDP/CDP/FDB for these nodes
-            const res = await fetch(`api-topology.php?api=get_topology&dash_id=${currentDashId}&mode=layer2&t=${Date.now()}`);
-            const data = await res.json();
-            
-            if (data.ok) {
-                let discoveredCount = 0;
-                
-                // 3. Find edges returned from backend
-                const backendEdges = data.elements.filter(el => el.group === 'edges');
-                
-                backendEdges.forEach(e => {
-                    const id = e.data.id;
-                    const source = e.data.source;
-                    const target = e.data.target;
-                    const label = e.data.label || 'LLDP Link';
-                    
-                    // If this link doesn't exist on the canvas, add it manually
-                    const exists = cy.getElementById(id).length > 0;
-                    if (!exists) {
-                        // Also check for bidirectional matches to avoid duplicate overlapping lines
-                        const reverseExists = cy.edges().some(edge => 
-                            (edge.data('source') == source && edge.data('target') == target) ||
-                            (edge.data('source') == target && edge.data('target') == source)
-                        );
-                        
-                        if (!reverseExists) {
-                            cy.add({
-                                group: 'edges',
-                                data: {
-                                    id: id,
-                                    source: source,
-                                    target: target,
-                                    label: label
-                                }
-                            });
-                            
-                            // Track in master configuration's manual_links for persistence
-                            const d = masterDashboards.find(x => x.id === currentDashId);
-                            if (d) {
-                                if (!d.manual_links) d.manual_links = [];
-                                d.manual_links.push({
-                                    id: id,
-                                    source: parseInt(source),
-                                    target: parseInt(target),
-                                    source_port_name: label.split(' - ')[0] || 'port',
-                                    target_port_name: label.split(' - ')[1] || 'port'
-                                });
-                            }
-                            discoveredCount++;
-                        }
-                    }
-                });
-                
-                // 4. Save and persist the newly discovered connections
-                await saveLayout(false);
-                
-                if (discoveredCount > 0) {
-                    alert(`Success! Discovered and connected ${discoveredCount} physical link(s) automatically via LLDP/CDP/FDB.`);
-                } else {
-                    alert("No new physical connections were detected between these nodes in the LLDP/CDP cache.");
-                }
-            } else {
-                alert(`Discovery failed: ${data.error}`);
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Error running auto-discovery.");
-        } finally {
-            btn.innerHTML = origText;
-            btn.disabled = false;
         }
     }
 </script>
