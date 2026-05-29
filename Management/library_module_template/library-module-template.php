@@ -35,8 +35,18 @@ if (!is_dir($BASE_TEMPLATE_DIR)) {
 
 
 // Write default CPU Usage template on first run if empty
-$default_file = $BASE_TEMPLATE_DIR . '/System/CPU/CPU Usage (%).txt';
-if (!file_exists($default_file)) {
+function is_template_dir_empty($dir) {
+    if (!is_dir($dir)) return true;
+    $files = array_diff(scandir($dir), ['.', '..']);
+    foreach ($files as $f) {
+        if (is_dir($dir . '/' . $f) && !is_template_dir_empty($dir . '/' . $f)) return false;
+        if (pathinfo($f, PATHINFO_EXTENSION) === 'txt') return false;
+    }
+    return true;
+}
+
+if (is_template_dir_empty($BASE_TEMPLATE_DIR)) {
+    $default_file = $BASE_TEMPLATE_DIR . '/System/CPU/CPU Usage (%).txt';
     @mkdir(dirname($default_file), 0777, true);
     $default_content = "# Group: System\n" .
                        "# Sub Group: CPU\n" .
