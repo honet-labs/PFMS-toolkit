@@ -108,11 +108,18 @@ if ($api === 'save_config') {
     ob_clean(); header('Content-Type: application/json');
     $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if (empty($csrf_token) || $client_token !== $csrf_token) {
-        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token']); exit;
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh portal.']); exit;
     }
     $input = file_get_contents('php://input');
-    file_put_contents($CONFIG_FILE, $input);
-    echo json_encode(['ok' => true]); exit;
+    $bytes = @file_put_contents($CONFIG_FILE, $input);
+    if ($bytes === false) {
+        $err = error_get_last();
+        $errMsg = $err['message'] ?? 'Permission Denied / Unknown Error';
+        echo json_encode(['ok' => false, 'error' => "Gagal menulis ke file ($CONFIG_FILE). Alasan: $errMsg", 'file' => basename($CONFIG_FILE)]);
+    } else {
+        echo json_encode(['ok' => true, 'file' => basename($CONFIG_FILE)]);
+    }
+    exit;
 }
 
 if ($api === 'export') {
@@ -1248,8 +1255,17 @@ if ($api === 'series') {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN },
             body: JSON.stringify(masterDashboards)
-        }).then(r => r.json()).then(res => {
-            if(res.ok && callback) callback();
+        })
+        .then(r => r.json())
+        .then(res => {
+            if(res.ok) {
+                if(callback) callback();
+            } else {
+                alert(res.error || 'Failed to save configuration.');
+            }
+        })
+        .catch(err => {
+            alert('Error communicating with server: ' + err.message);
         });
     }
 
@@ -1487,7 +1503,7 @@ if ($api === 'series') {
         });
     }
 
-    async function saveNewDashboard() {
+    function saveNewDashboard() {
         const name = document.getElementById('m_name').value; if(!name) return alert("Name required");
         const gsel = document.getElementById('m_group');
         const asel = document.getElementById('m_agent');
@@ -1506,11 +1522,20 @@ if ($api === 'series') {
             masterDashboards.push({ id, name, group_id: gsel.value, group_name: gsel.options[gsel.selectedIndex].text, agent_id: asel.value, agent_name: asel.options[asel.selectedIndex].text, hidden_interfaces: [] });
         }
         
-        await fetch('?api=save_config', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':CSRF_TOKEN}, body:JSON.stringify(masterDashboards) });
-        closeCreateModal(); renderMasterList();
+        saveConfigToServer(() => {
+            closeCreateModal(); 
+            renderMasterList();
+        });
     }
 
-    async function deleteDashboard(id) { if(confirm("Delete this dashboard?")) { masterDashboards = masterDashboards.filter(x => x.id !== id); await fetch('?api=save_config', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':CSRF_TOKEN}, body:JSON.stringify(masterDashboards) }); renderMasterList(); } }
+    function deleteDashboard(id) { 
+        if(confirm("Delete this dashboard?")) { 
+            masterDashboards = masterDashboards.filter(x => x.id !== id); 
+            saveConfigToServer(() => {
+                renderMasterList();
+            });
+        } 
+    }
     function copyShareLink() { navigator.clipboard.writeText(window.location.href).then(() => alert("Link Copied!")); }
 
     let lastInId, lastOutId, lastTitle;
