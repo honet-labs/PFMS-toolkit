@@ -148,12 +148,15 @@ if ($api === 'detail_graph' && $db_status) {
         $unitRow = $stmtUnit->fetch();
         $unit = $unitRow ? pretty_text($unitRow['unit']) : '';
 
-        $query = "SELECT FROM_UNIXTIME(utimestamp, '%Y-%m-%d %H:%i') as waktu, datos
-                  FROM tagente_datos
-                  WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                  ORDER BY utimestamp ASC LIMIT 1500";
+        $query = "SELECT FROM_UNIXTIME(ts, '%Y-%m-%d %H:%i') as waktu, datos FROM (
+                    SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+                    UNION ALL
+                    SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+                    UNION ALL
+                    SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+                  ) AS combined ORDER BY ts ASC LIMIT 1500";
         $stmt = $pdo->prepare($query);
-        $stmt->execute([$id_mod, $start, $end]);
+        $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
         $data = $stmt->fetchAll();
         echo json_encode(['ok' => true, 'data' => $data, 'unit' => $unit]);
     } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
@@ -380,8 +383,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             display: grid; 
             grid-template-columns: repeat(12, 1fr); 
             grid-auto-rows: auto;
+            grid-auto-flow: row dense;
             gap: 15px; 
-            align-items: start; 
+            align-items: stretch; 
             width: 100%;
         } 
         
