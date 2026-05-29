@@ -27,13 +27,13 @@ if (empty($user_id)) {
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 
 // Directory Configuration
-$BASE_TEMPLATE_DIR = realpath(__DIR__) . '/library_module_template';
+$BASE_TEMPLATE_DIR = realpath(__DIR__);
 if (!is_dir($BASE_TEMPLATE_DIR)) {
     @mkdir($BASE_TEMPLATE_DIR, 0777, true);
 }
 
 // Clear Menu Cache to ensure this page is loaded correctly in the sidebar
-$menu_cache_file = realpath(__DIR__ . '/../') . '/temp/menu_cache.json';
+$menu_cache_file = realpath(__DIR__ . '/../../') . '/temp/menu_cache.json';
 if (file_exists($menu_cache_file)) {
     @unlink($menu_cache_file);
 }
