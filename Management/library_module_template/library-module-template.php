@@ -433,7 +433,7 @@ if ($api === 'delete') {
     loadTemplatesFromServer();
 
     function loadTemplatesFromServer(selectPath = null) {
-        fetch('?api=list')
+        fetch('?api=list&_t=' + Date.now())
             .then(r => r.json())
             .then(res => {
                 if (res.ok) {
