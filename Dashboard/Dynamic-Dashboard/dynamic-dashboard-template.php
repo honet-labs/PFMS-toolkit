@@ -2,7 +2,7 @@
 /* dynamic-dashboard-template.php
  *
  * Universal Grafana-Style Dynamic Dashboard
- * - Version: 4.9 (STABLE: Masonry Fix & API Optimization)
+ * - Version: 4.9.3 (STABLE: Fully Responsive Table View, Word-Wrap Fixes)
  * - Features: 12-Column Smart Grid, Drag & Drop Flow, Auto-Clone Panels, Real-Time HUD.
  */
 
@@ -176,21 +176,18 @@ if ($api === 'bulk_panel_data') {
     if ($agent_id === 0 || empty($panels)) { echo json_encode(['ok' => false, 'error' => 'Missing param']); exit; }
 
     try {
-        // Helper to normalize strings (remove NBSP, extra spaces, lowercase, trim)
+        // Helper to normalize strings
         function normalize_mod_name($s) {
-            // First run pretty_text to clean HTML entities and standard spaces
             $s = pretty_text($s);
-            // Replace any kind of space (including non-breaking spaces) with standard space
             $s = preg_replace('/\s+/u', ' ', $s);
             $s = str_replace(chr(194).chr(160), ' ', $s);
-            // Remove non-printable characters safely
             $s = preg_replace('/[^\x20-\x7E]/', '', $s);
             return strtolower(trim($s));
         }
 
-        // Fetch ALL modules for this agent once to avoid multiple name-matching issues
+        // Fetch ALL modules for this agent
         $stAll = $pdo->prepare("SELECT m.id_agente_modulo, m.nombre, m.min, m.max, m.unit, e.datos as current_val, COALESCE(e.estado, 4) as estado, e.utimestamp as last_contact,
-                                       a.nombre as agent_name, a.direccion as ip_address, g.nombre as group_name, a.id_agente
+                                       a.alias as agent_name, a.direccion as ip_address, g.nombre as group_name, a.id_agente
                                 FROM tagente_modulo m 
                                 JOIN tagente a ON m.id_agente = a.id_agente
                                 JOIN tgrupo g ON a.id_grupo = g.id_grupo
@@ -242,7 +239,7 @@ if ($api === 'bulk_panel_data') {
                     }
                 }
             }
-            // Ensure unique modules if keywords overlap
+            // Ensure unique modules
             $temp = [];
             foreach($modulesFound as $m) { $temp[$m['id_agente_modulo']] = $m; }
             $modulesFound = array_values($temp);
@@ -382,9 +379,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         #panelsGrid { 
             display: grid; 
             grid-template-columns: repeat(12, 1fr); 
-            grid-auto-rows: auto;
-            grid-auto-flow: row dense;
-            gap: 15px; 
+            grid-auto-rows: 5px; 
+            row-gap: 15px; 
+            column-gap: 15px; 
             align-items: start; 
             width: 100%;
         } 
@@ -402,26 +399,17 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .panel-rule-wrapper.dragging { opacity: 0.4; transform: scale(0.98); }
         .panel-rule-wrapper.drag-over { border: 2px dashed #004d40; border-radius: 8px; padding: 4px; }
         
-        /* Responsive Grid Adjustments */
         @media (max-width: 1400px) {
-            #panelsGrid { grid-template-columns: repeat(12, 1fr); gap: 12px; }
+            #panelsGrid { grid-template-columns: repeat(12, 1fr); row-gap: 12px; column-gap: 12px; }
         }
-        
         @media (max-width: 1200px) {
-            #panelsGrid { grid-template-columns: repeat(8, 1fr); gap: 10px; }
-            .panel-rule-wrapper { 
-                /* Scale spans for 8-column grid */
-                grid-column: span var(--span-tablet, 4); 
-            }
+            #panelsGrid { grid-template-columns: repeat(8, 1fr); row-gap: 10px; column-gap: 10px; }
+            .panel-rule-wrapper { grid-column: span var(--span-tablet, 4); }
         }
-        
         @media (max-width: 768px) {
-            #panelsGrid { grid-template-columns: repeat(4, 1fr); gap: 8px; }
-            .panel-rule-wrapper { 
-                grid-column: span var(--span-mobile, 4); 
-            }
+            #panelsGrid { grid-template-columns: repeat(4, 1fr); row-gap: 8px; column-gap: 8px; }
+            .panel-rule-wrapper { grid-column: span var(--span-mobile, 4); }
         }
-
         @media (max-width: 480px) {
             #panelsGrid { grid-template-columns: 1fr; }
             .panel-rule-wrapper { grid-column: span 1; }
@@ -473,30 +461,43 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .radio-btn-group input { width: 16px; height: 16px; margin: 0; cursor: pointer;}
         .d-none { display: none !important; }
 
-        /* Custom Table in detail modal */
-        .table-pfms {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-            background: #fff;
+        /* CUSTOM TABLE IN DETAIL MODAL & PANELS */
+        .table-pfms { 
+            width: 100%; 
+            max-width: 100%; 
+            border-collapse: collapse; 
+            font-size: 12px; 
+            background: #fff; 
+            table-layout: auto; 
         }
-        .table-pfms th {
-            background: #f8fafc;
-            color: #475569;
-            font-weight: 600;
-            text-align: left;
-            padding: 10px 16px;
-            border-bottom: 1px solid #e2e8f0;
+        .table-pfms th { 
+            background: #f8fafc; 
+            color: #475569; 
+            font-weight: 600; 
+            text-align: left; 
+            padding: 8px 10px; 
+            border-bottom: 1px solid #e2e8f0; 
+            white-space: normal; 
         }
-        .table-pfms td {
-            padding: 10px 16px;
-            border-bottom: 1px solid #f1f5f9;
+        .table-pfms td { 
+            padding: 8px 10px; 
+            border-bottom: 1px solid #f1f5f9; 
+            vertical-align: middle; 
+            overflow-wrap: anywhere; 
         }
-        .table-pfms tr:hover td {
-            background: #f8fafc;
-        }
+        .table-pfms tr:hover td { background: #f8fafc; }
 
-        /* NEW VIEW TYPES CSS */
+        .table-wrap-dyn { 
+            width: 100%; 
+            max-width: 100%; 
+            overflow-x: auto; 
+            margin-top: 5px; 
+            border: 1px solid #e2e8f0; 
+            border-radius: 6px; 
+        }
+        .table-wrap-dyn::-webkit-scrollbar { height: 6px; }
+        .table-wrap-dyn::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
         .mini-stats-row { display: flex; gap: 12px; width: 100%; flex-wrap: wrap; margin-bottom: 5px;}
         .mini-stat { flex: 1; min-width: 100px; text-align: center; padding: 10px 5px; border-radius: 8px; background: #ffffff; border: 1px solid #e0e4e8; border-top: 4px solid #ccc; box-shadow: 0 2px 5px rgba(0,0,0,0.03); transition: 0.2s; cursor: pointer; position: relative; overflow: hidden; }
         .mini-stat:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.06); }
@@ -510,10 +511,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .st-gray { border-top-color: #94a3b8; color: #475569; background: rgba(148, 163, 184, 0.05); }
         .st-blue { border-top-color: #3498db; color: #3498db; background: rgba(52, 152, 219, 0.05); }
 
-        .table-wrap-dyn { width: 100%; overflow-x: auto; margin-top: 5px; border: 1px solid #f0f3f5; border-radius: 4px; }
-        .table-dyn { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .table-dyn th { background: #fafbfc; border-bottom: 1px solid #e0e4e8; padding: 8px 12px; text-align: left; color: #7f8c8d; font-weight: normal; text-transform: uppercase; font-size: 9px; }
-        .table-dyn td { border-bottom: 1px solid #f0f3f5; padding: 8px 12px; color: #0b1a26; word-break: break-word; min-width: 80px; max-width: 250px; }
+        .table-dyn { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
+        .table-dyn th { background: #fafbfc; border-bottom: 1px solid #e0e4e8; padding: 6px 10px; text-align: left; color: #7f8c8d; font-weight: normal; text-transform: uppercase; font-size: 9px; white-space: normal; }
+        .table-dyn td { border-bottom: 1px solid #f0f3f5; padding: 6px 10px; color: #0b1a26; word-break: break-word; vertical-align: middle; overflow-wrap: anywhere; }
         
         .status-pill-dyn { padding: 2px 8px; border-radius: 4px; font-size: 9px; text-transform: uppercase; color: #fff; font-weight: 500; display: inline-block; min-width: 50px; text-align: center; }
         .bg-green { background: linear-gradient(135deg, #2ecc71, #27ae60) !important; color: #fff !important; } 
@@ -532,38 +532,45 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .btn-toggle-hidden:hover { background: #e2e8f0; color: #334155; }
         .btn-toggle-hidden.active { background: #004d40; color: #fff; border-color: #004d40; }
 
-        /* MULTI-SELECT TAGS CSS */
         .selected-tags-container { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; min-height: 0; }
         .module-tag { background: #e0f2f1; color: #004d40; border: 1px solid #b2dfdb; padding: 2px 8px; border-radius: 4px; font-size: 11px; display: flex; align-items: center; gap: 5px; font-weight: 500; }
         .module-tag .remove-tag { cursor: pointer; color: #00796b; font-weight: bold; font-size: 14px; line-height: 1; }
         .module-tag .remove-tag:hover { color: #e74c3c; }
-        /* ACTION BUTTONS UI */
-        .btn-action {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            padding: 0;
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            color: #64748b;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-decoration: none;
-            margin-left: 5px;
-            box-sizing: border-box;
-        }
-        .btn-action:hover {
-            background: #f1f5f9;
-            border-color: #cbd5e1;
-            color: #0f172a;
-        }
+        .btn-action { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; color: #64748b; cursor: pointer; transition: all 0.2s; text-decoration: none; margin-left: 5px; box-sizing: border-box; }
+        .btn-action:hover { background: #f1f5f9; border-color: #cbd5e1; color: #0f172a; }
         .btn-action .material-symbols-outlined { font-size: 16px !important; }
         .btn-action.btn-delete { color: #ef4444; border-color: #fee2e2; }
         .btn-action.btn-delete:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
 
+        /* NATIVE CHART IFRAME MODAL FIX */
+        .iframe-modal-box {
+            background: #ffffff;
+            width: 850px;
+            max-width: 95%;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+        .iframe-header {
+            padding: 15px 25px;
+            background: #fafbfc;
+            border-bottom: 1px solid #e0e4e8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .iframe-title {
+            font-size: 15px !important;
+            font-weight: 600 !important;
+            color: #0b1a26;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
     </style>
 </head>
 <body>
@@ -810,6 +817,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <option value="xl">Extra Large</option>
                     </select>
                 </div>
+                <div class="form-group" style="flex:1;" id="wrap_row_limit">
+                    <label>Row Limit (Table)</label>
+                    <input type="number" id="p_row_limit" class="form-control-fix" value="200" min="1" max="1000">
+                </div>
             </div>
 
             <div style="display:flex; gap:10px; margin-top:5px; padding:10px; background:#fff; border:1px solid #dce1e5; border-radius:6px; margin-bottom:10px;">
@@ -867,7 +878,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <input type="checkbox" class="col-visibility-chk" value="ip" checked> IP Address
                     </label>
                     <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px; color: #4a5568;">
-                        <input type="checkbox" class="col-visibility-chk" value="module" checked> Sensor Module
+                        <input type="checkbox" class="col-visibility-chk" value="module" checked> Module
                     </label>
                     <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px; color: #4a5568;">
                         <input type="checkbox" class="col-visibility-chk" value="status" checked> Status
@@ -921,15 +932,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <th style="padding:12px 15px;">AGENT</th>
                         <th style="padding:12px 15px;">GROUP</th>
                         <th style="padding:12px 15px;">IP ADDRESS</th>
-                        <th style="padding:12px 15px;">SENSOR MODULE</th>
+                        <th style="padding:12px 15px;">MODULE</th>
                         <th style="padding:12px 15px;">VALUE</th>
                         <th style="padding:12px 15px;">STATUS</th>
                         <th style="padding:12px 15px; text-align:center;">ACTION</th>
                     </tr>
                 </thead>
                 <tbody id="statusDetailBody">
-                    <!-- Data will be injected here -->
-                </tbody>
+                    </tbody>
             </table>
         </div>
         <div style="padding:15px 25px; border-top:1px solid #f0f3f5; text-align:right; background:#fafbfc;">
@@ -938,7 +948,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     </div>
 </div>
 
-<!-- NATIVE PANDORA CHART IFRAME MODAL -->
 <div class="modal-overlay" id="nativeChartModal" onclick="closeNativeChartModal()">
     <div class="iframe-modal-box" onclick="event.stopPropagation()">
         <div class="iframe-header">
@@ -951,7 +960,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     </div>
 </div>
 
-<!-- NATIVE MODULE DETAIL FALLBACK MODAL -->
 <div class="modal-overlay" id="nativeModuleDetailModal" style="display:none;">
     <div class="modal-box iframe-modal-box" style="width: 950px; max-width: 95%; height: 85vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
         <div class="iframe-header" style="padding: 15px 20px; border-bottom: 1px solid #e0e4e8; display:flex; justify-content:space-between; align-items:center; background-color:#f8f9fa; flex-shrink:0;">
@@ -959,7 +967,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size:20px;" onclick="closeNativeModuleDetailModal()">close</span>
         </div>
         <div class="modal-body-scroll" style="flex-grow:1; padding:20px; overflow-y:auto; background:#f8fafc; display:flex; flex-direction:column; gap:20px;">
-            <!-- Range Selector Control -->
             <div style="display:flex; justify-content:space-between; align-items:center; background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:12px 20px; flex-wrap:wrap; gap:12px;">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span class="material-symbols-outlined" style="color:#004d40; font-size:18px;">schedule</span>
@@ -982,7 +989,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
             </div>
 
-            <!-- Chart Container -->
             <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; min-height:260px; position:relative;">
                 <h6 style="margin:0 0 10px 0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Historical Trend</h6>
                 <div style="height:200px; width:100%; position:relative;">
@@ -990,7 +996,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
             </div>
             
-            <!-- Table Container -->
             <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; display:flex; flex-direction:column; flex-grow:1; min-height:300px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                     <h6 style="margin:0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Data Log</h6>
@@ -1014,7 +1019,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     </div>
 </div>
 
-    <script src="/pandora_console/custom/panel/vendor/sortablejs/Sortable.min.js"></script>
+<script src="/pandora_console/custom/panel/vendor/sortablejs/Sortable.min.js"></script>
 <script>
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
 let masterDashboards = [];
@@ -1028,7 +1033,7 @@ let globalModuleList = [];
 let editingPanelId = null;
 let lastFetchedData = {};
 let showHiddenPanels = false;
-isFetchingModules = true;
+let isFetchingModules = true;
 let exactModulePage = 1;
 const exactModuleLimit = 50;
 
@@ -1123,13 +1128,12 @@ function saveConfigToServer(callback, quiet = false) {
 
 function updateURLState(dashId = null, groupId = null, agentId = null) {
     const u = new URL(window.location.href);
-    // Cleanup old long params if present
     u.searchParams.delete('standalone');
     u.searchParams.delete('dash_id');
     u.searchParams.delete('group_id');
     u.searchParams.delete('agent_id');
     u.searchParams.delete('panel_id');
-    u.searchParams.delete('v'); // Clean version param
+    u.searchParams.delete('v'); 
 
     if (dashId) {
         u.searchParams.set('d', dashId);
@@ -1404,7 +1408,6 @@ function forceRefresh() {
     refreshCurrentNodeData();
     if (refreshIntervalConfig > 0) { countdownValue = refreshIntervalConfig; updateCountdownUI(); }
     
-    // Update global last update timestamp
     const now = new Date();
     const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
                     now.getMinutes().toString().padStart(2, '0') + ':' + 
@@ -1489,7 +1492,6 @@ function renderPanelsGrid() {
         wrapper.id = `wrapper_p_${p.id}`;
         wrapper.setAttribute('data-id', p.id);
         
-        // Calculate responsive spans
         const wValue = parseInt(p.width) || 12;
         wrapper.style.setProperty('grid-column', `span ${wValue}`, 'important');
         
@@ -1499,12 +1501,11 @@ function renderPanelsGrid() {
         grid.appendChild(wrapper);
     });
 
-    // Initialize SortableJS for modern Drag & Drop Builder
     if (!IS_STANDALONE && typeof Sortable !== 'undefined') {
         new Sortable(grid, {
             animation: 150,
             ghostClass: 'dragging-ghost',
-            handle: '.drag-handle', // Use dedicated drag handle icon to prevent button click interception
+            handle: '.drag-handle', 
             draggable: '.panel-rule-wrapper',
             onEnd: function (evt) {
                 const currentDash = masterDashboards.find(d => d.id === currentDashId);
@@ -1519,11 +1520,11 @@ function renderPanelsGrid() {
                 
                 currentDash.panels = newOrder;
                 markUnsaved();
-                // Just force refresh data
                 forceRefresh();
             }
         });
     }
+    setTimeout(resizeAllGridItems, 100);
 }
 
 function toggleHiddenVisibility() {
@@ -1564,7 +1565,6 @@ function formatSmartValue(val, useRaw) {
     let s = String(val).replace(',', '.');
     if (!isNaN(s) && s.trim() !== '') {
         let f = parseFloat(s);
-        // If it's a whole number, return as integer. Otherwise, max 2 decimals.
         return (f % 1 === 0) ? f.toString() : Number(f.toFixed(2)).toString();
     }
     return val;
@@ -1575,14 +1575,13 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const bgClass = cMap[moduleData.status] || 'bg-gray';
     let valText = formatSmartValue(moduleData.current, p.use_raw);
     
-    // Custom Label Logic for 1/0
     if (p.lbl_1 && (moduleData.current == 1 || moduleData.current === '1')) valText = p.lbl_1;
     else if (p.lbl_0 && (moduleData.current == 0 || moduleData.current === '0')) valText = p.lbl_0;
 
     let contentHtml = '';
     const fs = p.font_size || 32;
     const fw = p.font_weight || 700;
-    const showMod = p.show_module !== false; // Default true
+    const showMod = p.show_module !== false; 
     const isMultiOverlay = moduleData.module_name === 'Multi-Module Overlay';
     const modNameHtml = showMod ? `<div class="mod-subtitle" style="${isMultiOverlay ? 'margin:0 auto;' : ''}">${moduleData.module_name}</div>` : '';
     const statusHtml = isMultiOverlay ? '' : `<div style="display:flex; align-items:center;"><span class="status-dot ${bgClass}"></span><span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span></div>`;
@@ -1603,11 +1602,11 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         } else {
             contentHtml = `<div class="heatmap-wrap" style="max-height:${h};">${history.map(h => {
                 const val = parseFloat(h.val);
-                let color = '#e2e8f0'; // Default light gray
-                if (val === 0) color = '#2ecc71'; // OK
-                else if (val === 1) color = '#e74c3c'; // CRITICAL
-                else if (val === 2) color = '#f1c40f'; // WARNING
-                else if (val > 0) color = '#2ecc71'; // Fallback
+                let color = '#e2e8f0'; 
+                if (val === 0) color = '#2ecc71'; 
+                else if (val === 1) color = '#e74c3c'; 
+                else if (val === 2) color = '#f1c40f'; 
+                else if (val > 0) color = '#2ecc71'; 
                 
                 return `<div class="heat-block" style="background:${color};" title="${h.lbl}: ${h.val}"></div>`;
             }).join('')}</div>`;
@@ -1623,7 +1622,6 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                 const url = `${PANDORA_URL}/operation/agentes/stat_win.php?type=sparse&period=86400&id=${moduleData.id}&refresh=600&pure=1&draw_events=0&period_graph=0`;
                 chartHtml = `
                 <div class="chart-wrapper" style="height:230px; overflow:hidden; border-radius:4px; position:relative; background:#fff;">
-                    <!-- Custom Loader -->
                     <div id="loader_${uniqueId}" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:1; background:#fff;">
                         <div class="pf-spinner" style="width:30px; height:30px; border:3px solid #f3f3f3; border-top:3px solid #2ecc71; border-radius:50%; animation: pf-spin 1s linear infinite;"></div>
                         <span style="font-size:10px; color:#95a5a6; margin-top:8px;">Synchronizing...</span>
@@ -1703,22 +1701,24 @@ function generateSummaryPanelHtml(p, modules) {
             </div>`;
     } else if (p.type === 'status_table') {
         const visibleCols = p.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
+        const limit = p.row_limit || 200;
+        const displayModules = modules.slice(0, limit);
         
         let headerRow = '';
         if (visibleCols.includes('agent')) headerRow += '<th>Node Agent</th>';
         if (visibleCols.includes('group')) headerRow += '<th>Group</th>';
         if (visibleCols.includes('ip')) headerRow += '<th>IP Address</th>';
-        if (visibleCols.includes('module')) headerRow += '<th>Sensor Module</th>';
+        if (visibleCols.includes('module')) headerRow += '<th>Module</th>';
         if (visibleCols.includes('status')) headerRow += '<th style="text-align:center;">Status / Value</th>';
         if (visibleCols.includes('history')) headerRow += '<th style="text-align:center;">Metrics History</th>';
         if (visibleCols.includes('threshold')) headerRow += '<th>Threshold</th>';
 
         content = `
-            <div class="table-wrap-dyn" style="overflow-x:auto;">
-                <table class="table-pfms" style="width:100%;">
+            <div class="table-wrap-dyn">
+                <table class="table-pfms">
                     <thead><tr>${headerRow}</tr></thead>
                     <tbody>
-                        ${modules.map(m => {
+                        ${displayModules.map(m => {
                             const bgClass = {0:'bg-green', 1:'bg-red', 2:'bg-yellow', 4:'bg-blue'}[m.status] || 'bg-gray';
                             const statusLbl = {0:'UP', 1:'CRITICAL', 2:'WARNING', 4:'NOT INIT'}[m.status] || 'UNKNOWN';
                             const cleanVal = formatSmartValue(m.current, p.use_raw);
@@ -1741,20 +1741,20 @@ function generateSummaryPanelHtml(p, modules) {
                             if (visibleCols.includes('module')) {
                                 let lastContactStr = m.last_contact ? new Date(m.last_contact * 1000).toLocaleString('id-ID', {hour12:false}) : 'Awaiting';
                                 rowHtml += `<td>
-                                    <div style="font-weight:500; color:#0b1a26; margin-bottom:2px;">${m.module_name}</div>
+                                    <div style="font-weight:500; color:#0b1a26; margin-bottom:2px; word-break: break-word;">${m.module_name}</div>
                                     <div style="font-size:10px; color:#7f8c8d;">Update: ${lastContactStr}</div>
                                 </td>`;
                             }
                             if (visibleCols.includes('status')) {
                                 rowHtml += `<td style="text-align:center;">
-                                    <span class="status-pill-dyn ${bgClass}" style="color:#fff!important; border:none; padding: 6px 12px; font-weight:600; display:inline-block; border-radius:4px; font-size:11px;">
+                                    <span class="status-pill-dyn ${bgClass}" style="color:#fff!important; border:none; padding: 4px 10px; font-weight:600; display:inline-block; border-radius:4px; font-size:11px; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis;">
                                         ${cleanVal} ${m.unit}
                                     </span>
                                 </td>`;
                             }
                             if (visibleCols.includes('history')) {
                                 rowHtml += `<td style="text-align:center;">
-                                    <div style="display:inline-flex; gap:8px; align-items:center; justify-content:center; width:100%;">
+                                    <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; width:100%;">
                                         <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}')" title="View Chart">
                                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>
                                         </button>
@@ -1827,7 +1827,6 @@ function refreshCurrentNodeData() {
         return true;
     });
     
-    // Ensure spinners are shown while loading
     targetPanels.forEach(p => {
         const loadOverlay = document.getElementById(`load_${p.id}`);
         if(loadOverlay) loadOverlay.style.display = 'flex';
@@ -1855,7 +1854,7 @@ function refreshCurrentNodeData() {
         if(lastUpd) lastUpd.innerText = 'Last Update: ' + new Date().toLocaleTimeString();
         
         const dataMap = res.data || {};
-        lastFetchedData = dataMap; // Store for drill-down
+        lastFetchedData = dataMap; 
         Object.values(chartInstances).forEach(c => { if(c) c.destroy(); });
         chartInstances = {};
 
@@ -1878,14 +1877,12 @@ function refreshCurrentNodeData() {
                 return; 
             }
 
-            // --- 1. Prepare Active Modules ---
             var activeModules = panelData.modules || [];
             if (!showHiddenPanels && p.excluded) {
                 activeModules = activeModules.filter(m => !p.excluded.map(String).includes(String(m.id)));
             }
             activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
 
-            // --- 2. Render HTML Content ---
             if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut'].includes(p.type)) {
                 wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             } else {
@@ -1898,22 +1895,12 @@ function refreshCurrentNodeData() {
                 }
             }
 
-            // --- 3. Render Charts ---
             const colors = [
-                'rgba(0, 77, 64, 0.75)',    // Premium Teal
-                'rgba(25, 118, 210, 0.75)',  // Deep Blue
-                'rgba(211, 47, 47, 0.75)',   // Crimson Red
-                'rgba(245, 124, 0, 0.75)',   // Vibrant Orange
-                'rgba(123, 31, 162, 0.75)',  // Royal Purple
-                'rgba(0, 150, 136, 0.75)',   // Sea Green
-                'rgba(251, 192, 45, 0.75)',  // Golden Yellow
-                'rgba(97, 97, 97, 0.75)',    // Slate Gray
-                'rgba(233, 30, 99, 0.75)',    // Hot Pink
-                'rgba(141, 110, 99, 0.75)'   // Earth Brown
+                'rgba(0, 77, 64, 0.75)', 'rgba(25, 118, 210, 0.75)', 'rgba(211, 47, 47, 0.75)', 'rgba(245, 124, 0, 0.75)', 'rgba(123, 31, 162, 0.75)',
+                'rgba(0, 150, 136, 0.75)', 'rgba(251, 192, 45, 0.75)', 'rgba(97, 97, 97, 0.75)', 'rgba(233, 30, 99, 0.75)', 'rgba(141, 110, 99, 0.75)'
             ];
             const borders = [
-                '#004d40', '#1976d2', '#d32f2f', '#f57c00', '#7b1fa2',
-                '#009688', '#fbc02d', '#616161', '#e91e63', '#8d6e63'
+                '#004d40', '#1976d2', '#d32f2f', '#f57c00', '#7b1fa2', '#009688', '#fbc02d', '#616161', '#e91e63', '#8d6e63'
             ];
 
             if (['pie', 'donut'].includes(p.type)) {
@@ -1960,14 +1947,7 @@ function refreshCurrentNodeData() {
                                 responsive: true,
                                 maintainAspectRatio: false,
                                 plugins: {
-                                    legend: {
-                                        display: true,
-                                        position: 'right',
-                                        labels: {
-                                            boxWidth: 10,
-                                            font: { size: 10 }
-                                        }
-                                    },
+                                    legend: { display: true, position: 'right', labels: { boxWidth: 10, font: { size: 10 } } },
                                     tooltip: {
                                         backgroundColor: 'rgba(15, 23, 42, 0.95)',
                                         titleColor: '#ffffff',
@@ -1975,9 +1955,7 @@ function refreshCurrentNodeData() {
                                         padding: 10,
                                         cornerRadius: 6,
                                         callbacks: {
-                                            label: function(context) {
-                                                return `Count: ${context.parsed}`;
-                                            }
+                                            label: function(context) { return `Count: ${context.parsed}`; }
                                         }
                                     }
                                 }
@@ -1986,11 +1964,9 @@ function refreshCurrentNodeData() {
                     } catch(e) { console.error("Pie/Donut Error:", e); }
                 }
             } else if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
-                // RENDER MULTI-OVERLAY CHART
                 const uniqueId = `${p.id}_multi`;
                 const canvas = document.getElementById(`chart_${uniqueId}`);
                 if (canvas) {
-                    // Synchronize and sort unique timestamps chronologically
                     let allTimestampsSet = new Set();
                     activeModules.forEach(m => (m.history || []).forEach(h => {
                         if (h.ts !== undefined) allTimestampsSet.add(Number(h.ts));
@@ -2036,23 +2012,11 @@ function refreshCurrentNodeData() {
                             options: {
                                 responsive: true, maintainAspectRatio: false,
                                 plugins: { 
-                                    legend: { 
-                                        display: true, 
-                                        position: 'bottom', 
-                                        labels: { boxWidth: 10, font: { size: 9 }, color: '#64748b', usePointStyle: true } 
-                                    },
+                                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 9 }, color: '#64748b', usePointStyle: true } },
                                     tooltip: {
-                                        enabled: true,
-                                        mode: 'index',
-                                        intersect: false,
-                                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                                        titleColor: '#ffffff',
-                                        bodyColor: '#cbd5e1',
-                                        borderColor: 'rgba(255, 255, 255, 0.1)',
-                                        borderWidth: 1,
-                                        padding: 10,
-                                        cornerRadius: 6,
-                                        displayColors: true,
+                                        enabled: true, mode: 'index', intersect: false,
+                                        backgroundColor: 'rgba(15, 23, 42, 0.95)', titleColor: '#ffffff', bodyColor: '#cbd5e1',
+                                        borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, padding: 10, cornerRadius: 6, displayColors: true,
                                         callbacks: {
                                             label: function(context) {
                                                 const datasetLabel = context.dataset.label || '';
@@ -2066,19 +2030,13 @@ function refreshCurrentNodeData() {
                                 },
                                 scales: {
                                     x: { display: !!p.show_time, ticks: { font: { size: 8 }, autoSkip: true, maxTicksLimit: 6 }, grid: { display: false } },
-                                    y: { 
-                                        beginAtZero: true,
-                                        max: p.force_100 ? 100 : undefined,
-                                        ticks: { font: { size: 9 } }, 
-                                        grid: { color: '#f0f3f5', drawBorder: false } 
-                                    }
+                                    y: { beginAtZero: true, max: p.force_100 ? 100 : undefined, ticks: { font: { size: 9 } }, grid: { color: '#f0f3f5', drawBorder: false } }
                                 }
                             }
                         });
                     } catch(e) { console.error("MultiChart Error:", e); }
                 }
             } else {
-                // RENDER INDIVIDUAL CHARTS
                 activeModules.forEach(m => {
                     const uniqueId = `${p.id}_${m.id}`;
                     const canvas = document.getElementById(`chart_${uniqueId}`);
@@ -2125,22 +2083,13 @@ function refreshCurrentNodeData() {
                                     }]
                                 }, 
                                 options:{
-                                    responsive:true, 
-                                    maintainAspectRatio:false, 
+                                    responsive:true, maintainAspectRatio:false, 
                                     plugins:{
                                         legend:{display:false},
                                         tooltip: {
-                                            enabled: true,
-                                            mode: 'index',
-                                            intersect: false,
-                                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                                            titleColor: '#ffffff',
-                                            bodyColor: '#cbd5e1',
-                                            borderColor: 'rgba(255, 255, 255, 0.1)',
-                                            borderWidth: 1,
-                                            padding: 10,
-                                            cornerRadius: 6,
-                                            displayColors: true,
+                                            enabled: true, mode: 'index', intersect: false,
+                                            backgroundColor: 'rgba(15, 23, 42, 0.95)', titleColor: '#ffffff', bodyColor: '#cbd5e1',
+                                            borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, padding: 10, cornerRadius: 6, displayColors: true,
                                             callbacks: {
                                                 label: function(context) {
                                                     const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
@@ -2151,23 +2100,8 @@ function refreshCurrentNodeData() {
                                         }
                                     }, 
                                     scales: { 
-                                        x: { 
-                                            display: !!p.show_time,
-                                            ticks: { font: { size: 8 }, autoSkip: true, maxTicksLimit: 6, maxRotation: 0 },
-                                            grid: { display: false }
-                                        }, 
-                                        y: { 
-                                            beginAtZero: true,
-                                            max: p.force_100 ? 100 : undefined,
-                                            ticks: { 
-                                                font: { size: 9 },
-                                                color: '#94a3b8',
-                                                callback: function(value) {
-                                                    return value + (m.unit ? ' ' + m.unit : '');
-                                                }
-                                            },
-                                            grid: { color: '#f0f3f5', drawBorder: false }
-                                        }
+                                        x: { display: !!p.show_time, ticks: { font: { size: 8 }, autoSkip: true, maxTicksLimit: 6, maxRotation: 0 }, grid: { display: false } }, 
+                                        y: { beginAtZero: true, max: p.force_100 ? 100 : undefined, ticks: { font: { size: 9 }, color: '#94a3b8', callback: function(value) { return value + (m.unit ? ' ' + m.unit : ''); } }, grid: { color: '#f0f3f5', drawBorder: false } }
                                     }
                                 }
                             });
@@ -2176,6 +2110,7 @@ function refreshCurrentNodeData() {
                 });
             }
         });
+        setTimeout(resizeAllGridItems, 250); 
     })
     .catch(err => {
         console.error("Refresh Error:", err);
@@ -2210,6 +2145,13 @@ function toggleTypeFields() {
     
     const isChart = ['line','area','bar'].includes(type);
     document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
+
+    const isTable = (type === 'status_table');
+    const wrapLimit = document.getElementById('wrap_row_limit');
+    if(wrapLimit) {
+        wrapLimit.style.opacity = isTable ? '1' : '0.3';
+        document.getElementById('p_row_limit').disabled = !isTable;
+    }
 }
 
 function showExactDropdown() { document.getElementById('exact_dropdown').style.display = 'flex'; renderExactModuleList(1); }
@@ -2284,6 +2226,7 @@ function openPanelBuilder() {
     document.getElementById('p_width').value = '12'; 
     document.getElementById('p_height').value = '200';
     document.getElementById('p_box_size').value = 'medium';
+    document.getElementById('p_row_limit').value = '200';
     document.getElementById('p_lbl_1').value = '';
     document.getElementById('p_lbl_0').value = '';
     document.getElementById('p_show_module').checked = true;
@@ -2307,6 +2250,7 @@ function openPanelEdit(id) {
     document.getElementById('p_width').value = p.width || 12; 
     document.getElementById('p_height').value = p.height || 200;
     document.getElementById('p_box_size').value = p.box_size || 'medium';
+    document.getElementById('p_row_limit').value = p.row_limit || 200;
     document.getElementById('p_font_size').value = p.font_size || 32;
     document.getElementById('p_font_weight').value = p.font_weight || 700;
     document.getElementById('p_show_module').checked = p.show_module !== false;
@@ -2356,6 +2300,7 @@ function applyPanel() {
         width: document.getElementById('p_width').value,
         height: document.getElementById('p_height').value || 200,
         box_size: document.getElementById('p_box_size').value || 'medium',
+        row_limit: parseInt(document.getElementById('p_row_limit').value) || 200,
         font_size: parseInt(document.getElementById('p_font_size').value) || 32,
         font_weight: document.getElementById('p_font_weight').value || 700,
         show_module: document.getElementById('p_show_module').checked,
@@ -2381,17 +2326,14 @@ function quickTogglePanelHidden(id, moduleId = null) {
     const p = dash.panels.find(x => x.id === id);
     if (p) {
         if (p.hidden) {
-            // If panel is hidden, unhide it first
             p.hidden = false;
         } else if (moduleId !== null && moduleId !== undefined) {
-            // If panel is visible, but a moduleId is passed, toggle exclusion for that module
             if (!p.excluded) p.excluded = [];
             const sModId = String(moduleId);
             const idx = p.excluded.map(String).indexOf(sModId);
             if (idx > -1) p.excluded.splice(idx, 1);
             else p.excluded.push(sModId);
         } else {
-            // Normal panel hide
             p.hidden = true;
         }
         markUnsaved();
@@ -2405,7 +2347,6 @@ function duplicatePanel(id) {
     const p = dash.panels.find(x => x.id === id);
     if (!p) return;
     
-    // Create a copy with a new ID
     const newP = JSON.parse(JSON.stringify(p));
     newP.id = 'p' + Date.now();
     newP.title = newP.title + ' (Copy)';
@@ -2417,10 +2358,15 @@ function duplicatePanel(id) {
 }
 
 function deletePanel(id) {
-    if(confirm('Delete panel?')) {
+    if(confirm('Apakah Anda yakin ingin menghapus panel ini?')) {
         const dash = masterDashboards.find(d => d.id === currentDashId);
         dash.panels = dash.panels.filter(x => x.id !== id);
-        markUnsaved(); renderPanelsGrid(); forceRefresh();
+        
+        saveConfigToServer(() => {
+            markSaved(); 
+            renderPanelsGrid(); 
+            forceRefresh();
+        }, true); 
     }
 }
 
@@ -2504,7 +2450,6 @@ function show_module_detail_dialog(module_id, id_agent, filter, interval, offset
             return;
         } catch (e) { console.warn("Failed top call:", e); }
     }
-    // Open our lightweight custom history modal!
     openNativeModuleDetailModal(module_id, title || 'Module Detail', offset || 86400);
 }
 
@@ -2588,7 +2533,6 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         
         const unit = res.unit ? ' ' + res.unit : '';
         
-        // Render Table Rows
         let html = '';
         data.forEach(row => {
             let formattedDate = row.waktu;
@@ -2606,7 +2550,6 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         });
         tableBody.innerHTML = html;
         
-        // Render Chart.js line graph
         const labels = data.map(row => {
             if (row.waktu && row.waktu.includes('-')) {
                 const parts = row.waktu.split(' ');
@@ -2618,8 +2561,6 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         const dataset = data.map(row => parseFloat(row.datos));
         
         const ctx = document.getElementById('nativeModuleDetailChart').getContext('2d');
-        
-        // Create custom gradient
         const gradient = ctx.createLinearGradient(0, 0, 0, 200);
         gradient.addColorStop(0, 'rgba(0, 77, 64, 0.2)');
         gradient.addColorStop(1, 'rgba(0, 77, 64, 0)');
@@ -2691,15 +2632,34 @@ document.addEventListener('click', function(e) {
 
 init();
 
-// Masonry Logic Removed to use standard Grid
-function resizeGridItem(item) { }
-function resizeAllGridItems() { }
+function resizeGridItem(item) {
+    const grid = document.getElementById("panelsGrid");
+    if (!grid) return;
+    const rowHeight = parseInt(window.getComputedStyle(grid).getPropertyValue('grid-auto-rows')) || 5;
+    const rowGap = parseInt(window.getComputedStyle(grid).getPropertyValue('row-gap')) || 15;
+    const content = item.querySelector('.panel-card');
+    if (!content) return;
+
+    content.style.height = 'auto';
+    const contentHeight = content.getBoundingClientRect().height;
+
+    const rowSpan = Math.ceil((contentHeight + rowGap) / (rowHeight + rowGap));
+    item.style.gridRowEnd = "span " + rowSpan;
+    content.style.height = '100%'; 
+}
+
+function resizeAllGridItems() {
+    const allItems = document.getElementsByClassName("panel-rule-wrapper");
+    for (let x = 0; x < allItems.length; x++) {
+        resizeGridItem(allItems[x]);
+    }
+}
 
 window.addEventListener("resize", resizeAllGridItems);
+const masonryObserver = new MutationObserver(resizeAllGridItems);
 
 const gridObserver = new ResizeObserver(entries => {
     for (let entry of entries) {
-        // Debounce or direct call
         resizeGridItem(entry.target);
     }
 });
@@ -2707,7 +2667,10 @@ const gridObserver = new ResizeObserver(entries => {
 function attachResizeObserver(pId) {
     setTimeout(() => {
         const el = document.getElementById(`wrapper_p_${pId}`);
-        if (el) gridObserver.observe(el);
+        if (el) {
+            gridObserver.observe(el);
+            resizeGridItem(el);
+        }
     }, 100);
 }
 </script>
