@@ -254,9 +254,14 @@ if ($api === 'save') {
     if (!empty($original_path)) {
         $old_full = realpath($BASE_TEMPLATE_DIR . '/' . $original_path);
         $new_full = realpath($dest_file);
-        if ($old_full && $old_full !== $new_full && str_starts_with($old_full, realpath($BASE_TEMPLATE_DIR))) {
-            @unlink($old_full);
-            prune_empty_dirs(dirname($old_full), $BASE_TEMPLATE_DIR);
+        $real_base = realpath($BASE_TEMPLATE_DIR);
+        if ($old_full && $old_full !== $new_full) {
+            $old_norm = str_replace('\\', '/', strtolower($old_full));
+            $base_norm = str_replace('\\', '/', strtolower($real_base));
+            if (strpos($old_norm, $base_norm) === 0) {
+                @unlink($old_full);
+                prune_empty_dirs(dirname($old_full), $BASE_TEMPLATE_DIR);
+            }
         }
     }
 
@@ -284,14 +289,20 @@ if ($api === 'delete') {
     $real_target = realpath($target_file);
     $real_base = realpath($BASE_TEMPLATE_DIR);
 
-    if ($real_target && str_starts_with($real_target, $real_base)) {
-        if (@unlink($real_target)) {
-            prune_empty_dirs(dirname($real_target), $real_base);
-            echo json_encode(['ok' => true]);
+    if ($real_target && $real_base) {
+        $target_norm = str_replace('\\', '/', strtolower($real_target));
+        $base_norm = str_replace('\\', '/', strtolower($real_base));
+        if (strpos($target_norm, $base_norm) === 0) {
+            if (@unlink($real_target)) {
+                prune_empty_dirs(dirname($real_target), $real_base);
+                echo json_encode(['ok' => true]);
+            } else {
+                $err = error_get_last();
+                $errMsg = $err['message'] ?? 'Permission Denied / File locked';
+                echo json_encode(['ok' => false, 'error' => "Gagal menghapus file dari disk. Alasan: $errMsg"]);
+            }
         } else {
-            $err = error_get_last();
-            $errMsg = $err['message'] ?? 'Permission Denied / File locked';
-            echo json_encode(['ok' => false, 'error' => "Gagal menghapus file dari disk. Alasan: $errMsg"]);
+            echo json_encode(['ok' => false, 'error' => 'Access Denied atau file template tidak ditemukan di disk server.']);
         }
     } else {
         echo json_encode(['ok' => false, 'error' => 'Access Denied atau file template tidak ditemukan di disk server.']);
