@@ -103,6 +103,47 @@ if ($api === 'agents_list' && $db_status) {
     foreach($list as &$l) { $l['alias'] = pretty_text($l['alias']); }
     echo json_encode($list); exit;
 }
+if ($api === 'module_list' && $db_status) {
+    ob_clean(); header('Content-Type: application/json');
+    $groupId = (int)($_GET['group_id'] ?? 0);
+    $manual_ids = $_GET['manual_ids'] ?? '';
+    
+    $params = [];
+    $whereClause = "";
+    
+    if (!empty($manual_ids) && $groupId == 0) {
+        $ids_array = array_filter(explode(',', $manual_ids));
+        if (!empty($ids_array)) {
+            $placeholders = implode(',', array_fill(0, count($ids_array), '?'));
+            $whereClause = "AND id_agente IN ($placeholders)";
+            foreach ($ids_array as $id) { $params[] = (int)$id; }
+        }
+    } elseif ($groupId > 0) {
+        $stmtAllGroups = $pdo->query("SELECT id_grupo, parent FROM tgrupo"); $allGroups = $stmtAllGroups->fetchAll();
+        if (!function_exists('getChildGroups')) {
+            function getChildGroups($parentId, $allGroups) { $children = [$parentId]; foreach ($allGroups as $g) { if ($g['parent'] == $parentId) { $children = array_merge($children, getChildGroups($g['id_grupo'], $allGroups)); } } return array_unique($children); }
+        }
+        $targetGroups = getChildGroups($groupId, $allGroups);
+        $placeholders = implode(',', array_fill(0, count($targetGroups), '?'));
+        $whereClause = "AND id_agente IN (SELECT id_agente FROM tagente WHERE id_grupo IN ($placeholders) AND disabled = 0)";
+        foreach ($targetGroups as $tg) { $params[] = $tg; }
+    }
+
+    try {
+        $sql = "SELECT DISTINCT nombre FROM tagente_modulo WHERE disabled = 0 $whereClause ORDER BY nombre ASC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $list = [];
+        while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $raw = $row['nombre'];
+            $list[] = ['raw' => $raw, 'pretty' => pretty_text($raw)];
+        }
+        echo json_encode($list);
+    } catch (Throwable $e) {
+        echo json_encode([]);
+    }
+    exit;
+}
 
 if ($api === 'detail_graph' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
@@ -118,6 +159,12 @@ if ($api === 'detail_graph' && $db_status) {
     }
 
     try {
+        // Fetch module unit
+        $stmtUnit = $pdo->prepare("SELECT COALESCE(unit, '') as unit FROM tagente_modulo WHERE id_agente_modulo = ?");
+        $stmtUnit->execute([$id_mod]);
+        $unitRow = $stmtUnit->fetch();
+        $unit = $unitRow ? pretty_text($unitRow['unit']) : '';
+
         $query = "SELECT FROM_UNIXTIME(utimestamp, '%Y-%m-%d %H:%i') as waktu, datos
                   FROM tagente_datos
                   WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
@@ -125,7 +172,7 @@ if ($api === 'detail_graph' && $db_status) {
         $stmt = $pdo->prepare($query);
         $stmt->execute([$id_mod, $start, $end]);
         $data = $stmt->fetchAll();
-        echo json_encode(['ok' => true, 'data' => $data]);
+        echo json_encode(['ok' => true, 'data' => $data, 'unit' => $unit]);
     } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
     exit;
 }
@@ -164,9 +211,29 @@ if ($api === 'card_data' && $db_status) {
     $groupId = (int)($_GET['group_id'] ?? 0);
     $keyword = $_GET['keyword'] ?? '%';
     $manual_ids = $_GET['manual_ids'] ?? '';
+    $matchType = $_GET['match_type'] ?? 'contains';
 
     try {
-        $params = ['%' . str_replace(' ', '%', $keyword) . '%']; $whereClause = "";
+        $params = [];
+        $matchClause = "";
+
+        if ($matchType === 'exact') {
+            $modulesArray = array_filter(array_map('trim', explode(',', $keyword)));
+            if (empty($modulesArray)) {
+                $matchClause = "m.nombre = ''";
+            } else {
+                $placeholders = implode(',', array_fill(0, count($modulesArray), '?'));
+                $matchClause = "m.nombre IN ($placeholders)";
+                foreach ($modulesArray as $modName) {
+                    $params[] = $modName;
+                }
+            }
+        } else {
+            $matchClause = "m.nombre LIKE ?";
+            $params[] = '%' . str_replace(' ', '%', $keyword) . '%';
+        }
+
+        $whereClause = "";
         if (!empty($manual_ids) && $groupId == 0) {
             $ids_array = array_filter(explode(',', $manual_ids));
             if (!empty($ids_array)) {
@@ -175,7 +242,9 @@ if ($api === 'card_data' && $db_status) {
             }
         } elseif ($groupId > 0) {
             $stmtAllGroups = $pdo->query("SELECT id_grupo, parent FROM tgrupo"); $allGroups = $stmtAllGroups->fetchAll();
-            function getChildGroups($parentId, $allGroups) { $children = [$parentId]; foreach ($allGroups as $g) { if ($g['parent'] == $parentId) { $children = array_merge($children, getChildGroups($g['id_grupo'], $allGroups)); } } return array_unique($children); }
+            if (!function_exists('getChildGroups')) {
+                function getChildGroups($parentId, $allGroups) { $children = [$parentId]; foreach ($allGroups as $g) { if ($g['parent'] == $parentId) { $children = array_merge($children, getChildGroups($g['id_grupo'], $allGroups)); } } return array_unique($children); }
+            }
             $targetGroups = getChildGroups($groupId, $allGroups);
             $whereClause = "AND a.id_grupo IN (" . implode(',', array_fill(0, count($targetGroups), '?')) . ")";
             foreach ($targetGroups as $tg) { $params[] = $tg; }
@@ -185,7 +254,7 @@ if ($api === 'card_data' && $db_status) {
                       INNER JOIN tagente a ON m.id_agente = a.id_agente
                       LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo
                       LEFT JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
-                      WHERE m.nombre LIKE ? AND a.disabled = 0 AND m.disabled = 0 $whereClause";
+                      WHERE $matchClause AND a.disabled = 0 AND m.disabled = 0 $whereClause";
 
         // 1. Get Grand Total Stats (Decoupled from table limits/fetching)
         $sqlStats = "SELECT COALESCE(e.estado, 4) as status, COUNT(*) as count 
@@ -211,7 +280,6 @@ if ($api === 'card_data' && $db_status) {
         $stTable = $pdo->prepare("SELECT a.id_agente, a.alias AS agent_alias, g.nombre AS group_name, a.direccion AS ip_address, m.id_agente_modulo, m.nombre AS module_name, e.timestamp, e.datos as current_value, m.min as low_limit, m.max as high_limit, COALESCE(m.unit, '') as unit, COALESCE(e.estado, 4) as estado $sqlCommon ORDER BY e.timestamp DESC");
         $stTable->execute($params);
         $tableData = $stTable->fetchAll();
-
         foreach ($tableData as &$row) {
             $row['agent_alias'] = pretty_text($row['agent_alias']);
             $row['group_name'] = pretty_text($row['group_name']);
@@ -220,7 +288,49 @@ if ($api === 'card_data' && $db_status) {
             $row['current_value'] = (float)$row['current_value'];
             $row['unit'] = pretty_text($row['unit']);
         }
-        echo json_encode(['ok' => true, 'stats' => $stats, 'table' => $tableData, 'updated' => date('H:i:s')]);
+
+        $historyData = [];
+        if (!empty($tableData) && isset($_GET['history']) && $_GET['history'] === '1') {
+            $modIds = array_column($tableData, 'id_agente_modulo');
+            if (!empty($modIds)) {
+                $placeholders = implode(',', array_fill(0, count($modIds), '?'));
+                $range = isset($_GET['time_range']) ? $_GET['time_range'] : '86400';
+                
+                if ($range === 'custom' && isset($_GET['start_time']) && isset($_GET['end_time'])) {
+                    $startTime = (int)$_GET['start_time'];
+                    $endTime = (int)$_GET['end_time'];
+                    $sqlHist = "SELECT id_agente_modulo, utimestamp, datos FROM tagente_datos 
+                                WHERE id_agente_modulo IN ($placeholders) AND utimestamp >= ? AND utimestamp <= ? 
+                                ORDER BY utimestamp ASC";
+                    $histParams = array_merge($modIds, [$startTime, $endTime]);
+                } else {
+                    $startTime = time() - (int)$range;
+                    $sqlHist = "SELECT id_agente_modulo, utimestamp, datos FROM tagente_datos 
+                                WHERE id_agente_modulo IN ($placeholders) AND utimestamp >= ? 
+                                ORDER BY utimestamp ASC";
+                    $histParams = array_merge($modIds, [$startTime]);
+                }
+                
+                $stHist = $pdo->prepare($sqlHist);
+                $stHist->execute($histParams);
+                $histList = $stHist->fetchAll();
+                foreach ($histList as $h) {
+                    $historyData[] = [
+                        'id_mod' => (int)$h['id_agente_modulo'],
+                        'utimestamp' => (int)$h['utimestamp'],
+                        'time' => date('d/m/Y H:i:s', $h['utimestamp']),
+                        'val' => (float)$h['datos']
+                    ];
+                }
+            }
+        }
+        echo json_encode([
+            'ok' => true, 
+            'stats' => $stats, 
+            'table' => $tableData, 
+            'history' => $historyData, 
+            'updated' => date('H:i:s')
+        ]);
     } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
     exit;
 }
@@ -231,9 +341,29 @@ if ($api === 'status_details' && $db_status) {
     $keyword = $_GET['keyword'] ?? '%';
     $manual_ids = $_GET['manual_ids'] ?? '';
     $statusFilter = $_GET['status_filter'] ?? 'all';
+    $matchType = $_GET['match_type'] ?? 'contains';
 
     try {
-        $params = ['%' . str_replace(' ', '%', $keyword) . '%']; $whereClause = "";
+        $params = [];
+        $matchClause = "";
+
+        if ($matchType === 'exact') {
+            $modulesArray = array_filter(array_map('trim', explode(',', $keyword)));
+            if (empty($modulesArray)) {
+                $matchClause = "m.nombre = ''";
+            } else {
+                $placeholders = implode(',', array_fill(0, count($modulesArray), '?'));
+                $matchClause = "m.nombre IN ($placeholders)";
+                foreach ($modulesArray as $modName) {
+                    $params[] = $modName;
+                }
+            }
+        } else {
+            $matchClause = "m.nombre LIKE ?";
+            $params[] = '%' . str_replace(' ', '%', $keyword) . '%';
+        }
+
+        $whereClause = "";
         if (!empty($manual_ids) && $groupId == 0) {
             $ids_array = array_filter(explode(',', $manual_ids));
             if (!empty($ids_array)) {
@@ -242,7 +372,9 @@ if ($api === 'status_details' && $db_status) {
             }
         } elseif ($groupId > 0) {
             $stmtAllGroups = $pdo->query("SELECT id_grupo, parent FROM tgrupo"); $allGroups = $stmtAllGroups->fetchAll();
-            function getChildGroups($parentId, $allGroups) { $children = [$parentId]; foreach ($allGroups as $g) { if ($g['parent'] == $parentId) { $children = array_merge($children, getChildGroups($g['id_grupo'], $allGroups)); } } return array_unique($children); }
+            if (!function_exists('getChildGroups')) {
+                function getChildGroups($parentId, $allGroups) { $children = [$parentId]; foreach ($allGroups as $g) { if ($g['parent'] == $parentId) { $children = array_merge($children, getChildGroups($g['id_grupo'], $allGroups)); } } return array_unique($children); }
+            }
             $targetGroups = getChildGroups($groupId, $allGroups);
             $whereClause = "AND a.id_grupo IN (" . implode(',', array_fill(0, count($targetGroups), '?')) . ")";
             foreach ($targetGroups as $tg) { $params[] = $tg; }
@@ -256,7 +388,7 @@ if ($api === 'status_details' && $db_status) {
                 INNER JOIN tagente a ON m.id_agente = a.id_agente
                 LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo
                 LEFT JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
-                WHERE m.nombre LIKE ? AND a.disabled = 0 AND m.disabled = 0 $whereClause 
+                WHERE $matchClause AND a.disabled = 0 AND m.disabled = 0 $whereClause 
                 ORDER BY e.timestamp DESC";
 
         $st = $pdo->prepare($sql);
@@ -295,10 +427,29 @@ if ($api === 'export_data' && $db_status) {
     ob_clean();
     $agentIds  = explode(',', $_GET['agent_ids']);
     $keyword   = $_GET['keyword'] ?: '%';
+    $matchType = $_GET['match_type'] ?? 'contains';
 
     try {
         $finalData = [];
-        $params = ['%' . str_replace(' ', '%', $keyword) . '%'];
+        $params = [];
+        $matchClause = "";
+
+        if ($matchType === 'exact') {
+            $modulesArray = array_filter(array_map('trim', explode(',', $keyword)));
+            if (empty($modulesArray)) {
+                $matchClause = "m.nombre = ''";
+            } else {
+                $placeholdersMod = implode(',', array_fill(0, count($modulesArray), '?'));
+                $matchClause = "m.nombre IN ($placeholdersMod)";
+                foreach ($modulesArray as $modName) {
+                    $params[] = $modName;
+                }
+            }
+        } else {
+            $matchClause = "m.nombre LIKE ?";
+            $params[] = '%' . str_replace(' ', '%', $keyword) . '%';
+        }
+
         $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
         foreach ($agentIds as $id) { $params[] = (int)$id; }
 
@@ -307,7 +458,7 @@ if ($api === 'export_data' && $db_status) {
                   INNER JOIN tagente a ON m.id_agente = a.id_agente
                   LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo
                   LEFT JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
-                  WHERE m.nombre LIKE ? AND a.id_agente IN ($placeholders) AND a.disabled = 0 AND m.disabled = 0
+                  WHERE $matchClause AND a.id_agente IN ($placeholders) AND a.disabled = 0 AND m.disabled = 0
                   ORDER BY a.alias ASC, m.nombre ASC";
 
         $stExp = $pdo->prepare($query);
@@ -474,6 +625,44 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
         .chart-controls { padding: 15px 25px; background: #fff; border-bottom: 1px solid #eee; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;}
         .chart-container-large { padding: 20px; height: 400px; width: 100%; position: relative; background-color: #ffffff;}
+
+        /* Dashboard landing page and selection styles */
+        .d-none { display: none !important; }
+        .list-table-wrap { background: #fff; border: 1px solid #e0e4e8; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02);}
+        table.list-table { border-collapse: collapse !important; width: 100% !important; margin: 0 !important; }
+        table.list-table thead th { background-color: #fafbfc !important; border-bottom: 1px solid #e0e4e8 !important; text-transform: uppercase; padding: 15px 20px !important; font-weight: normal !important; color: #7f8c8d !important; font-size: 11px !important; }
+        table.list-table tbody td { padding: 15px 20px !important; border-bottom: 1px solid #f0f3f5; color: #0b1a26 !important; vertical-align: middle; transition:0.2s;}
+        table.list-table tbody tr:hover td { background-color: #f8f9fa !important; }
+        
+        .dash-name-link { font-weight: normal !important; font-size: 14px !important; color: #1976d2 !important; text-decoration: none; display: flex; align-items: center; gap:8px; cursor:pointer;}
+        .dash-name-link:hover { text-decoration: underline; color: #0d47a1 !important; }
+        .dash-badge { background: #e0f2f1; color: #004d40; padding: 2px 8px; border-radius: 10px; font-size: 10px !important; font-weight: normal; }
+
+        .list-search-box { padding: 0 15px 0 35px !important; height: 36px !important; margin: 0 !important; box-sizing: border-box !important; width: 300px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 13px !important; font-weight: normal !important; outline: none; background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%237f8c8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 10px center; transition:0.2s; }
+        .list-search-box:focus { border-color:#004d40; box-shadow: 0 0 0 2px rgba(0,77,64,0.1); }
+        
+        .btn-action { background: transparent; color: #7f8c8d; border: none; height: 32px; width: 32px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .btn-action:hover { background: #e0e4e8; color: #0b1a26; }
+        .btn-action.btn-delete:hover { background: #fee2e2; color: #ef4444; }
+        
+        /* MULTI-SELECT TAGS CSS */
+        .selected-tags-container { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; min-height: 0; }
+        .module-tag { background: #e0f2f1; color: #004d40; border: 1px solid #b2dfdb; padding: 2px 8px; border-radius: 4px; font-size: 11px; display: flex; align-items: center; gap: 5px; font-weight: 500; }
+        .module-tag .remove-tag { cursor: pointer; color: #00796b; font-weight: bold; font-size: 14px; line-height: 1; }
+        .module-tag .remove-tag:hover { color: #e74c3c; }
+
+        .dropdown-wrapper { position: relative; display: block; width: 100%; }
+        .custom-dropdown { position: absolute; top: 38px; left: 0; background: #fff; border: 1px solid #004d40; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 3000; overflow: hidden; display: flex; flex-direction: column; width: 100%; box-sizing: border-box; }
+        .custom-dropdown-list { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow-y: auto; }
+        .custom-dropdown-list li { padding: 8px 12px; border-bottom: 1px solid #f0f3f5; cursor: pointer; font-size: 12px; color: #333; transition: background 0.1s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center;}
+        .custom-dropdown-list li:hover { background: #e0f2f1; color: #004d40; font-weight: normal; }
+        .custom-dropdown-list li.selected { background: #004d40; color: #fff; font-weight: normal; }
+        .radio-btn-group { display: flex; gap: 15px; margin-bottom: 10px; }
+        .radio-btn-group label { display: flex; align-items: center; gap: 5px; font-size: 13px !important; text-transform: none !important; color: #0b1a26 !important; cursor: pointer; font-weight: normal !important; margin-bottom: 0 !important;}
+        .radio-btn-group input { width: 16px; height: 16px; margin: 0; cursor: pointer;}
+        
+        .modal-header-custom { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .modal-footer-custom { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
     </style>
 </head>
 <body>
@@ -488,8 +677,18 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 </div>
 
 <div class="pandora-header-bottom">
-    <div class="breadcrumb-box"><span class="page-breadcrumb"><?= h($dynamic_breadcrumb) ?></span><h1 class="page-title">Metrics Dashboard</h1></div>
-    <div class="top-controls">
+    <div class="breadcrumb-box">
+        <span class="page-breadcrumb" id="mainBreadcrumb"><?= h($dynamic_breadcrumb) ?></span>
+        <h1 class="page-title" id="pageMainTitle">Metrics Dashboard</h1>
+    </div>
+    
+    <div class="top-controls" id="listTopControls">
+        <input type="text" id="listSearch" class="list-search-box" placeholder="Search dashboards..." onkeyup="renderDashboardList()">
+        <button class="btn-apply" onclick="openDashMetaModal()"><span class="material-symbols-outlined" style="font-size:18px!important;">add</span> Create Dashboard</button>
+    </div>
+    
+    <div class="top-controls d-none" id="detailTopControls">
+        <button class="btn-secondary-custom" onclick="closeDashboard()" title="Back to List"><span class="material-symbols-outlined">arrow_back</span> Back</button>
         <button class="btn-secondary-custom" onclick="exportDashboardConfig()"><span class="material-symbols-outlined">download</span> Backup</button>
         <button class="btn-secondary-custom" onclick="document.getElementById('importFile').click()"><span class="material-symbols-outlined">upload</span> Load</button>
         <input type="file" id="importFile" style="display:none" onchange="importDashboardConfig(event)">
@@ -497,7 +696,26 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     </div>
 </div>
 
-<div class="main-content pt-4"><div class="grid-layout" id="dashboardGrid"></div></div>
+<div id="view_list" class="main-content pt-4">
+    <div class="list-table-wrap">
+        <table class="list-table" id="dashListTable">
+            <thead>
+                <tr>
+                    <th style="width: 50%;">Dashboard Name</th>
+                    <th>Total Widgets</th>
+                    <th style="text-align:right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="view_detail" class="d-none">
+    <div class="main-content pt-4">
+        <div class="grid-layout" id="dashboardGrid"></div>
+    </div>
+</div>
 
 
 
@@ -557,14 +775,41 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
         <div class="form-group">
             <label>Style View</label>
-            <select id="b_view_type" class="form-control-fix">
+            <select id="b_view_type" class="form-control-fix" onchange="toggleViewTypeOptions()">
                 <option value="table">Table View (Detailed)</option>
                 <option value="heatmap">Heatmap View (Grid Summary)</option>
                 <option value="cards">Cards Status View (Stats Only)</option>
+                <option value="pie">Pie Chart (Metrics Value)</option>
+                <option value="donut">Donut Chart (Metrics Value)</option>
+                <option value="line">Line Chart (Value Comparison)</option>
+                <option value="area">Area Chart (Value Comparison)</option>
+                <option value="bar">Bar Chart (Value Comparison)</option>
             </select>
         </div>
 
-        <div class="form-group"><label>Filter By Group</label><select id="b_group" class="form-control-fix" onchange="toggleManualSelector()"></select></div>
+        <div class="form-group" id="wrap_chart_options" style="display:none;">
+            <label>Pie/Donut Slice Limit</label>
+            <select id="b_chart_limit" class="form-control-fix" style="margin-bottom:12px;">
+                <option value="0">Show All Slices</option>
+                <option value="5">Top 5 + Others</option>
+                <option value="10">Top 10 + Others</option>
+            </select>
+            <label>Show Value Count in Legend</label>
+            <select id="b_show_legend_count" class="form-control-fix">
+                <option value="1">Show Count (e.g. UP (12))</option>
+                <option value="0">Hide Count (Label Only)</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="wrap_show_stats">
+            <label>Show Status Cards (UP, Critical, etc.)</label>
+            <select id="b_show_stats" class="form-control-fix">
+                <option value="1">Show</option>
+                <option value="0">Hide</option>
+            </select>
+        </div>
+
+        <div class="form-group"><label>Filter By Group</label><select id="b_group" class="form-control-fix" onchange="toggleManualSelector(); refreshBuilderModuleList();"></select></div>
         <div id="manual_selector_box" class="form-group" style="display:none;">
             <label>Select Agents (Unlimited)</label>
             <div style="border:1px solid #dce1e5; border-radius:6px; background:#fff;">
@@ -579,7 +824,34 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 <div style="font-size:11px; font-weight: normal; color:#004d40; padding:10px; background:#e0f2f1; border-top:1px solid #eee;" id="sel_count">0 Selected</div>
             </div>
         </div>
-        <div class="form-group"><label>Table Keyword (Module Name)</label><input type="text" id="b_keyword" class="form-control-fix" value="%" placeholder="Use % for wildcard"></div>
+        <div class="form-group">
+            <label>Module Selection Mode</label>
+            <div class="radio-btn-group">
+                <label>
+                    <input type="radio" name="b_match_type" value="contains" checked onchange="toggleBuilderMatchMode()"> Keyword Match (Contains)
+                </label>
+                <label>
+                    <input type="radio" name="b_match_type" value="exact" onchange="toggleBuilderMatchMode()"> Exact Selection (List)
+                </label>
+            </div>
+        </div>
+
+        <div class="form-group" id="wrap_contains">
+            <label>Table Keyword (Module Name)</label>
+            <input type="text" id="b_keyword" class="form-control-fix" value="%" placeholder="Use % for wildcard">
+        </div>
+
+        <div class="form-group" id="wrap_exact" style="display:none;">
+            <label>Select Module Names (Direct Selection)</label>
+            <div id="exact_selected_tags" class="selected-tags-container"></div>
+            <div class="dropdown-wrapper">
+                <input type="text" id="exact_search_input" class="form-control-fix" placeholder="Search and select module names..." onkeyup="renderExactModuleList()" onfocus="showExactDropdown()" autocomplete="off" style="margin-bottom:0;">
+                <input type="hidden" id="p_keyword_exact" value="">
+                <div id="exact_dropdown" class="custom-dropdown" style="display:none;">
+                    <ul id="exact_module_ul" class="custom-dropdown-list"></ul>
+                </div>
+            </div>
+        </div>
         <div style="display:flex; gap:15px; margin-bottom: 15px;">
             <div style="flex:1;">
                 <label>Historical Icon Size (px)</label>
@@ -589,12 +861,43 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 <label>Table Font Size (px)</label>
                 <input type="number" id="b_font_size" class="form-control-fix" value="14" min="8" max="24">
             </div>
+            <div style="flex:1;">
+                <label>Chart Font Size (px)</label>
+                <input type="number" id="b_chart_font_size" class="form-control-fix" value="11" min="8" max="24">
+            </div>
         </div>
 
         <div class="form-group" style="margin-bottom: 15px;">
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;">
                 <input type="checkbox" id="b_use_raw" style="width:16px; height:16px; margin:0;"> Use Raw Value (No Formatting)
             </label>
+        </div>
+
+        <div class="form-group" id="wrap_columns_select" style="margin-bottom: 15px;">
+            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Visible Columns (Table View Only)</label>
+            <div style="display: flex; flex-wrap: wrap; gap: 15px; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px;">
+                    <input type="checkbox" class="col-visibility-chk" value="agent" checked> Agent
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px;">
+                    <input type="checkbox" class="col-visibility-chk" value="group" checked> Group
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px;">
+                    <input type="checkbox" class="col-visibility-chk" value="ip" checked> IP Address
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px;">
+                    <input type="checkbox" class="col-visibility-chk" value="module" checked> Sensor Module
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px;">
+                    <input type="checkbox" class="col-visibility-chk" value="status" checked> Status
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px;">
+                    <input type="checkbox" class="col-visibility-chk" value="history" checked> Metrics History
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px;">
+                    <input type="checkbox" class="col-visibility-chk" value="threshold" checked> Threshold
+                </label>
+            </div>
         </div>
 
         <div style="display:flex; gap:15px;"><div style="flex:1;"><label>Rows Per Page (Limit)</label>
@@ -609,19 +912,293 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     </div>
 </div>
 
+<div class="modal-overlay" id="dashMetaModal">
+    <div class="modal-box">
+        <div class="modal-header-custom">
+            <h5 style="font-weight: 600!important; margin:0;" id="dashMetaTitle">Create Dashboard</h5>
+            <span class="material-symbols-outlined" style="cursor:pointer;" onclick="closeDashMetaModal()">close</span>
+        </div>
+        <div class="modal-body-scroll" style="padding:20px 0;">
+            <div class="form-group">
+                <label>Dashboard Title</label>
+                <input type="text" id="m_dash_title" class="form-control-fix" placeholder="e.g. Linux Servers Metrics Dashboard">
+            </div>
+        </div>
+        <div class="modal-footer-custom">
+            <button class="btn-secondary-custom" onclick="closeDashMetaModal()">Cancel</button>
+            <button class="btn-apply" onclick="saveDashboardMeta()">Apply Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- NATIVE MODULE DETAIL FALLBACK MODAL -->
+<div class="modal-overlay" id="nativeModuleDetailModal" style="display:none;">
+    <div class="modal-box iframe-modal-box" style="width: 950px; max-width: 95%; height: 85vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <div class="iframe-header" style="padding: 15px 20px; border-bottom: 1px solid #e0e4e8; display:flex; justify-content:space-between; align-items:center; background-color:#f8f9fa; flex-shrink:0;">
+            <h5 class="iframe-title" id="nativeModuleDetailTitle" style="font-weight:600!important; margin:0; font-size:14px; color:#0b1a26;">Module Detail</h5>
+            <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size:20px;" onclick="closeNativeModuleDetailModal()">close</span>
+        </div>
+        <div class="modal-body-scroll" style="flex-grow:1; padding:20px; overflow-y:auto; background:#f8fafc; display:flex; flex-direction:column; gap:20px;">
+            <!-- Range Selector Control -->
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:12px 20px; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="material-symbols-outlined" style="color:#004d40; font-size:18px;">schedule</span>
+                    <span style="font-weight:600; color:#1e293b; font-size:13px;">Time Range:</span>
+                    <select id="nativeModuleTimeRange" class="form-control-fix" style="width:160px; margin-bottom:0; height:32px; padding:4px 8px; font-size:13px;" onchange="handleNativeModuleRangeChange()">
+                        <option value="3600">1 Hour</option>
+                        <option value="21600">6 Hours</option>
+                        <option value="86400" selected>24 Hours</option>
+                        <option value="604800">7 Days</option>
+                        <option value="2592000">30 Days</option>
+                        <option value="custom">Custom Range...</option>
+                    </select>
+                </div>
+                
+                <div id="nativeModuleCustomRangeBox" style="display:none; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <input type="datetime-local" id="nativeModuleCustomStart" class="form-control-fix" style="width:190px; margin-bottom:0; height:32px; padding:4px 8px; font-size:12px;">
+                    <span style="color:#64748b; font-size:12px;">to</span>
+                    <input type="datetime-local" id="nativeModuleCustomEnd" class="form-control-fix" style="width:190px; margin-bottom:0; height:32px; padding:4px 8px; font-size:12px;">
+                    <button class="btn-apply" style="padding:4px 15px; font-size:12px; height:32px; display:inline-flex; align-items:center; justify-content:center;" onclick="applyNativeModuleCustomRange()">Apply</button>
+                </div>
+            </div>
+
+            <!-- Chart Container -->
+            <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; min-height:260px; position:relative;">
+                <h6 style="margin:0 0 10px 0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Historical Trend</h6>
+                <div style="height:200px; width:100%; position:relative;">
+                    <canvas id="nativeModuleDetailChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Table Container -->
+            <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; display:flex; flex-direction:column; flex-grow:1; min-height:300px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <h6 style="margin:0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Data Log</h6>
+                    <div style="font-size:11px; color:#64748b;" id="nativeModuleDetailCount">0 rows</div>
+                </div>
+                <div style="overflow-y:auto; flex-grow:1; max-height:300px; border:1px solid #f0f3f5; border-radius:6px;">
+                    <table class="table-pfms" id="nativeModuleDetailTable">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="2" style="text-align:center; padding:30px; color:#64748b;">Loading history...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
+let nativeModuleChartInstance = null;
+let currentDetailModuleId = null;
+let currentDetailModuleTitle = '';
+
+function show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title) {
+    if (!IS_STANDALONE && typeof window.parent !== 'undefined' && window.parent && window.parent.show_module_detail_dialog && window.parent !== window) {
+        try {
+            window.parent.show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title);
+            return;
+        } catch (e) { console.warn("Failed parent call:", e); }
+    }
+    if (!IS_STANDALONE && typeof window.top !== 'undefined' && window.top && window.top.show_module_detail_dialog && window.top !== window) {
+        try {
+            window.top.show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title);
+            return;
+        } catch (e) { console.warn("Failed top call:", e); }
+    }
+    // Open our lightweight custom history modal!
+    openNativeModuleDetailModal(module_id, title || 'Module Detail', offset || 86400);
+}
+
+function handleNativeModuleRangeChange() {
+    const val = document.getElementById('nativeModuleTimeRange').value;
+    const customBox = document.getElementById('nativeModuleCustomRangeBox');
+    if (val === 'custom') {
+        customBox.style.display = 'flex';
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        const formatDT = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        document.getElementById('nativeModuleCustomStart').value = formatDT(yesterday);
+        document.getElementById('nativeModuleCustomEnd').value = formatDT(now);
+    } else {
+        customBox.style.display = 'none';
+        openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, val);
+    }
+}
+
+function applyNativeModuleCustomRange() {
+    const startVal = document.getElementById('nativeModuleCustomStart').value;
+    const endVal = document.getElementById('nativeModuleCustomEnd').value;
+    if (!startVal || !endVal) return alert('Please select start and end dates.');
+    
+    const startTs = Math.floor(new Date(startVal).getTime() / 1000);
+    const endTs = Math.floor(new Date(endVal).getTime() / 1000);
+    
+    if (startTs >= endTs) return alert('Start date must be before end date.');
+    
+    openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, 'custom', startTs, endTs);
+}
+
+async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400, customStart = null, customEnd = null) {
+    currentDetailModuleId = moduleId;
+    currentDetailModuleTitle = title;
+    
+    document.getElementById('nativeModuleDetailTitle').innerText = 'Module: ' + title;
+    document.getElementById('nativeModuleDetailModal').style.display = 'flex';
+    
+    const selectEl = document.getElementById('nativeModuleTimeRange');
+    if (selectEl) selectEl.value = rangeSeconds;
+    
+    const customBox = document.getElementById('nativeModuleCustomRangeBox');
+    if (customBox) {
+        if (rangeSeconds === 'custom') {
+            customBox.style.display = 'flex';
+        } else {
+            customBox.style.display = 'none';
+        }
+    }
+    
+    const tableBody = document.querySelector('#nativeModuleDetailTable tbody');
+    tableBody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:30px; color:#64748b;">Loading history...</td></tr>';
+    document.getElementById('nativeModuleDetailCount').innerText = 'Loading...';
+    
+    if (nativeModuleChartInstance) {
+        nativeModuleChartInstance.destroy();
+        nativeModuleChartInstance = null;
+    }
+    
+    try {
+        let url = `?api=detail_graph&id_mod=${moduleId}&range=${rangeSeconds}`;
+        if (rangeSeconds === 'custom') {
+            url += `&start=${customStart}&end=${customEnd}`;
+        }
+        
+        const res = await fetch(url).then(r => r.json());
+        if (!res.ok) {
+            tableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:30px; color:#e74c3c;">Error: ${res.error || 'Failed to load data'}</td></tr>`;
+            return;
+        }
+        
+        const data = res.data || [];
+        document.getElementById('nativeModuleDetailCount').innerText = `${data.length} rows`;
+        
+        if (data.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:30px; color:#64748b;">No history data found in the selected range.</td></tr>';
+            return;
+        }
+        
+        const unit = res.unit ? ' ' + res.unit : '';
+        
+        // Render Table Rows
+        let html = '';
+        data.forEach(row => {
+            let formattedDate = row.waktu;
+            if (row.waktu && row.waktu.includes('-')) {
+                const parts = row.waktu.split(' ');
+                const ymd = parts[0].split('-');
+                formattedDate = `${ymd[2]}/${ymd[1]}/${ymd[0]} ${parts[1]}`;
+            }
+            const valNum = parseFloat(row.datos);
+            const displayVal = (valNum % 1 === 0) ? valNum : valNum.toFixed(2);
+            html += `<tr>
+                <td style="font-weight: normal; color: #475569;">${formattedDate}</td>
+                <td style="font-weight: 600; color: #0f172a;">${displayVal}${unit}</td>
+            </tr>`;
+        });
+        tableBody.innerHTML = html;
+        
+        // Render Chart.js line graph
+        const labels = data.map(row => {
+            if (row.waktu && row.waktu.includes('-')) {
+                const parts = row.waktu.split(' ');
+                const ymd = parts[0].split('-');
+                return `${ymd[2]}/${ymd[1]} ${parts[1]}`;
+            }
+            return row.waktu;
+        });
+        const dataset = data.map(row => parseFloat(row.datos));
+        
+        const ctx = document.getElementById('nativeModuleDetailChart').getContext('2d');
+        
+        // Create custom gradient
+        const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+        gradient.addColorStop(0, 'rgba(0, 77, 64, 0.2)');
+        gradient.addColorStop(1, 'rgba(0, 77, 64, 0)');
+        
+        nativeModuleChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: title,
+                    data: dataset,
+                    borderColor: '#004d40',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            font: { size: 9 },
+                            maxTicksLimit: 8
+                        }
+                    },
+                    y: {
+                        grid: { color: '#f1f5f9' },
+                        ticks: { font: { size: 10 } }
+                    }
+                }
+            }
+        });
+        
+    } catch (e) {
+        tableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:30px; color:#e74c3c;">Exception: ${e.message}</td></tr>`;
+    }
+}
+
+function closeNativeModuleDetailModal() {
+    document.getElementById('nativeModuleDetailModal').style.display = 'none';
+    if (nativeModuleChartInstance) {
+        nativeModuleChartInstance.destroy();
+        nativeModuleChartInstance = null;
+    }
+}
+
 const iconChart  = `<span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>`;
 const iconEdit = `<span class="material-symbols-outlined">edit</span>`;
 const iconDelete = `<span class="material-symbols-outlined" style="color:#e74c3c;">delete</span>`;
+let masterDashboards = [];
+let currentDashId = null;
 let dashboardCards = [], cardTimers = {}, globalTimerRef = null;
 let fullAgentsList = [], selectedIds = [];
+let globalModuleList = [];
 
 // JS Storage variables
 let cardDataStore = {};
 let cardPages = {}; 
 let cardSearch = {};
+const activeCharts = {};
 
 // Modal Drill-down variables
 let modalBaseData = [];
@@ -679,51 +1256,345 @@ const workerScript = `let t = null; self.onmessage = function(e) { if (e.data ==
 const blob = new Blob([workerScript], { type: 'application/javascript' });
 const worker = new Worker(URL.createObjectURL(blob));
 
+function saveConfigToServer(callback, quiet = false) {
+    return fetch('?api=save_config', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '<?= $csrf_token ?>'
+        },
+        body: JSON.stringify(masterDashboards)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (!res.ok) {
+            if (!quiet) alert("Gagal menyimpan ke server: " + (res.error?.message || res.error || 'Permission Denied'));
+            return false;
+        } else {
+            if (callback) callback();
+            return true;
+        }
+    })
+    .catch((e) => {
+        if (!quiet) alert("Gagal berkomunikasi dengan server.");
+        return false;
+    });
+}
+
+function updateURLState(dashId = null) {
+    const u = new URL(window.location.href);
+    u.searchParams.delete('standalone');
+    u.searchParams.delete('dash_id');
+    u.searchParams.delete('v');
+    if (dashId) {
+        u.searchParams.set('d', dashId);
+    } else {
+        u.searchParams.delete('d');
+    }
+    window.history.replaceState({}, '', u.toString());
+
+    if (window.parent && window.parent !== window) {
+        try {
+            const pu = new URL(window.parent.location.href);
+            if (dashId) {
+                pu.searchParams.set('d', dashId);
+            } else {
+                pu.searchParams.delete('d');
+            }
+            window.parent.history.replaceState({}, '', pu.toString());
+        } catch (e) {
+            console.warn("Failed to update parent URL state:", e);
+        }
+    }
+}
+
 async function init() {
-    let loadedCards = [];
+    let loadedData = [];
     try {
-        const res = await fetch('?api=load_config');
+        const res = await fetch('?api=load_config&_t=' + Date.now());
         const data = await res.json();
-        if (Array.isArray(data)) loadedCards = data;
+        if (Array.isArray(data)) loadedData = data;
     } catch (e) {}
+
+    // Check if flat array (widgets without a dashboard wrap)
+    if (Array.isArray(loadedData)) {
+        if (loadedData.length > 0 && !loadedData[0].hasOwnProperty('panels')) {
+            masterDashboards = [{
+                id: 'dash_default',
+                title: 'Default Metrics Dashboard',
+                panels: loadedData
+            }];
+            saveConfigToServer(null, true);
+        } else {
+            masterDashboards = loadedData;
+        }
+    }
 
     if (IS_STANDALONE) {
         const p = new URLSearchParams(window.location.search);
-        const targetId = p.get('d') || p.get('card_id');
-        let targetCard = loadedCards.find(c => c.id === targetId);
-
-        if (targetCard) {
-            dashboardCards = [targetCard];
-            document.title = targetCard.title + ' - Standalone View';
-            const pageTitle = document.querySelector('.page-title');
-            if(pageTitle) pageTitle.innerText = targetCard.title;
-        } else {
-            dashboardCards = [{
-                id: 'std', title: p.get('title')||'Metrics Status', group_id: p.get('group_id')||'0',
-                keyword: p.get('keyword')||'%', limit: p.get('limit')||15, refresh_sec: p.get('refresh')||60,
-                view_type: p.get('view_type')||'table', manual_ids: p.get('manual_ids')||''
-            }];
-            if(p.get('title')) {
-                document.title = p.get('title') + ' - Standalone View';
-                const pageTitle = document.querySelector('.page-title');
-                if(pageTitle) pageTitle.innerText = p.get('title');
+        const targetDashId = p.get('d') || p.get('dash_id') || p.get('dashId');
+        const targetCardId = p.get('card_id') || p.get('cardId');
+        
+        let targetCard = null;
+        let foundDashId = null;
+        
+        // 1. If targetCardId is provided, look for that specific panel globally across all dashboards
+        if (targetCardId) {
+            for (let d of masterDashboards) {
+                const c = (d.panels || []).find(x => String(x.id).trim() === String(targetCardId).trim());
+                if (c) {
+                    targetCard = c;
+                    foundDashId = d.id;
+                    break;
+                }
             }
         }
+        
+        // 2. If targetCard was found, isolate and load only this card!
+        if (targetCard) {
+            currentDashId = foundDashId;
+            dashboardCards = [targetCard];
+            document.title = targetCard.title + ' - Standalone View';
+            const pageTitle = document.getElementById('pageMainTitle');
+            if(pageTitle) pageTitle.innerText = targetCard.title;
+        } else {
+            // 3. If targetCardId was not found/provided, check targetDashId
+            let targetDash = masterDashboards.find(x => String(x.id).trim() === String(targetDashId).trim());
+            if (targetDash) {
+                currentDashId = targetDash.id;
+                if (targetCardId) {
+                    // A specific card was requested but could not be resolved! Do not leak all dashboard panels!
+                    dashboardCards = [{
+                        id: 'error_card',
+                        title: 'Widget Not Found',
+                        view_type: 'table',
+                        group_id: '0',
+                        keyword: 'WIDGET_NOT_FOUND_PLACEHOLDER',
+                        limit: 15,
+                        refresh_sec: 60
+                    }];
+                    document.title = 'Widget Not Found';
+                    const pageTitle = document.getElementById('pageMainTitle');
+                    if(pageTitle) pageTitle.innerText = 'Widget Not Found';
+                } else {
+                    // No card was specified, load entire dashboard
+                    dashboardCards = targetDash.panels || [];
+                }
+            } else {
+                // 4. Custom standalone parameters
+                dashboardCards = [{
+                    id: 'std', title: p.get('title')||'Metrics Status', group_id: p.get('group_id')||'0',
+                    keyword: p.get('keyword')||'%', limit: p.get('limit')||15, refresh_sec: p.get('refresh')||60,
+                    view_type: p.get('view_type')||'table', manual_ids: p.get('manual_ids')||''
+                }];
+                currentDashId = 'std';
+                if(p.get('title')) {
+                    document.title = p.get('title') + ' - Standalone View';
+                    const pageTitle = document.getElementById('pageMainTitle');
+                    if(pageTitle) pageTitle.innerText = p.get('title');
+                }
+            }
+        }
+
+        // Ensure DOM visibility states and rendering are initialized in Standalone mode
+        const viewList = document.getElementById('view_list');
+        const listTopCtrls = document.getElementById('listTopControls');
+        const viewDetail = document.getElementById('view_detail');
+        const detailTopCtrls = document.getElementById('detailTopControls');
+        
+        if (viewList) viewList.classList.add('d-none');
+        if (listTopCtrls) listTopCtrls.classList.add('d-none');
+        if (viewDetail) viewDetail.classList.remove('d-none');
+        if (detailTopCtrls) detailTopCtrls.classList.add('d-none');
+        
+        renderGrid();
+        dashboardCards.forEach(c => fetchCardData(c));
     } else {
-        dashboardCards = loadedCards;
         loadGroups();
         fetch('?api=agents_list').then(r=>r.json()).then(data => { fullAgentsList = data; renderAgentDropdown(); });
+        fetch('?api=module_list').then(r=>r.json()).then(data => { globalModuleList = data; });
+        
+        const p = new URLSearchParams(window.location.search);
+        const urlDashId = p.get('d') || p.get('dash_id');
+        if (urlDashId && masterDashboards.some(x => x.id === urlDashId)) {
+            openDashboard(urlDashId);
+        } else {
+            renderDashboardList();
+        }
     }
-
-    renderGrid();
-    dashboardCards.forEach(c => { cardTimers[c.id] = parseInt(c.refresh_sec); fetchCardData(c); });
 
     worker.postMessage('start');
     worker.onmessage = (e) => { if(e.data === 'tick') runTimerLogic(); };
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) { dashboardCards.forEach(c => fetchCardData(c)); } });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && currentDashId) { dashboardCards.forEach(c => fetchCardData(c)); } });
+}
+
+function renderDashboardList() {
+    updateURLState(null);
+    currentDashId = null;
+    dashboardCards = [];
+    
+    // Stop all active timers
+    for (let timerId in cardTimers) { delete cardTimers[timerId]; }
+
+    document.getElementById('view_list').classList.remove('d-none');
+    document.getElementById('listTopControls').classList.remove('d-none');
+    document.getElementById('view_detail').classList.add('d-none');
+    document.getElementById('detailTopControls').classList.add('d-none');
+    
+    const pageTitle = document.getElementById('pageMainTitle');
+    if(pageTitle) pageTitle.innerText = "Metrics Dashboard";
+
+    const mainBreadcrumb = document.getElementById('mainBreadcrumb');
+    if (mainBreadcrumb) mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
+
+    const tbody = document.querySelector('#dashListTable tbody');
+    if(!tbody) return;
+    
+    const kw = document.getElementById('listSearch').value.toLowerCase().trim();
+    tbody.innerHTML = '';
+    
+    const filtered = masterDashboards.filter(d => d.title.toLowerCase().includes(kw));
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:30px; color:#7f8c8d;">No Metrics Dashboards found. Click "Create Dashboard" to add one.</td></tr>`;
+        return;
+    }
+    
+    filtered.forEach(d => {
+        const tr = document.createElement('tr');
+        const widgetCount = (d.panels || []).length;
+        tr.innerHTML = `
+            <td>
+                <a class="dash-name-link" onclick="openDashboard('${d.id}')">
+                    <span class="material-symbols-outlined">dashboard</span> ${d.title}
+                </a>
+            </td>
+            <td><span class="dash-badge">${widgetCount} Widgets</span></td>
+            <td style="text-align:right;">
+                <button class="btn-action" onclick="openDashboard('${d.id}')" title="Open Dashboard">
+                    <span class="material-symbols-outlined">visibility</span>
+                </button>
+                <button class="btn-action" onclick="editDashboardSettingsFromList('${d.id}')" title="Rename Settings">
+                    <span class="material-symbols-outlined">settings</span>
+                </button>
+                <button class="btn-action" onclick="duplicateDashboardFromList('${d.id}')" title="Duplicate Dashboard">
+                    <span class="material-symbols-outlined">content_copy</span>
+                </button>
+                <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')" title="Delete Dashboard">
+                    <span class="material-symbols-outlined">delete</span>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function openDashboard(id) {
+    const d = masterDashboards.find(x => x.id === id);
+    if (!d) return;
+    currentDashId = id;
+    dashboardCards = d.panels || [];
+    
+    updateURLState(id);
+    
+    document.getElementById('view_list').classList.add('d-none');
+    document.getElementById('listTopControls').classList.add('d-none');
+    document.getElementById('view_detail').classList.remove('d-none');
+    document.getElementById('detailTopControls').classList.remove('d-none');
+    
+    const pageTitle = document.getElementById('pageMainTitle');
+    if(pageTitle) pageTitle.innerText = d.title;
+
+    const mainBreadcrumb = document.getElementById('mainBreadcrumb');
+    if (mainBreadcrumb) mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / " + d.title.toUpperCase();
+    
+    renderGrid();
+    
+    // Initialize timers and fetch data
+    dashboardCards.forEach(c => {
+        cardTimers[c.id] = parseInt(c.refresh_sec);
+        fetchCardData(c);
+    });
+}
+
+function closeDashboard() {
+    renderDashboardList();
+}
+
+let editingDashId = null;
+function openDashMetaModal(dashId = null) {
+    editingDashId = dashId;
+    if (dashId) {
+        const d = masterDashboards.find(x => x.id === dashId);
+        document.getElementById('dashMetaTitle').innerText = 'Rename Dashboard';
+        document.getElementById('m_dash_title').value = d.title;
+    } else {
+        document.getElementById('dashMetaTitle').innerText = 'Create New Dashboard';
+        document.getElementById('m_dash_title').value = '';
+    }
+    document.getElementById('dashMetaModal').style.display = 'flex';
+}
+function closeDashMetaModal() {
+    document.getElementById('dashMetaModal').style.display = 'none';
+}
+function editDashboardSettingsFromList(id) {
+    openDashMetaModal(id);
+}
+
+function saveDashboardMeta() {
+    const title = document.getElementById('m_dash_title').value.trim() || 'New Metrics Dashboard';
+    
+    if (editingDashId) {
+        // Edit Mode
+        masterDashboards = masterDashboards.map(d => {
+            if (d.id === editingDashId) { d.title = title; }
+            return d;
+        });
+        saveConfigToServer(() => {
+            closeDashMetaModal();
+            renderDashboardList();
+        });
+    } else {
+        // Create Mode
+        const newDash = {
+            id: 'dash_' + Date.now(),
+            title: title,
+            panels: []
+        };
+        masterDashboards.push(newDash);
+        saveConfigToServer(() => {
+            closeDashMetaModal();
+            renderDashboardList();
+            openDashboard(newDash.id);
+        });
+    }
+}
+
+function deleteDashboard(id) {
+    const d = masterDashboards.find(x => x.id === id);
+    if (!d) return;
+    if (confirm(`Apakah Anda yakin ingin menghapus dashboard "${d.title}"? Semua widget di dalamnya akan terhapus permanent.`)) {
+        masterDashboards = masterDashboards.filter(x => x.id !== id);
+        saveConfigToServer(() => {
+            renderDashboardList();
+        });
+    }
+}
+
+function duplicateDashboardFromList(id) {
+    const d = masterDashboards.find(x => x.id === id);
+    if (!d) return;
+    const newDash = JSON.parse(JSON.stringify(d));
+    newDash.id = 'dash_' + Date.now();
+    newDash.title = d.title + ' (Copy)';
+    masterDashboards.push(newDash);
+    saveConfigToServer(() => {
+        alert('Dashboard berhasil diduplikasi!');
+        renderDashboardList();
+    });
 }
 
 function runTimerLogic() {
+    if(!currentDashId) return;
     if(document.getElementById('chartModal') && document.getElementById('chartModal').style.display === 'flex') return;
     if(document.getElementById('historyModal') && document.getElementById('historyModal').style.display === 'flex') return;
     if(document.getElementById('detailModal') && document.getElementById('detailModal').style.display === 'flex') return;
@@ -750,6 +1621,7 @@ function handleAgentCheck(chk) {
     const val = parseInt(chk.value);
     if (chk.checked) { if (!selectedIds.includes(val)) selectedIds.push(val); } else { selectedIds = selectedIds.filter(id => id !== val); }
     document.getElementById('sel_count').innerText = selectedIds.length + " Selected";
+    refreshBuilderModuleList();
 }
 function toggleBuilderAgentAll() {
     const chks = document.querySelectorAll('#agent_checkbox_list input[type="checkbox"]');
@@ -766,6 +1638,7 @@ function toggleBuilderAgentAll() {
     });
 
     document.getElementById('sel_count').innerText = selectedIds.length + " Selected";
+    refreshBuilderModuleList();
 }
 
 function toggleSearchInput(cardId) { 
@@ -796,28 +1669,32 @@ function renderGrid() {
             div.ondragend = (e) => handleDragEnd(e);
         }
 
-        let searchBtn = c.view_type === 'cards' ? '' : `
+        let searchBtn = ['cards', 'pie', 'donut', 'line', 'area', 'bar'].includes(c.view_type) ? '' : `
             <input type="text" id="search_inp_${c.id}" class="search-input-header" placeholder="Filter..." onkeyup="filterTableRows('${c.id}')">
             <button class="icon-btn-card" onclick="toggleSearchInput('${c.id}')" title="Search"><span class="material-symbols-outlined">search</span></button>
         `;
 
+        let timeRangeBtn = ['line', 'area', 'bar'].includes(c.view_type) ? `
+            <button class="icon-btn-card" onclick="openTimeRangeMenu(event, '${c.id}')" title="Time Range"><span class="material-symbols-outlined">schedule</span></button>
+        ` : '';
+
         let acts = `
             <div class="card-actions">
                 ${searchBtn}
+                ${timeRangeBtn}
                 <button class="icon-btn-card" onclick="openExport('${c.id}')" title="Export Data"><span class="material-symbols-outlined">ios_share</span></button>
                 ${!IS_STANDALONE ? `
                 <button class="icon-btn-card" onclick='copyStandaloneUrl(${JSON.stringify(c)})' title="Share Widget"><span class="material-symbols-outlined">share</span></button>
                 <button class="icon-btn-card" onclick="duplicatePanel('${c.id}')" title="Duplicate"><span class="material-symbols-outlined">content_copy</span></button>
                 <button class="icon-btn-card" onclick="openEdit('${c.id}')" title="Edit">${iconEdit}</button>
                 <button class="icon-btn-card" onclick="deleteCard('${c.id}')" title="Delete">${iconDelete}</button>
-                ` : `
-                <button class="icon-btn-card" onclick="openEdit('${c.id}')" title="Edit">${iconEdit}</button>
-                `}
+                ` : ''}
             </div>`;
 
+        const showStatsStyle = (c.show_stats === 0 || c.view_type === 'line' || c.view_type === 'area' || c.view_type === 'bar') ? 'display: none !important;' : '';
         div.innerHTML = `<div class="dashboard-card-header"><div><h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="color:#004d40;">analytics</span> ${c.title}</h5><div style="font-size:10px; color:#7f8c8d; font-weight: normal;"><span id="meta_up_${c.id}">Awaiting...</span> <span id="meta_timer_${c.id}"></span></div></div>${acts}</div>
         <div class="dashboard-card-body">
-            <div class="mini-stats-row">
+            <div class="mini-stats-row" style="${showStatsStyle}">
                 <div class="mini-stat st-border-black" onclick="showDetailModal('${c.id}', 'all')"><div class="mini-stat-val text-black" id="st_tot_${c.id}">0</div><div class="mini-stat-label">TOTAL</div></div>
                 <div class="mini-stat st-border-green" onclick="showDetailModal('${c.id}', 'normal')"><div class="mini-stat-val text-green" id="st_normal_${c.id}">0</div><div class="mini-stat-label">UP</div></div>
                 <div class="mini-stat st-border-yellow" onclick="showDetailModal('${c.id}', 'warning')"><div class="mini-stat-val text-yellow" id="st_warning_${c.id}">0</div><div class="mini-stat-label">WARNING</div></div>
@@ -832,7 +1709,17 @@ function renderGrid() {
 }
 
 function fetchCardData(card) {
-    const url = `?api=card_data&group_id=${card.group_id}&keyword=${encodeURIComponent(card.keyword)}&limit=${card.limit}&manual_ids=${card.manual_ids || ''}`;
+    const matchType = card.match_type || 'contains';
+    const isChart = ['line', 'area', 'bar'].includes(card.view_type);
+    const range = card.time_range || 86400;
+    let url = `?api=card_data&group_id=${card.group_id}&keyword=${encodeURIComponent(card.keyword)}&limit=${card.limit}&manual_ids=${card.manual_ids || ''}&match_type=${matchType}`;
+    if (isChart) {
+        if (range === 'custom' && card.custom_start_ts && card.custom_end_ts) {
+            url += `&history=1&time_range=custom&start_time=${card.custom_start_ts}&end_time=${card.custom_end_ts}`;
+        } else {
+            url += `&history=1&time_range=${range}`;
+        }
+    }
 
     fetch(url).then(r=>r.json()).then(res => {
         if (!res.ok) {
@@ -851,6 +1738,9 @@ function fetchCardData(card) {
         const container = document.getElementById(`content_view_${card.id}`);
         if (card.view_type === 'cards') {
             container.style.display = 'none';
+        } else if (['pie', 'donut', 'line', 'area', 'bar'].includes(card.view_type)) {
+            container.style.display = 'block';
+            renderWidgetChart(card.id, card.view_type, res.table || [], parseInt(card.chart_limit) || 0, res.stats || {}, res.history || []);
         } else {
             container.style.display = 'block';
             renderTablePage(card.id);
@@ -908,36 +1798,68 @@ function renderTablePage(cardId) {
     else {
         const tableFs = card.font_size || 14;
         const iconSz = card.icon_size || 18;
-        h += `<div class="table-wrap"><table class="table-pfms" style="font-size:${tableFs}px;"><thead><tr><th>Agent</th><th>Group</th><th>IP Address</th><th>Sensor Module</th><th style="text-align:center;">Status</th><th>Metrics History</th><th>Threshold</th></tr></thead><tbody>`;
+        const visibleCols = card.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
+        
+        let headerRow = '';
+        if (visibleCols.includes('agent')) headerRow += '<th>Agent</th>';
+        if (visibleCols.includes('group')) headerRow += '<th>Group</th>';
+        if (visibleCols.includes('ip')) headerRow += '<th>IP Address</th>';
+        if (visibleCols.includes('module')) headerRow += '<th>Sensor Module</th>';
+        if (visibleCols.includes('status')) headerRow += '<th style="text-align:center;">Status</th>';
+        if (visibleCols.includes('history')) headerRow += '<th style="text-align:center;">Metrics History</th>';
+        if (visibleCols.includes('threshold')) headerRow += '<th>Threshold</th>';
+        
+        h += `<div class="table-wrap"><table class="table-pfms" style="font-size:${tableFs}px;"><thead><tr>${headerRow}</tr></thead><tbody>`;
+        
         pageData.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let unitStr = r.unit ? ` ${r.unit}` : '';
 
-            h += `<tr>
-                    <td>
-                        <div class="node-wrap"><div class="dot ${sObj.color}"></div><a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${r.id_agente}" target="_blank" class="agent-link" style="font-size:${tableFs}px!important;">${r.agent_alias}</a></div>
-                    </td>
-                    <td style="color:#7f8c8d">${r.group_name}</td>
-                    <td><code class="ip-text">${r.ip_address||'-'}</code></td>
-                    <td>
-                        <div style="font-weight: normal; color:#0b1a26; margin-bottom:4px;">${r.module_name}</div>
-                        <div style="font-size:10px!important; color:#7f8c8d;">Update: ${r.time_ago}</div>
-                    </td>
-                    <td style="text-align:center;">
-                        <div class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important;">
-                            ${formatValue(r.current_value, r.unit, card.use_raw)}${unitStr}
-                        </div>
-                    </td>
-                    <td style="text-align:center;">
-                        <button class="icon-btn-card" style="padding:0; margin:0;" onclick="openNativeChart(${r.id_agente_modulo}, '${r.agent_alias.replace(/'/g, "\\'")} - ${r.module_name.replace(/'/g, "\\'")}')">
+            let rowHtml = '<tr>';
+            if (visibleCols.includes('agent')) {
+                rowHtml += `<td>
+                    <div class="node-wrap"><div class="dot ${sObj.color}"></div><a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${r.id_agente}" target="_blank" class="agent-link" style="font-size:${tableFs}px!important;">${r.agent_alias}</a></div>
+                </td>`;
+            }
+            if (visibleCols.includes('group')) {
+                rowHtml += `<td style="color:#7f8c8d">${r.group_name}</td>`;
+            }
+            if (visibleCols.includes('ip')) {
+                rowHtml += `<td><code class="ip-text">${r.ip_address||'-'}</code></td>`;
+            }
+            if (visibleCols.includes('module')) {
+                rowHtml += `<td>
+                    <div style="font-weight: normal; color:#0b1a26; margin-bottom:4px;">${r.module_name}</div>
+                    <div style="font-size:10px!important; color:#7f8c8d;">Update: ${r.time_ago}</div>
+                </td>`;
+            }
+            if (visibleCols.includes('status')) {
+                rowHtml += `<td style="text-align:center;">
+                    <div class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important;">
+                        ${formatValue(r.current_value, r.unit, card.use_raw)}${unitStr}
+                    </div>
+                </td>`;
+            }
+            if (visibleCols.includes('history')) {
+                rowHtml += `<td style="text-align:center;">
+                    <div style="display:inline-flex; gap:8px; align-items:center; justify-content:center; width:100%;">
+                        <button class="icon-btn-card" style="padding:0; margin:0;" onclick="openNativeChart(${r.id_agente_modulo}, '${r.agent_alias.replace(/'/g, "\\'")} - ${r.module_name.replace(/'/g, "\\'")}')" title="View Chart">
                             <span class="material-symbols-outlined" style="font-size:${iconSz}px!important; color:#1976d2;">monitoring</span>
                         </button>
-                    </td>
-                    <td>
-                        <div class="limit-text">Min: <strong style="color:#333;">${r.low_limit}${unitStr}</strong></div>
-                        <div class="limit-text">Max: <strong style="color:#e74c3c;">${r.high_limit}${unitStr}</strong></div>
-                    </td>
-                  </tr>`;
+                        <button class="icon-btn-card" style="padding:0; margin:0;" onclick="show_module_detail_dialog(${r.id_agente_modulo}, ${r.id_agente}, '', 0, 86400, '${r.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
+                            <span class="material-symbols-outlined" style="font-size:${iconSz}px!important; color:#2e7d32;">table_chart</span>
+                        </button>
+                    </div>
+                </td>`;
+            }
+            if (visibleCols.includes('threshold')) {
+                rowHtml += `<td>
+                    <div class="limit-text">Min: <strong style="color:#333;">${r.low_limit}${unitStr}</strong></div>
+                    <div class="limit-text">Max: <strong style="color:#e74c3c;">${r.high_limit}${unitStr}</strong></div>
+                </td>`;
+            }
+            rowHtml += '</tr>';
+            h += rowHtml;
         });
         h += '</tbody></table></div>';
     }
@@ -1018,7 +1940,8 @@ async function showDetailModal(cardId, statusFilter) {
     const overlay = document.getElementById('loadingOverlay');
     if(overlay) overlay.style.display = 'flex';
     
-    const url = `?api=status_details&group_id=${card.group_id}&keyword=${encodeURIComponent(card.keyword)}&manual_ids=${card.manual_ids || ''}&status_filter=${statusFilter}`;
+    const matchType = card.match_type || 'contains';
+    const url = `?api=status_details&group_id=${card.group_id}&keyword=${encodeURIComponent(card.keyword)}&manual_ids=${card.manual_ids || ''}&status_filter=${statusFilter}&match_type=${matchType}`;
     
     try {
         const res = await fetch(url).then(r => r.json());
@@ -1127,14 +2050,158 @@ function openExport(cardId) {
     document.getElementById('exportModal').style.display = 'flex';
 }
 function toggleExportAll() { const chks = document.querySelectorAll('.exp-chk'); const allChecked = Array.from(chks).every(c => c.checked); chks.forEach(c => c.checked = !allChecked); }
+function toggleBuilderMatchMode() {
+    const mode = document.querySelector('input[name="b_match_type"]:checked').value;
+    document.getElementById('wrap_exact').style.display = (mode === 'exact') ? 'block' : 'none';
+    document.getElementById('wrap_contains').style.display = (mode === 'exact') ? 'none' : 'block';
+}
+
+async function refreshBuilderModuleList() {
+    const groupId = document.getElementById('b_group').value || '0';
+    const manualIds = selectedIds.join(',');
+    
+    try {
+        const res = await fetch(`?api=module_list&group_id=${groupId}&manual_ids=${manualIds}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+            globalModuleList = data;
+            if (document.getElementById('exact_dropdown').style.display === 'flex') {
+                renderExactModuleList();
+            }
+        }
+    } catch (e) {
+        console.error("Failed to refresh module list:", e);
+    }
+}
+
+function showExactDropdown() { 
+    document.getElementById('exact_dropdown').style.display = 'flex'; 
+    renderExactModuleList(); 
+}
+
+function renderExactModuleList() {
+    const ul = document.getElementById('exact_module_ul');
+    const kw = document.getElementById('exact_search_input').value.toLowerCase();
+    const currentRaw = document.getElementById('p_keyword_exact').value;
+    const rawArr = currentRaw ? currentRaw.split(',').map(s => s.trim()).filter(s => s !== '') : [];
+    
+    let filtered = globalModuleList.filter(m => m.pretty.toLowerCase().includes(kw) || m.raw.toLowerCase().includes(kw));
+    ul.innerHTML = filtered.slice(0,50).map(m => {
+        const isSelected = rawArr.includes(m.raw);
+        const selClass = isSelected ? 'selected' : '';
+        const safeRaw = encodeURIComponent(m.raw);
+        const safePretty = encodeURIComponent(m.pretty);
+        return `<li class="${selClass}" data-raw="${safeRaw}" data-pretty="${safePretty}" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} style="margin: 0; pointer-events: none; width: 14px; height: 14px;">
+            <span>${m.pretty}</span>
+        </li>`;
+    }).join('');
+}
+
+function renderSelectedModules() {
+    const container = document.getElementById('exact_selected_tags');
+    const rawInput = document.getElementById('p_keyword_exact');
+    const rawArr = rawInput.value ? rawInput.value.split(',').map(s => s.trim()).filter(s => s !== '') : [];
+    
+    container.innerHTML = '';
+    rawArr.forEach(raw => {
+        const found = globalModuleList.find(m => m.raw === raw);
+        const prettyName = found ? found.pretty : raw;
+        const tag = document.createElement('div');
+        tag.className = 'module-tag';
+        
+        const span = document.createElement('span');
+        span.textContent = prettyName;
+        
+        const removeBtn = document.createElement('span');
+        removeBtn.className = 'remove-tag';
+        removeBtn.innerHTML = '&times;';
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeModuleTag(raw);
+        });
+        
+        tag.appendChild(span);
+        tag.appendChild(removeBtn);
+        container.appendChild(tag);
+    });
+}
+
+function removeModuleTag(rawName) {
+    let rawInput = document.getElementById('p_keyword_exact');
+    let rawArr = rawInput.value.split(',').map(s => s.trim()).filter(s => s !== '');
+    rawArr = rawArr.filter(r => r !== rawName);
+    rawInput.value = rawArr.join(', ');
+    renderSelectedModules();
+    renderExactModuleList();
+}
+
+function selectExactModule(rawName, prettyName) {
+    let rawInput = document.getElementById('p_keyword_exact');
+    let currentRaw = rawInput.value;
+    let rawArr = currentRaw ? currentRaw.split(',').map(s => s.trim()).filter(s => s !== '') : [];
+    
+    const idx = rawArr.indexOf(rawName);
+    if (idx > -1) {
+        rawArr.splice(idx, 1);
+    } else {
+        rawArr.push(rawName);
+    }
+    
+    rawInput.value = rawArr.join(', ');
+    renderSelectedModules();
+    renderExactModuleList();
+}
+
+// Add event delegation on the exact_module_ul element
+const exactModuleUl = document.getElementById('exact_module_ul');
+if (exactModuleUl) {
+    exactModuleUl.addEventListener('click', function(e) {
+        const li = e.target.closest('li');
+        if (!li) return;
+        const rawName = decodeURIComponent(li.dataset.raw);
+        const prettyName = decodeURIComponent(li.dataset.pretty);
+        selectExactModule(rawName, prettyName);
+    });
+}
+
+// Add global listener to close exact dropdown
+document.addEventListener('click', function(e) {
+    const dropdown = document.getElementById('exact_dropdown');
+    const input = document.getElementById('exact_search_input');
+    if (dropdown && input && !dropdown.contains(e.target) && e.target !== input) {
+        dropdown.style.display = 'none';
+    }
+});
+
 function processExport() {
     const selected = Array.from(document.querySelectorAll('.exp-chk:checked')); if(!selected.length) return alert("Select agents.");
     const agIds = selected.map(s => s.dataset.agid).join(',');
-    const kw = dashboardCards.find(c=>c.id==curExpCardId).keyword;
-    const url = `?api=export_data&agent_ids=${agIds}&keyword=${encodeURIComponent(kw)}&format=${document.getElementById('e_format').value}`;
+    const c = dashboardCards.find(card=>card.id==curExpCardId);
+    const kw = c.keyword;
+    const matchType = c.match_type || 'contains';
+    const url = `?api=export_data&agent_ids=${agIds}&keyword=${encodeURIComponent(kw)}&format=${document.getElementById('e_format').value}&match_type=${matchType}`;
     window.open(url, '_blank');
 }
 function closeExport() { document.getElementById('exportModal').style.display = 'none'; }
+
+function toggleViewTypeOptions() {
+    const vt = document.getElementById('b_view_type').value;
+    const wrap = document.getElementById('wrap_chart_options');
+    const wrapShowStats = document.getElementById('wrap_show_stats');
+    
+    if (vt === 'pie' || vt === 'donut') {
+        wrap.style.display = 'block';
+    } else {
+        wrap.style.display = 'none';
+    }
+
+    if (vt === 'line' || vt === 'area' || vt === 'bar') {
+        if (wrapShowStats) wrapShowStats.style.display = 'none';
+    } else {
+        if (wrapShowStats) wrapShowStats.style.display = 'block';
+    }
+}
 
 function openBuilder() {
     editingCardId = null; selectedIds = []; document.getElementById('builderTitle').innerText='Build Widget';
@@ -1142,14 +2209,30 @@ function openBuilder() {
     document.getElementById('b_group').value='0';
     document.getElementById('b_icon_size').value='18';
     document.getElementById('b_font_size').value='14';
+    document.getElementById('b_chart_font_size').value='11';
     document.getElementById('b_use_raw').checked = false;
+    document.querySelectorAll('.col-visibility-chk').forEach(chk => chk.checked = true);
+    document.getElementById('b_chart_limit').value = '0';
+    document.getElementById('b_show_legend_count').value = '1';
+    document.getElementById('b_show_stats').value = '1';
+    toggleViewTypeOptions();
     document.querySelectorAll('#agent_checkbox_list input').forEach(c => c.checked = false);
     document.getElementById('sel_count').innerText = "0 Selected";
-    toggleManualSelector(); document.getElementById('builderModal').style.display='flex';
+    
+    document.querySelector('input[name="b_match_type"][value="contains"]').checked = true;
+    document.getElementById('b_keyword').value = '%';
+    document.getElementById('p_keyword_exact').value = '';
+    document.getElementById('exact_search_input').value = '';
+    document.getElementById('exact_selected_tags').innerHTML = '';
+    toggleBuilderMatchMode();
+
+    toggleManualSelector();
+    refreshBuilderModuleList();
+    document.getElementById('builderModal').style.display='flex';
 }
 function openEdit(id) {
     editingCardId = id; const c = dashboardCards.find(x => x.id === id); document.getElementById('builderTitle').innerText='Edit Widget';
-    ['title','view_type','group','keyword','limit','refresh','icon_size','font_size','use_raw'].forEach(k => {
+    ['title','view_type','group','limit','refresh','icon_size','font_size','use_raw'].forEach(k => {
         const el = document.getElementById('b_'+k);
         if(el) {
             if (el.type === 'checkbox') el.checked = !!c[k];
@@ -1157,65 +2240,118 @@ function openEdit(id) {
         }
     });
 
+    const activeCols = c.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
+    document.querySelectorAll('.col-visibility-chk').forEach(el => {
+        el.checked = activeCols.includes(el.value);
+    });
+
+    document.getElementById('b_chart_limit').value = c.chart_limit || '0';
+    document.getElementById('b_show_legend_count').value = (c.show_legend_count !== undefined) ? String(c.show_legend_count) : '1';
+    document.getElementById('b_show_stats').value = (c.show_stats !== undefined) ? String(c.show_stats) : '1';
+    document.getElementById('b_chart_font_size').value = c.chart_font_size || '11';
+    toggleViewTypeOptions();
+
+    const mType = c.match_type || 'contains';
+    document.querySelector(`input[name="b_match_type"][value="${mType}"]`).checked = true;
+
+    if (mType === 'exact') {
+        document.getElementById('p_keyword_exact').value = c.keyword || '';
+        document.getElementById('b_keyword').value = '';
+        renderSelectedModules();
+    } else {
+        document.getElementById('b_keyword').value = c.keyword || '%';
+        document.getElementById('p_keyword_exact').value = '';
+        document.getElementById('exact_search_input').value = '';
+        document.getElementById('exact_selected_tags').innerHTML = '';
+    }
+
+    toggleBuilderMatchMode();
+
     selectedIds = c.manual_ids ? String(c.manual_ids).split(',').map(Number) : [];
     document.querySelectorAll('#agent_checkbox_list input').forEach(chk => { chk.checked = selectedIds.includes(parseInt(chk.value)); });
-    document.getElementById('sel_count').innerText = selectedIds.length + " Selected"; toggleManualSelector(); document.getElementById('builderModal').style.display='flex';
+    document.getElementById('sel_count').innerText = selectedIds.length + " Selected";
+    toggleManualSelector();
+    refreshBuilderModuleList();
+    document.getElementById('builderModal').style.display='flex';
 }
 function closeBuilder() { document.getElementById('builderModal').style.display = 'none'; }
 
 function saveWidget() {
+    if (!currentDashId) return;
+    const matchType = document.querySelector('input[name="b_match_type"]:checked').value;
+    const keywordVal = (matchType === 'exact') ? document.getElementById('p_keyword_exact').value : document.getElementById('b_keyword').value;
     const card = {
         id: editingCardId || 'c'+Date.now(),
         title: document.getElementById('b_title').value||'Widget',
         view_type: document.getElementById('b_view_type').value,
         group_id: document.getElementById('b_group').value,
-        keyword: document.getElementById('b_keyword').value,
+        match_type: matchType,
+        keyword: keywordVal,
         limit: document.getElementById('b_limit').value,
         refresh_sec: document.getElementById('b_refresh').value,
         icon_size: document.getElementById('b_icon_size').value || 18,
         font_size: document.getElementById('b_font_size').value || 14,
+        chart_font_size: parseInt(document.getElementById('b_chart_font_size').value) || 11,
         use_raw: document.getElementById('b_use_raw').checked,
+        chart_limit: document.getElementById('b_chart_limit').value,
+        show_legend_count: parseInt(document.getElementById('b_show_legend_count').value),
+        show_stats: parseInt(document.getElementById('b_show_stats').value),
+        visible_columns: Array.from(document.querySelectorAll('.col-visibility-chk:checked')).map(el => el.value),
         manual_ids: selectedIds.join(',')
     };
 
-    let tempCards = [];
-    if (editingCardId) { tempCards = dashboardCards.map(x => x.id === editingCardId ? card : x); } else { tempCards = [...dashboardCards, card]; }
+    masterDashboards = masterDashboards.map(d => {
+        if (d.id === currentDashId) {
+            let tempCards = [];
+            if (editingCardId) {
+                tempCards = (d.panels || []).map(x => x.id === editingCardId ? card : x);
+            } else {
+                tempCards = [...(d.panels || []), card];
+            }
+            d.panels = tempCards;
+            dashboardCards = tempCards;
+        }
+        return d;
+    });
 
     const btn = document.getElementById("btnSaveWidget");
     btn.innerHTML = '<span class="material-symbols-outlined">sync</span> Saving...';
     btn.disabled = true;
 
-    fetch('?api=save_config', { method: 'POST', body: JSON.stringify(tempCards), headers: {'X-CSRF-TOKEN': '<?= $csrf_token ?>'} })
-    .then(r => r.json())
-    .then(res => {
-        if(res.ok) {
-            dashboardCards = tempCards;
-            renderGrid(); fetchCardData(card); closeBuilder();
-        } else {
-            let errMsg = res.error && res.error.message ? res.error.message : res.error;
-            alert(`SAVE FAILED!\n\nReason:\n${errMsg || 'Unknown Error'}\n\nTarget File: ${res.file || 'File permission issue'}`);
-        }
+    saveConfigToServer(() => {
+        renderGrid();
+        fetchCardData(card);
+        closeBuilder();
     })
-    .catch(err => { alert("Failed to connect to server to save configuration."); })
-    .finally(() => { btn.innerHTML = 'Save Widget'; btn.disabled = false; });
+    .finally(() => {
+        btn.innerHTML = 'Save Widget';
+        btn.disabled = false;
+    });
 }
 
 function deleteCard(id) {
-    if(confirm('Delete?')) {
-        let tempCards = dashboardCards.filter(x => x.id !== id);
-        fetch('?api=save_config', { method: 'POST', body: JSON.stringify(tempCards), headers: {'X-CSRF-TOKEN': '<?= $csrf_token ?>'} })
-        .then(r => r.json())
-        .then(res => {
-            if(res.ok) { dashboardCards = tempCards; renderGrid(); }
-            else { let errMsg = res.error && res.error.message ? res.error.message : res.error; alert(`Delete failed! Reason: ${errMsg || 'Check permissions'}`); }
+    if (!currentDashId) return;
+    if(confirm('Delete widget?')) {
+        masterDashboards = masterDashboards.map(d => {
+            if (d.id === currentDashId) {
+                const tempCards = (d.panels || []).filter(x => x.id !== id);
+                d.panels = tempCards;
+                dashboardCards = tempCards;
+            }
+            return d;
+        });
+        saveConfigToServer(() => {
+            renderGrid();
         });
     }
 }
 
 function copyStandaloneUrl(card) {
+    if(!currentDashId) return;
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set('s', '1');
-    u.searchParams.set('d', card.id);
+    u.searchParams.set('d', currentDashId);
+    u.searchParams.set('card_id', card.id);
     const urlString = u.toString();
 
     if (navigator.clipboard && window.isSecureContext) {
@@ -1230,35 +2366,44 @@ function copyStandaloneUrl(card) {
 }
 
 function duplicatePanel(id) {
+    if(!currentDashId) return;
     const card = dashboardCards.find(x => x.id === id);
     if (!card) return;
     const newCard = JSON.parse(JSON.stringify(card));
     newCard.id = 'c' + Date.now();
     newCard.title = newCard.title + " (Copy)";
-    const tempCards = [...dashboardCards, newCard];
+    
+    masterDashboards = masterDashboards.map(d => {
+        if (d.id === currentDashId) {
+            const tempCards = [...(d.panels || []), newCard];
+            d.panels = tempCards;
+            dashboardCards = tempCards;
+        }
+        return d;
+    });
+
     const btn = document.querySelector(`#box_${id} .icon-btn-card[title="Duplicate"]`);
     if(btn) btn.style.opacity = '0.5';
 
-    fetch('?api=save_config', { method: 'POST', body: JSON.stringify(tempCards), headers: {'X-CSRF-TOKEN': '<?= $csrf_token ?>'} })
-    .then(r => r.json()).then(res => {
-        if (res.ok) {
-            dashboardCards = tempCards;
-            renderGrid(); dashboardCards.forEach(c => fetchCardData(c));
-        } else {
-            alert("Failed to duplicate widget.");
-        }
+    saveConfigToServer(() => {
+        renderGrid();
+        dashboardCards.forEach(c => fetchCardData(c));
     }).finally(() => { if(btn) btn.style.opacity = '1'; });
 }
 
 function exportDashboardConfig() {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dashboardCards, null, 2));
+    if(!currentDashId) return;
+    const d = masterDashboards.find(x => x.id === currentDashId);
+    if(!d) return;
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(d.panels || [], null, 2));
     const dlAnchorElem = document.createElement('a');
     dlAnchorElem.setAttribute("href",     dataStr);
-    dlAnchorElem.setAttribute("download", "metrics_config_backup.json");
+    dlAnchorElem.setAttribute("download", `metrics_dashboard_${d.title.toLowerCase().replace(/\s+/g, '_')}_backup.json`);
     dlAnchorElem.click();
 }
 
 function importDashboardConfig(event) {
+    if(!currentDashId) return;
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
@@ -1266,13 +2411,17 @@ function importDashboardConfig(event) {
         try {
             const loaded = JSON.parse(e.target.result);
             if (Array.isArray(loaded)) {
-                fetch('?api=save_config', { method: 'POST', body: JSON.stringify(loaded), headers: {'X-CSRF-TOKEN': '<?= $csrf_token ?>'} })
-                .then(r => r.json())
-                .then(res => {
-                    if (res.ok) {
+                masterDashboards = masterDashboards.map(d => {
+                    if (d.id === currentDashId) {
+                        d.panels = loaded;
                         dashboardCards = loaded;
-                        renderGrid(); dashboardCards.forEach(c => fetchCardData(c)); alert("Config loaded successfully!");
-                    } else { alert(`Failed to save import. Reason: ${res.error?.message || res.error || 'Unknown Error'}`); }
+                    }
+                    return d;
+                });
+                saveConfigToServer(() => {
+                    renderGrid();
+                    dashboardCards.forEach(c => fetchCardData(c));
+                    alert("Widgets loaded successfully!");
                 });
             }
         } catch (err) { alert("Invalid JSON file."); }
@@ -1330,13 +2479,555 @@ function handleDragEnd(e) {
 }
 
 function saveOrderToServer() {
-    fetch('?api=save_config', {
-        method: 'POST',
-        body: JSON.stringify(dashboardCards),
-        headers: { 'X-CSRF-TOKEN': '<?= $csrf_token ?>' }
-    }).then(r => r.json()).then(res => {
-        if (!res.ok) console.error("Failed to save widget order.");
+    if(!currentDashId) return;
+    masterDashboards = masterDashboards.map(d => {
+        if (d.id === currentDashId) {
+            d.panels = dashboardCards;
+        }
+        return d;
     });
+    saveConfigToServer(null, true);
+}
+
+function openCustomRangeModal(cardId) {
+    const existing = document.getElementById('custom_range_modal');
+    if (existing) existing.remove();
+
+    const card = dashboardCards.find(c => c.id === cardId);
+    if (!card) return;
+
+    let startVal = '';
+    let endVal = '';
+    if (card.custom_start) {
+        startVal = card.custom_start;
+    } else {
+        const d = new Date(Date.now() - 86400000);
+        startVal = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
+
+    if (card.custom_end) {
+        endVal = card.custom_end;
+    } else {
+        const d = new Date();
+        endVal = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'custom_range_modal';
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100vw';
+    modal.style.height = '100vh';
+    modal.style.background = 'rgba(15, 23, 42, 0.4)';
+    modal.style.backdropFilter = 'blur(4px)';
+    modal.style.display = 'flex';
+    modal.style.justifyContent = 'center';
+    modal.style.alignItems = 'center';
+    modal.style.zIndex = '10000';
+    modal.style.fontFamily = "'Inter', system-ui, -apple-system, sans-serif";
+
+    modal.innerHTML = `
+        <div style="background:#ffffff; border-radius:12px; width:340px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1); padding: 24px; border: 1px solid #e2e8f0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h4 style="margin:0; font-size:16px; font-weight:600; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                    <span class="material-symbols-outlined" style="color:#004d40; font-size:22px; font-weight:bold;">calendar_month</span> Custom Time Range
+                </h4>
+                <button onclick="document.getElementById('custom_range_modal').remove()" style="background:none; border:none; cursor:pointer; padding:4px; display:flex; color:#64748b; transition: color 0.2s;" onmouseenter="this.style.color='#0f172a'" onmouseleave="this.style.color='#64748b'"><span class="material-symbols-outlined" style="font-size:20px;">close</span></button>
+            </div>
+            
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:6px;">Start Date & Time</label>
+                <input type="datetime-local" id="cust_start_${cardId}" value="${startVal}" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-family:inherit; color:#1e293b; outline:none; transition: all 0.2s;" onfocus="this.style.borderColor='#004d40'; this.style.boxShadow='0 0 0 3px rgba(0, 77, 64, 0.15)'" onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none'">
+            </div>
+            
+            <div style="margin-bottom:22px;">
+                <label style="display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:6px;">End Date & Time</label>
+                <input type="datetime-local" id="cust_end_${cardId}" value="${endVal}" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-family:inherit; color:#1e293b; outline:none; transition: all 0.2s;" onfocus="this.style.borderColor='#004d40'; this.style.boxShadow='0 0 0 3px rgba(0, 77, 64, 0.15)'" onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none'">
+            </div>
+            
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button onclick="document.getElementById('custom_range_modal').remove()" style="padding:9px 16px; border:1px solid #e2e8f0; background:#ffffff; color:#475569; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; transition: background 0.15s;" onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background='#ffffff'">Cancel</button>
+                <button id="apply_cust_range_${cardId}" style="padding:9px 16px; border:none; background:#004d40; color:#ffffff; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; transition: background 0.15s;" onmouseenter="this.style.background='#00332c'" onmouseleave="this.style.background='#004d40'">Apply Range</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById(`apply_cust_range_${cardId}`).onclick = () => {
+        const startInput = document.getElementById(`cust_start_${cardId}`).value;
+        const endInput = document.getElementById(`cust_end_${cardId}`).value;
+
+        if (!startInput || !endInput) {
+            alert('Please select both start and end times.');
+            return;
+        }
+
+        const startTs = Math.round(new Date(startInput).getTime() / 1000);
+        const endTs = Math.round(new Date(endInput).getTime() / 1000);
+
+        if (startTs >= endTs) {
+            alert('Start time must be before End time.');
+            return;
+        }
+
+        card.time_range = 'custom';
+        card.custom_start = startInput;
+        card.custom_end = endInput;
+        card.custom_start_ts = startTs;
+        card.custom_end_ts = endTs;
+
+        saveOrderToServer();
+        fetchCardData(card);
+        modal.remove();
+    };
+}
+
+function openTimeRangeMenu(event, cardId) {
+    event.stopPropagation();
+    const existing = document.getElementById('floating_range_menu');
+    if (existing) existing.remove();
+
+    const card = dashboardCards.find(c => c.id === cardId);
+    if (!card) return;
+
+    const currentRange = card.time_range || 86400; // default 24h
+
+    const ranges = [
+        { label: 'Last 1 Hour', value: 3600 },
+        { label: 'Last 6 Hours', value: 21600 },
+        { label: 'Last 24 Hours', value: 86400 },
+        { label: 'Last 7 Days', value: 604800 },
+        { label: 'Last 30 Days', value: 2592000 },
+        { label: 'Custom Range...', value: 'custom' }
+    ];
+
+    const menu = document.createElement('div');
+    menu.id = 'floating_range_menu';
+    menu.style.position = 'absolute';
+    menu.style.background = '#ffffff';
+    menu.style.border = '1px solid #e2e8f0';
+    menu.style.borderRadius = '8px';
+    menu.style.boxShadow = '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)';
+    menu.style.zIndex = '9999';
+    menu.style.width = '170px';
+    menu.style.overflow = 'hidden';
+    menu.style.padding = '6px 0';
+    menu.style.fontFamily = "'Inter', system-ui, -apple-system, sans-serif";
+
+    ranges.forEach(r => {
+        const item = document.createElement('div');
+        item.style.padding = '10px 16px';
+        item.style.fontSize = '13px';
+        item.style.cursor = 'pointer';
+        item.style.display = 'flex';
+        item.style.justifyContent = 'space-between';
+        item.style.alignItems = 'center';
+        item.style.transition = 'all 0.15s ease';
+        
+        const isActive = (r.value === currentRange || (typeof r.value === 'number' && parseInt(r.value) === parseInt(currentRange)));
+        item.style.color = isActive ? '#004d40' : '#475569';
+        item.style.background = isActive ? '#f0fdf4' : 'transparent';
+        item.style.fontWeight = isActive ? '600' : '500';
+
+        item.innerText = r.label;
+        if (isActive) {
+            item.innerHTML += `<span class="material-symbols-outlined" style="font-size:16px!important; color:#10b981; font-weight: bold;">check</span>`;
+        }
+
+        item.onmouseenter = () => { if (!isActive) item.style.background = '#f1f5f9'; };
+        item.onmouseleave = () => { if (!isActive) item.style.background = 'transparent'; };
+
+        item.onclick = () => {
+            if (r.value === 'custom') {
+                openCustomRangeModal(cardId);
+            } else {
+                card.time_range = r.value;
+                saveOrderToServer();
+                fetchCardData(card);
+            }
+            menu.remove();
+        };
+
+        menu.appendChild(item);
+    });
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    menu.style.top = `${rect.bottom + window.scrollY + 6}px`;
+    menu.style.left = `${rect.right - 170 + window.scrollX}px`;
+
+    document.body.appendChild(menu);
+
+    const closeListener = () => {
+        menu.remove();
+        document.removeEventListener('click', closeListener);
+    };
+    setTimeout(() => document.addEventListener('click', closeListener), 10);
+}
+
+function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, history = []) {
+    const container = document.getElementById(`content_view_${cardId}`);
+    if (!data || data.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding: 40px; color:#7f8c8d; font-weight: normal;">No data available to render chart.</div>`;
+        return;
+    }
+
+    const card = dashboardCards.find(c => c.id === cardId) || {};
+    const chartFontSize = parseInt(card.chart_font_size) || 11;
+    const dashboardFontFamily = "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+
+    if (typeof Chart !== 'undefined') {
+        Chart.defaults.font.family = dashboardFontFamily;
+        Chart.defaults.color = "#4a5568";
+    }
+
+    container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; height: 260px; padding: 5px;">
+        <canvas id="chart_canvas_${cardId}"></canvas>
+    </div>`;
+
+    if (activeCharts[cardId]) {
+        activeCharts[cardId].destroy();
+        delete activeCharts[cardId];
+    }
+
+    const canvas = document.getElementById(`chart_canvas_${cardId}`);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const colors = [
+        'rgba(0, 77, 64, 0.75)',    // Premium Teal
+        'rgba(25, 118, 210, 0.75)',  // Deep Blue
+        'rgba(211, 47, 47, 0.75)',   // Crimson Red
+        'rgba(245, 124, 0, 0.75)',   // Vibrant Orange
+        'rgba(123, 31, 162, 0.75)',  // Royal Purple
+        'rgba(0, 150, 136, 0.75)',   // Sea Green
+        'rgba(251, 192, 45, 0.75)',  // Golden Yellow
+        'rgba(97, 97, 97, 0.75)',    // Slate Gray
+        'rgba(233, 30, 99, 0.75)',    // Hot Pink
+        'rgba(141, 110, 99, 0.75)'   // Earth Brown
+    ];
+    
+    const borders = [
+        '#004d40', '#1976d2', '#d32f2f', '#f57c00', '#7b1fa2',
+        '#009688', '#fbc02d', '#616161', '#e91e63', '#8d6e63'
+    ];
+
+    const elegantTooltipConfig = {
+        backgroundColor: 'rgba(15, 23, 42, 0.95)', // Deep Slate Dark Mode
+        titleColor: '#ffffff',
+        titleFont: { size: chartFontSize + 1, family: dashboardFontFamily, weight: '600' },
+        bodyColor: '#cbd5e1',
+        bodyFont: { size: chartFontSize, family: dashboardFontFamily },
+        padding: 12,
+        cornerRadius: 8,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderWidth: 1,
+        displayColors: true,
+        boxWidth: 8,
+        boxHeight: 8,
+        boxPadding: 4,
+        usePointStyle: true
+    };
+
+    if (viewType === 'pie' || viewType === 'donut') {
+        const statusMap = [
+            { label: 'UP (Normal)', value: parseInt(stats.normal) || 0, color: '#2ecc71', border: '#27ae60' },
+            { label: 'Warning', value: parseInt(stats.warning) || 0, color: '#f1c40f', border: '#f39c12' },
+            { label: 'Critical', value: parseInt(stats.critical) || 0, color: '#e74c3c', border: '#c0392b' },
+            { label: 'Unknown', value: parseInt(stats.unknown) || 0, color: '#95a5a6', border: '#7f8c8d' },
+            { label: 'Not Init', value: parseInt(stats.not_init) || 0, color: '#3498db', border: '#2980b9' }
+        ];
+
+        const activeStatuses = statusMap.filter(s => s.value > 0);
+        const finalStatuses = activeStatuses.length > 0 ? activeStatuses : statusMap;
+
+        let displayStatuses = [...finalStatuses];
+        if (chartLimit > 0 && displayStatuses.length > chartLimit) {
+            displayStatuses.sort((a, b) => b.value - a.value);
+            const topList = displayStatuses.slice(0, chartLimit);
+            const othersList = displayStatuses.slice(chartLimit);
+            const sumOthers = othersList.reduce((acc, curr) => acc + curr.value, 0);
+            if (sumOthers > 0) {
+                topList.push({
+                    label: 'Others',
+                    value: sumOthers,
+                    color: '#9b51e0',
+                    border: '#8e44ad'
+                });
+            }
+            displayStatuses = topList;
+        }
+
+        const showLegendCount = (card.show_legend_count !== 0);
+        const labels = displayStatuses.map(s => showLegendCount ? `${s.label} (${s.value})` : s.label);
+        const values = displayStatuses.map(s => s.value);
+        const bgColors = displayStatuses.map(s => s.color);
+        const borderColors = displayStatuses.map(s => s.border);
+
+        const pieOutlabelsPlugin = {
+            id: 'pieOutlabels',
+            afterDraw(chart) {
+                const { ctx, data } = chart;
+                ctx.save();
+                const dataset = chart.getDatasetMeta(0);
+                if (!dataset || !dataset.data) return;
+
+                dataset.data.forEach((element, index) => {
+                    const value = data.datasets[0].data[index];
+                    if (value === 0 || value === null || typeof value === 'undefined') return;
+
+                    const model = element;
+                    const cx = model.x;
+                    const cy = model.y;
+                    const outerRadius = model.outerRadius;
+                    
+                    const startAngle = model.startAngle;
+                    const endAngle = model.endAngle;
+                    const middleAngle = startAngle + (endAngle - startAngle) / 2;
+
+                    const edgeX = cx + Math.cos(middleAngle) * outerRadius;
+                    const edgeY = cy + Math.sin(middleAngle) * outerRadius;
+
+                    const elbowX = cx + Math.cos(middleAngle) * (outerRadius + 12);
+                    const elbowY = cy + Math.sin(middleAngle) * (outerRadius + 12);
+
+                    const isRightSide = Math.cos(middleAngle) > 0;
+                    const endX = elbowX + (isRightSide ? 15 : -15);
+                    const endY = elbowY;
+
+                    // Draw line matching the color of the slice for an ultra-premium feel!
+                    ctx.beginPath();
+                    ctx.moveTo(edgeX, edgeY);
+                    ctx.lineTo(elbowX, elbowY);
+                    ctx.lineTo(endX, endY);
+                    ctx.lineWidth = 1.2;
+                    ctx.strokeStyle = model.options.backgroundColor || '#cbd5e1';
+                    ctx.stroke();
+
+                    // Draw dot at the edge for extra premium feel!
+                    ctx.beginPath();
+                    ctx.arc(edgeX, edgeY, 2, 0, 2 * Math.PI);
+                    ctx.fillStyle = model.options.backgroundColor || '#cbd5e1';
+                    ctx.fill();
+
+                    // Draw text label
+                    const labelText = data.labels[index];
+                    ctx.font = `${chartFontSize}px ${dashboardFontFamily}`;
+                    ctx.fillStyle = '#475569';
+                    ctx.textBaseline = 'middle';
+                    ctx.textAlign = isRightSide ? 'left' : 'right';
+
+                    const padding = 5;
+                    ctx.fillText(labelText, endX + (isRightSide ? padding : -padding), endY);
+                });
+                ctx.restore();
+            }
+        };
+
+        activeCharts[cardId] = new Chart(ctx, {
+            type: viewType === 'pie' ? 'pie' : 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: bgColors,
+                    borderColor: borderColors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: {
+                        left: 45,
+                        right: 15,
+                        top: 15,
+                        bottom: 15
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'right',
+                        labels: {
+                            font: { size: Math.max(9, chartFontSize - 1), family: dashboardFontFamily },
+                            boxWidth: 10
+                        }
+                    },
+                    tooltip: {
+                        ...elegantTooltipConfig,
+                        callbacks: {
+                            label: function(context) {
+                                return `Count: ${context.parsed}`;
+                            }
+                        }
+                    }
+                }
+            },
+            plugins: [pieOutlabelsPlugin]
+        });
+    } else {
+        if (history && history.length > 0) {
+            const uniqueTimestamps = [...new Set(history.map(h => h.utimestamp))].sort((a, b) => a - b);
+            const labels = uniqueTimestamps.map(ts => {
+                const found = history.find(h => h.utimestamp === ts);
+                return found ? found.time : '';
+            });
+
+            const datasets = data.map((m, idx) => {
+                const modHist = history.filter(h => h.id_mod === m.id_agente_modulo);
+                const dataPoints = uniqueTimestamps.map(ts => {
+                    const h = modHist.find(x => x.utimestamp === ts);
+                    return h ? h.val : null;
+                });
+
+                const isArea = (viewType === 'area');
+                const isLine = (viewType === 'line' || isArea);
+
+                return {
+                    label: `${m.agent_alias} - ${m.module_name}`,
+                    data: dataPoints,
+                    backgroundColor: isArea ? colors[idx % colors.length].replace('0.75', '0.15') : colors[idx % colors.length],
+                    borderColor: borders[idx % borders.length],
+                    borderWidth: 2,
+                    fill: isArea,
+                    tension: isLine ? 0.25 : 0,
+                    spanGaps: true,
+                    pointBackgroundColor: borders[idx % borders.length],
+                    pointHoverRadius: 5
+                };
+            });
+
+            activeCharts[cardId] = new Chart(ctx, {
+                type: (viewType === 'line' || viewType === 'area') ? 'line' : 'bar',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { size: Math.max(9, chartFontSize - 1), family: dashboardFontFamily },
+                                boxWidth: 10
+                            }
+                        },
+                        tooltip: {
+                            ...elegantTooltipConfig,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    const datasetLabel = context.dataset.label || '';
+                                    const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
+                                    const found = data.find(r => `${r.agent_alias} - ${r.module_name}` === datasetLabel);
+                                    const unit = found && found.unit ? ' ' + found.unit : '';
+                                    return ` ${datasetLabel}: ${val}${unit}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: Math.max(8, chartFontSize - 2), family: dashboardFontFamily } }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f0f3f5' },
+                            ticks: { font: { size: Math.max(8, chartFontSize - 2), family: dashboardFontFamily } }
+                        }
+                    }
+                }
+            });
+        } else {
+            const processedData = [...data];
+            const uniqueAgents = [...new Set(processedData.map(r => r.agent_alias))];
+            const uniqueModules = [...new Set(processedData.map(r => r.module_name))];
+
+            const datasets = uniqueModules.map((moduleName, idx) => {
+                const modData = uniqueAgents.map(agentAlias => {
+                    const found = processedData.find(r => r.agent_alias === agentAlias && r.module_name === moduleName);
+                    return found ? (parseFloat(found.current_value) || 0) : 0;
+                });
+
+                const isArea = (viewType === 'area');
+                const isLine = (viewType === 'line' || isArea);
+
+                return {
+                    label: moduleName,
+                    data: modData,
+                    backgroundColor: isArea ? colors[idx % colors.length].replace('0.75', '0.15') : colors[idx % colors.length],
+                    borderColor: borders[idx % borders.length],
+                    borderWidth: 2,
+                    fill: isArea,
+                    tension: isLine ? 0.25 : 0,
+                    pointBackgroundColor: borders[idx % borders.length],
+                    pointHoverRadius: 5
+                };
+            });
+
+            activeCharts[cardId] = new Chart(ctx, {
+                type: (viewType === 'line' || viewType === 'area') ? 'line' : 'bar',
+                data: {
+                    labels: uniqueAgents,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { size: Math.max(9, chartFontSize - 1), family: dashboardFontFamily },
+                                boxWidth: 10
+                            }
+                        },
+                        tooltip: {
+                            ...elegantTooltipConfig,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    const datasetLabel = context.dataset.label || '';
+                                    const agent = context.label;
+                                    const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
+                                    const found = processedData.find(r => r.agent_alias === agent && r.module_name === datasetLabel);
+                                    const unit = found && found.unit ? ' ' + found.unit : '';
+                                    return ` ${datasetLabel}: ${val}${unit}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: Math.max(8, chartFontSize - 2), family: dashboardFontFamily } }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f0f3f5' },
+                            ticks: { font: { size: Math.max(8, chartFontSize - 2), family: dashboardFontFamily } }
+                        }
+                    }
+                }
+            });
+        }
+    }
 }
 
 init();

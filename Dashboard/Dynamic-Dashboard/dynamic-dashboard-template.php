@@ -128,6 +128,38 @@ if ($api === 'template_nodes') {
     } catch (Exception $e) { echo json_encode(['error' => $e->getMessage()]); exit; }
 }
 
+if ($api === 'detail_graph' && $db_status) {
+    ob_clean(); header('Content-Type: application/json');
+    $id_mod = (int)$_GET['id_mod'];
+    $range = $_GET['range'] ?? '21600';
+
+    if ($range === 'custom') {
+        $start = (int)$_GET['start'];
+        $end = (int)$_GET['end'];
+    } else {
+        $end = time();
+        $start = $end - (int)$range;
+    }
+
+    try {
+        // Fetch module unit
+        $stmtUnit = $pdo->prepare("SELECT COALESCE(unit, '') as unit FROM tagente_modulo WHERE id_agente_modulo = ?");
+        $stmtUnit->execute([$id_mod]);
+        $unitRow = $stmtUnit->fetch();
+        $unit = $unitRow ? pretty_text($unitRow['unit']) : '';
+
+        $query = "SELECT FROM_UNIXTIME(utimestamp, '%Y-%m-%d %H:%i') as waktu, datos
+                  FROM tagente_datos
+                  WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+                  ORDER BY utimestamp ASC LIMIT 1500";
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([$id_mod, $start, $end]);
+        $data = $stmt->fetchAll();
+        echo json_encode(['ok' => true, 'data' => $data, 'unit' => $unit]);
+    } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
+    exit;
+}
+
 if ($api === 'bulk_panel_data') {
     ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['ok' => false, 'error' => 'DB Connection Error: ' . $db_error]); exit; }
@@ -143,9 +175,13 @@ if ($api === 'bulk_panel_data') {
     try {
         // Helper to normalize strings (remove NBSP, extra spaces, lowercase, trim)
         function normalize_mod_name($s) {
-            // Remove any non-printable characters and normalize all whitespace (including NBSP)
-            $s = preg_replace('/[[:^print:]]/', '', (string)$s); 
-            $s = preg_replace('/\s+/', ' ', $s);
+            // First run pretty_text to clean HTML entities and standard spaces
+            $s = pretty_text($s);
+            // Replace any kind of space (including non-breaking spaces) with standard space
+            $s = preg_replace('/\s+/u', ' ', $s);
+            $s = str_replace(chr(194).chr(160), ' ', $s);
+            // Remove non-printable characters safely
+            $s = preg_replace('/[^\x20-\x7E]/', '', $s);
             return strtolower(trim($s));
         }
 
@@ -180,19 +216,24 @@ if ($api === 'bulk_panel_data') {
             $modulesFound = [];
 
             foreach ($keywords as $sub_kw) {
-                if (empty(trim($sub_kw))) continue;
-                $sub_kw_norm = normalize_mod_name($sub_kw);
+                $trimmed = trim($sub_kw);
+                if ($trimmed === '') continue;
+                $is_wildcard = ($trimmed === '%' || $trimmed === '*');
+                $sub_kw_norm = normalize_mod_name($trimmed);
                 
                 foreach ($allModules as $mod) {
                     $mod_norm = normalize_mod_name($mod['nombre']);
-                    if ($mType === 'exact') {
+                    if ($is_wildcard) {
+                        $modulesFound[] = $mod;
+                    } else if ($mType === 'exact') {
                         if ($mod_norm === $sub_kw_norm) {
                             $modulesFound[] = $mod;
                         }
                     } else {
                         // Contains/Regex logic
-                        $fuzzy_regex = '/' . str_replace(' ', '.*', preg_quote($sub_kw, '/')) . '/i';
-                        if (preg_match($fuzzy_regex, $mod['nombre']) || $mod_norm === $sub_kw_norm) {
+                        $clean_nombre = pretty_text($mod['nombre']);
+                        $fuzzy_regex = '/' . str_replace(' ', '.*', preg_quote($trimmed, '/')) . '/i';
+                        if (preg_match($fuzzy_regex, $clean_nombre) || $mod_norm === $sub_kw_norm) {
                             $modulesFound[] = $mod;
                         }
                     }
@@ -427,6 +468,29 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .radio-btn-group label { display: flex; align-items: center; gap: 5px; font-size: 13px !important; text-transform: none; color: #0b1a26; cursor: pointer; font-weight: normal !important;}
         .radio-btn-group input { width: 16px; height: 16px; margin: 0; cursor: pointer;}
         .d-none { display: none !important; }
+
+        /* Custom Table in detail modal */
+        .table-pfms {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            background: #fff;
+        }
+        .table-pfms th {
+            background: #f8fafc;
+            color: #475569;
+            font-weight: 600;
+            text-align: left;
+            padding: 10px 16px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .table-pfms td {
+            padding: 10px 16px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .table-pfms tr:hover td {
+            background: #f8fafc;
+        }
 
         /* NEW VIEW TYPES CSS */
         .mini-stats-row { display: flex; gap: 12px; width: 100%; flex-wrap: wrap; margin-bottom: 5px;}
@@ -705,6 +769,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <option value="status_table">Table View (Current Status)</option>
                         <option value="status_heatmap">Heatmap View (Current Status)</option>
                         <option value="status_stats">Stats Cards (Current Status)</option>
+                        <option value="pie">Pie Chart (Current Status)</option>
+                        <option value="donut">Donut Chart (Current Status)</option>
                     </select>
                 </div>
                 <div class="form-group" style="flex:1;">
@@ -784,6 +850,33 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
             </div>
 
+            <div class="form-group" id="wrap_columns_select" style="margin-top: 15px; margin-bottom: 15px;">
+                <label style="font-weight: 600; margin-bottom: 8px; display: block; font-size: 11px; color: #7f8c8d; text-transform: uppercase;">Visible Columns (Table View Only)</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px; color: #4a5568;">
+                        <input type="checkbox" class="col-visibility-chk" value="agent" checked> Node Agent
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px; color: #4a5568;">
+                        <input type="checkbox" class="col-visibility-chk" value="group" checked> Group
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px; color: #4a5568;">
+                        <input type="checkbox" class="col-visibility-chk" value="ip" checked> IP Address
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px; color: #4a5568;">
+                        <input type="checkbox" class="col-visibility-chk" value="module" checked> Sensor Module
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px; color: #4a5568;">
+                        <input type="checkbox" class="col-visibility-chk" value="status" checked> Status
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px; color: #4a5568;">
+                        <input type="checkbox" class="col-visibility-chk" value="history" checked> Metrics History
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13px; color: #4a5568;">
+                        <input type="checkbox" class="col-visibility-chk" value="threshold" checked> Threshold
+                    </label>
+                </div>
+            </div>
+
             <div style="margin-top:15px; padding:10px; border-top:1px solid #eee;">
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin:0;">
                     <input type="checkbox" id="p_hidden" style="width:18px; height:18px; cursor:pointer;">
@@ -827,6 +920,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <th style="padding:12px 15px;">SENSOR MODULE</th>
                         <th style="padding:12px 15px;">VALUE</th>
                         <th style="padding:12px 15px;">STATUS</th>
+                        <th style="padding:12px 15px; text-align:center;">ACTION</th>
                     </tr>
                 </thead>
                 <tbody id="statusDetailBody">
@@ -836,6 +930,82 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         </div>
         <div style="padding:15px 25px; border-top:1px solid #f0f3f5; text-align:right; background:#fafbfc;">
             <button class="btn-cancel" onclick="closeStatusDetailModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- NATIVE PANDORA CHART IFRAME MODAL -->
+<div class="modal-overlay" id="nativeChartModal" onclick="closeNativeChartModal()">
+    <div class="iframe-modal-box" onclick="event.stopPropagation()">
+        <div class="iframe-header">
+            <div class="iframe-title" id="nativeChartTitle">Metrics History</div>
+            <button class="btn-secondary-custom" onclick="closeNativeChartModal()" style="padding: 4px 8px; border:none; background:#e0e4e8;">
+                <span class="material-symbols-outlined" style="font-size:16px!important;">close</span>
+            </button>
+        </div>
+        <iframe id="nativeChartFrame" src="" style="width: 100%; height: 500px; border: none; background: #fff;"></iframe>
+    </div>
+</div>
+
+<!-- NATIVE MODULE DETAIL FALLBACK MODAL -->
+<div class="modal-overlay" id="nativeModuleDetailModal" style="display:none;">
+    <div class="modal-box iframe-modal-box" style="width: 950px; max-width: 95%; height: 85vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <div class="iframe-header" style="padding: 15px 20px; border-bottom: 1px solid #e0e4e8; display:flex; justify-content:space-between; align-items:center; background-color:#f8f9fa; flex-shrink:0;">
+            <h5 class="iframe-title" id="nativeModuleDetailTitle" style="font-weight:600!important; margin:0; font-size:14px; color:#0b1a26;">Module Detail</h5>
+            <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size:20px;" onclick="closeNativeModuleDetailModal()">close</span>
+        </div>
+        <div class="modal-body-scroll" style="flex-grow:1; padding:20px; overflow-y:auto; background:#f8fafc; display:flex; flex-direction:column; gap:20px;">
+            <!-- Range Selector Control -->
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:12px 20px; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="material-symbols-outlined" style="color:#004d40; font-size:18px;">schedule</span>
+                    <span style="font-weight:600; color:#1e293b; font-size:13px;">Time Range:</span>
+                    <select id="nativeModuleTimeRange" class="form-control-fix" style="width:160px; margin-bottom:0; height:32px; padding:4px 8px; font-size:13px;" onchange="handleNativeModuleRangeChange()">
+                        <option value="3600">1 Hour</option>
+                        <option value="21600">6 Hours</option>
+                        <option value="86400" selected>24 Hours</option>
+                        <option value="604800">7 Days</option>
+                        <option value="2592000">30 Days</option>
+                        <option value="custom">Custom Range...</option>
+                    </select>
+                </div>
+                
+                <div id="nativeModuleCustomRangeBox" style="display:none; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <input type="datetime-local" id="nativeModuleCustomStart" class="form-control-fix" style="width:190px; margin-bottom:0; height:32px; padding:4px 8px; font-size:12px;">
+                    <span style="color:#64748b; font-size:12px;">to</span>
+                    <input type="datetime-local" id="nativeModuleCustomEnd" class="form-control-fix" style="width:190px; margin-bottom:0; height:32px; padding:4px 8px; font-size:12px;">
+                    <button class="btn-apply" style="padding:4px 15px; font-size:12px; height:32px; display:inline-flex; align-items:center; justify-content:center;" onclick="applyNativeModuleCustomRange()">Apply</button>
+                </div>
+            </div>
+
+            <!-- Chart Container -->
+            <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; min-height:260px; position:relative;">
+                <h6 style="margin:0 0 10px 0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Historical Trend</h6>
+                <div style="height:200px; width:100%; position:relative;">
+                    <canvas id="nativeModuleDetailChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Table Container -->
+            <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; display:flex; flex-direction:column; flex-grow:1; min-height:300px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <h6 style="margin:0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Data Log</h6>
+                    <div style="font-size:11px; color:#64748b;" id="nativeModuleDetailCount">0 rows</div>
+                </div>
+                <div style="overflow-y:auto; flex-grow:1; max-height:300px; border:1px solid #f0f3f5; border-radius:6px;">
+                    <table class="table-pfms" id="nativeModuleDetailTable">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="2" style="text-align:center; padding:30px; color:#64748b;">Loading history...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -862,6 +1032,10 @@ let globalGroupsMap = {};
 
 const baseBreadcrumb = '<?= h($dynamic_breadcrumb) ?>';
 let hasUnsavedChanges = false;
+
+let nativeModuleChartInstance = null;
+let currentDetailModuleId = null;
+let currentDetailModuleTitle = '';
 
 // V4.8 IS_STANDALONE FLAG
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
@@ -1524,16 +1698,77 @@ function generateSummaryPanelHtml(p, modules) {
                 </div>
             </div>`;
     } else if (p.type === 'status_table') {
+        const visibleCols = p.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
+        
+        let headerRow = '';
+        if (visibleCols.includes('agent')) headerRow += '<th>Node Agent</th>';
+        if (visibleCols.includes('group')) headerRow += '<th>Group</th>';
+        if (visibleCols.includes('ip')) headerRow += '<th>IP Address</th>';
+        if (visibleCols.includes('module')) headerRow += '<th>Sensor Module</th>';
+        if (visibleCols.includes('status')) headerRow += '<th style="text-align:center;">Status / Value</th>';
+        if (visibleCols.includes('history')) headerRow += '<th style="text-align:center;">Metrics History</th>';
+        if (visibleCols.includes('threshold')) headerRow += '<th>Threshold</th>';
+
         content = `
-            <div class="table-wrap-dyn">
-                <table class="table-dyn">
-                    <thead><tr><th>Module Name</th><th>Current Value</th><th>Status</th></tr></thead>
+            <div class="table-wrap-dyn" style="overflow-x:auto;">
+                <table class="table-pfms" style="width:100%;">
+                    <thead><tr>${headerRow}</tr></thead>
                     <tbody>
                         ${modules.map(m => {
                             const bgClass = {0:'bg-green', 1:'bg-red', 2:'bg-yellow', 4:'bg-blue'}[m.status] || 'bg-gray';
                             const statusLbl = {0:'UP', 1:'CRITICAL', 2:'WARNING', 4:'NOT INIT'}[m.status] || 'UNKNOWN';
                             const cleanVal = formatSmartValue(m.current, p.use_raw);
-                            return `<tr><td>${m.module_name}</td><td>${cleanVal} ${m.unit}</td><td><span class="status-pill-dyn ${bgClass}">${statusLbl}</span></td></tr>`;
+                            
+                            let rowHtml = '<tr>';
+                            if (visibleCols.includes('agent')) {
+                                rowHtml += `<td>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <span class="status-dot ${bgClass}" style="margin:0; width:8px; height:8px;"></span>
+                                        <a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}" target="_blank" style="color:#1976d2; font-weight:600; text-decoration:none;">${m.agent_name}</a>
+                                    </div>
+                                </td>`;
+                            }
+                            if (visibleCols.includes('group')) {
+                                rowHtml += `<td>${m.group_name}</td>`;
+                            }
+                            if (visibleCols.includes('ip')) {
+                                rowHtml += `<td><code style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:monospace; color:#e74c3c;">${m.ip_address || '-'}</code></td>`;
+                            }
+                            if (visibleCols.includes('module')) {
+                                let lastContactStr = m.last_contact ? new Date(m.last_contact * 1000).toLocaleString('id-ID', {hour12:false}) : 'Awaiting';
+                                rowHtml += `<td>
+                                    <div style="font-weight:500; color:#0b1a26; margin-bottom:2px;">${m.module_name}</div>
+                                    <div style="font-size:10px; color:#7f8c8d;">Update: ${lastContactStr}</div>
+                                </td>`;
+                            }
+                            if (visibleCols.includes('status')) {
+                                rowHtml += `<td style="text-align:center;">
+                                    <span class="status-pill-dyn ${bgClass}" style="color:#fff!important; border:none; padding: 6px 12px; font-weight:600; display:inline-block; border-radius:4px; font-size:11px;">
+                                        ${cleanVal} ${m.unit}
+                                    </span>
+                                </td>`;
+                            }
+                            if (visibleCols.includes('history')) {
+                                rowHtml += `<td style="text-align:center;">
+                                    <div style="display:inline-flex; gap:8px; align-items:center; justify-content:center; width:100%;">
+                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}')" title="View Chart">
+                                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>
+                                        </button>
+                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog(${m.id}, ${m.agent_id}, '', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
+                                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#2e7d32;">table_chart</span>
+                                        </button>
+                                    </div>
+                                </td>`;
+                            }
+                            if (visibleCols.includes('threshold')) {
+                                let unitStr = m.unit ? ` ${m.unit}` : '';
+                                rowHtml += `<td>
+                                    <div style="font-size:11px; color:#64748b;">Min: <strong style="color:#475569;">${m.min}${unitStr}</strong></div>
+                                    <div style="font-size:11px; color:#64748b;">Max: <strong style="color:#e74c3c;">${m.max}${unitStr}</strong></div>
+                                </td>`;
+                            }
+                            rowHtml += '</tr>';
+                            return rowHtml;
                         }).join('')}
                     </tbody>
                 </table>
@@ -1554,6 +1789,11 @@ function generateSummaryPanelHtml(p, modules) {
                     let shortVal = String(cleanVal).length > (p.box_size === 'small' ? 4 : 8) ? String(cleanVal).substring(0, (p.box_size === 'small' ? 4 : 8)) : cleanVal;
                     return `<button class="heat-box-dyn ${bgClass}" style="width:${s.w}; height:${s.h}; font-size:${s.f};" title="${m.module_name}: ${m.current} ${m.unit}" onclick="openNativeChart(${m.id}, '${m.module_name}')">${shortVal}</button>`;
                 }).join('')}
+            </div>`;
+    } else if (p.type === 'pie' || p.type === 'donut') {
+        content = `
+            <div style="position:relative; width:100%; height:100%; min-height:220px; display:flex; justify-content:center; align-items:center;">
+                <canvas id="chart_${p.id}" style="max-height: 220px; width: 100%;"></canvas>
             </div>`;
     }
 
@@ -1642,7 +1882,7 @@ function refreshCurrentNodeData() {
             activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
 
             // --- 2. Render HTML Content ---
-            if (['status_table', 'status_heatmap', 'status_stats'].includes(p.type)) {
+            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut'].includes(p.type)) {
                 wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             } else {
                 if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
@@ -1655,9 +1895,93 @@ function refreshCurrentNodeData() {
             }
 
             // --- 3. Render Charts ---
-            const multiColors = ['#2ecc71', '#3498db', '#e67e22', '#9b59b6', '#e74c3c', '#1abc9c', '#f1c40f', '#34495e'];
+            const colors = [
+                'rgba(0, 77, 64, 0.75)',    // Premium Teal
+                'rgba(25, 118, 210, 0.75)',  // Deep Blue
+                'rgba(211, 47, 47, 0.75)',   // Crimson Red
+                'rgba(245, 124, 0, 0.75)',   // Vibrant Orange
+                'rgba(123, 31, 162, 0.75)',  // Royal Purple
+                'rgba(0, 150, 136, 0.75)',   // Sea Green
+                'rgba(251, 192, 45, 0.75)',  // Golden Yellow
+                'rgba(97, 97, 97, 0.75)',    // Slate Gray
+                'rgba(233, 30, 99, 0.75)',    // Hot Pink
+                'rgba(141, 110, 99, 0.75)'   // Earth Brown
+            ];
+            const borders = [
+                '#004d40', '#1976d2', '#d32f2f', '#f57c00', '#7b1fa2',
+                '#009688', '#fbc02d', '#616161', '#e91e63', '#8d6e63'
+            ];
 
-            if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
+            if (['pie', 'donut'].includes(p.type)) {
+                const canvas = document.getElementById(`chart_${p.id}`);
+                if (canvas) {
+                    const stats = { total: activeModules.length, up: 0, crit: 0, warn: 0, unknown: 0, not_init: 0 };
+                    activeModules.forEach(m => {
+                        if (m.status === 0) stats.up++;
+                        else if (m.status === 1) stats.crit++;
+                        else if (m.status === 2) stats.warn++;
+                        else if (m.status === 4) stats.not_init++;
+                        else stats.unknown++;
+                    });
+
+                    const statusMap = [
+                        { label: 'UP (Normal)', value: stats.up, color: '#2ecc71', border: '#27ae60' },
+                        { label: 'Warning', value: stats.warn, color: '#f1c40f', border: '#f39c12' },
+                        { label: 'Critical', value: stats.crit, color: '#e74c3c', border: '#c0392b' },
+                        { label: 'Unknown', value: stats.unknown, color: '#95a5a6', border: '#7f8c8d' },
+                        { label: 'Not Init', value: stats.not_init, color: '#3498db', border: '#2980b9' }
+                    ];
+
+                    const activeStatuses = statusMap.filter(s => s.value > 0);
+                    const finalStatuses = activeStatuses.length > 0 ? activeStatuses : statusMap;
+
+                    const labels = finalStatuses.map(s => `${s.label} (${s.value})`);
+                    const values = finalStatuses.map(s => s.value);
+                    const bgColors = finalStatuses.map(s => s.color);
+                    const borderColors = finalStatuses.map(s => s.border);
+
+                    try {
+                        chartInstances[p.id] = new Chart(canvas.getContext('2d'), {
+                            type: p.type === 'pie' ? 'pie' : 'doughnut',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    data: values,
+                                    backgroundColor: bgColors,
+                                    borderColor: borderColors,
+                                    borderWidth: 1
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        position: 'right',
+                                        labels: {
+                                            boxWidth: 10,
+                                            font: { size: 10 }
+                                        }
+                                    },
+                                    tooltip: {
+                                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                                        titleColor: '#ffffff',
+                                        bodyColor: '#cbd5e1',
+                                        padding: 10,
+                                        cornerRadius: 6,
+                                        callbacks: {
+                                            label: function(context) {
+                                                return `Count: ${context.parsed}`;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    } catch(e) { console.error("Pie/Donut Error:", e); }
+                }
+            } else if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
                 // RENDER MULTI-OVERLAY CHART
                 const uniqueId = `${p.id}_multi`;
                 const canvas = document.getElementById(`chart_${uniqueId}`);
@@ -1668,7 +1992,8 @@ function refreshCurrentNodeData() {
                     const labels = Array.from(allLabelsSet).sort(); 
 
                     const datasets = activeModules.map((m, idx) => {
-                        const color = multiColors[idx % multiColors.length];
+                        const color = borders[idx % borders.length];
+                        const fillBg = colors[idx % colors.length].replace('0.75', '0.15');
                         const historyMap = {};
                         (m.history || []).forEach(h => historyMap[h.lbl] = h.val);
                         const data = labels.map(lbl => historyMap[lbl] !== undefined ? historyMap[lbl] : null);
@@ -1677,11 +2002,13 @@ function refreshCurrentNodeData() {
                             label: m.module_name,
                             data: data,
                             borderColor: color,
-                            backgroundColor: p.type === 'area' ? color + '33' : (p.type === 'bar' ? color : 'transparent'),
+                            backgroundColor: p.type === 'area' ? fillBg : (p.type === 'bar' ? colors[idx % colors.length] : 'transparent'),
                             fill: p.type === 'area',
-                            tension: 0.4,
+                            tension: p.type === 'bar' ? 0 : 0.25,
                             pointRadius: 0,
-                            borderWidth: p.type === 'bar' ? 0 : 2
+                            pointHoverRadius: 5,
+                            borderWidth: p.type === 'bar' ? 0 : 2,
+                            spanGaps: true
                         };
                     });
 
@@ -1701,15 +2028,23 @@ function refreshCurrentNodeData() {
                                         enabled: true,
                                         mode: 'index',
                                         intersect: false,
-                                        backgroundColor: '#fff',
-                                        titleColor: '#1e293b',
-                                        bodyColor: '#475569',
-                                        borderColor: '#e2e8f0',
+                                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                                        titleColor: '#ffffff',
+                                        bodyColor: '#cbd5e1',
+                                        borderColor: 'rgba(255, 255, 255, 0.1)',
                                         borderWidth: 1,
                                         padding: 10,
                                         cornerRadius: 6,
                                         displayColors: true,
-                                        bodyFont: { size: 12 }
+                                        callbacks: {
+                                            label: function(context) {
+                                                const datasetLabel = context.dataset.label || '';
+                                                const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
+                                                const found = activeModules.find(m => m.module_name === datasetLabel);
+                                                const unit = found && found.unit ? ' ' + found.unit : '';
+                                                return ` ${datasetLabel}: ${val}${unit}`;
+                                            }
+                                        }
                                     }
                                 },
                                 scales: {
@@ -1718,7 +2053,7 @@ function refreshCurrentNodeData() {
                                         beginAtZero: true,
                                         max: p.force_100 ? 100 : undefined,
                                         ticks: { font: { size: 9 } }, 
-                                        grid: { color: 'rgba(226, 232, 240, 0.6)', drawBorder: false } 
+                                        grid: { color: '#f0f3f5', drawBorder: false } 
                                     }
                                 }
                             }
@@ -1763,11 +2098,12 @@ function refreshCurrentNodeData() {
                                         data:history.map(h=>h.val), 
                                         borderColor:color, 
                                         fill:p.type==='area', 
-                                        backgroundColor: (p.type==='bar') ? color : (p.type==='area' ? color + '44' : 'transparent'), 
-                                        tension: 0.4,
+                                        backgroundColor: (p.type==='bar') ? color : (p.type==='area' ? color + '22' : 'transparent'), 
+                                        tension: p.type === 'bar' ? 0 : 0.25,
                                         pointRadius: 0,
-                                        pointHoverRadius: 4,
-                                        borderWidth: (p.type==='bar' ? 0 : 2)
+                                        pointHoverRadius: 5,
+                                        borderWidth: (p.type==='bar' ? 0 : 2),
+                                        spanGaps: true
                                     }]
                                 }, 
                                 options:{
@@ -1779,15 +2115,21 @@ function refreshCurrentNodeData() {
                                             enabled: true,
                                             mode: 'index',
                                             intersect: false,
-                                            backgroundColor: '#fff',
-                                            titleColor: '#1e293b',
-                                            bodyColor: '#475569',
-                                            borderColor: '#e2e8f0',
+                                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                                            titleColor: '#ffffff',
+                                            bodyColor: '#cbd5e1',
+                                            borderColor: 'rgba(255, 255, 255, 0.1)',
                                             borderWidth: 1,
                                             padding: 10,
                                             cornerRadius: 6,
                                             displayColors: true,
-                                            bodyFont: { size: 12 }
+                                            callbacks: {
+                                                label: function(context) {
+                                                    const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
+                                                    const unit = m.unit ? ' ' + m.unit : '';
+                                                    return ` ${m.module_name}: ${val}${unit}`;
+                                                }
+                                            }
                                         }
                                     }, 
                                     scales: { 
@@ -1806,7 +2148,7 @@ function refreshCurrentNodeData() {
                                                     return value + (m.unit ? ' ' + m.unit : '');
                                                 }
                                             },
-                                            grid: { color: 'rgba(226, 232, 240, 0.6)', drawBorder: false }
+                                            grid: { color: '#f0f3f5', drawBorder: false }
                                         }
                                     }
                                 }
@@ -1931,6 +2273,7 @@ function openPanelBuilder() {
     document.getElementById('p_show_time').checked = true;
     document.getElementById('p_hidden').checked = false;
     document.getElementById('p_multi_overlay').checked = false;
+    document.querySelectorAll('.col-visibility-chk').forEach(chk => chk.checked = true);
     document.querySelector('input[name="p_match_type"][value="contains"]').checked = true;
     togglePanelLayoutOptions();
     toggleTypeFields();
@@ -1957,6 +2300,11 @@ function openPanelEdit(id) {
     document.getElementById('p_lbl_0').value = p.lbl_0 || '';
     document.getElementById('p_hidden').checked = p.hidden || false;
     document.getElementById('p_multi_overlay').checked = p.multi_overlay || false;
+    
+    const activeCols = p.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
+    document.querySelectorAll('.col-visibility-chk').forEach(el => {
+        el.checked = activeCols.includes(el.value);
+    });
     
     const mType = p.match_type || 'contains';
     document.querySelector(`input[name="p_match_type"][value="${mType}"]`).checked = true;
@@ -2001,6 +2349,7 @@ function applyPanel() {
         lbl_0: document.getElementById('p_lbl_0').value,
         hidden: document.getElementById('p_hidden').checked,
         multi_overlay: document.getElementById('p_multi_overlay').checked,
+        visible_columns: Array.from(document.querySelectorAll('.col-visibility-chk:checked')).map(el => el.value),
         excluded: editingPanelId ? (dash.panels.find(x => x.id === editingPanelId).excluded || []) : []
     };
     if (editingPanelId) dash.panels = dash.panels.map(x => x.id === editingPanelId ? p : x);
@@ -2081,6 +2430,16 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
                 <td style="font-weight:500;">${m.module_name}</td>
                 <td style="font-weight:600;">${m.current}</td>
                 <td><span class="status-pill-dyn ${bgClass}">${statusLbl}</span></td>
+                <td style="text-align:center;">
+                    <div style="display:inline-flex; gap:8px; align-items:center; justify-content:center; width:100%;">
+                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}')" title="View Chart">
+                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>
+                        </button>
+                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog(${m.id}, ${m.agent_id}, '', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
+                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#2e7d32;">table_chart</span>
+                        </button>
+                    </div>
+                </td>
             </tr>`;
     }).join('');
 
@@ -2101,8 +2460,201 @@ function closeStatusDetailModal() {
     document.getElementById('statusDetailModal').style.display = 'none';
 }
 
-function openNativeChart(id, name) {
-    window.open(`/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&tab=graph&id_agente_modulo=${id}`, '_blank');
+function openNativeChartModal(modId, title) {
+    if(!modId || modId === 0) return;
+    document.getElementById('nativeChartTitle').innerHTML = `<span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40; vertical-align:middle; margin-right:5px;">monitoring</span> ${title}`;
+    const url = `/pandora_console/operation/agentes/stat_win.php?type=sparse&period=86400&id=${modId}&refresh=600&period_graph=0&draw_events=0`;
+    document.getElementById('nativeChartFrame').src = url;
+    document.getElementById('nativeChartModal').style.display = 'flex';
+}
+
+function closeNativeChartModal() {
+    document.getElementById('nativeChartModal').style.display = 'none';
+    document.getElementById('nativeChartFrame').src = '';
+}
+
+function show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title) {
+    if (!IS_STANDALONE && typeof window.parent !== 'undefined' && window.parent && window.parent.show_module_detail_dialog && window.parent !== window) {
+        try {
+            window.parent.show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title);
+            return;
+        } catch (e) { console.warn("Failed parent call:", e); }
+    }
+    if (!IS_STANDALONE && typeof window.top !== 'undefined' && window.top && window.top.show_module_detail_dialog && window.top !== window) {
+        try {
+            window.top.show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title);
+            return;
+        } catch (e) { console.warn("Failed top call:", e); }
+    }
+    // Open our lightweight custom history modal!
+    openNativeModuleDetailModal(module_id, title || 'Module Detail', offset || 86400);
+}
+
+function handleNativeModuleRangeChange() {
+    const val = document.getElementById('nativeModuleTimeRange').value;
+    const customBox = document.getElementById('nativeModuleCustomRangeBox');
+    if (val === 'custom') {
+        customBox.style.display = 'flex';
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        const formatDT = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        document.getElementById('nativeModuleCustomStart').value = formatDT(yesterday);
+        document.getElementById('nativeModuleCustomEnd').value = formatDT(now);
+    } else {
+        customBox.style.display = 'none';
+        openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, val);
+    }
+}
+
+function applyNativeModuleCustomRange() {
+    const startVal = document.getElementById('nativeModuleCustomStart').value;
+    const endVal = document.getElementById('nativeModuleCustomEnd').value;
+    if (!startVal || !endVal) return alert('Please select start and end dates.');
+    
+    const startTs = Math.floor(new Date(startVal).getTime() / 1000);
+    const endTs = Math.floor(new Date(endVal).getTime() / 1000);
+    
+    if (startTs >= endTs) return alert('Start date must be before end date.');
+    
+    openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, 'custom', startTs, endTs);
+}
+
+async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400, customStart = null, customEnd = null) {
+    currentDetailModuleId = moduleId;
+    currentDetailModuleTitle = title;
+    
+    document.getElementById('nativeModuleDetailTitle').innerText = 'Module: ' + title;
+    document.getElementById('nativeModuleDetailModal').style.display = 'flex';
+    
+    const selectEl = document.getElementById('nativeModuleTimeRange');
+    if (selectEl) selectEl.value = rangeSeconds;
+    
+    const customBox = document.getElementById('nativeModuleCustomRangeBox');
+    if (customBox) {
+        if (rangeSeconds === 'custom') {
+            customBox.style.display = 'flex';
+        } else {
+            customBox.style.display = 'none';
+        }
+    }
+    
+    const tableBody = document.querySelector('#nativeModuleDetailTable tbody');
+    tableBody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:30px; color:#64748b;">Loading history...</td></tr>';
+    document.getElementById('nativeModuleDetailCount').innerText = 'Loading...';
+    
+    if (nativeModuleChartInstance) {
+        nativeModuleChartInstance.destroy();
+        nativeModuleChartInstance = null;
+    }
+    
+    try {
+        let url = `?api=detail_graph&id_mod=${moduleId}&range=${rangeSeconds}`;
+        if (rangeSeconds === 'custom') {
+            url += `&start=${customStart}&end=${customEnd}`;
+        }
+        
+        const res = await fetch(url).then(r => r.json());
+        if (!res.ok) {
+            tableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:30px; color:#e74c3c;">Error: ${res.error || 'Failed to load data'}</td></tr>`;
+            return;
+        }
+        
+        const data = res.data || [];
+        document.getElementById('nativeModuleDetailCount').innerText = `${data.length} rows`;
+        
+        if (data.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:30px; color:#64748b;">No history data found in the selected range.</td></tr>';
+            return;
+        }
+        
+        const unit = res.unit ? ' ' + res.unit : '';
+        
+        // Render Table Rows
+        let html = '';
+        data.forEach(row => {
+            let formattedDate = row.waktu;
+            if (row.waktu && row.waktu.includes('-')) {
+                const parts = row.waktu.split(' ');
+                const ymd = parts[0].split('-');
+                formattedDate = `${ymd[2]}/${ymd[1]}/${ymd[0]} ${parts[1]}`;
+            }
+            const valNum = parseFloat(row.datos);
+            const displayVal = (valNum % 1 === 0) ? valNum : valNum.toFixed(2);
+            html += `<tr>
+                <td style="font-weight: normal; color: #475569;">${formattedDate}</td>
+                <td style="font-weight: 600; color: #0f172a;">${displayVal}${unit}</td>
+            </tr>`;
+        });
+        tableBody.innerHTML = html;
+        
+        // Render Chart.js line graph
+        const labels = data.map(row => {
+            if (row.waktu && row.waktu.includes('-')) {
+                const parts = row.waktu.split(' ');
+                const ymd = parts[0].split('-');
+                return `${ymd[2]}/${ymd[1]} ${parts[1]}`;
+            }
+            return row.waktu;
+        });
+        const dataset = data.map(row => parseFloat(row.datos));
+        
+        const ctx = document.getElementById('nativeModuleDetailChart').getContext('2d');
+        
+        // Create custom gradient
+        const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+        gradient.addColorStop(0, 'rgba(0, 77, 64, 0.2)');
+        gradient.addColorStop(1, 'rgba(0, 77, 64, 0)');
+        
+        nativeModuleChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: title,
+                    data: dataset,
+                    borderColor: '#004d40',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            font: { size: 9 },
+                            maxTicksLimit: 8
+                        }
+                    },
+                    y: {
+                        grid: { color: '#f1f5f9' },
+                        ticks: { font: { size: 10 } }
+                    }
+                }
+            }
+        });
+        
+    } catch (e) {
+        tableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:30px; color:#e74c3c;">Exception: ${e.message}</td></tr>`;
+    }
+}
+
+function closeNativeModuleDetailModal() {
+    document.getElementById('nativeModuleDetailModal').style.display = 'none';
+    if (nativeModuleChartInstance) {
+        nativeModuleChartInstance.destroy();
+        nativeModuleChartInstance = null;
+    }
 }
 
 document.addEventListener('click', function(e) {

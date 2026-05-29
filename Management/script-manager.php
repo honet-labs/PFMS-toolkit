@@ -278,9 +278,33 @@ if ($api === 'rollback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 if ($api === 'audit_logs') {
     ob_clean(); header('Content-Type: application/json');
     try {
-        $stmt = $pdo->query("SELECT * FROM custom_panel_audit_log ORDER BY created_at DESC LIMIT 100");
-        echo json_encode(['ok' => true, 'logs' => $stmt->fetchAll()]);
-    } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => 'Audit table issue: ' . $e->getMessage()]); }
+        if (!$db_status || !$pdo) {
+            echo json_encode(['ok' => false, 'error' => 'Database connection not initialized.']);
+            exit;
+        }
+        $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+        if ($page < 1) $page = 1;
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 25;
+        if ($limit < 5) $limit = 25;
+        $offset = ($page - 1) * $limit;
+
+        $total_stmt = $pdo->query("SELECT COUNT(*) FROM custom_panel_audit_log");
+        $total_count = (int)$total_stmt->fetchColumn();
+
+        $limit = (int)$limit;
+        $offset = (int)$offset;
+        $stmt = $pdo->prepare("SELECT * FROM custom_panel_audit_log ORDER BY created_at DESC LIMIT $limit OFFSET $offset");
+        $stmt->execute();
+
+        echo json_encode([
+            'ok' => true,
+            'logs' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+            'total' => $total_count,
+            'page' => $page,
+            'limit' => $limit,
+            'total_pages' => ceil($total_count / $limit)
+        ]);
+    } catch (Throwable $e) { echo json_encode(['ok' => false, 'error' => 'Audit table issue: ' . $e->getMessage()]); }
     exit;
 }
 
@@ -391,7 +415,20 @@ if ($api === 'create_folder' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
     <div id="tab_audit" style="display:none;">
-        <div class="card-custom"><table class="table-pfms"><thead><tr><th>User</th><th>Action</th><th>Target</th><th>Details</th><th>Timestamp</th></tr></thead><tbody id="auditTableBody"></tbody></table></div>
+        <div class="card-custom" style="margin-bottom: 20px;">
+            <table class="table-pfms">
+                <thead><tr><th>User</th><th>Action</th><th>Target</th><th>Details</th><th>Timestamp</th></tr></thead>
+                <tbody id="auditTableBody"></tbody>
+            </table>
+        </div>
+        <div id="auditPagination" style="display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 12px 20px; border: 1px solid #e0e4e8; border-radius: 8px;">
+            <div style="font-size:12px; color:#64748b;" id="auditPaginationInfo">Showing 0 to 0 of 0 entries</div>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-pfms btn-outline-pfms" id="btnAuditPrev" onclick="changeAuditPage(-1)" style="padding: 4px 12px; height: auto;">Prev</button>
+                <span id="auditPageNumber" style="align-self:center; font-size:13px; font-weight:500;">Page 1 / 1</span>
+                <button class="btn-pfms btn-outline-pfms" id="btnAuditNext" onclick="changeAuditPage(1)" style="padding: 4px 12px; height: auto;">Next</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -489,11 +526,39 @@ if ($api === 'create_folder' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    let auditPage = 1;
+    const auditLimit = 25;
+
     async function loadAudit() {
-        const res = await fetch('?api=audit_logs');
+        const res = await fetch(`?api=audit_logs&page=${auditPage}&limit=${auditLimit}`);
         const data = await res.json();
-        if(!data.ok) { document.getElementById('auditTableBody').innerHTML = `<tr><td colspan="5" align="center">${data.error}</td></tr>`; return; }
-        document.getElementById('auditTableBody').innerHTML = data.logs.map(l=>`<tr><td>${l.user_id || 'Sys'}</td><td><span style="font-size:10px; font-weight:bold; color:#004d40;">${l.action}</span></td><td>${l.target}</td><td style="font-size:11px; color:#64748b;">${l.details||'-'}</td><td>${l.created_at}</td></tr>`).join('');
+        if(!data.ok) { 
+            document.getElementById('auditTableBody').innerHTML = `<tr><td colspan="5" align="center">${data.error}</td></tr>`; 
+            return; 
+        }
+        
+        const logs = data.logs || [];
+        document.getElementById('auditTableBody').innerHTML = logs.map(l=>`<tr><td>${l.user_id || 'Sys'}</td><td><span style="font-size:10px; font-weight:bold; color:#004d40;">${l.action}</span></td><td>${l.target}</td><td style="font-size:11px; color:#64748b;">${l.details||'-'}</td><td>${l.created_at}</td></tr>`).join('');
+        
+        if (logs.length === 0) {
+            document.getElementById('auditTableBody').innerHTML = `<tr><td colspan="5" align="center" style="padding:30px; color:#94a3b8;">No audit logs found.</td></tr>`;
+        }
+
+        const total = data.total || 0;
+        const totalPages = data.total_pages || 1;
+        const start = total === 0 ? 0 : (auditPage - 1) * auditLimit + 1;
+        const end = Math.min(auditPage * auditLimit, total);
+        
+        document.getElementById('auditPaginationInfo').innerText = `Showing ${start} to ${end} of ${total} entries`;
+        document.getElementById('auditPageNumber').innerText = `Page ${auditPage} / ${totalPages}`;
+        
+        document.getElementById('btnAuditPrev').disabled = (auditPage === 1);
+        document.getElementById('btnAuditNext').disabled = (auditPage === totalPages);
+    }
+
+    function changeAuditPage(dir) {
+        auditPage += dir;
+        loadAudit();
     }
 
     function openUploadModal() { document.getElementById('uploadModal').style.display='flex'; }
