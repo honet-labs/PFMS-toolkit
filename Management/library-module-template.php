@@ -27,7 +27,7 @@ if (empty($user_id)) {
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 
 // Directory Configuration
-$BASE_TEMPLATE_DIR = realpath(__DIR__ . '/../') . '/library_module_template';
+$BASE_TEMPLATE_DIR = realpath(__DIR__) . '/library_module_template';
 if (!is_dir($BASE_TEMPLATE_DIR)) {
     @mkdir($BASE_TEMPLATE_DIR, 0777, true);
 }
