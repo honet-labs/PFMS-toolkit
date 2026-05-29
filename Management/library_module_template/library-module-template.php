@@ -32,11 +32,7 @@ if (!is_dir($BASE_TEMPLATE_DIR)) {
     @mkdir($BASE_TEMPLATE_DIR, 0777, true);
 }
 
-// Clear Menu Cache to ensure this page is loaded correctly in the sidebar
-$menu_cache_file = realpath(__DIR__ . '/../../') . '/temp/menu_cache.json';
-if (file_exists($menu_cache_file)) {
-    @unlink($menu_cache_file);
-}
+
 
 // Write default CPU Usage template on first run if empty
 $default_file = $BASE_TEMPLATE_DIR . '/System/CPU/CPU Usage (%).txt';
