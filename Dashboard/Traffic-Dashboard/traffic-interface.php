@@ -1,5 +1,5 @@
 <?php
-/* dashboard-traffic-interface.php
+/* traffic-interface.php
  *
  * Enterprise Traffic Interfaces Dashboard
  * - UI/UX: Identical Flow to Dynamic Dashboard Template
@@ -23,7 +23,7 @@ $PANDORA_BASE_URL = "/pandora_console";
 // 2. CENTRALIZED DB & SECURITY
 require_once __DIR__ . '/../../includes/db-connection.php';
 
-$CONFIG_FILE = __DIR__ . '/dashboard-traffic-interface-saved.json';
+$CONFIG_FILE = __DIR__ . '/traffic-interface-saved.json';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
