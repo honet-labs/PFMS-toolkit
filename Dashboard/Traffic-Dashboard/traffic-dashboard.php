@@ -23,7 +23,7 @@ $PANDORA_BASE_URL = "/pandora_console";
 // 2. CENTRALIZED DB & SECURITY
 require_once __DIR__ . '/../../includes/db-connection.php';
 
-$CONFIG_FILE = __DIR__ . '/interface-traffic-master.json';
+$CONFIG_FILE = __DIR__ . '/traffic-dashboard-saved.json';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
@@ -263,6 +263,19 @@ if ($api === 'data') {
     $perPage = max(5, (int)($input['per_page'] ?? 25));
     $warnThreshold = (float)($input['warn'] ?? 70.0);
     $critThreshold = (float)($input['crit'] ?? 80.0);
+    $dashId = $input['dash_id'] ?? '';
+
+    // Ambil daftar interface yang disembunyikan dari dashboard ini
+    $hiddenKeys = [];
+    if ($dashId && file_exists($CONFIG_FILE)) {
+        $config = json_decode(file_get_contents($CONFIG_FILE), true);
+        foreach ($config as $dash) {
+            if (($dash['id'] ?? '') === $dashId) {
+                $hiddenKeys = $dash['hidden_interfaces'] ?? [];
+                break;
+            }
+        }
+    }
 
     try {
         $params = [];
@@ -434,6 +447,14 @@ if ($api === 'data') {
                     stripos($iface['interface_alias'] ?? '', $search) !== false ||
                     stripos($iface['speed_disp'] ?? '', $search) !== false
                 );
+            }));
+        }
+
+        // ** Filter interface yang disembunyikan **
+        if (!empty($hiddenKeys)) {
+            $interfaces = array_values(array_filter($interfaces, function($iface) use ($hiddenKeys) {
+                $key = $iface['agent_id'] . '|' . $iface['interface'];
+                return !in_array($key, $hiddenKeys);
             }));
         }
 
@@ -747,6 +768,29 @@ if ($api === 'series') {
             border-color: #fca5a5;
             color: #dc2626;
         }
+        
+        /* Tombol hapus interface dalam tabel */
+        .btn-icon-only {
+            background: none;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .btn-icon-only:hover {
+            background: #fef2f2;
+            border-color: #fca5a5;
+        }
+        .btn-icon-only.delete-icon {
+            color: #ef4444;
+        }
+        .btn-icon-only.delete-icon:hover {
+            color: #dc2626;
+        }
     </style>
 </head>
 <body>
@@ -796,6 +840,9 @@ if ($api === 'series') {
             <button id="btnSettings" class="btn-neutral" onclick="openSettingsModal()" title="Threshold & Display Settings" style="display:none;">
                 <span class="material-symbols-outlined">settings</span>
             </button>
+            <button id="btnHidden" class="btn-neutral" onclick="openHiddenModal()" title="Manage Hidden Interfaces" style="display:none;">
+                <span class="material-symbols-outlined">visibility_off</span>
+            </button>
             <div class="dropdown">
                 <button class="btn-neutral" style="height:32px; padding:0 12px;" title="Export Data"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">download</span> <span class="btn-text">Export</span> <span class="material-symbols-outlined" style="font-size:12px!important;">expand_more</span></button>
                 <div class="dropdown-content">
@@ -809,7 +856,7 @@ if ($api === 'series') {
     </div>
         <div class="main-content">
             <div class="card">
-                <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 18%;">Agent</th><th style="width: 22%;">Interface</th><th style="width: 12%;">Speed</th><th style="width: 17%;">RECEIVE (RX)</th><th style="width: 17%;">TRANSMIT (TX)</th><th style="width: 6%;">Graph (history)</th></tr></thead><tbody id="detailTableBody"></tbody></table>
+                <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 18%;">Agent</th><th style="width: 22%;">Interface</th><th style="width: 12%;">Speed</th><th style="width: 17%;">RECEIVE (RX)</th><th style="width: 17%;">TRANSMIT (TX)</th><th style="width: 10%;">Actions</th></tr></thead><tbody id="detailTableBody"></tbody></table>
                 <div id="paginationControls" style="padding:15px 20px; border-top:1px solid #e0e4e8; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;"></div>
             </div>
         </div>
@@ -930,6 +977,20 @@ if ($api === 'series') {
     </div>
 </div>
 
+<!-- Modal untuk Hidden Interfaces -->
+<div class="modal-overlay" id="hiddenModal">
+    <div class="modal-box" style="width:500px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h3 style="margin:0;">Hidden Interfaces</h3>
+            <button onclick="closeHiddenModal()" style="background:none; border:none; cursor:pointer;"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div id="hiddenList" style="max-height:300px; overflow-y:auto;"></div>
+        <div class="form-actions" style="margin-top:20px;">
+            <button class="btn-create" style="background:#ef4444;" onclick="clearAllHidden()">Restore All</button>
+        </div>
+    </div>
+</div>
+
 <script>
     const CSRF_TOKEN = '<?= $csrf_token ?>';
     let masterDashboards = [], currentDashId = '', currentAgents = [], currentPage = 1, chartInstance = null;
@@ -986,6 +1047,7 @@ if ($api === 'series') {
 
     async function init() {
         const r = await fetch('?api=load_config'); masterDashboards = await r.json();
+        masterDashboards.forEach(d => { if (!d.hidden_interfaces) d.hidden_interfaces = []; });
         const rg = await fetch('?api=groups'); const groups = await rg.json();
         const gsel = document.getElementById('m_group'); groups.forEach(g => gsel.add(new Option(decodeHtml(g.name), g.id)));
 
@@ -1028,6 +1090,7 @@ if ($api === 'series') {
         document.getElementById('masterView').style.display = 'block';
         document.getElementById('detailView').style.display = 'none';
         document.getElementById('btnSettings').style.display = 'none';
+        document.getElementById('btnHidden').style.display = 'none';
         document.getElementById('search_wrapper').style.display = 'none';
         
         // Reset to default font for master list
@@ -1061,6 +1124,8 @@ if ($api === 'series') {
         document.getElementById('masterView').style.display = 'none';
         document.getElementById('detailView').style.display = 'block';
         document.getElementById('btnSettings').style.display = 'flex';
+        document.getElementById('btnHidden').style.display = 'flex';
+        if (!d.hidden_interfaces) d.hidden_interfaces = [];
         document.getElementById('search_wrapper').style.display = 'flex';
         document.getElementById('detailDashName').innerText = d.name;
         
@@ -1169,6 +1234,7 @@ if ($api === 'series') {
         const newDash = JSON.parse(JSON.stringify(dash));
         newDash.id = 'd' + Date.now();
         newDash.name = newDash.name + ' (Copy)';
+        if (!newDash.hidden_interfaces) newDash.hidden_interfaces = [];
         
         masterDashboards.push(newDash);
         saveConfigToServer(() => {
@@ -1217,6 +1283,7 @@ if ($api === 'series') {
         const payload = { 
             group_id: d.group_id, 
             agent_id: d.agent_id, 
+            dash_id: currentDashId,
             unit: unit, 
             speed_filter: speed_filter, 
             search: search, 
@@ -1268,9 +1335,12 @@ if ($api === 'series') {
             </td>
             <td><div class="col-${rxLevel}" style="font-weight:600;">${rxDisp} <span class="pct-text">(${r.rx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${rxLevel}" style="width:${r.rx_pct}%"></div></div></td>
             <td><div class="col-${txLevel}" style="font-weight:600;">${txDisp} <span class="pct-text">(${r.tx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${txLevel}" style="width:${r.tx_pct}%"></div></div></td>
-            <td>
-                <button class="btn-dash" onclick="openChart(${r.mod_in}, ${r.mod_out}, '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}')" style="padding:4px; border:1px solid #e2e8f0; border-radius:4px; background:#fff;">
+            <td style="text-align:center;">
+                <button class="btn-icon-only" onclick="openChart(${r.mod_in}, ${r.mod_out}, '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}')" title="View Graph">
                     <span class="material-symbols-outlined table-icon" style="color:#3b82f6;">show_chart</span>
+                </button>
+                <button class="btn-icon-only delete-icon" onclick="hideInterface(${r.agent_id}, '${r.interface.replace(/'/g, "\\'")}')" title="Hide this interface">
+                    <span class="material-symbols-outlined table-icon">delete</span>
                 </button>
             </td>
         </tr>`;}).join('') || '<tr><td colspan="7" style="text-align:center;">No Interfaces Found</td></tr>';
@@ -1433,7 +1503,7 @@ if ($api === 'series') {
             }
         } else {
             const id = 'dash_'+Math.random().toString(36).substr(2,9);
-            masterDashboards.push({ id, name, group_id: gsel.value, group_name: gsel.options[gsel.selectedIndex].text, agent_id: asel.value, agent_name: asel.options[asel.selectedIndex].text });
+            masterDashboards.push({ id, name, group_id: gsel.value, group_name: gsel.options[gsel.selectedIndex].text, agent_id: asel.value, agent_name: asel.options[asel.selectedIndex].text, hidden_interfaces: [] });
         }
         
         await fetch('?api=save_config', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':CSRF_TOKEN}, body:JSON.stringify(masterDashboards) });
@@ -1556,8 +1626,67 @@ if ($api === 'series') {
     function resetZoom() { if(chartInstance) chartInstance.resetZoom(); }
     function manualZoom(f) { if(chartInstance) chartInstance.zoom(f); }
 
+    // Fungsi untuk menyembunyikan interface
+    function hideInterface(agentId, iface) {
+        const key = agentId + '|' + iface;
+        const dash = masterDashboards.find(d => d.id === currentDashId);
+        if (!dash) return;
+        if (!dash.hidden_interfaces) dash.hidden_interfaces = [];
+        if (!dash.hidden_interfaces.includes(key)) {
+            dash.hidden_interfaces.push(key);
+            saveConfigToServer(() => {
+                fetchData();
+            });
+        } else {
+            alert('Interface already hidden.');
+        }
+    }
+
+    // Modal hidden management
+    function openHiddenModal() {
+        const dash = masterDashboards.find(d => d.id === currentDashId);
+        if (!dash) return;
+        const hidden = dash.hidden_interfaces || [];
+        const list = document.getElementById('hiddenList');
+        if (hidden.length === 0) {
+            list.innerHTML = '<p style="color:#94a3b8; text-align:center;">No hidden interfaces.</p>';
+        } else {
+            list.innerHTML = hidden.map(key => {
+                const [aid, iface] = key.split('|');
+                return `<div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid #f1f5f9;">
+                    <span>${iface} (Agent ID: ${aid})</span>
+                    <button class="btn-neutral" style="padding:2px 8px; font-size:11px;" onclick="unhideInterface('${key}')">Restore</button>
+                </div>`;
+            }).join('');
+        }
+        document.getElementById('hiddenModal').style.display = 'flex';
+    }
+    function closeHiddenModal() { document.getElementById('hiddenModal').style.display = 'none'; }
+    function unhideInterface(key) {
+        const dash = masterDashboards.find(d => d.id === currentDashId);
+        if (!dash) return;
+        dash.hidden_interfaces = (dash.hidden_interfaces || []).filter(k => k !== key);
+        saveConfigToServer(() => {
+            fetchData();
+            openHiddenModal(); // refresh daftar
+        });
+    }
+    function clearAllHidden() {
+        if(!confirm("Restore all hidden interfaces?")) return;
+        const dash = masterDashboards.find(d => d.id === currentDashId);
+        if (!dash) return;
+        dash.hidden_interfaces = [];
+        saveConfigToServer(() => {
+            fetchData();
+            closeHiddenModal();
+        });
+    }
+
     window.addEventListener('load', init);
-    document.addEventListener('click', e => { if(e.target.id==='chartModal') document.getElementById('chartModal').style.display='none'; });
+    document.addEventListener('click', e => { 
+        if(e.target.id==='chartModal') document.getElementById('chartModal').style.display='none'; 
+        if(e.target.id==='hiddenModal') closeHiddenModal(); 
+    });
 </script>
 </body>
 </html>
