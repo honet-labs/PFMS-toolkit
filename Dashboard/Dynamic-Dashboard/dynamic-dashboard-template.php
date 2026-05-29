@@ -385,7 +385,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             grid-auto-rows: auto;
             grid-auto-flow: row dense;
             gap: 15px; 
-            align-items: stretch; 
+            align-items: start; 
             width: 100%;
         } 
         
@@ -1493,7 +1493,7 @@ function renderPanelsGrid() {
         const wValue = parseInt(p.width) || 12;
         wrapper.style.setProperty('grid-column', `span ${wValue}`, 'important');
         
-        const minH = p.height || 200;
+        const minH = parseInt(p.height) || 200;
         const hiddenClass = p.hidden ? 'is-hidden' : '';
         wrapper.innerHTML = `<div class="panel-card ${hiddenClass}" style="min-height:${minH}px;"><div class="loading-overlay" id="load_${p.id}"><div class="spinner"></div></div></div>`;
         grid.appendChild(wrapper);
@@ -1504,7 +1504,7 @@ function renderPanelsGrid() {
         new Sortable(grid, {
             animation: 150,
             ghostClass: 'dragging-ghost',
-            handle: '.panel-header', // Use header as drag handle
+            handle: '.drag-handle', // Use dedicated drag handle icon to prevent button click interception
             draggable: '.panel-rule-wrapper',
             onEnd: function (evt) {
                 const currentDash = masterDashboards.find(d => d.id === currentDashId);
@@ -1658,7 +1658,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const isExcluded = p.excluded && p.excluded.map(String).includes(String(moduleData.id));
     const hiddenClass = (p.hidden || isExcluded) ? 'is-hidden' : '';
 
-    return `<div class="panel-card ${hiddenClass}" style="height: 100%; margin:0;"><div class="panel-header"><div><h6 class="panel-title">${p.title}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div></div>`;
+    return `<div class="panel-card ${hiddenClass}" style="height: 100%; margin:0;"><div class="panel-header"><div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:6px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span> ${p.title}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div></div>`;
 }
 
 function generateSummaryPanelHtml(p, modules) {
@@ -1807,7 +1807,7 @@ function generateSummaryPanelHtml(p, modules) {
     return `
         <div class="panel-card ${hiddenClass}" style="height: 100%; margin:0;">
             <div class="panel-header">
-                <div><h6 class="panel-title"><span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; margin-right:5px;">grid_view</span> ${p.title}</h6></div>
+                <div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; color:#b5c1c9; vertical-align:middle; margin-right:4px;" title="Drag">drag_indicator</span> ${p.title}</h6></div>
                 ${controlsHtml}
             </div>
             <div class="panel-body" style="align-items:stretch; justify-content:flex-start; padding:10px;">${content}</div>
@@ -1838,7 +1838,7 @@ function refreshCurrentNodeData() {
             const wrapper = document.getElementById(`wrapper_p_${p.id}`);
             if(wrapper) {
                 const controlsHtml = getPanelControlsHtml(p);
-                wrapper.innerHTML = `<div class="panel-card"><div class="panel-header"><h5 class="panel-title">${p.title}</h5>${controlsHtml}</div><div class="panel-body" style="color:#7f8c8d; text-align:center; padding:20px;">Select a Node First</div></div>`;
+                wrapper.innerHTML = `<div class="panel-card"><div class="panel-header"><div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; color:#b5c1c9; vertical-align:middle; margin-right:4px;" title="Drag">drag_indicator</span> ${p.title}</h6></div>${controlsHtml}</div><div class="panel-body" style="color:#7f8c8d; text-align:center; padding:20px;">Select a Node First</div></div>`;
             }
         });
         return;
@@ -1868,7 +1868,7 @@ function refreshCurrentNodeData() {
                 const controlsHtml = getPanelControlsHtml(p);
                 const hiddenClass = p.hidden ? 'is-hidden' : '';
                 wrapper.innerHTML = `<div class="panel-card ${hiddenClass}">
-                    <div class="panel-header"><h6 class="panel-title">${p.title}</h6>${controlsHtml}</div>
+                    <div class="panel-header"><div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; color:#b5c1c9; vertical-align:middle; margin-right:4px;" title="Drag">drag_indicator</span> ${p.title}</h6></div>${controlsHtml}</div>
                     <div class="panel-body" style="color:#7f8c8d; text-align:center; padding:30px; align-items:center; justify-content:center;">
                         <span class="material-symbols-outlined" style="font-size:48px; color:#bdc3c7; display:block; margin-bottom:10px;">search_off</span>
                         Data not found for: <b>${p.keyword}</b><br>
