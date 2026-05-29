@@ -130,7 +130,11 @@ $dynamic_breadcrumb = implode(' / ', $formatted_array) . ' / LIBRARY MODULE TEMP
 $api = $_GET['api'] ?? '';
 
 if ($api === 'list') {
-    ob_clean(); header('Content-Type: application/json');
+    ob_clean();
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Cache-Control: post-check=0, pre-check=0', false);
+    header('Pragma: no-cache');
+    header('Content-Type: application/json');
     $flat_list = [];
     $groups = [];
     $subgroups = [];
@@ -261,7 +265,9 @@ if ($api === 'save') {
 }
 
 if ($api === 'delete') {
-    ob_clean(); header('Content-Type: application/json');
+    ob_clean();
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Content-Type: application/json');
     $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if (empty($csrf_token) || $client_token !== $csrf_token) {
         echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh page.']); exit;
@@ -274,14 +280,21 @@ if ($api === 'delete') {
         echo json_encode(['ok' => false, 'error' => 'Path is required.']); exit;
     }
 
-    $full_path = realpath($BASE_TEMPLATE_DIR . '/' . $path);
-    // Security check: must reside inside base directory
-    if ($full_path && str_starts_with($full_path, realpath($BASE_TEMPLATE_DIR))) {
-        @unlink($full_path);
-        prune_empty_dirs(dirname($full_path), $BASE_TEMPLATE_DIR);
-        echo json_encode(['ok' => true]);
+    $target_file = $BASE_TEMPLATE_DIR . '/' . $path;
+    $real_target = realpath($target_file);
+    $real_base = realpath($BASE_TEMPLATE_DIR);
+
+    if ($real_target && str_starts_with($real_target, $real_base)) {
+        if (@unlink($real_target)) {
+            prune_empty_dirs(dirname($real_target), $real_base);
+            echo json_encode(['ok' => true]);
+        } else {
+            $err = error_get_last();
+            $errMsg = $err['message'] ?? 'Permission Denied / File locked';
+            echo json_encode(['ok' => false, 'error' => "Gagal menghapus file dari disk. Alasan: $errMsg"]);
+        }
     } else {
-        echo json_encode(['ok' => false, 'error' => 'Access Denied / Invalid template path.']);
+        echo json_encode(['ok' => false, 'error' => 'Access Denied atau file template tidak ditemukan di disk server.']);
     }
     exit;
 }
