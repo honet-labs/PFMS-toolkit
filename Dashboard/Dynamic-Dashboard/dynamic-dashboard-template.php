@@ -199,7 +199,7 @@ if ($api === 'bulk_panel_data') {
         $stAll->execute([$agent_id]);
         $allModules = $stAll->fetchAll();
 
-        $stHist = $pdo->prepare("SELECT FROM_UNIXTIME(ts, '%m-%d %H:%i') as lbl, datos as val FROM (
+        $stHist = $pdo->prepare("SELECT ts, FROM_UNIXTIME(ts, '%m-%d %H:%i') as lbl, datos as val FROM (
                                     SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
                                     UNION ALL
                                     SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
@@ -1990,26 +1990,39 @@ function refreshCurrentNodeData() {
                 const uniqueId = `${p.id}_multi`;
                 const canvas = document.getElementById(`chart_${uniqueId}`);
                 if (canvas) {
-                    // FIX: Collect unique labels from ALL active modules to ensure all lines appear
-                    let allLabelsSet = new Set();
-                    activeModules.forEach(m => (m.history || []).forEach(h => allLabelsSet.add(h.lbl)));
-                    const labels = Array.from(allLabelsSet).sort(); 
+                    // Synchronize and sort unique timestamps chronologically
+                    let allTimestampsSet = new Set();
+                    activeModules.forEach(m => (m.history || []).forEach(h => {
+                        if (h.ts !== undefined) allTimestampsSet.add(Number(h.ts));
+                    }));
+                    const uniqueTimestamps = Array.from(allTimestampsSet).sort((a, b) => a - b);
+                    
+                    const labels = uniqueTimestamps.map(ts => {
+                        for (let m of activeModules) {
+                            const found = (m.history || []).find(h => Number(h.ts) === ts);
+                            if (found) return found.lbl;
+                        }
+                        return '';
+                    });
 
                     const datasets = activeModules.map((m, idx) => {
                         const color = borders[idx % borders.length];
                         const fillBg = colors[idx % colors.length].replace('0.75', '0.15');
                         const historyMap = {};
-                        (m.history || []).forEach(h => historyMap[h.lbl] = h.val);
-                        const data = labels.map(lbl => historyMap[lbl] !== undefined ? historyMap[lbl] : null);
+                        (m.history || []).forEach(h => {
+                            if (h.ts !== undefined) historyMap[Number(h.ts)] = h.val;
+                        });
+                        const data = uniqueTimestamps.map(ts => historyMap[ts] !== undefined ? historyMap[ts] : null);
 
                         return {
-                            label: m.module_name,
+                            label: `${m.agent_name} - ${m.module_name}`,
                             data: data,
                             borderColor: color,
                             backgroundColor: p.type === 'area' ? fillBg : (p.type === 'bar' ? colors[idx % colors.length] : 'transparent'),
                             fill: p.type === 'area',
                             tension: p.type === 'bar' ? 0 : 0.25,
-                            pointRadius: 0,
+                            pointRadius: 3,
+                            pointBackgroundColor: color,
                             pointHoverRadius: 5,
                             borderWidth: p.type === 'bar' ? 0 : 2,
                             spanGaps: true
@@ -2044,7 +2057,7 @@ function refreshCurrentNodeData() {
                                             label: function(context) {
                                                 const datasetLabel = context.dataset.label || '';
                                                 const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
-                                                const found = activeModules.find(m => m.module_name === datasetLabel);
+                                                const found = activeModules.find(m => `${m.agent_name} - ${m.module_name}` === datasetLabel);
                                                 const unit = found && found.unit ? ' ' + found.unit : '';
                                                 return ` ${datasetLabel}: ${val}${unit}`;
                                             }
@@ -2098,13 +2111,14 @@ function refreshCurrentNodeData() {
                                 data:{ 
                                     labels:history.map(h=>h.lbl), 
                                     datasets:[{
-                                        label: m.module_name,
+                                        label: `${m.agent_name} - ${m.module_name}`,
                                         data:history.map(h=>h.val), 
                                         borderColor:color, 
                                         fill:p.type==='area', 
-                                        backgroundColor: (p.type==='bar') ? color : (p.type==='area' ? color + '22' : 'transparent'), 
+                                        backgroundColor: (p.type==='bar') ? color : (p.type==='area' ? color + '26' : 'transparent'), 
                                         tension: p.type === 'bar' ? 0 : 0.25,
-                                        pointRadius: 0,
+                                        pointRadius: 3,
+                                        pointBackgroundColor: color,
                                         pointHoverRadius: 5,
                                         borderWidth: (p.type==='bar' ? 0 : 2),
                                         spanGaps: true
@@ -2131,7 +2145,7 @@ function refreshCurrentNodeData() {
                                                 label: function(context) {
                                                     const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
                                                     const unit = m.unit ? ' ' + m.unit : '';
-                                                    return ` ${m.module_name}: ${val}${unit}`;
+                                                    return ` ${m.agent_name} - ${m.module_name}: ${val}${unit}`;
                                                 }
                                             }
                                         }
