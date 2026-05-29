@@ -63,7 +63,7 @@ if ($api === 'groups') {
     ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['error' => 'DB Connection Error: ' . $db_error]); exit; }
     $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
-    $dropdown = [['id' => '0', 'name' => '-- Pilih Default Group --']];
+    $dropdown = [['id' => '0', 'name' => '-- Semua Group (All Groups) --']];
     while($g = $stmt->fetch()) { $dropdown[] = ['id' => $g['id'], 'name' => pretty_text($g['name'])]; }
     echo json_encode($dropdown); exit;
 }
