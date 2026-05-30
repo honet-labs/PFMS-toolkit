@@ -826,6 +826,38 @@ const Dashboard = {
         const thead = document.getElementById(`thead-${id}`);
 
         if (separatorIdx === -1 || separatorIdx === 0) {
+            // Check if the first line contains a pipe '|'
+            if (lines.length > 0 && lines[0].includes('|')) {
+                const firstLine = lines[0];
+                let firstCells = firstLine.split('|').map(c => c.trim());
+                if (firstCells.length > 0 && firstCells[0] === '' && firstLine.startsWith('|')) firstCells.shift();
+                if (firstCells.length > 0 && firstCells[firstCells.length - 1] === '' && firstLine.endsWith('|')) firstCells.pop();
+
+                const numCols = firstCells.length || 1;
+                let headers = [];
+                for (let i = 1; i <= numCols; i++) {
+                    headers.push(`Col ${i}`);
+                }
+
+                panel.dataRows = [];
+                lines.forEach(line => {
+                    let cells = line.split('|').map(c => c.trim());
+                    if (cells.length > 0 && cells[0] === '' && line.startsWith('|')) cells.shift();
+                    if (cells.length > 0 && cells[cells.length - 1] === '' && line.endsWith('|')) cells.pop();
+
+                    if (cells.length > 0) {
+                        while (cells.length < numCols) cells.push('');
+                        if (cells.length > numCols) cells = cells.slice(0, numCols);
+                        panel.dataRows.push(cells);
+                    }
+                });
+
+                thead.innerHTML = '<tr>' + headers.map(h => `<th>${this.escapeHtml(h)}</th>`).join('') + '</tr>';
+                this.renderTableRows(id, panel.dataRows);
+                rawEl.classList.add('d-none');
+                return;
+            }
+
             thead.innerHTML = '';
             document.getElementById(`tbody-${id}`).innerHTML = '';
             rawEl.innerText = rawText;
