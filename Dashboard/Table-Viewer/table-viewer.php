@@ -839,17 +839,38 @@ const Dashboard = {
                     headers.push(`Col ${i}`);
                 }
 
-                panel.dataRows = [];
-                lines.forEach(line => {
-                    let cells = line.split('|').map(c => c.trim());
-                    if (cells.length > 0 && cells[0] === '' && line.startsWith('|')) cells.shift();
-                    if (cells.length > 0 && cells[cells.length - 1] === '' && line.endsWith('|')) cells.pop();
+                let parsedRows = [];
+                let currentCells = [];
 
-                    if (cells.length > 0) {
-                        while (cells.length < numCols) cells.push('');
-                        if (cells.length > numCols) cells = cells.slice(0, numCols);
-                        panel.dataRows.push(cells);
+                lines.forEach(line => {
+                    const pipeCount = (line.match(/\|/g) || []).length;
+                    if (pipeCount >= 3) {
+                        if (currentCells.length > 0) {
+                            parsedRows.push(currentCells);
+                        }
+                        let cells = line.split('|').map(c => c.trim());
+                        if (cells.length > 0 && cells[0] === '' && line.startsWith('|')) cells.shift();
+                        if (cells.length > 0 && cells[cells.length - 1] === '' && line.endsWith('|')) cells.pop();
+                        currentCells = cells;
+                    } else {
+                        if (currentCells.length > 0) {
+                            const lastIdx = currentCells.length - 1;
+                            currentCells[lastIdx] = currentCells[lastIdx] + '\n' + line.trim();
+                        } else {
+                            let cells = line.split('|').map(c => c.trim());
+                            currentCells = cells;
+                        }
                     }
+                });
+                if (currentCells.length > 0) {
+                    parsedRows.push(currentCells);
+                }
+
+                panel.dataRows = [];
+                parsedRows.forEach(cells => {
+                    while (cells.length < numCols) cells.push('');
+                    if (cells.length > numCols) cells = cells.slice(0, numCols);
+                    panel.dataRows.push(cells);
                 });
 
                 thead.innerHTML = '<tr>' + headers.map(h => `<th>${this.escapeHtml(h)}</th>`).join('') + '</tr>';
@@ -868,26 +889,50 @@ const Dashboard = {
 
         rawEl.classList.add('d-none');
 
+        // Parse wrapped headers by concatenating all header lines before the separator
         const headerLines = lines.slice(0, separatorIdx);
-        const headerLine = headerLines[headerLines.length - 1];
-        let headers = headerLine.split('|').map(h => h.trim());
-        if (headers.length > 0 && headers[0] === '' && headerLine.startsWith('|')) headers.shift();
-        if (headers.length > 0 && headers[headers.length - 1] === '' && headerLine.endsWith('|')) headers.pop();
+        let headers = [];
+        headerLines.forEach(line => {
+            let cols = line.split('|').map(h => h.trim()).filter(h => h !== '');
+            headers = headers.concat(cols);
+        });
 
         const numCols = headers.length || 1;
-        panel.dataRows = [];
-
+        
+        // Parse multi-line wrapped data rows
         const dataLines = lines.slice(separatorIdx + 1);
-        dataLines.forEach(line => {
-            let cells = line.split('|').map(c => c.trim());
-            if (cells.length > 0 && cells[0] === '' && line.startsWith('|')) cells.shift();
-            if (cells.length > 0 && cells[cells.length - 1] === '' && line.endsWith('|')) cells.pop();
+        let parsedRows = [];
+        let currentCells = [];
 
-            if (cells.length > 0) {
-                while (cells.length < numCols) cells.push('');
-                if (cells.length > numCols) cells = cells.slice(0, numCols);
-                panel.dataRows.push(cells);
+        dataLines.forEach(line => {
+            const pipeCount = (line.match(/\|/g) || []).length;
+            if (pipeCount >= 3) {
+                if (currentCells.length > 0) {
+                    parsedRows.push(currentCells);
+                }
+                let cells = line.split('|').map(c => c.trim());
+                if (cells.length > 0 && cells[0] === '' && line.startsWith('|')) cells.shift();
+                if (cells.length > 0 && cells[cells.length - 1] === '' && line.endsWith('|')) cells.pop();
+                currentCells = cells;
+            } else {
+                if (currentCells.length > 0) {
+                    const lastIdx = currentCells.length - 1;
+                    currentCells[lastIdx] = currentCells[lastIdx] + '\n' + line.trim();
+                } else {
+                    let cells = line.split('|').map(c => c.trim());
+                    currentCells = cells;
+                }
             }
+        });
+        if (currentCells.length > 0) {
+            parsedRows.push(currentCells);
+        }
+
+        panel.dataRows = [];
+        parsedRows.forEach(cells => {
+            while (cells.length < numCols) cells.push('');
+            if (cells.length > numCols) cells = cells.slice(0, numCols);
+            panel.dataRows.push(cells);
         });
 
         thead.innerHTML = '<tr>' + headers.map(h => `<th>${this.escapeHtml(h)}</th>`).join('') + '</tr>';
