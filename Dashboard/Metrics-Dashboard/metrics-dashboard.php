@@ -1806,11 +1806,23 @@ function renderTablePage(cardId) {
                 </td>`;
             }
             if (visibleCols.includes('status')) {
-                rowHtml += `<td style="text-align:center;">
-                    <div class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important;">
-                        ${formatValue(r.current_value, r.unit, card.use_raw)}${unitStr}
-                    </div>
-                </td>`;
+                const rawValStr = String(r.current_value || '');
+                const cleanValStr = formatValue(r.current_value, r.unit, card.use_raw);
+                if (cleanValStr.length > 45 || cleanValStr.includes('|') || cleanValStr.includes('\n')) {
+                    rowHtml += `<td style="text-align:center;">
+                        <button class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important; cursor:pointer; font-weight:600; display:inline-block; border-radius:4px; transition: opacity 0.2s;" 
+                            onclick="showLongValuePopup('${r.module_name.replace(/'/g, "\\'")}', '${r.agent_alias.replace(/'/g, "\\'")}', \`${rawValStr.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`)"
+                            onmouseenter="this.style.opacity=0.8" onmouseleave="this.style.opacity=1">
+                            View Value
+                        </button>
+                    </td>`;
+                } else {
+                    rowHtml += `<td style="text-align:center;">
+                        <div class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important;">
+                            ${cleanValStr}${unitStr}
+                        </div>
+                    </td>`;
+                }
             }
             if (visibleCols.includes('history')) {
                 rowHtml += `<td style="text-align:center;">
@@ -2854,6 +2866,130 @@ document.addEventListener('click', e => {
     if(e.target.id === 'agentMetaModal') closeAgentMetaModal();
     if(e.target.id === 'nativeModuleDetailModal') closeNativeModuleDetailModal();
 });
+
+function showLongValuePopup(moduleName, agentName, fullValue) {
+    const existing = document.getElementById('longValuePopupModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'longValuePopupModal';
+    modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.5);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 99999;
+    `;
+
+    const box = document.createElement('div');
+    box.style.cssText = `
+        background: #fff;
+        width: 600px;
+        max-width: 90%;
+        border-radius: 12px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        border: 1px solid #e2e8f0;
+        display: flex;
+        flex-direction: column;
+        max-height: 80vh;
+        animation: modalFadeIn 0.2s ease-out;
+    `;
+
+    if (!document.getElementById('modal-animation-style')) {
+        const style = document.createElement('style');
+        style.id = 'modal-animation-style';
+        style.innerText = `
+            @keyframes modalFadeIn {
+                from { opacity: 0; transform: scale(0.95); }
+                to { opacity: 1; transform: scale(1); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid #e2e8f0;
+    `;
+    header.innerHTML = `
+        <div>
+            <h5 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f172a;">${moduleName || 'Module Value'}</h5>
+            <span style="font-size: 11px; color: #64748b; font-weight: normal;">Agent: ${agentName || '-'}</span>
+        </div>
+        <span class="material-symbols-outlined" style="cursor: pointer; color: #64748b; font-size: 20px;" onclick="document.getElementById('longValuePopupModal').remove()">close</span>
+    `;
+
+    const body = document.createElement('div');
+    body.style.cssText = `
+        padding: 20px;
+        overflow-y: auto;
+        flex-grow: 1;
+        background: #f8fafc;
+        max-height: 50vh;
+    `;
+    
+    const pre = document.createElement('pre');
+    pre.style.cssText = `
+        margin: 0;
+        padding: 12px;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 11px;
+        white-space: pre-wrap;
+        word-break: break-all;
+    `;
+    pre.innerText = fullValue;
+    body.appendChild(pre);
+
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+        padding: 12px 20px;
+        border-top: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: flex-end;
+        background: #fff;
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+    `;
+    
+    const btn = document.createElement('button');
+    btn.style.cssText = `
+        padding: 8px 16px;
+        border-radius: 6px;
+        background: #004d40;
+        color: #fff;
+        border: none;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+    `;
+    btn.innerText = 'Close';
+    btn.onmouseenter = () => btn.style.background = '#00332a';
+    btn.onmouseleave = () => btn.style.background = '#004d40';
+    btn.onclick = () => modal.remove();
+    footer.appendChild(btn);
+
+    box.appendChild(header);
+    box.appendChild(body);
+    box.appendChild(footer);
+    modal.appendChild(box);
+
+    modal.onclick = (e) => {
+        if (e.target === modal) modal.remove();
+    };
+
+    document.body.appendChild(modal);
+}
 
 </script>
 </body>
