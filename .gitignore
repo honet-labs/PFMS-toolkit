@@ -5,7 +5,8 @@
 *.log
 
 # Dependencies
-/vendor/
+/vendor/*
+!/vendor/fonts/
 
 # OS generated files
 .DS_Store
