@@ -782,6 +782,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <option value="status_stats">Stats Cards (Current Status)</option>
                         <option value="pie">Pie Chart (Current Status)</option>
                         <option value="donut">Donut Chart (Current Status)</option>
+                        <option value="table_viewer">Table Viewer (Single Module)</option>
                     </select>
                 </div>
                 <div class="form-group" style="flex:1;">
@@ -1597,6 +1598,26 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     else if (p.type === 'gauge') {
         contentHtml = `<div class="chart-wrapper"><div id="chart_${uniqueId}" style="width:100%; height:100%; min-height:100px;"></div><div class="gauge-text"><div><span class="gauge-val" style="font-size:${Math.round(fs*0.75)}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${modNameHtml}</div></div>`;
     }
+    else if (p.type === 'table_viewer') {
+        contentHtml = `
+            <div class="table-viewer-card-wrap" style="height:100%; display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:4px;">
+                    <div style="font-size:10px; color:#7f8c8d;">Last Updated: ${moduleData.utimestamp ? new Date(moduleData.utimestamp * 1000).toLocaleString() : '-'}</div>
+                    <div class="search-box" style="width: 180px; position:relative;">
+                        <input type="text" placeholder="Filter table..." class="form-control-fix" style="font-size:11px; padding: 4px 8px 4px 26px; height:24px; border-radius:4px; border: 1px solid #cbd5e1;" oninput="filterCardTableViewer('${uniqueId}', this.value)">
+                        <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:14px; color:#94a3b8; line-height:1;">search</span>
+                    </div>
+                </div>
+                <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex-grow:1; max-height:${chartH}px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff;">
+                    <table class="table-pfms" id="table_${uniqueId}" style="margin:0; font-size:11px; width:100%;">
+                        <thead id="thead_${uniqueId}"></thead>
+                        <tbody id="tbody_${uniqueId}"></tbody>
+                    </table>
+                    <div id="raw_${uniqueId}" class="d-none" style="padding:10px; background:#1e293b; color:#e2e8f0; font-family:monospace; font-size:10px; white-space:pre-wrap;"></div>
+                </div>
+            </div>
+        `;
+    }
     else if (p.type === 'heatmap') {
         const sizeMap = { 'small': '40px', 'medium': '80px', 'large': '140px', 'xl': '220px' };
         const h = sizeMap[p.box_size] || '80px';
@@ -2059,6 +2080,10 @@ function refreshCurrentNodeData() {
             } else {
                 activeModules.forEach(m => {
                     const uniqueId = `${p.id}_${m.id}`;
+                    if (p.type === 'table_viewer') {
+                        renderSingleModuleTableViewer(uniqueId, m.current || '');
+                        return;
+                    }
                     const canvas = document.getElementById(`chart_${uniqueId}`);
                     if (!canvas) return;
                     const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[m.status] || '#95a5a6';
@@ -2799,6 +2824,156 @@ function showLongValuePopup(moduleName, agentName, fullValue) {
 
     document.body.appendChild(modal);
 }
+
+window.tableViewerData = window.tableViewerData || {};
+
+function renderSingleModuleTableViewer(uniqueId, rawText) {
+    const lines = rawText.split(/\r?\n/).filter(l => l.trim() !== '');
+    const thead = document.getElementById(`thead_${uniqueId}`);
+    const tbody = document.getElementById(`tbody_${uniqueId}`);
+    const rawEl = document.getElementById(`raw_${uniqueId}`);
+    if (!thead || !tbody) return;
+
+    let separatorIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim().match(/^[\-\+]{5,}$/)) { separatorIdx = i; break; }
+    }
+
+    if (separatorIdx === -1 || separatorIdx === 0) {
+        if (lines.length > 0 && lines[0].includes('|')) {
+            const firstLine = lines[0];
+            let firstCells = firstLine.split('|').map(c => c.trim());
+            if (firstCells.length > 0 && firstCells[0] === '' && firstLine.startsWith('|')) firstCells.shift();
+            if (firstCells.length > 0 && firstCells[firstCells.length - 1] === '' && firstLine.endsWith('|')) firstCells.pop();
+
+            const numCols = firstCells.length || 1;
+            let headers = [];
+            for (let i = 1; i <= numCols; i++) {
+                headers.push(`Col ${i}`);
+            }
+
+            let parsedRows = [];
+            let currentCells = [];
+
+            lines.forEach(line => {
+                const pipeCount = (line.match(/\|/g) || []).length;
+                if (pipeCount >= 3) {
+                    if (currentCells.length > 0) parsedRows.push(currentCells);
+                    let cells = line.split('|').map(c => c.trim());
+                    if (cells.length > 0 && cells[0] === '' && line.startsWith('|')) cells.shift();
+                    if (cells.length > 0 && cells[cells.length - 1] === '' && line.endsWith('|')) cells.pop();
+                    currentCells = cells;
+                } else {
+                    if (currentCells.length > 0) {
+                        const lastIdx = currentCells.length - 1;
+                        currentCells[lastIdx] = currentCells[lastIdx] + '\n' + line.trim();
+                    } else {
+                        currentCells = line.split('|').map(c => c.trim());
+                    }
+                }
+            });
+            if (currentCells.length > 0) parsedRows.push(currentCells);
+
+            let dataRows = [];
+            parsedRows.forEach(cells => {
+                while (cells.length < numCols) cells.push('');
+                if (cells.length > numCols) cells = cells.slice(0, numCols);
+                dataRows.push(cells);
+            });
+
+            window.tableViewerData[uniqueId] = dataRows;
+            thead.innerHTML = '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
+            renderTableViewerRows(uniqueId, dataRows);
+            rawEl.classList.add('d-none');
+            return;
+        }
+
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        rawEl.innerText = rawText;
+        rawEl.classList.remove('d-none');
+        window.tableViewerData[uniqueId] = [];
+        return;
+    }
+
+    rawEl.classList.add('d-none');
+
+    const headerLines = lines.slice(0, separatorIdx);
+    let headers = [];
+    headerLines.forEach(line => {
+        let cols = line.split('|').map(h => h.trim()).filter(h => h !== '');
+        headers = headers.concat(cols);
+    });
+
+    const numCols = headers.length || 1;
+    
+    const dataLines = lines.slice(separatorIdx + 1);
+    let parsedRows = [];
+    let currentCells = [];
+
+    dataLines.forEach(line => {
+        const pipeCount = (line.match(/\|/g) || []).length;
+        if (pipeCount >= 3) {
+            if (currentCells.length > 0) parsedRows.push(currentCells);
+            let cells = line.split('|').map(c => c.trim());
+            if (cells.length > 0 && cells[0] === '' && line.startsWith('|')) cells.shift();
+            if (cells.length > 0 && cells[cells.length - 1] === '' && line.endsWith('|')) cells.pop();
+            currentCells = cells;
+        } else {
+            if (currentCells.length > 0) {
+                const lastIdx = currentCells.length - 1;
+                currentCells[lastIdx] = currentCells[lastIdx] + '\n' + line.trim();
+            } else {
+                currentCells = line.split('|').map(c => c.trim());
+            }
+        }
+    });
+    if (currentCells.length > 0) parsedRows.push(currentCells);
+
+    let dataRows = [];
+    parsedRows.forEach(cells => {
+        while (cells.length < numCols) cells.push('');
+        if (cells.length > numCols) cells = cells.slice(0, numCols);
+        dataRows.push(cells);
+    });
+
+    window.tableViewerData[uniqueId] = dataRows;
+    thead.innerHTML = '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
+    renderTableViewerRows(uniqueId, dataRows);
+}
+
+function renderTableViewerRows(uniqueId, rows) {
+    const tbody = document.getElementById(`tbody_${uniqueId}`);
+    if (!tbody) return;
+    if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="100%" style="text-align: center; color: #94a3b8; padding: 15px;">No rows found.</td></tr>`;
+    } else {
+        tbody.innerHTML = rows.map(r => '<tr>' + r.map(c => {
+            const cellStr = String(c || '');
+            if (cellStr.length > 45 || cellStr.includes('\n')) {
+                return `<td style="vertical-align: middle;"><button class="btn-pfms btn-outline-pfms" style="padding:2px 6px; font-size:10px; font-weight:600; cursor:pointer;" onclick="showLongValuePopup('Cell Detail', 'Table Viewer', \`${cellStr.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`)">View</button></td>`;
+            }
+            return `<td>${escapeHtml(c)}</td>`;
+        }).join('') + '</tr>').join('');
+    }
+}
+
+function filterCardTableViewer(uniqueId, keyword) {
+    keyword = keyword.toLowerCase();
+    const rows = window.tableViewerData[uniqueId] || [];
+    if (!keyword) {
+        renderTableViewerRows(uniqueId, rows);
+        return;
+    }
+    const filtered = rows.filter(row => row.some(cell => cell.toLowerCase().includes(keyword)));
+    renderTableViewerRows(uniqueId, filtered);
+}
+
+function escapeHtml(unsafe) {
+    if (!unsafe) return '';
+    return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
 </script>
 </body>
 </html>
