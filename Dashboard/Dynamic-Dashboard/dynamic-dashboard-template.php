@@ -293,7 +293,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <link href="/pandora_console/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
     <link rel="stylesheet" href="/pandora_console/custom/panel/vendor/fonts/fonts.css" />
     <link href="/pandora_console/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <script src="/pandora_console/custom/panel/vendor/chartjs/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }
@@ -303,7 +303,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .toolbar-right, .drag-handle, #view_list, #listTopControls { display: none !important; }
         .grafana-toolbar { border-top: 1px solid #dce1e5; margin-top:0 !important;}
-        .main-content { padding: 20px 25px !important; width: 100% !important; margin: 0 !important; }
+        .main-content { padding: 20px 25px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
         <?php endif; ?>
 
         .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 10; }
@@ -374,7 +374,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .btn-icon-only { background: transparent; color:#7f8c8d; border:none; height:32px; width:32px; border-radius:4px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;}
         .btn-icon-only:hover { background: #e0e4e8; color: #0b1a26; }
         
-        .main-content { padding: 20px 25px; max-width: 100%; overflow-x: hidden; }
+        .main-content { padding: 20px 25px; max-width: 1800px; margin: 0 auto; overflow-x: hidden; }
         
         #panelsGrid { 
             display: grid; 
@@ -434,7 +434,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .val-unit { font-size: 14px !important; font-weight: 500 !important; color: #64748b; margin-left: 3px;}
         .mod-subtitle { font-size: 11px !important; color: #64748b; font-weight: 500 !important; margin-top: 8px; text-align: center; line-height:1.3; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; flex-shrink: 0;}
-        .chart-wrapper { width: 100%; height: 180px; position: relative; margin-top: 10px; display: flex; justify-content: center; align-items: center; min-width: 0;}
+        .chart-wrapper { width: 100%; position: relative; margin-top: 10px; display: flex; justify-content: center; align-items: center; min-width: 0;}
         .gauge-text { position: absolute; top: 75%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; width: 90%; }
         .gauge-val { font-size: 24px !important; font-weight: 700 !important; color: #0b1a26; line-height: 1; }
         .gauge-minmax { font-size: 10px !important; color: #95a5a6; margin-top: 4px; font-weight: normal;}
@@ -821,6 +821,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                     <label>Row Limit (Table)</label>
                     <input type="number" id="p_row_limit" class="form-control-fix" value="200" min="1" max="1000">
                 </div>
+                <div class="form-group" style="flex:1;" id="wrap_chart_font">
+                    <label>Chart Font Size</label>
+                    <input type="number" id="p_chart_font_size" class="form-control-fix" value="10" min="6" max="32">
+                </div>
             </div>
 
             <div style="display:flex; gap:10px; margin-top:5px; padding:10px; background:#fff; border:1px solid #dce1e5; border-radius:6px; margin-bottom:10px;">
@@ -992,7 +996,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; min-height:260px; position:relative;">
                 <h6 style="margin:0 0 10px 0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Historical Trend</h6>
                 <div style="height:200px; width:100%; position:relative;">
-                    <canvas id="nativeModuleDetailChart"></canvas>
+                    <div id="nativeModuleDetailChart" style="width:100%; height:100%; min-height:200px;"></div>
                 </div>
             </div>
             
@@ -1583,6 +1587,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const fw = p.font_weight || 700;
     const showMod = p.show_module !== false; 
     const isMultiOverlay = moduleData.module_name === 'Multi-Module Overlay';
+    const chartH = Math.max(120, (parseInt(p.height) || 200) - 60);
     const modNameHtml = showMod ? `<div class="mod-subtitle" style="${isMultiOverlay ? 'margin:0 auto;' : ''}">${moduleData.module_name}</div>` : '';
     const statusHtml = isMultiOverlay ? '' : `<div style="display:flex; align-items:center;"><span class="status-dot ${bgClass}"></span><span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span></div>`;
 
@@ -1590,7 +1595,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;"><div style="display:flex; align-items:baseline; justify-content:center;"><span class="status-dot ${bgClass}"></span><span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${modNameHtml}</div>`;
     } 
     else if (p.type === 'gauge') {
-        contentHtml = `<div class="chart-wrapper"><canvas id="chart_${uniqueId}"></canvas><div class="gauge-text"><div><span class="gauge-val" style="font-size:${Math.round(fs*0.75)}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${modNameHtml}</div></div>`;
+        contentHtml = `<div class="chart-wrapper"><div id="chart_${uniqueId}" style="width:100%; height:100%; min-height:100px;"></div><div class="gauge-text"><div><span class="gauge-val" style="font-size:${Math.round(fs*0.75)}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${modNameHtml}</div></div>`;
     }
     else if (p.type === 'heatmap') {
         const sizeMap = { 'small': '40px', 'medium': '80px', 'large': '140px', 'xl': '220px' };
@@ -1645,7 +1650,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                     </iframe>
                 </div>`;
             } else {
-                chartHtml = `<div class="chart-wrapper"><canvas id="chart_${uniqueId}"></canvas></div>`;
+                chartHtml = `<div class="chart-wrapper" style="height:${chartH}px;"><div id="chart_${uniqueId}" style="width:100%; height:100%;"></div></div>`;
             }
 
             contentHtml = `<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">${modNameHtml}${statusHtml}</div>${chartHtml}`;
@@ -1701,8 +1706,19 @@ function generateSummaryPanelHtml(p, modules) {
             </div>`;
     } else if (p.type === 'status_table') {
         const visibleCols = p.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
-        const limit = p.row_limit || 200;
-        const displayModules = modules.slice(0, limit);
+        const limit = parseInt(p.row_limit) || 200;
+        
+        // Calculate pagination slices
+        const totalItems = modules.length;
+        const totalPages = Math.ceil(totalItems / limit) || 1;
+        window.tableCurrentPages = window.tableCurrentPages || {};
+        const currentPage = window.tableCurrentPages[p.id] || 1;
+        const actualPage = Math.min(currentPage, totalPages);
+        window.tableCurrentPages[p.id] = actualPage; // clamp page
+        
+        const startIdx = (actualPage - 1) * limit;
+        const endIdx = Math.min(startIdx + limit, totalItems);
+        const displayModules = modules.slice(startIdx, endIdx);
         
         let headerRow = '';
         if (visibleCols.includes('agent')) headerRow += '<th>Node Agent</th>';
@@ -1712,6 +1728,20 @@ function generateSummaryPanelHtml(p, modules) {
         if (visibleCols.includes('status')) headerRow += '<th style="text-align:center;">Status / Value</th>';
         if (visibleCols.includes('history')) headerRow += '<th style="text-align:center;">Metrics History</th>';
         if (visibleCols.includes('threshold')) headerRow += '<th>Threshold</th>';
+
+        let paginationHtml = '';
+        if (totalPages > 1) {
+            paginationHtml = `
+                <div class="pagination-container-dyn" style="display:flex; justify-content:space-between; align-items:center; padding:10px 15px; border-top:1px solid #f0f3f5; font-size:11px; color:#64748b; background:#fff;">
+                    <div>Showing ${startIdx + 1} to ${endIdx} of ${totalItems} Entries</div>
+                    <div style="display:flex; gap:10px;">
+                        <button class="pagination-btn-dyn" style="padding:4px 8px; border:1px solid #dce1e5; border-radius:4px; background:#fff; cursor:pointer; font-size:11px; color:#475569;" ${actualPage === 1 ? 'disabled style="opacity:0.5; cursor:default;"' : `onclick="changeTablePage('${p.id}', ${actualPage - 1})"`}>Prev</button>
+                        <span style="font-size:11px; font-weight: 600; align-self:center; color:#475569;">Page ${actualPage} / ${totalPages}</span>
+                        <button class="pagination-btn-dyn" style="padding:4px 8px; border:1px solid #dce1e5; border-radius:4px; background:#fff; cursor:pointer; font-size:11px; color:#475569;" ${actualPage === totalPages ? 'disabled style="opacity:0.5; cursor:default;"' : `onclick="changeTablePage('${p.id}', ${actualPage + 1})"`}>Next</button>
+                    </div>
+                </div>
+            `;
+        }
 
         content = `
             <div class="table-wrap-dyn">
@@ -1776,7 +1806,8 @@ function generateSummaryPanelHtml(p, modules) {
                         }).join('')}
                     </tbody>
                 </table>
-            </div>`;
+            </div>
+            ${paginationHtml}`;
     } else if (p.type === 'status_heatmap') {
         const sizeConf = {
             'small':  { w:'32px', h:'20px', f:'7px' },
@@ -1795,9 +1826,10 @@ function generateSummaryPanelHtml(p, modules) {
                 }).join('')}
             </div>`;
     } else if (p.type === 'pie' || p.type === 'donut') {
+        const chartH = Math.max(120, (parseInt(p.height) || 200) - 60);
         content = `
-            <div style="position:relative; width:100%; height:100%; min-height:220px; display:flex; justify-content:center; align-items:center;">
-                <canvas id="chart_${p.id}" style="max-height: 220px; width: 100%;"></canvas>
+            <div style="position:relative; width:100%; height:${chartH}px; display:flex; justify-content:center; align-items:center;">
+                <div id="chart_${p.id}" style="width:100%; height:100%;"></div>
             </div>`;
     }
 
@@ -1855,7 +1887,7 @@ function refreshCurrentNodeData() {
         
         const dataMap = res.data || {};
         lastFetchedData = dataMap; 
-        Object.values(chartInstances).forEach(c => { if(c) c.destroy(); });
+        Object.values(chartInstances).forEach(c => { if(c && typeof c.dispose === 'function') c.dispose(); });
         chartInstances = {};
 
         targetPanels.forEach(p => {
@@ -1903,6 +1935,8 @@ function refreshCurrentNodeData() {
                 '#004d40', '#1976d2', '#d32f2f', '#f57c00', '#7b1fa2', '#009688', '#fbc02d', '#616161', '#e91e63', '#8d6e63'
             ];
 
+            const chartFs = p.chart_font_size ? parseInt(p.chart_font_size) : 10;
+
             if (['pie', 'donut'].includes(p.type)) {
                 const canvas = document.getElementById(`chart_${p.id}`);
                 if (canvas) {
@@ -1932,36 +1966,25 @@ function refreshCurrentNodeData() {
                     const borderColors = finalStatuses.map(s => s.border);
 
                     try {
-                        chartInstances[p.id] = new Chart(canvas.getContext('2d'), {
-                            type: p.type === 'pie' ? 'pie' : 'doughnut',
-                            data: {
-                                labels: labels,
-                                datasets: [{
-                                    data: values,
-                                    backgroundColor: bgColors,
-                                    borderColor: borderColors,
-                                    borderWidth: 1
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { display: true, position: 'right', labels: { boxWidth: 10, font: { size: 10 } } },
-                                    tooltip: {
-                                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                                        titleColor: '#ffffff',
-                                        bodyColor: '#cbd5e1',
-                                        padding: 10,
-                                        cornerRadius: 6,
-                                        callbacks: {
-                                            label: function(context) { return `Count: ${context.parsed}`; }
-                                        }
-                                    }
-                                }
-                            }
+                        let dom = document.getElementById(`chart_${p.id}`);
+                        if (!dom) return;
+                        chartInstances[p.id] = echarts.init(dom);
+                        let pieData = labels.map((lbl, i) => ({ value: values[i], name: lbl, itemStyle: { color: bgColors[i] } }));
+                        chartInstances[p.id].setOption({
+                            tooltip: { trigger: 'item', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#ffffff', fontSize: 12 }, padding: 10, borderRadius: 6, formatter: '{b} <br/>Count: {c} ({d}%)' },
+                            legend: { type: 'scroll', orient: 'vertical', right: 5, top: 'middle', itemWidth: 10, itemHeight: 10, textStyle: { fontSize: Math.max(9, chartFs - 1) } },
+                            series: [{
+                                type: 'pie',
+                                radius: p.type === 'pie' ? '75%' : ['50%', '75%'],
+                                center: ['40%', '50%'],
+                                data: pieData,
+                                label: { show: true, formatter: '{b}\n{c} ({d}%)', fontSize: chartFs, color: '#334155' },
+                                labelLine: { show: true, length: 10, length2: 5 },
+                                itemStyle: { borderColor: '#fff', borderWidth: 1 }
+                            }]
                         });
-                    } catch(e) { console.error("Pie/Donut Error:", e); }
+                        window.addEventListener('resize', () => chartInstances[p.id].resize());
+                    } catch(e) { console.error("Pie/Donut ECharts Error:", e); }
                 }
             } else if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
                 const uniqueId = `${p.id}_multi`;
@@ -1981,60 +2004,45 @@ function refreshCurrentNodeData() {
                         return '';
                     });
 
-                    const datasets = activeModules.map((m, idx) => {
+                    const seriesData = activeModules.map((m, idx) => {
                         const color = borders[idx % borders.length];
-                        const fillBg = colors[idx % colors.length].replace('0.75', '0.15');
                         const historyMap = {};
                         (m.history || []).forEach(h => {
                             if (h.ts !== undefined) historyMap[Number(h.ts)] = h.val;
                         });
-                        const data = uniqueTimestamps.map(ts => historyMap[ts] !== undefined ? historyMap[ts] : null);
+                        let lastVal = null;
+                        const data = uniqueTimestamps.map(ts => {
+                            if (historyMap[ts] !== undefined) lastVal = historyMap[ts];
+                            return lastVal;
+                        });
 
                         return {
-                            label: `${m.agent_name} - ${m.module_name}`,
+                            name: `${m.agent_name} - ${m.module_name}`,
+                            type: p.type === 'bar' ? 'bar' : 'line',
                             data: data,
-                            borderColor: color,
-                            backgroundColor: p.type === 'area' ? fillBg : (p.type === 'bar' ? colors[idx % colors.length] : 'transparent'),
-                            fill: p.type === 'area',
-                            tension: p.type === 'bar' ? 0 : 0.25,
-                            pointRadius: 3,
-                            pointBackgroundColor: color,
-                            pointHoverRadius: 5,
-                            borderWidth: p.type === 'bar' ? 0 : 2,
-                            spanGaps: true
+                            itemStyle: { color: color },
+                            areaStyle: p.type === 'area' ? { opacity: 0.15, color: color } : undefined,
+                            smooth: true,
+                            showSymbol: false,
+                            connectNulls: true,
+                            lineStyle: { width: p.type === 'bar' ? 0 : 2 }
                         };
                     });
 
                     try {
-                        chartInstances[uniqueId] = new Chart(canvas.getContext('2d'), {
-                            type: p.type === 'area' ? 'line' : p.type,
-                            data: { labels: labels, datasets: datasets },
-                            options: {
-                                responsive: true, maintainAspectRatio: false,
-                                plugins: { 
-                                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 9 }, color: '#64748b', usePointStyle: true } },
-                                    tooltip: {
-                                        enabled: true, mode: 'index', intersect: false,
-                                        backgroundColor: 'rgba(15, 23, 42, 0.95)', titleColor: '#ffffff', bodyColor: '#cbd5e1',
-                                        borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, padding: 10, cornerRadius: 6, displayColors: true,
-                                        callbacks: {
-                                            label: function(context) {
-                                                const datasetLabel = context.dataset.label || '';
-                                                const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
-                                                const found = activeModules.find(m => `${m.agent_name} - ${m.module_name}` === datasetLabel);
-                                                const unit = found && found.unit ? ' ' + found.unit : '';
-                                                return ` ${datasetLabel}: ${val}${unit}`;
-                                            }
-                                        }
-                                    }
-                                },
-                                scales: {
-                                    x: { display: !!p.show_time, ticks: { font: { size: 8 }, autoSkip: true, maxTicksLimit: 6 }, grid: { display: false } },
-                                    y: { beginAtZero: true, max: p.force_100 ? 100 : undefined, ticks: { font: { size: 9 } }, grid: { color: '#f0f3f5', drawBorder: false } }
-                                }
-                            }
+                        let dom = document.getElementById(`chart_${uniqueId}`);
+                        if (!dom) return;
+                        chartInstances[uniqueId] = echarts.init(dom);
+                        chartInstances[uniqueId].setOption({
+                            tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: chartFs + 2 }, padding: 10, borderRadius: 6 },
+                            legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFs - 1), color: '#64748b' } },
+                            grid: { left: 5, right: 15, top: 15, bottom: p.show_time ? 45 : 25, containLabel: true },
+                            xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: labels, show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
+                            yAxis: { type: 'value', max: p.force_100 ? 100 : null, splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' } },
+                            series: seriesData
                         });
-                    } catch(e) { console.error("MultiChart Error:", e); }
+                        window.addEventListener('resize', () => chartInstances[uniqueId].resize());
+                    } catch(e) { console.error("MultiChart ECharts Error:", e); }
                 }
             } else {
                 activeModules.forEach(m => {
@@ -2054,58 +2062,40 @@ function refreshCurrentNodeData() {
                     }
 
                     try {
+                        let dom = document.getElementById(`chart_${uniqueId}`);
+                        if (!dom) return;
+                        chartInstances[uniqueId] = echarts.init(dom);
                         if (p.type === 'gauge') {
                             let curVal = parseFloat(m.current);
                             if (isNaN(curVal)) curVal = 0;
-                            const remainder = Math.max(0, 100 - curVal);
-                            chartInstances[uniqueId] = new Chart(canvas.getContext('2d'), { 
-                                type:'doughnut', 
-                                data:{ datasets:[{data:[curVal, remainder], backgroundColor:[color, '#eee'], borderWidth:0}]}, 
-                                options:{circumference:180, rotation:-90, cutout:'80%', plugins:{legend:{display:false}}, animation:{duration:1000}}
+                            chartInstances[uniqueId].setOption({
+                                series: [{
+                                    type: 'pie', radius: ['70%', '100%'], center: ['50%', '70%'],
+                                    startAngle: 180, endAngle: 0,
+                                    data: [
+                                        { value: curVal, itemStyle: { color: color } },
+                                        { value: Math.max(0, 100 - curVal), itemStyle: { color: '#eee' } }
+                                    ],
+                                    label: { show: false }, silent: true
+                                }]
                             });
                         } else if (['line','area','bar'].includes(p.type)) {
-                            chartInstances[uniqueId] = new Chart(canvas.getContext('2d'), { 
-                                type: p.type==='area'?'line':p.type, 
-                                data:{ 
-                                    labels:history.map(h=>h.lbl), 
-                                    datasets:[{
-                                        label: `${m.agent_name} - ${m.module_name}`,
-                                        data:history.map(h=>h.val), 
-                                        borderColor:color, 
-                                        fill:p.type==='area', 
-                                        backgroundColor: (p.type==='bar') ? color : (p.type==='area' ? color + '26' : 'transparent'), 
-                                        tension: p.type === 'bar' ? 0 : 0.25,
-                                        pointRadius: 3,
-                                        pointBackgroundColor: color,
-                                        pointHoverRadius: 5,
-                                        borderWidth: (p.type==='bar' ? 0 : 2),
-                                        spanGaps: true
-                                    }]
-                                }, 
-                                options:{
-                                    responsive:true, maintainAspectRatio:false, 
-                                    plugins:{
-                                        legend:{display:false},
-                                        tooltip: {
-                                            enabled: true, mode: 'index', intersect: false,
-                                            backgroundColor: 'rgba(15, 23, 42, 0.95)', titleColor: '#ffffff', bodyColor: '#cbd5e1',
-                                            borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, padding: 10, cornerRadius: 6, displayColors: true,
-                                            callbacks: {
-                                                label: function(context) {
-                                                    const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
-                                                    const unit = m.unit ? ' ' + m.unit : '';
-                                                    return ` ${m.agent_name} - ${m.module_name}: ${val}${unit}`;
-                                                }
-                                            }
-                                        }
-                                    }, 
-                                    scales: { 
-                                        x: { display: !!p.show_time, ticks: { font: { size: 8 }, autoSkip: true, maxTicksLimit: 6, maxRotation: 0 }, grid: { display: false } }, 
-                                        y: { beginAtZero: true, max: p.force_100 ? 100 : undefined, ticks: { font: { size: 9 }, color: '#94a3b8', callback: function(value) { return value + (m.unit ? ' ' + m.unit : ''); } }, grid: { color: '#f0f3f5', drawBorder: false } }
-                                    }
-                                }
+                            chartInstances[uniqueId].setOption({
+                                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: chartFs + 2 }, padding: 10, borderRadius: 6 },
+                                grid: { left: 0, right: 0, top: 0, bottom: p.show_time ? 30 : 0, containLabel: p.show_time },
+                                xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: history.map(h=>h.lbl), show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' } },
+                                yAxis: { type: 'value', show: false, max: p.force_100 ? 100 : null },
+                                series: [{
+                                    name: `${m.agent_name} - ${m.module_name}`,
+                                    type: p.type === 'bar' ? 'bar' : 'line',
+                                    data: history.map(h=>h.val),
+                                    itemStyle: { color: color },
+                                    areaStyle: p.type === 'area' ? { opacity: 0.15, color: color } : undefined,
+                                    smooth: true, showSymbol: false, connectNulls: true, lineStyle: { width: p.type === 'bar' ? 0 : 2 }
+                                }]
                             });
                         }
+                        window.addEventListener('resize', () => chartInstances[uniqueId].resize());
                     } catch(e) { console.error("Chart build error:", e); }
                 });
             }
@@ -2227,6 +2217,7 @@ function openPanelBuilder() {
     document.getElementById('p_height').value = '200';
     document.getElementById('p_box_size').value = 'medium';
     document.getElementById('p_row_limit').value = '200';
+    document.getElementById('p_chart_font_size').value = '10';
     document.getElementById('p_lbl_1').value = '';
     document.getElementById('p_lbl_0').value = '';
     document.getElementById('p_show_module').checked = true;
@@ -2247,10 +2238,11 @@ function openPanelEdit(id) {
     const p = masterDashboards.find(d => d.id === currentDashId).panels.find(x => x.id === id);
     document.getElementById('p_title').value = p.title;
     document.getElementById('p_type').value = p.type;
-    document.getElementById('p_width').value = p.width || 12; 
+    document.getElementById('p_width').value = p.width || 12;
     document.getElementById('p_height').value = p.height || 200;
     document.getElementById('p_box_size').value = p.box_size || 'medium';
     document.getElementById('p_row_limit').value = p.row_limit || 200;
+    document.getElementById('p_chart_font_size').value = p.chart_font_size || 10;
     document.getElementById('p_font_size').value = p.font_size || 32;
     document.getElementById('p_font_weight').value = p.font_weight || 700;
     document.getElementById('p_show_module').checked = p.show_module !== false;
@@ -2301,6 +2293,7 @@ function applyPanel() {
         height: document.getElementById('p_height').value || 200,
         box_size: document.getElementById('p_box_size').value || 'medium',
         row_limit: parseInt(document.getElementById('p_row_limit').value) || 200,
+        chart_font_size: parseInt(document.getElementById('p_chart_font_size').value) || 10,
         font_size: parseInt(document.getElementById('p_font_size').value) || 32,
         font_weight: document.getElementById('p_font_weight').value || 700,
         show_module: document.getElementById('p_show_module').checked,
@@ -2367,6 +2360,24 @@ function deletePanel(id) {
             renderPanelsGrid(); 
             forceRefresh();
         }, true); 
+    }
+}
+
+window.tableCurrentPages = window.tableCurrentPages || {};
+function changeTablePage(panelId, newPage) {
+    window.tableCurrentPages[panelId] = newPage;
+    const wrapper = document.getElementById(`wrapper_p_${panelId}`);
+    if (wrapper && lastFetchedData && lastFetchedData[panelId]) {
+        const p = masterDashboards.find(d => d.id === currentDashId).panels.find(pl => pl.id === panelId);
+        if (p) {
+            let activeModules = lastFetchedData[panelId].modules || [];
+            if (!showHiddenPanels && p.excluded) {
+                activeModules = activeModules.filter(m => !p.excluded.map(String).includes(String(m.id)));
+            }
+            activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
+            wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
+            setTimeout(resizeAllGridItems, 50);
+        }
     }
 }
 
@@ -2507,7 +2518,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
     document.getElementById('nativeModuleDetailCount').innerText = 'Loading...';
     
     if (nativeModuleChartInstance) {
-        nativeModuleChartInstance.destroy();
+        if (typeof nativeModuleChartInstance.dispose === 'function') nativeModuleChartInstance.dispose();
         nativeModuleChartInstance = null;
     }
     
@@ -2560,48 +2571,27 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         });
         const dataset = data.map(row => parseFloat(row.datos));
         
-        const ctx = document.getElementById('nativeModuleDetailChart').getContext('2d');
-        const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-        gradient.addColorStop(0, 'rgba(0, 77, 64, 0.2)');
-        gradient.addColorStop(1, 'rgba(0, 77, 64, 0)');
-        
-        nativeModuleChartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: title,
-                    data: dataset,
-                    borderColor: '#004d40',
-                    borderWidth: 2,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                    backgroundColor: gradient,
-                    fill: true,
-                    tension: 0.1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    x: {
-                        grid: { display: false },
-                        ticks: {
-                            font: { size: 9 },
-                            maxTicksLimit: 8
-                        }
-                    },
-                    y: {
-                        grid: { color: '#f1f5f9' },
-                        ticks: { font: { size: 10 } }
-                    }
-                }
-            }
+        let dom = document.getElementById('nativeModuleDetailChart');
+        if (!dom) return;
+        nativeModuleChartInstance = echarts.init(dom);
+        nativeModuleChartInstance.setOption({
+            tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6 },
+            grid: { left: 5, right: 15, top: 15, bottom: 25, containLabel: true },
+            xAxis: { type: 'category', boundaryGap: false, data: labels, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { fontSize: 10, color: '#64748b' } },
+            series: [{
+                name: title,
+                type: 'line',
+                data: dataset,
+                itemStyle: { color: '#004d40' },
+                areaStyle: { opacity: 0.2, color: '#004d40' },
+                smooth: true,
+                showSymbol: false,
+                connectNulls: true,
+                lineStyle: { width: 2 }
+            }]
         });
+        window.addEventListener('resize', () => nativeModuleChartInstance.resize());
         
     } catch (e) {
         tableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:30px; color:#e74c3c;">Exception: ${e.message}</td></tr>`;
@@ -2611,7 +2601,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
 function closeNativeModuleDetailModal() {
     document.getElementById('nativeModuleDetailModal').style.display = 'none';
     if (nativeModuleChartInstance) {
-        nativeModuleChartInstance.destroy();
+        if (typeof nativeModuleChartInstance.dispose === 'function') nativeModuleChartInstance.dispose();
         nativeModuleChartInstance = null;
     }
 }

@@ -21,17 +21,36 @@ if (empty($user_id)) {
 // API ENDPOINTS
 // ==========================================
 
+$CONFIG_FILE = __DIR__ . '/table_viewer_config.json';
+
+// Load Config
+if (isset($_GET['api']) && $_GET['api'] === 'load_config') {
+    ob_clean();
+    header('Content-Type: application/json');
+    echo file_exists($CONFIG_FILE) ? file_get_contents($CONFIG_FILE) : json_encode([]);
+    exit;
+}
+
+// Save Config
+if (isset($_GET['api']) && $_GET['api'] === 'save_config') {
+    ob_clean();
+    header('Content-Type: application/json');
+    $input = file_get_contents('php://input');
+    $bytes = @file_put_contents($CONFIG_FILE, $input);
+    echo json_encode(['ok' => $bytes !== false]);
+    exit;
+}
+
 // 1. Fetch Distinct Agents
 if (isset($_GET['api']) && $_GET['api'] === 'get_agents') {
     ob_clean();
     header('Content-Type: application/json');
     try {
         $stmt = $pdo->query("
-            SELECT DISTINCT a.id_agente, a.nombre 
-            FROM tagente a 
-            JOIN tagente_modulo m ON a.id_agente = m.id_agente 
-            WHERE m.id_tipo_modulo IN (3, 4) OR m.nombre LIKE '%slow_query%' 
-            ORDER BY a.nombre
+            SELECT id_agente, nombre 
+            FROM tagente 
+            WHERE disabled = 0
+            ORDER BY nombre
         ");
         echo json_encode(['ok' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
     } catch (Exception $e) {
@@ -49,7 +68,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_modules') {
         $stmt = $pdo->prepare("
             SELECT id_agente_modulo, nombre 
             FROM tagente_modulo 
-            WHERE id_agente = ? AND (id_tipo_modulo IN (3, 4) OR nombre LIKE '%slow_query%') 
+            WHERE id_agente = ? AND disabled = 0
             ORDER BY nombre
         ");
         $stmt->execute([$agent_id]);
@@ -133,8 +152,8 @@ $share_refresh = $is_share_mode ? (int)($_GET['refresh'] ?? 0) : 0;
         .page-title { font-size: 16px; font-weight: 600; color: #0b1a26; margin: 0; }
         .main-container { padding: 25px 30px; }
         
-        .card-custom { background: #fff; border-radius: 8px; border: 1px solid #e0e4e8; box-shadow: 0 2px 8px rgba(0,0,0,0.04); overflow: hidden; margin-bottom: 25px; }
-        .panel-header { padding: 12px 20px; border-bottom: 1px solid #e0e4e8; background: #f8fafc; display: flex; justify-content: space-between; align-items: center; }
+        .card-custom { background: #fff; border-radius: 8px; border: 1px solid #e0e4e8; box-shadow: 0 2px 8px rgba(0,0,0,0.04); overflow: visible; margin-bottom: 25px; }
+        .panel-header { padding: 12px 20px; border-bottom: 1px solid #e0e4e8; background: #f8fafc; display: flex; justify-content: space-between; align-items: center; border-top-left-radius: 7px; border-top-right-radius: 7px; }
         .panel-title { font-size: 14px; font-weight: 600; color: #0b1a26; margin: 0; }
         .panel-body { padding: 20px; }
         
@@ -182,26 +201,81 @@ $share_refresh = $is_share_mode ? (int)($_GET['refresh'] ?? 0) : 0;
         <?php else: ?>
         .table-scroll-wrapper { max-height: 400px; }
         <?php endif; ?>
+
+        /* Sleek Modern Modal System */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 2000; }
+        .modal-box { background: #fff; width: 450px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); border: 1px solid #e2e8f0; }
+        .modal-header-custom { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 18px; }
+        .modal-header-custom h5 { font-size: 16px; font-weight: 600; margin: 0; color: #0f172a; }
+        .modal-header-custom .close-btn { cursor: pointer; color: #64748b; font-size: 20px; transition: color 0.15s; }
+        .modal-header-custom .close-btn:hover { color: #0f172a; }
+        .modal-footer-custom { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 18px; }
     </style>
 </head>
 <body>
 
-<?php if(!$is_share_mode): ?>
-<div class="header-section">
-    <div>
-        <h1 class="page-title">Dynamic Table Viewer</h1>
-        <p style="margin: 4px 0 0 0; font-size: 11px; color: #64748b;">Build custom dashboard grids from string modules.</p>
+<!-- Dashboard List View -->
+<div id="view_list" class="main-container">
+    <div class="header-section" style="padding: 15px 0; border: none; margin-bottom: 25px; background: transparent;">
+        <div>
+            <h1 class="page-title">Dynamic Table Viewer Dashboard</h1>
+            <p style="margin: 4px 0 0 0; font-size: 11px; color: #64748b;">Manage and view your custom string table dashboards.</p>
+        </div>
+        <div>
+            <button class="btn-pfms btn-primary-pfms" onclick="Dashboard.createDashboard()">
+                <span class="material-symbols-outlined">add</span> Create Dashboard
+            </button>
+        </div>
     </div>
-    <div>
-        <button class="btn-pfms btn-primary-pfms" onclick="Dashboard.addPanel()">
-            <span class="material-symbols-outlined">add</span> Add Panel
-        </button>
+    
+    <div class="card-custom">
+        <div class="panel-header">
+            <h3 class="panel-title">My Dashboards</h3>
+        </div>
+        <div class="panel-body">
+            <table class="table-pfms" id="dashListTable">
+                <thead>
+                    <tr>
+                        <th style="width: 60%;">Dashboard Name</th>
+                        <th style="text-align: center; width: 20%;">Total Panels</th>
+                        <th style="text-align: right; width: 20%; padding-right: 30px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="dashListBody">
+                    <tr><td colspan="3" style="text-align: center; padding: 30px; color: #94a3b8;">Loading dashboards...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
-<?php endif; ?>
 
-<div class="main-container" id="dashboardGrid">
-    <!-- Panels will be rendered here via JS -->
+<!-- Dashboard Detail/Grid View -->
+<div id="view_detail" class="d-none">
+    <?php if(!$is_share_mode): ?>
+    <div class="header-section">
+        <div class="d-flex align-items-center gap-3">
+            <button class="btn-pfms btn-outline-pfms" onclick="Dashboard.closeDashboard()" style="padding: 6px 10px;">
+                <span class="material-symbols-outlined" style="font-size: 16px;">arrow_back</span> Back
+            </button>
+            <div>
+                <h1 class="page-title" id="activeDashTitle">Active Dashboard</h1>
+                <p style="margin: 4px 0 0 0; font-size: 11px; color: #64748b;" id="activeDashSubtitle">Customize your string modules tabular display.</p>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn-pfms btn-outline-pfms" onclick="Dashboard.renameActiveDashboard()">
+                <span class="material-symbols-outlined" style="font-size: 14px;">edit</span> Rename
+            </button>
+            <button class="btn-pfms btn-primary-pfms" onclick="Dashboard.addPanel()">
+                <span class="material-symbols-outlined">add</span> Add Panel
+            </button>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <div class="main-container" id="dashboardGrid">
+        <!-- Panels will be rendered here via JS -->
+    </div>
 </div>
 
 <!-- TEMPLATES -->
@@ -233,7 +307,7 @@ $share_refresh = $is_share_mode ? (int)($_GET['refresh'] ?? 0) : 0;
         </div>
         <div class="col-12">
             <button class="btn-pfms btn-primary-pfms" onclick="Dashboard.saveConfig('{ID}')">Save Config</button>
-            <button class="btn-pfms btn-outline-pfms" onclick="Dashboard.removePanel('{ID}')">Cancel</button>
+            <button class="btn-pfms btn-outline-pfms" onclick="Dashboard.cancelEdit('{ID}')">Cancel</button>
         </div>
     </div>
 </template>
@@ -258,6 +332,25 @@ $share_refresh = $is_share_mode ? (int)($_GET['refresh'] ?? 0) : 0;
     <div id="raw-{ID}" class="d-none" style="padding: 15px; background: #1e293b; color: #e2e8f0; font-family: monospace; font-size: 11px; white-space: pre-wrap;"></div>
 </template>
 
+<!-- Custom Create/Rename Dashboard Modal -->
+<div class="modal-overlay" id="dashMetaModal">
+    <div class="modal-box">
+        <div class="modal-header-custom">
+            <h5 id="dashMetaTitle">Create Dashboard</h5>
+            <span class="material-symbols-outlined close-btn" onclick="Dashboard.closeDashMetaModal()">close</span>
+        </div>
+        <div class="form-group mb-3">
+            <label class="form-label" style="font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px;">Dashboard Name</label>
+            <input type="text" id="m_dash_title" class="form-control" placeholder="e.g. Hive Database Table Viewers" autocomplete="off" style="font-size: 13px;"
+                onkeydown="if(event.key === 'Enter') { Dashboard.saveDashboardMeta(); } else if(event.key === 'Escape') { Dashboard.closeDashMetaModal(); }">
+        </div>
+        <div class="modal-footer-custom">
+            <button class="btn-pfms btn-outline-pfms" onclick="Dashboard.closeDashMetaModal()">Cancel</button>
+            <button class="btn-pfms btn-primary-pfms" onclick="Dashboard.saveDashboardMeta()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const Dashboard = {
     panels: [],
@@ -266,6 +359,8 @@ const Dashboard = {
     isShareMode: <?php echo $is_share_mode ? 'true' : 'false'; ?>,
     shareModuleId: <?php echo $share_module_id; ?>,
     shareRefresh: <?php echo $share_refresh; ?>,
+    masterDashboards: [],
+    currentDashId: null,
 
     async init() {
         if (this.isShareMode) {
@@ -278,6 +373,8 @@ const Dashboard = {
                 mode: 'view',
                 dataRows: []
             }];
+            document.getElementById('view_list').classList.add('d-none');
+            document.getElementById('view_detail').classList.remove('d-none');
             this.renderAll();
             this.fetchData(panelId);
             return;
@@ -285,15 +382,216 @@ const Dashboard = {
 
         // Normal mode
         await this.loadAgents();
-        this.loadState();
-        if (this.panels.length === 0) {
-            this.addPanel(); // add first default panel
-        } else {
-            this.renderAll();
-            this.panels.forEach(p => {
-                if (p.mode === 'view') this.fetchData(p.id);
-            });
+        await this.loadConfig();
+
+        // Migrate old localStorage if present
+        const saved = localStorage.getItem('pfms_table_viewer');
+        if (saved && this.masterDashboards.length === 0) {
+            try {
+                const oldPanels = JSON.parse(saved);
+                if (oldPanels.length > 0) {
+                    this.masterDashboards = [{
+                        id: 'dash-' + Date.now(),
+                        name: 'My Migrated Dashboard',
+                        panels: oldPanels.map(p => ({ ...p, dataRows: [] }))
+                    }];
+                    await this.saveConfigToServer();
+                    localStorage.removeItem('pfms_table_viewer');
+                }
+            } catch(e) {}
         }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        let activeId = urlParams.get('dashboard_id') || localStorage.getItem('pfms_table_viewer_active_id');
+
+        if (activeId && this.masterDashboards.some(d => d.id === activeId)) {
+            this.openDashboard(activeId);
+        } else {
+            this.showDashboardList();
+        }
+    },
+
+    async loadConfig() {
+        try {
+            const res = await fetch('?api=load_config');
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                this.masterDashboards = data;
+            } else {
+                this.masterDashboards = [];
+            }
+        } catch(e) {
+            console.error("Error loading config", e);
+            this.masterDashboards = [];
+        }
+    },
+
+    async saveConfigToServer() {
+        if (this.isShareMode) return;
+        try {
+            const cleanDashboards = this.masterDashboards.map(d => ({
+                id: d.id,
+                name: d.name,
+                panels: (d.panels || []).map(p => ({
+                    id: p.id,
+                    module_id: p.module_id,
+                    refresh: p.refresh,
+                    mode: p.mode
+                }))
+            }));
+            const res = await fetch('?api=save_config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cleanDashboards)
+            });
+            const data = await res.json();
+            return data.ok;
+        } catch(e) {
+            console.error("Error saving config", e);
+            return false;
+        }
+    },
+
+    showDashboardList() {
+        this.currentDashId = null;
+        localStorage.removeItem('pfms_table_viewer_active_id');
+
+        const newUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+
+        document.getElementById('view_detail').classList.add('d-none');
+        document.getElementById('view_list').classList.remove('d-none');
+        this.renderDashboardList();
+    },
+
+    renderDashboardList() {
+        const body = document.getElementById('dashListBody');
+        if (this.masterDashboards.length === 0) {
+            body.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 40px; color: #94a3b8;">
+                <span class="material-symbols-outlined" style="font-size: 48px; color: #cbd5e1; display: block; margin-bottom: 10px;">space_dashboard</span>
+                No dashboards found. Click <b>"Create Dashboard"</b> to get started!
+            </td></tr>`;
+            return;
+        }
+
+        body.innerHTML = this.masterDashboards.map(d => {
+            const totalPanels = d.panels ? d.panels.length : 0;
+            return `
+                <tr>
+                    <td>
+                        <a href="javascript:void(0)" onclick="Dashboard.openDashboard('${d.id}')" style="color: #004d40; font-weight: 600; text-decoration: none; font-size: 14px;">
+                            ${this.escapeHtml(d.name)}
+                        </a>
+                    </td>
+                    <td style="text-align: center; font-weight: 500; color: #475569; font-size: 13px;">${totalPanels} Panels</td>
+                    <td style="text-align: right;">
+                        <button class="btn-pfms btn-outline-pfms btn-icon" onclick="Dashboard.renameDashboard('${d.id}')" title="Rename"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>
+                        <button class="btn-pfms btn-danger-pfms btn-icon" onclick="Dashboard.deleteDashboard('${d.id}')" title="Delete"><span class="material-symbols-outlined" style="font-size:14px;">delete</span></button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    },
+
+    createDashboard() {
+        this.editingDashId = null;
+        document.getElementById('dashMetaTitle').innerText = 'Create Dashboard';
+        const input = document.getElementById('m_dash_title');
+        input.value = '';
+        document.getElementById('dashMetaModal').style.display = 'flex';
+        input.focus();
+    },
+
+    renameDashboard(id) {
+        const dash = this.masterDashboards.find(d => d.id === id);
+        if (!dash) return;
+        this.editingDashId = id;
+        document.getElementById('dashMetaTitle').innerText = 'Rename Dashboard';
+        const input = document.getElementById('m_dash_title');
+        input.value = dash.name;
+        document.getElementById('dashMetaModal').style.display = 'flex';
+        input.focus();
+    },
+
+    renameActiveDashboard() {
+        if (!this.currentDashId) return;
+        this.renameDashboard(this.currentDashId);
+    },
+
+    closeDashMetaModal() {
+        document.getElementById('dashMetaModal').style.display = 'none';
+        this.editingDashId = null;
+    },
+
+    async saveDashboardMeta() {
+        const titleInput = document.getElementById('m_dash_title');
+        const name = titleInput.value.trim();
+        if (!name) { alert("Please enter a valid dashboard name."); return; }
+
+        if (this.editingDashId) {
+            // Rename mode
+            const dash = this.masterDashboards.find(d => d.id === this.editingDashId);
+            if (dash) {
+                dash.name = name;
+                await this.saveConfigToServer();
+                this.renderDashboardList();
+                if (this.currentDashId === this.editingDashId) {
+                    document.getElementById('activeDashTitle').innerText = dash.name;
+                }
+            }
+        } else {
+            // Create mode
+            const newDash = {
+                id: 'dash-' + Date.now(),
+                name: name,
+                panels: []
+            };
+            this.masterDashboards.push(newDash);
+            await this.saveConfigToServer();
+            this.openDashboard(newDash.id);
+        }
+        this.closeDashMetaModal();
+    },
+
+    async deleteDashboard(id) {
+        const dash = this.masterDashboards.find(d => d.id === id);
+        if (!dash) return;
+        if (!confirm(`Are you sure you want to delete dashboard "${dash.name}"?`)) return;
+        this.masterDashboards = this.masterDashboards.filter(d => d.id !== id);
+        await this.saveConfigToServer();
+        this.showDashboardList();
+    },
+
+    openDashboard(id) {
+        const dash = this.masterDashboards.find(d => d.id === id);
+        if (!dash) {
+            this.showDashboardList();
+            return;
+        }
+
+        this.currentDashId = id;
+        localStorage.setItem('pfms_table_viewer_active_id', id);
+
+        const newUrl = window.location.origin + window.location.pathname + `?dashboard_id=${id}`;
+        window.history.replaceState({}, '', newUrl);
+
+        document.getElementById('activeDashTitle').innerText = dash.name;
+        document.getElementById('view_list').classList.add('d-none');
+        document.getElementById('view_detail').classList.remove('d-none');
+
+        Object.keys(this.intervals).forEach(k => clearInterval(this.intervals[k]));
+        this.intervals = {};
+
+        this.panels = dash.panels || [];
+        this.renderAll();
+
+        this.panels.forEach(p => {
+            if (p.mode === 'view') this.fetchData(p.id);
+        });
+    },
+
+    closeDashboard() {
+        this.showDashboardList();
     },
 
     async loadAgents() {
@@ -326,14 +624,14 @@ const Dashboard = {
     populateDropdown(id, type, keyword) {
         const drop = document.getElementById(`${type}Drop-${id}`);
         let data = type === 'agent' ? this.globalAgents : (this.moduleCache[id] || []);
-        
+
         let filtered = keyword ? data.filter(item => item.nombre.toLowerCase().includes(keyword)) : data;
-        
+
         if (filtered.length === 0) {
             drop.innerHTML = '<div class="select-option" style="color:#94a3b8; cursor:default;">No results found</div>';
             return;
         }
-        
+
         let html = '';
         filtered.forEach(item => {
             const val = type === 'agent' ? item.id_agente : item.id_agente_modulo;
@@ -347,7 +645,7 @@ const Dashboard = {
         if(type === 'agent') {
             document.getElementById(`agentVal-${id}`).value = val;
             document.getElementById(`agentInput-${id}`).value = name;
-            
+
             // Reset module
             document.getElementById(`moduleSelect-${id}`).value = '';
             const modInput = document.getElementById(`moduleInput-${id}`);
@@ -376,23 +674,31 @@ const Dashboard = {
         }
     },
 
-    addPanel() {
+    async addPanel() {
         const id = 'panel-' + Date.now();
         this.panels.push({
             id: id,
             module_id: null,
             refresh: 0,
             mode: 'config',
-            dataRows: [] 
+            dataRows: []
         });
-        this.saveState();
+        const dash = this.masterDashboards.find(d => d.id === this.currentDashId);
+        if (dash) {
+            dash.panels = this.panels;
+            await this.saveConfigToServer();
+        }
         this.renderAll();
     },
 
-    removePanel(id) {
+    async removePanel(id) {
         if (this.intervals[id]) clearInterval(this.intervals[id]);
         this.panels = this.panels.filter(p => p.id !== id);
-        this.saveState();
+        const dash = this.masterDashboards.find(d => d.id === this.currentDashId);
+        if (dash) {
+            dash.panels = this.panels;
+            await this.saveConfigToServer();
+        }
         this.renderAll();
     },
 
@@ -401,35 +707,52 @@ const Dashboard = {
         const panel = this.panels.find(p => p.id === id);
         if (panel) {
             panel.mode = 'config';
-            this.saveState();
             this.renderAll();
         }
     },
 
-    saveConfig(id) {
+    cancelEdit(id) {
+        const panel = this.panels.find(p => p.id === id);
+        if (!panel) return;
+        if (!panel.module_id) {
+            this.removePanel(id);
+        } else {
+            panel.mode = 'view';
+            this.renderAll();
+        }
+    },
+
+    async saveConfig(id) {
         const modId = document.getElementById(`moduleSelect-${id}`).value;
         if (!modId) { alert("Please search and select a module."); return; }
-        
+
         const panel = this.panels.find(p => p.id === id);
         panel.module_id = modId;
         panel.mode = 'view';
-        this.saveState();
+        const dash = this.masterDashboards.find(d => d.id === this.currentDashId);
+        if (dash) {
+            dash.panels = this.panels;
+            await this.saveConfigToServer();
+        }
         this.renderAll();
         this.fetchData(id);
     },
 
-    changeRefresh(id, seconds) {
+    async changeRefresh(id, seconds) {
         const panel = this.panels.find(p => p.id === id);
         panel.refresh = parseInt(seconds);
-        this.saveState();
-        
-        // Update UI badge
+        const dash = this.masterDashboards.find(d => d.id === this.currentDashId);
+        if (dash) {
+            dash.panels = this.panels;
+            await this.saveConfigToServer();
+        }
+
         const badge = document.getElementById(`refBadge-${id}`);
         if(badge) {
             if(panel.refresh === 0) badge.classList.add('d-none');
             else { badge.classList.remove('d-none'); badge.innerText = `Auto: ${panel.refresh}s`; }
         }
-        
+
         this.setupInterval(id);
     },
 
@@ -445,11 +768,10 @@ const Dashboard = {
 
     shareUrl(id) {
         const panel = this.panels.find(p => p.id === id);
-        
-        // Force sync the latest refresh value just in case
+
         const refSelect = document.getElementById(`refreshSelect-${id}`);
         if(refSelect) panel.refresh = parseInt(refSelect.value) || 0;
-        
+
         const url = window.location.origin + window.location.pathname + `?share_module=${panel.module_id}&refresh=${panel.refresh}`;
         navigator.clipboard.writeText(url).then(() => {
             alert(`Shareable URL copied to clipboard!\n(Auto-refresh: ${panel.refresh > 0 ? panel.refresh + 's' : 'Off'})\n\n` + url);
@@ -459,24 +781,27 @@ const Dashboard = {
     async fetchData(id, isSilent = false) {
         const panel = this.panels.find(p => p.id === id);
         if (!panel || !panel.module_id) return;
-        
+
         if (!isSilent) {
             document.getElementById(`tbody-${id}`).innerHTML = `<tr><td colspan="100%" class="text-center py-4"><div class="spinner"></div></td></tr>`;
         }
-        
+
         try {
             const res = await fetch(`?api=fetch_module&module_id=${panel.module_id}`);
             const data = await res.json();
             if (data.ok) {
+                panel.module_name = data.module_name;
+                panel.timestamp = data.timestamp;
+                panel.raw_data = data.raw_data;
+
                 const titleEl = document.getElementById(`title-${id}`);
                 if(titleEl) titleEl.innerText = data.module_name;
-                
-                // Neater Page Title in Share Mode
+
                 if(this.isShareMode) document.title = data.module_name;
-                
+
                 const tsEl = document.getElementById(`timestamp-${id}`);
                 if(tsEl) tsEl.innerText = data.timestamp;
-                
+
                 this.parseAndRender(id, data.raw_data);
             } else {
                 document.getElementById(`tbody-${id}`).innerHTML = `<tr><td colspan="100%" class="text-danger">${data.error}</td></tr>`;
@@ -484,22 +809,22 @@ const Dashboard = {
         } catch (e) {
             if (!isSilent) document.getElementById(`tbody-${id}`).innerHTML = `<tr><td colspan="100%" class="text-danger">Network Error</td></tr>`;
         }
-        
+
         this.setupInterval(id);
     },
 
     parseAndRender(id, rawText) {
         const panel = this.panels.find(p => p.id === id);
         const lines = rawText.split(/\r?\n/).filter(l => l.trim() !== '');
-        
+
         let separatorIdx = -1;
         for (let i = 0; i < lines.length; i++) {
             if (lines[i].trim().match(/^[\-\+]{5,}$/)) { separatorIdx = i; break; }
         }
-        
+
         const rawEl = document.getElementById(`raw-${id}`);
         const thead = document.getElementById(`thead-${id}`);
-        
+
         if (separatorIdx === -1 || separatorIdx === 0) {
             thead.innerHTML = '';
             document.getElementById(`tbody-${id}`).innerHTML = '';
@@ -508,31 +833,31 @@ const Dashboard = {
             panel.dataRows = [];
             return;
         }
-        
+
         rawEl.classList.add('d-none');
-        
+
         const headerLines = lines.slice(0, separatorIdx);
-        const headersStr = headerLines.join(' '); 
-        let headers = headersStr.split('|').map(h => h.trim());
-        if (headers.length > 0 && headers[headers.length-1] === '') headers.pop();
-        
-        const dataLines = lines.slice(separatorIdx + 1);
-        const dataStr = dataLines.join(' ');
-        let cells = dataStr.split('|').map(c => c.trim());
-        if (cells.length > 0 && cells[cells.length-1] === '') cells.pop();
-        
+        const headerLine = headerLines[headerLines.length - 1];
+        let headers = headerLine.split('|').map(h => h.trim());
+        if (headers.length > 0 && headers[0] === '' && headerLine.startsWith('|')) headers.shift();
+        if (headers.length > 0 && headers[headers.length - 1] === '' && headerLine.endsWith('|')) headers.pop();
+
         const numCols = headers.length || 1;
         panel.dataRows = [];
-        let currentRow = [];
-        for (let i = 0; i < cells.length; i++) {
-            currentRow.push(cells[i]);
-            if (currentRow.length === numCols) { panel.dataRows.push(currentRow); currentRow = []; }
-        }
-        if (currentRow.length > 0) {
-            while (currentRow.length < numCols) currentRow.push('');
-            panel.dataRows.push(currentRow);
-        }
-        
+
+        const dataLines = lines.slice(separatorIdx + 1);
+        dataLines.forEach(line => {
+            let cells = line.split('|').map(c => c.trim());
+            if (cells.length > 0 && cells[0] === '' && line.startsWith('|')) cells.shift();
+            if (cells.length > 0 && cells[cells.length - 1] === '' && line.endsWith('|')) cells.pop();
+
+            if (cells.length > 0) {
+                while (cells.length < numCols) cells.push('');
+                if (cells.length > numCols) cells = cells.slice(0, numCols);
+                panel.dataRows.push(cells);
+            }
+        });
+
         thead.innerHTML = '<tr>' + headers.map(h => `<th>${this.escapeHtml(h)}</th>`).join('') + '</tr>';
         this.renderTableRows(id, panel.dataRows);
     },
@@ -560,42 +885,25 @@ const Dashboard = {
         return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     },
 
-    saveState() {
-        if (this.isShareMode) return;
-        const state = this.panels.map(p => ({
-            id: p.id, module_id: p.module_id, refresh: p.refresh, mode: p.mode
-        }));
-        localStorage.setItem('pfms_table_viewer', JSON.stringify(state));
-    },
-
-    loadState() {
-        const saved = localStorage.getItem('pfms_table_viewer');
-        if (saved) {
-            try { this.panels = JSON.parse(saved); } catch(e) { this.panels = []; }
-        }
-    },
-
     renderAll() {
         const grid = document.getElementById('dashboardGrid');
         grid.innerHTML = '';
-        
+
         this.panels.forEach(p => {
             const card = document.createElement('div');
             card.className = 'card-custom';
             card.id = p.id;
-            
-            // Header HTML
+
             let headerHtml = `
                 <div class="panel-header">
                     <div class="d-flex align-items-center gap-2">
                         <span class="material-symbols-outlined text-muted">table_chart</span>
-                        <h3 class="panel-title" id="title-${p.id}">${p.mode === 'config' ? 'Configure New Panel' : 'Loading Module...'}</h3>
+                        <h3 class="panel-title" id="title-${p.id}">${p.mode === 'config' ? 'Configure Panel' : 'Loading Module...'}</h3>
                         <span class="badge-refresh ${p.refresh === 0 ? 'd-none' : ''}" id="refBadge-${p.id}">Auto: ${p.refresh}s</span>
                     </div>
             `;
-            
+
             if (this.isShareMode) {
-                // In share mode, no header buttons, maybe just a read-only badge
                 headerHtml += `</div>`;
             } else {
                 headerHtml += `
@@ -617,13 +925,23 @@ const Dashboard = {
                 </div>
                 `;
             }
-            
-            // Body HTML
+
             const tplId = p.mode === 'config' ? 'tpl-panel-config' : 'tpl-panel-view';
             const tplHtml = document.getElementById(tplId).innerHTML.replace(/{ID}/g, p.id);
-            
+
             card.innerHTML = headerHtml + `<div class="panel-body">${tplHtml}</div>`;
             grid.appendChild(card);
+
+            // Populate cached values immediately to prevent Loading Module flash/bug
+            if (p.mode === 'view' && p.raw_data) {
+                const titleEl = card.querySelector(`#title-${p.id}`);
+                if(titleEl && p.module_name) titleEl.innerText = p.module_name;
+
+                const tsEl = card.querySelector(`#timestamp-${p.id}`);
+                if(tsEl && p.timestamp) tsEl.innerText = p.timestamp;
+
+                this.parseAndRender(p.id, p.raw_data);
+            }
         });
     }
 };

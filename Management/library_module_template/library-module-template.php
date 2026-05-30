@@ -369,8 +369,17 @@ if ($api === 'delete') {
         .search-box input:focus { border-color: #004d40; outline: none; box-shadow: 0 0 0 2px rgba(0, 77, 64, 0.1); }
 
         .list-group-custom { list-style: none; padding: 0; margin: 0; }
+        
+        /* Expandable sidebar styling */
+        details.group-details > summary, details.subgroup-details > summary { list-style: none; cursor: pointer; user-select: none; }
+        details.group-details > summary::-webkit-details-marker, details.subgroup-details > summary::-webkit-details-marker { display: none; }
+        
         .group-header { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #64748b; padding: 8px 12px; display: flex; align-items: center; gap: 6px; background: #f1f5f9; border-radius: 6px; margin-top: 10px; margin-bottom: 4px; }
-        .subgroup-header { font-weight: 600; font-size: 10.5px; text-transform: uppercase; color: #475569; padding: 6px 12px 6px 20px; display: flex; align-items: center; gap: 6px; }
+        .subgroup-header { font-weight: 600; font-size: 10.5px; text-transform: uppercase; color: #475569; padding: 6px 12px 6px 20px; display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+        
+        details.group-details[open] > summary .material-symbols-outlined { color: #004d40 !important; }
+        details.subgroup-details[open] > summary .material-symbols-outlined { color: #004d40 !important; }
+        
         .template-item { padding: 8px 12px 8px 36px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.15s; margin-bottom: 2px; color: #334155; }
         .template-item:hover { background: #e0f2f1; color: #004d40; font-weight: 500; }
         .template-item.active { background: #004d40; color: #ffffff !important; font-weight: 600; }
@@ -532,27 +541,37 @@ if ($api === 'delete') {
         }
 
         grpKeys.forEach(grp => {
-            const grpDiv = document.createElement('div');
-            grpDiv.innerHTML = `<div class="group-header"><span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40;">folder</span> ${grp}</div>`;
+            const grpDiv = document.createElement('details');
+            grpDiv.className = 'group-details';
+            if (kw) grpDiv.open = true;
+            
+            grpDiv.innerHTML = `<summary class="group-header"><span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40;">folder</span> ${grp}</summary>`;
             
             const subs = Object.keys(grouped[grp]).sort();
             subs.forEach(sub => {
-                const subHeader = document.createElement('div');
-                subHeader.className = 'subgroup-header';
-                subHeader.innerHTML = `<span class="material-symbols-outlined" style="font-size:14px!important; color:#64748b;">folder_open</span> ${sub}`;
-                grpDiv.appendChild(subHeader);
+                const subDetails = document.createElement('details');
+                subDetails.className = 'subgroup-details';
+                if (kw) subDetails.open = true;
+                
+                subDetails.innerHTML = `<summary class="subgroup-header"><span class="material-symbols-outlined" style="font-size:14px!important; color:#64748b;">folder_open</span> ${sub}</summary>`;
 
                 grouped[grp][sub].forEach(t => {
                     const item = document.createElement('div');
                     const isActive = selectedTemplatePath === t.path ? 'active' : '';
+                    if (isActive) {
+                        grpDiv.open = true;
+                        subDetails.open = true;
+                    }
                     item.className = `template-item ${isActive}`;
+                    item.dataset.path = t.path;
                     item.innerHTML = `
                         <span style="font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.name}</span>
                         <span class="sub-badge">${t.data.type}</span>
                     `;
                     item.onclick = () => viewTemplate(t);
-                    grpDiv.appendChild(item);
+                    subDetails.appendChild(item);
                 });
+                grpDiv.appendChild(subDetails);
             });
             container.appendChild(grpDiv);
         });
@@ -577,7 +596,8 @@ if ($api === 'delete') {
         
         // Refresh active state in list
         document.querySelectorAll('.template-item').forEach(el => el.classList.remove('active'));
-        renderTemplatesList();
+        const activeItem = document.querySelector('.template-item[data-path="' + t.path.replace(/\\/g, '\\\\') + '"]');
+        if (activeItem) activeItem.classList.add('active');
 
         const data = t.data;
         

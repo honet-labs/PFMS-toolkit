@@ -589,10 +589,7 @@ if ($api === 'series') {
     <meta charset="utf-8">
     <title>Traffic Dashboard</title>
     <link href="/pandora_console/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <script src="/pandora_console/custom/panel/vendor/chartjs/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <style>
         :root { --primary-bg: #f4f6f8; --card-bg: #fff; --toolbar-bg: #fff; --border-color: #e0e4e8; --text-main: #1e293b; --text-dim: #64748b; --accent: #10b981; }
         body { font-family: Arial, Helvetica, sans-serif; background: var(--primary-bg); color: var(--text-main); margin: 0; font-size: 12px; }
@@ -903,7 +900,7 @@ if ($api === 'series') {
             <input type="datetime-local" id="c_to" class="toolbar-select" style="height:28px; font-size:11px;">
             <button class="btn-create" style="height:28px; padding:0 12px; font-size:11px;" onclick="reloadChart()">Apply Range</button>
         </div>
-        <div style="padding:20px; height:450px;"><canvas id="trafficCanvas"></canvas></div>
+        <div style="padding:20px; height:450px;"><div id="trafficCanvas" style="width:100%; height:100%;"></div></div>
         <div style="padding:10px 20px; font-size:10px; color:#94a3b8; text-align:center; border-top:1px solid #f1f5f9;">Scroll to Zoom • Drag to Pan</div>
     </div>
 </div>
@@ -1603,53 +1600,63 @@ if ($api === 'series') {
             document.getElementById('avgRxText').innerText = d.avg_rx.toFixed(2) + ' ' + displayUnit;
             document.getElementById('avgTxText').innerText = d.avg_tx.toFixed(2) + ' ' + displayUnit;
             
-            if(chartInstance) chartInstance.destroy();
-            chartInstance = new Chart(document.getElementById('trafficCanvas'), {
-                type:'line', data:{ datasets:[
-                    {label:`RX (${displayUnit})`, data:d.rx.map(x=>({x:x[0], y:x[1]})), borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.05)', fill:true, tension:0.4, pointRadius:0},
-                    {label:`TX (${displayUnit})`, data:d.tx.map(x=>({x:x[0], y:x[1]})), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.05)', fill:true, tension:0.4, pointRadius:0}
-                ]},
-                options:{ 
-                    responsive:true, maintainAspectRatio:false, 
-                    interaction: { mode: 'index', intersect: false },
-                    scales:{
-                        x:{type:'time', grid:{color:'#f1f5f9'}, ticks:{color:'#64748b'}}, 
-                        y:{beginAtZero:true, grid:{color:'#f1f5f9'}, ticks:{color:'#64748b'}}
-                    }, 
-                    plugins:{
-                        legend:{labels:{color:'#1e293b', font:{size:12, weight:'600'}}},
-                        tooltip: {
-                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                            titleColor: '#1e293b',
-                            titleFont: { size: 13, weight: 'bold' },
-                            bodyColor: '#475569',
-                            bodyFont: { size: 12 },
-                            borderColor: '#e2e8f0',
-                            borderWidth: 1,
-                            padding: 12,
-                            boxPadding: 8,
-                            usePointStyle: true,
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    if (label) label += ': ';
-                                    if (context.parsed.y !== null) label += context.parsed.y.toFixed(2) + ' ' + displayUnit;
-                                    return label;
-                                }
-                            }
-                        },
-                        zoom: {
-                            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-                            pan: { enabled: true, mode: 'x' }
-                        }
+            if(chartInstance && typeof chartInstance.dispose === 'function') chartInstance.dispose();
+            chartInstance = echarts.init(document.getElementById('trafficCanvas'));
+            chartInstance.setOption({
+                tooltip: { 
+                    trigger: 'axis', 
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+                    textStyle: { color: '#475569', fontSize: 12 }, 
+                    padding: 12, borderRadius: 6, borderColor: '#e2e8f0', borderWidth: 1, 
+                    valueFormatter: (value) => value !== null ? value.toFixed(2) + ' ' + displayUnit : '-' 
+                },
+                legend: { textStyle: { fontSize: 12, color: '#1e293b', fontWeight: 'bold' } },
+                grid: { left: 10, right: 20, top: 30, bottom: 20, containLabel: true },
+                xAxis: { 
+                    type: 'time', 
+                    boundaryGap: false, 
+                    splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }, 
+                    axisLabel: { color: '#64748b' }, 
+                    axisLine: { show: false }, 
+                    axisTick: { show: false } 
+                },
+                yAxis: { 
+                    type: 'value', 
+                    splitLine: { lineStyle: { color: '#f1f5f9' } }, 
+                    axisLabel: { color: '#64748b' } 
+                },
+                dataZoom: [{ type: 'inside', xAxisIndex: [0] }, { type: 'slider', xAxisIndex: [0], height: 20, bottom: 0 }],
+                series: [
+                    { 
+                        name: `RX`, 
+                        type: 'line', 
+                        data: d.rx.map(x => [x[0] > 9999999999 ? x[0] : x[0] * 1000, x[1]]), 
+                        itemStyle: { color: '#10b981' }, 
+                        areaStyle: { color: 'rgba(16,185,129,0.1)' }, 
+                        smooth: true, showSymbol: false, connectNulls: true, lineStyle: { width: 2 } 
+                    },
+                    { 
+                        name: `TX`, 
+                        type: 'line', 
+                        data: d.tx.map(x => [x[0] > 9999999999 ? x[0] : x[0] * 1000, x[1]]), 
+                        itemStyle: { color: '#3b82f6' }, 
+                        areaStyle: { color: 'rgba(59,130,246,0.1)' }, 
+                        smooth: true, showSymbol: false, connectNulls: true, lineStyle: { width: 2 } 
                     }
-                }
+                ]
             });
         });
     }
 
-    function resetZoom() { if(chartInstance) chartInstance.resetZoom(); }
-    function manualZoom(f) { if(chartInstance) chartInstance.zoom(f); }
+    function resetZoom() {
+        if (chartInstance) {
+            chartInstance.dispatchAction({ type: 'dataZoom', start: 0, end: 100 });
+        }
+    }
+    
+    function manualZoom(f) {
+        // ECharts zooming typically relies on UI slider or scroll. Programmatic pan can be added using dispatchAction.
+    }
 
     // Fungsi untuk menyembunyikan interface
     function hideInterface(agentId, iface) {
@@ -1708,6 +1715,12 @@ if ($api === 'series') {
     }
 
     window.addEventListener('load', init);
+    window.addEventListener('resize', () => {
+        if (typeof chartInstance !== 'undefined' && chartInstance && typeof chartInstance.resize === 'function') {
+            chartInstance.resize();
+        }
+    });
+
     document.addEventListener('click', e => { 
         if(e.target.id==='chartModal') document.getElementById('chartModal').style.display='none'; 
         if(e.target.id==='hiddenModal') closeHiddenModal(); 

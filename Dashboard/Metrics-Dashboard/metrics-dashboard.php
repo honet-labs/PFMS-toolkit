@@ -509,7 +509,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <link href="/pandora_console/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
     <link rel="stylesheet" href="/pandora_console/custom/panel/vendor/fonts/fonts.css" />
     <link href="/pandora_console/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <script src="/pandora_console/custom/panel/vendor/chartjs/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }
@@ -904,13 +904,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         </div>
 
         <div style="display:flex; gap:15px;"><div style="flex:1;"><label>Rows Per Page (Limit)</label>
-            <select id="b_limit" class="form-control-fix">
-                <option value="15">15 Rows</option>
-                <option value="50">50 Rows</option>
-                <option value="100">100 Rows</option>
-                <option value="500">500 Rows</option>
-                <option value="0">All (Pagination 20/page)</option>
-            </select></div><div style="flex:1;"><label>Auto-Refresh</label><select id="b_refresh" class="form-control-fix"><option value="30">30s</option><option value="60" selected>1m</option><option value="300">5m</option></select></div></div>
+            <input type="number" id="b_limit" class="form-control-fix" value="15" min="1"></div><div style="flex:1;"><label>Auto-Refresh</label><select id="b_refresh" class="form-control-fix"><option value="30">30s</option><option value="60" selected>1m</option><option value="300">5m</option></select></div></div>
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;"><button class="btn-secondary-custom" onclick="closeBuilder()">Cancel</button><button class="btn-apply" id="btnSaveWidget" onclick="saveWidget()">Save Widget</button></div>
     </div>
 </div>
@@ -969,7 +963,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; min-height:260px; position:relative;">
                 <h6 style="margin:0 0 10px 0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Historical Trend</h6>
                 <div style="height:200px; width:100%; position:relative;">
-                    <canvas id="nativeModuleDetailChart"></canvas>
+                    <div id="nativeModuleDetailChart" style="width:100%; height:100%; min-height:200px;"></div>
                 </div>
             </div>
             
@@ -1075,7 +1069,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
     document.getElementById('nativeModuleDetailCount').innerText = 'Loading...';
     
     if (nativeModuleChartInstance) {
-        nativeModuleChartInstance.destroy();
+        if (typeof nativeModuleChartInstance.dispose === 'function') nativeModuleChartInstance.dispose();
         nativeModuleChartInstance = null;
     }
     
@@ -1130,49 +1124,23 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         });
         const dataset = data.map(row => parseFloat(row.datos));
         
-        const ctx = document.getElementById('nativeModuleDetailChart').getContext('2d');
-        
-        // Create custom gradient
-        const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-        gradient.addColorStop(0, 'rgba(0, 77, 64, 0.2)');
-        gradient.addColorStop(1, 'rgba(0, 77, 64, 0)');
-        
-        nativeModuleChartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: title,
-                    data: dataset,
-                    borderColor: '#004d40',
-                    borderWidth: 2,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                    backgroundColor: gradient,
-                    fill: true,
-                    tension: 0.1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    x: {
-                        grid: { display: false },
-                        ticks: {
-                            font: { size: 9 },
-                            maxTicksLimit: 8
-                        }
-                    },
-                    y: {
-                        grid: { color: '#f1f5f9' },
-                        ticks: { font: { size: 10 } }
-                    }
-                }
-            }
+        nativeModuleChartInstance = echarts.init(document.getElementById('nativeModuleDetailChart'));
+        nativeModuleChartInstance.setOption({
+            tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6 },
+            grid: { left: 5, right: 15, top: 15, bottom: 25, containLabel: true },
+            xAxis: { type: 'category', boundaryGap: false, data: labels, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { fontSize: 10, color: '#64748b' } },
+            series: [{
+                name: title,
+                type: 'line',
+                data: dataset,
+                itemStyle: { color: '#004d40' },
+                areaStyle: { opacity: 0.2, color: '#004d40' },
+                smooth: true,
+                showSymbol: false,
+                connectNulls: true,
+                lineStyle: { width: 2 }
+            }]
         });
         
     } catch (e) {
@@ -1183,7 +1151,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
 function closeNativeModuleDetailModal() {
     document.getElementById('nativeModuleDetailModal').style.display = 'none';
     if (nativeModuleChartInstance) {
-        nativeModuleChartInstance.destroy();
+        if (typeof nativeModuleChartInstance.dispose === 'function') nativeModuleChartInstance.dispose();
         nativeModuleChartInstance = null;
     }
 }
@@ -1749,6 +1717,7 @@ function fetchCardData(card) {
             renderTablePage(card.id);
         }
     }).catch(err => {
+        console.error("Widget fetch error:", err);
         document.getElementById(`content_view_${card.id}`).innerHTML = `<div style="padding:20px; color:#e74c3c; text-align:center; font-weight: normal;">Koneksi ke database lambat atau terputus. Silakan perkecil scope filter Agent.</div>`;
     });
 }
@@ -1775,7 +1744,7 @@ function renderTablePage(cardId) {
         return;
     }
 
-    const limit = parseInt(card.limit);
+    const limit = parseInt(card.limit) || 0;
     const pageSize = (limit === 0) ? 20 : limit; 
     const totalPages = Math.ceil(data.length / pageSize) || 1;
     
@@ -2666,6 +2635,7 @@ function openTimeRangeMenu(event, cardId) {
         menu.remove();
         document.removeEventListener('click', closeListener);
     };
+
     setTimeout(() => document.addEventListener('click', closeListener), 10);
 }
 
@@ -2686,17 +2656,16 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
     }
 
     container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; height: 260px; padding: 5px;">
-        <canvas id="chart_canvas_${cardId}"></canvas>
+        <div id="chart_canvas_${cardId}" style="width:100%; height:100%; min-height:200px;"></div>
     </div>`;
 
     if (activeCharts[cardId]) {
-        activeCharts[cardId].destroy();
+        if (typeof activeCharts[cardId].dispose === "function") activeCharts[cardId].dispose();
         delete activeCharts[cardId];
     }
 
     const canvas = document.getElementById(`chart_canvas_${cardId}`);
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
 
     const colors = [
         'rgba(0, 77, 64, 0.75)',    // Premium Teal
@@ -2768,108 +2737,25 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         const bgColors = displayStatuses.map(s => s.color);
         const borderColors = displayStatuses.map(s => s.border);
 
-        const pieOutlabelsPlugin = {
-            id: 'pieOutlabels',
-            afterDraw(chart) {
-                const { ctx, data } = chart;
-                ctx.save();
-                const dataset = chart.getDatasetMeta(0);
-                if (!dataset || !dataset.data) return;
+        const pieData = displayStatuses.map(s => ({
+            name: showLegendCount ? `${s.label} (${s.value})` : s.label,
+            value: s.value,
+            itemStyle: { color: s.color }
+        }));
 
-                dataset.data.forEach((element, index) => {
-                    const value = data.datasets[0].data[index];
-                    if (value === 0 || value === null || typeof value === 'undefined') return;
-
-                    const model = element;
-                    const cx = model.x;
-                    const cy = model.y;
-                    const outerRadius = model.outerRadius;
-                    
-                    const startAngle = model.startAngle;
-                    const endAngle = model.endAngle;
-                    const middleAngle = startAngle + (endAngle - startAngle) / 2;
-
-                    const edgeX = cx + Math.cos(middleAngle) * outerRadius;
-                    const edgeY = cy + Math.sin(middleAngle) * outerRadius;
-
-                    const elbowX = cx + Math.cos(middleAngle) * (outerRadius + 12);
-                    const elbowY = cy + Math.sin(middleAngle) * (outerRadius + 12);
-
-                    const isRightSide = Math.cos(middleAngle) > 0;
-                    const endX = elbowX + (isRightSide ? 15 : -15);
-                    const endY = elbowY;
-
-                    // Draw line matching the color of the slice for an ultra-premium feel!
-                    ctx.beginPath();
-                    ctx.moveTo(edgeX, edgeY);
-                    ctx.lineTo(elbowX, elbowY);
-                    ctx.lineTo(endX, endY);
-                    ctx.lineWidth = 1.2;
-                    ctx.strokeStyle = model.options.backgroundColor || '#cbd5e1';
-                    ctx.stroke();
-
-                    // Draw dot at the edge for extra premium feel!
-                    ctx.beginPath();
-                    ctx.arc(edgeX, edgeY, 2, 0, 2 * Math.PI);
-                    ctx.fillStyle = model.options.backgroundColor || '#cbd5e1';
-                    ctx.fill();
-
-                    // Draw text label
-                    const labelText = data.labels[index];
-                    ctx.font = `${chartFontSize}px ${dashboardFontFamily}`;
-                    ctx.fillStyle = '#475569';
-                    ctx.textBaseline = 'middle';
-                    ctx.textAlign = isRightSide ? 'left' : 'right';
-
-                    const padding = 5;
-                    ctx.fillText(labelText, endX + (isRightSide ? padding : -padding), endY);
-                });
-                ctx.restore();
-            }
-        };
-
-        activeCharts[cardId] = new Chart(ctx, {
-            type: viewType === 'pie' ? 'pie' : 'doughnut',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: values,
-                    backgroundColor: bgColors,
-                    borderColor: borderColors,
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                layout: {
-                    padding: {
-                        left: 45,
-                        right: 15,
-                        top: 15,
-                        bottom: 15
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: true,
-                        position: 'right',
-                        labels: {
-                            font: { size: Math.max(9, chartFontSize - 1), family: dashboardFontFamily },
-                            boxWidth: 10
-                        }
-                    },
-                    tooltip: {
-                        ...elegantTooltipConfig,
-                        callbacks: {
-                            label: function(context) {
-                                return `Count: ${context.parsed}`;
-                            }
-                        }
-                    }
-                }
-            },
-            plugins: [pieOutlabelsPlugin]
+        activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
+        activeCharts[cardId].setOption({
+            tooltip: { trigger: 'item', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6, formatter: '{b}: {c} ({d}%)' },
+            legend: { orient: 'vertical', right: 10, top: 'center', itemWidth: 10, itemHeight: 10, textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#475569' } },
+            series: [{
+                name: 'Count',
+                type: viewType === 'pie' ? 'pie' : 'pie',
+                radius: viewType === 'pie' ? '70%' : ['40%', '70%'],
+                center: ['40%', '50%'],
+                data: pieData,
+                label: { show: true, formatter: '{b}\n{c} ({d}%)', fontSize: Math.max(9, chartFontSize - 1), color: '#475569' },
+                labelLine: { show: true, length: 15, length2: 10 }
+            }]
         });
     } else {
         if (history && history.length > 0) {
@@ -2879,161 +2765,96 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 return found ? found.time : '';
             });
 
-            const datasets = data.map((m, idx) => {
+            const seriesData = data.map((m, idx) => {
+                const color = borders[idx % borders.length];
                 const modHist = history.filter(h => h.id_mod === m.id_agente_modulo);
+                let lastVal = null;
                 const dataPoints = uniqueTimestamps.map(ts => {
                     const h = modHist.find(x => x.utimestamp === ts);
-                    return h ? h.val : null;
+                    if (h) lastVal = h.val;
+                    return lastVal;
                 });
 
-                const isArea = (viewType === 'area');
-                const isLine = (viewType === 'line' || isArea);
-
                 return {
-                    label: `${m.agent_alias} - ${m.module_name}`,
+                    name: `${m.agent_alias} - ${m.module_name}`,
+                    type: (viewType === 'line' || viewType === 'area') ? 'line' : 'bar',
                     data: dataPoints,
-                    backgroundColor: isArea ? colors[idx % colors.length].replace('0.75', '0.15') : colors[idx % colors.length],
-                    borderColor: borders[idx % borders.length],
-                    borderWidth: 2,
-                    fill: isArea,
-                    tension: isLine ? 0.25 : 0,
-                    spanGaps: true,
-                    pointBackgroundColor: borders[idx % borders.length],
-                    pointHoverRadius: 5
+                    itemStyle: { color: color },
+                    areaStyle: viewType === 'area' ? { opacity: 0.15, color: color } : undefined,
+                    smooth: true,
+                    showSymbol: false,
+                    connectNulls: true,
+                    lineStyle: { width: viewType === 'bar' ? 0 : 2 }
                 };
             });
 
-            activeCharts[cardId] = new Chart(ctx, {
-                type: (viewType === 'line' || viewType === 'area') ? 'line' : 'bar',
-                data: {
-                    labels: labels,
-                    datasets: datasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                font: { size: Math.max(9, chartFontSize - 1), family: dashboardFontFamily },
-                                boxWidth: 10
-                            }
-                        },
-                        tooltip: {
-                            ...elegantTooltipConfig,
-                            mode: 'index',
-                            intersect: false,
-                            callbacks: {
-                                label: function(context) {
-                                    const datasetLabel = context.dataset.label || '';
-                                    const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
-                                    const found = data.find(r => `${r.agent_alias} - ${r.module_name}` === datasetLabel);
-                                    const unit = found && found.unit ? ' ' + found.unit : '';
-                                    return ` ${datasetLabel}: ${val}${unit}`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { display: false },
-                            ticks: { font: { size: Math.max(8, chartFontSize - 2), family: dashboardFontFamily } }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: '#f0f3f5' },
-                            ticks: { font: { size: Math.max(8, chartFontSize - 2), family: dashboardFontFamily } }
-                        }
-                    }
-                }
+            activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
+            activeCharts[cardId].setOption({
+                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6 },
+                legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
+                grid: { left: 5, right: 15, top: 15, bottom: 45, containLabel: true },
+                xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: labels, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
+                yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' } },
+                series: seriesData
             });
         } else {
             const processedData = [...data];
             const uniqueAgents = [...new Set(processedData.map(r => r.agent_alias))];
             const uniqueModules = [...new Set(processedData.map(r => r.module_name))];
 
-            const datasets = uniqueModules.map((moduleName, idx) => {
+            const seriesData = uniqueModules.map((moduleName, idx) => {
+                const color = borders[idx % borders.length];
                 const modData = uniqueAgents.map(agentAlias => {
                     const found = processedData.find(r => r.agent_alias === agentAlias && r.module_name === moduleName);
-                    return found ? (parseFloat(found.current_value) || 0) : 0;
+                    return found ? (parseFloat(found.current_value) || 0) : null;
                 });
 
-                const isArea = (viewType === 'area');
-                const isLine = (viewType === 'line' || isArea);
-
                 return {
-                    label: moduleName,
+                    name: moduleName,
+                    type: (viewType === 'line' || viewType === 'area') ? 'line' : 'bar',
                     data: modData,
-                    backgroundColor: isArea ? colors[idx % colors.length].replace('0.75', '0.15') : colors[idx % colors.length],
-                    borderColor: borders[idx % borders.length],
-                    borderWidth: 2,
-                    fill: isArea,
-                    tension: isLine ? 0.25 : 0,
-                    pointBackgroundColor: borders[idx % borders.length],
-                    pointHoverRadius: 5
+                    itemStyle: { color: color },
+                    areaStyle: viewType === 'area' ? { opacity: 0.15, color: color } : undefined,
+                    smooth: true,
+                    showSymbol: false,
+                    connectNulls: true,
+                    lineStyle: { width: viewType === 'bar' ? 0 : 2 }
                 };
             });
 
-            activeCharts[cardId] = new Chart(ctx, {
-                type: (viewType === 'line' || viewType === 'area') ? 'line' : 'bar',
-                data: {
-                    labels: uniqueAgents,
-                    datasets: datasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                font: { size: Math.max(9, chartFontSize - 1), family: dashboardFontFamily },
-                                boxWidth: 10
-                            }
-                        },
-                        tooltip: {
-                            ...elegantTooltipConfig,
-                            mode: 'index',
-                            intersect: false,
-                            callbacks: {
-                                label: function(context) {
-                                    const datasetLabel = context.dataset.label || '';
-                                    const agent = context.label;
-                                    const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
-                                    const found = processedData.find(r => r.agent_alias === agent && r.module_name === datasetLabel);
-                                    const unit = found && found.unit ? ' ' + found.unit : '';
-                                    return ` ${datasetLabel}: ${val}${unit}`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { display: false },
-                            ticks: { font: { size: Math.max(8, chartFontSize - 2), family: dashboardFontFamily } }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: '#f0f3f5' },
-                            ticks: { font: { size: Math.max(8, chartFontSize - 2), family: dashboardFontFamily } }
-                        }
-                    }
-                }
+            activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
+            activeCharts[cardId].setOption({
+                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6 },
+                legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
+                grid: { left: 5, right: 15, top: 15, bottom: 45, containLabel: true },
+                xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: uniqueAgents, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
+                yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' } },
+                series: seriesData
             });
         }
     }
 }
 
 init();
+
+window.addEventListener('load', init);
+window.addEventListener('resize', () => {
+    Object.values(activeCharts).forEach(chart => {
+        if (chart && typeof chart.resize === 'function') chart.resize();
+    });
+    if (typeof nativeModuleChartInstance !== 'undefined' && nativeModuleChartInstance && typeof nativeModuleChartInstance.resize === 'function') {
+        nativeModuleChartInstance.resize();
+    }
+});
+
+document.addEventListener('click', e => { 
+    if(e.target.id === 'createModal') closeCreateModal();
+    if(e.target.id === 'settingsModal') closeSettingsModal();
+    if(e.target.id === 'dashMetaModal') closeDashMetaModal();
+    if(e.target.id === 'agentMetaModal') closeAgentMetaModal();
+    if(e.target.id === 'nativeModuleDetailModal') closeNativeModuleDetailModal();
+});
+
 </script>
 </body>
 </html>
