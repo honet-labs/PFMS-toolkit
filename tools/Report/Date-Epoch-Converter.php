@@ -16,6 +16,25 @@ if (empty($user_id)) {
     header("Location: /pandora_console/index.php");
     exit;
 }
+
+// Fetch available reports from treport table
+$reports = [];
+if ($db_status && $pdo) {
+    try {
+        $stmt = $pdo->prepare("SELECT id_report, name, description FROM treport ORDER BY id_report ASC");
+        $stmt->execute();
+        $raw_reports = $stmt->fetchAll();
+        foreach ($raw_reports as $r) {
+            $reports[] = [
+                'id_report' => (int)$r['id_report'],
+                'name' => pretty_text($r['name']),
+                'description' => pretty_text($r['description'])
+            ];
+        }
+    } catch (PDOException $e) {
+        $db_error = $e->getMessage();
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -41,6 +60,62 @@ if (empty($user_id)) {
         .btn-primary-pfms { background: #004d40; color: #fff; }
         .btn-outline-pfms { background: #fff; border-color: #dce1e5; color: #4a5568; }
         .d-none { display: none !important; }
+
+        /* Custom scrollbar for premium look */
+        .scrollable-container::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .scrollable-container::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .scrollable-container::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .scrollable-container::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        .btn-action-sm {
+            background: #ffffff;
+            border: 1px solid #dce1e5;
+            padding: 4px 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-action-sm:hover {
+            background: #f1f5f9 !important;
+            border-color: #cbd5e1;
+        }
+        .btn-action-sm:active {
+            background: #e2e8f0 !important;
+        }
+        
+        .badge-count {
+            background: #e2e8f0;
+            color: #475569;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+        
+        .table-pfms tbody tr:hover {
+            background-color: #f8fafc;
+        }
+        
+        .action-group {
+            display: inline-flex;
+            border: 1px solid #dce1e5;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
     </style>
 </head>
 <body>
@@ -50,9 +125,10 @@ if (empty($user_id)) {
 </div>
 
 <div class="main-container">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card-custom" style="padding: 25px 30px;">
+    <div class="row">
+        <!-- Date-to-Epoch Converter Form -->
+        <div class="col-lg-5 col-md-12 mb-4">
+            <div class="card-custom" style="padding: 25px 30px; height: 100%;">
                 
                 <!-- Report ID Parameter -->
                 <div class="mb-3">
@@ -146,10 +222,43 @@ if (empty($user_id)) {
                 
             </div>
         </div>
+
+        <!-- Reports List Table -->
+        <div class="col-lg-7 col-md-12 mb-4">
+            <div class="card-custom" style="padding: 25px 30px; height: 100%;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 style="font-weight: 600; color: #0b1a26; margin: 0; font-size: 14px;">Available Reports (treport)</h5>
+                    <span class="badge-count" id="reportCount">0 reports</span>
+                </div>
+                
+                <div class="mb-3">
+                    <input type="text" id="reportSearch" class="form-control" placeholder="Search reports by ID or name..." oninput="filterReports()">
+                </div>
+                
+                <div class="scrollable-container" style="max-height: 480px; overflow-y: auto; border: 1px solid #e0e4e8; border-radius: 6px;">
+                    <table class="table-pfms">
+                        <thead>
+                            <tr>
+                                <th style="width: 10%;">ID</th>
+                                <th style="width: 50%;">Report Name</th>
+                                <th style="text-align: right; width: 40%;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportsTableBody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
+    // Global active epochs for quick reference from reports table action buttons
+    let currentStartEpoch = 0;
+    let currentEndEpoch = 0;
+    
     // Helper to format Date objects as 'YYYY-MM-DDTHH:mm' local string for input[type="datetime-local"]
     function toLocalISOString(date) {
         const offset = date.getTimezoneOffset() * 60000;
@@ -216,6 +325,9 @@ if (empty($user_id)) {
             }
         }
         
+        currentStartEpoch = startEpoch;
+        currentEndEpoch = endEpoch;
+        
         // Update visual elements
         document.getElementById('startEpochText').innerText = startEpoch;
         document.getElementById('endEpochText').innerText = endEpoch;
@@ -257,8 +369,151 @@ if (empty($user_id)) {
         });
     }
 
+    // Reports list loaded from PHP backend
+    const reportsList = <?php echo json_encode($reports); ?>;
+
+    // Set selected report ID to active form input
+    function useReport(id) {
+        const reportIdInput = document.getElementById('reportId');
+        reportIdInput.value = id;
+        calculateEpochs();
+        
+        // Highlight feedback animation
+        reportIdInput.style.transition = 'background-color 0.3s ease';
+        reportIdInput.style.backgroundColor = '#e6fffa';
+        setTimeout(() => {
+            reportIdInput.style.backgroundColor = '';
+        }, 500);
+    }
+
+    // Open report links in a new window/tab
+    function openReport(type, id) {
+        let url = '';
+        if (type === 'pdf') {
+            url = `/pandora_console/enterprise/operation/reporting/reporting_viewer_pdf.php?id_report=${id}&origin=&date_init=${currentStartEpoch}&date_end=${currentEndEpoch}`;
+        } else if (type === 'csv') {
+            url = `/pandora_console/enterprise/operation/reporting/reporting_viewer_csv.php?id_report=${id}&origin=&date_init=${currentStartEpoch}&date_end=${currentEndEpoch}`;
+        } else if (type === 'html') {
+            url = `/pandora_console/index.php?sec=greport&sec2=enterprise/operation/reporting/reporting_viewer&id_report=${id}&date_init=${currentStartEpoch}&date_end=${currentEndEpoch}`;
+        }
+        if (url) {
+            window.open(url, '_blank');
+        }
+    }
+
+    // Copy formatted report URL directly to the user's clipboard
+    function copyReportLink(type, id, btn) {
+        let url = '';
+        if (type === 'pdf') {
+            url = window.location.origin + `/pandora_console/enterprise/operation/reporting/reporting_viewer_pdf.php?id_report=${id}&origin=&date_init=${currentStartEpoch}&date_end=${currentEndEpoch}`;
+        } else if (type === 'csv') {
+            url = window.location.origin + `/pandora_console/enterprise/operation/reporting/reporting_viewer_csv.php?id_report=${id}&origin=&date_init=${currentStartEpoch}&date_end=${currentEndEpoch}`;
+        } else if (type === 'html') {
+            url = window.location.origin + `/pandora_console/index.php?sec=greport&sec2=enterprise/operation/reporting/reporting_viewer&id_report=${id}&date_init=${currentStartEpoch}&date_end=${currentEndEpoch}`;
+        }
+        
+        if (url) {
+            navigator.clipboard.writeText(url).then(() => {
+                const origIcon = btn.innerHTML;
+                btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px; color:#10b981;">check</span>';
+                setTimeout(() => {
+                    btn.innerHTML = origIcon;
+                }, 1500);
+            });
+        }
+    }
+
+    // Render reports dynamic DOM table rows
+    function renderReportsTable(list) {
+        const tbody = document.getElementById('reportsTableBody');
+        tbody.innerHTML = '';
+        
+        if (!list || list.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #94a3b8; padding: 25px;">No reports found.</td></tr>`;
+            document.getElementById('reportCount').innerText = '0 reports';
+            return;
+        }
+        
+        document.getElementById('reportCount').innerText = `${list.length} report${list.length > 1 ? 's' : ''}`;
+        
+        list.forEach(report => {
+            const tr = document.createElement('tr');
+            
+            const safeName = report.name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const safeDesc = report.description ? report.description.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : '';
+            
+            tr.innerHTML = `
+                <td style="font-weight: 600; color: #475569; vertical-align: middle;">${report.id_report}</td>
+                <td style="vertical-align: middle;">
+                    <div style="font-weight: 500; color: #1e293b;">${safeName}</div>
+                    ${safeDesc ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;">${safeDesc}</div>` : ''}
+                </td>
+                <td style="text-align: right; vertical-align: middle;">
+                    <div style="display: flex; gap: 6px; justify-content: flex-end; align-items: center;">
+                        <!-- Use ID -->
+                        <button class="btn-action-sm" onclick="useReport(${report.id_report})" title="Set as Active Report ID" style="border-radius: 4px; color: #475569;">
+                            <span class="material-symbols-outlined" style="font-size: 14px;">arrow_forward</span>
+                        </button>
+                        
+                        <!-- PDF View & Copy -->
+                        <div class="action-group">
+                            <button class="btn-action-sm text-danger" onclick="openReport('pdf', ${report.id_report})" title="Open PDF Report" style="border: none; border-right: 1px solid #dce1e5;">
+                                <span class="material-symbols-outlined" style="font-size: 14px;">picture_as_pdf</span>
+                            </button>
+                            <button class="btn-action-sm text-secondary" onclick="copyReportLink('pdf', ${report.id_report}, this)" title="Copy PDF Link" style="border: none;">
+                                <span class="material-symbols-outlined" style="font-size: 14px;">content_copy</span>
+                            </button>
+                        </div>
+
+                        <!-- CSV Export & Copy -->
+                        <div class="action-group">
+                            <button class="btn-action-sm text-success" onclick="openReport('csv', ${report.id_report})" title="Download CSV Report" style="border: none; border-right: 1px solid #dce1e5;">
+                                <span class="material-symbols-outlined" style="font-size: 14px;">description</span>
+                            </button>
+                            <button class="btn-action-sm text-secondary" onclick="copyReportLink('csv', ${report.id_report}, this)" title="Copy CSV Link" style="border: none;">
+                                <span class="material-symbols-outlined" style="font-size: 14px;">content_copy</span>
+                            </button>
+                        </div>
+
+                        <!-- HTML View & Copy -->
+                        <div class="action-group">
+                            <button class="btn-action-sm text-primary" onclick="openReport('html', ${report.id_report})" title="Open HTML Viewer" style="border: none; border-right: 1px solid #dce1e5;">
+                                <span class="material-symbols-outlined" style="font-size: 14px;">visibility</span>
+                            </button>
+                            <button class="btn-action-sm text-secondary" onclick="copyReportLink('html', ${report.id_report}, this)" title="Copy HTML Link" style="border: none;">
+                                <span class="material-symbols-outlined" style="font-size: 14px;">content_copy</span>
+                            </button>
+                        </div>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Filter reports based on user query
+    function filterReports() {
+        const query = document.getElementById('reportSearch').value.toLowerCase().trim();
+        if (!query) {
+            renderReportsTable(reportsList);
+            return;
+        }
+        
+        const filtered = reportsList.filter(report => {
+            const idMatch = report.id_report.toString().includes(query);
+            const nameMatch = report.name.toLowerCase().includes(query);
+            const descMatch = report.description ? report.description.toLowerCase().includes(query) : false;
+            return idMatch || nameMatch || descMatch;
+        });
+        
+        renderReportsTable(filtered);
+    }
+
     // Trigger initial calculation on load
     calculateEpochs();
+    
+    // Initial render of available reports table
+    renderReportsTable(reportsList);
 </script>
 
 </body>

@@ -187,7 +187,7 @@ if ($api === 'bulk_panel_data') {
 
         // Fetch ALL modules for this agent
         $stAll = $pdo->prepare("SELECT m.id_agente_modulo, m.nombre, m.min, m.max, m.unit, e.datos as current_val, COALESCE(e.estado, 4) as estado, e.utimestamp as last_contact,
-                                       a.alias as agent_name, a.direccion as ip_address, g.nombre as group_name, a.id_agente
+                                       a.alias as agent_name, a.direccion as ip_address, g.nombre as group_name, a.id_agente, a.nombre AS agent_db_name
                                 FROM tagente_modulo m 
                                 JOIN tagente a ON m.id_agente = a.id_agente
                                 JOIN tgrupo g ON a.id_grupo = g.id_grupo
@@ -268,6 +268,7 @@ if ($api === 'bulk_panel_data') {
                     'min' => $mod['min'],
                     'max' => $mod['max'],
                     'agent_name' => $mod['agent_name'],
+                    'agent_db_name' => $mod['agent_db_name'],
                     'agent_id' => $mod['id_agente'],
                     'ip_address' => $mod['ip_address'],
                     'group_name' => $mod['group_name'],
@@ -293,7 +294,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <link href="/pandora_console/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
     <link rel="stylesheet" href="/pandora_console/custom/panel/vendor/fonts/fonts.css" />
     <link href="/pandora_console/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script src="/pandora_console/custom/panel/vendor/echarts/echarts.min.js"></script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }
@@ -542,6 +543,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .btn-action.btn-delete { color: #ef4444; border-color: #fee2e2; }
         .btn-action.btn-delete:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
 
+        .btn-pfms { padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.2s; border: 1px solid transparent; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-outline-pfms { background: #fff; border-color: #dce1e5; color: #4a5568; }
+        .btn-outline-pfms:hover { border-color: #cbd5e1; background: #f8fafc; }
+
         /* NATIVE CHART IFRAME MODAL FIX */
         .iframe-modal-box {
             background: #ffffff;
@@ -782,7 +787,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <option value="status_stats">Stats Cards (Current Status)</option>
                         <option value="pie">Pie Chart (Current Status)</option>
                         <option value="donut">Donut Chart (Current Status)</option>
-                        <option value="table_viewer">Table Viewer (Single Module)</option>
+                        <option value="table_viewer">View Snapshot Module</option>
                     </select>
                 </div>
                 <div class="form-group" style="flex:1;">
@@ -1602,7 +1607,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         contentHtml = `
             <div class="table-viewer-card-wrap" style="height:100%; display:flex; flex-direction:column; gap:10px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:4px;">
-                    <div style="font-size:10px; color:#7f8c8d;">Last Updated: ${moduleData.utimestamp ? new Date(moduleData.utimestamp * 1000).toLocaleString() : '-'}</div>
+                    <div style="font-size:10px; color:#7f8c8d;">Last Updated: ${moduleData.last_contact ? new Date(moduleData.last_contact * 1000).toLocaleString() : '-'}</div>
                     <div class="search-box" style="width: 180px; position:relative;">
                         <input type="text" placeholder="Filter table..." class="form-control-fix" style="font-size:11px; padding: 4px 8px 4px 26px; height:24px; border-radius:4px; border: 1px solid #cbd5e1;" oninput="filterCardTableViewer('${uniqueId}', this.value)">
                         <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:14px; color:#94a3b8; line-height:1;">search</span>
@@ -2081,7 +2086,8 @@ function refreshCurrentNodeData() {
                 activeModules.forEach(m => {
                     const uniqueId = `${p.id}_${m.id}`;
                     if (p.type === 'table_viewer') {
-                        renderSingleModuleTableViewer(uniqueId, m.current || '');
+                        const agentLabel = `${m.agent_name || ''}/${m.agent_db_name || ''}`;
+                        renderSingleModuleTableViewer(uniqueId, m.current || '', agentLabel);
                         return;
                     }
                     const canvas = document.getElementById(`chart_${uniqueId}`);
@@ -2709,8 +2715,12 @@ function showLongValuePopup(moduleName, agentName, fullValue) {
     modal.id = 'longValuePopupModal';
     modal.style.cssText = `
         position: fixed;
-        inset: 0;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
         background: rgba(15, 23, 42, 0.5);
+        -webkit-backdrop-filter: blur(4px);
         backdrop-filter: blur(4px);
         display: flex;
         align-items: center;
@@ -2811,6 +2821,72 @@ function showLongValuePopup(moduleName, agentName, fullValue) {
     btn.onmouseenter = () => btn.style.background = '#00332a';
     btn.onmouseleave = () => btn.style.background = '#004d40';
     btn.onclick = () => modal.remove();
+
+    const copyBtn = document.createElement('button');
+    copyBtn.style.cssText = `
+        padding: 8px 16px;
+        border-radius: 6px;
+        background: #fff;
+        color: #004d40;
+        border: 1px solid #004d40;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+        margin-right: 10px;
+    `;
+    copyBtn.innerText = 'Copy';
+    copyBtn.onmouseenter = () => {
+        copyBtn.style.background = '#e0f2f1';
+    };
+    copyBtn.onmouseleave = () => {
+        copyBtn.style.background = '#fff';
+    };
+    copyBtn.onclick = () => {
+        const doSuccess = () => {
+            copyBtn.innerText = 'Copied!';
+            copyBtn.style.background = '#e8f5e9';
+            copyBtn.style.color = '#2e7d32';
+            copyBtn.style.borderColor = '#2e7d32';
+            setTimeout(() => {
+                copyBtn.innerText = 'Copy';
+                copyBtn.style.background = '#fff';
+                copyBtn.style.color = '#004d40';
+                copyBtn.style.borderColor = '#004d40';
+            }, 2000);
+        };
+        
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(fullValue).then(doSuccess).catch(fallbackCopy);
+        } else {
+            fallbackCopy();
+        }
+        
+        function fallbackCopy() {
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = fullValue;
+                textArea.style.top = "0";
+                textArea.style.left = "0";
+                textArea.style.position = "fixed";
+                textArea.style.opacity = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                if (successful) {
+                    doSuccess();
+                } else {
+                    alert('Browser does not support clipboard copy');
+                }
+            } catch (err) {
+                alert('Failed to copy text: ' + err);
+            }
+        }
+    };
+
+    footer.appendChild(copyBtn);
     footer.appendChild(btn);
 
     box.appendChild(header);
@@ -2827,16 +2903,22 @@ function showLongValuePopup(moduleName, agentName, fullValue) {
 
 window.tableViewerData = window.tableViewerData || {};
 
-function renderSingleModuleTableViewer(uniqueId, rawText) {
+function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel) {
     const lines = rawText.split(/\r?\n/).filter(l => l.trim() !== '');
     const thead = document.getElementById(`thead_${uniqueId}`);
     const tbody = document.getElementById(`tbody_${uniqueId}`);
     const rawEl = document.getElementById(`raw_${uniqueId}`);
     if (!thead || !tbody) return;
 
+    window.tableViewerData[uniqueId + '_agent'] = agentLabel;
+
     let separatorIdx = -1;
     for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim().match(/^[\-\+]{5,}$/)) { separatorIdx = i; break; }
+        const trimmed = lines[i].trim();
+        if (trimmed.match(/^[|:\-\+\s]{5,}$/) && trimmed.includes('-')) {
+            separatorIdx = i;
+            break;
+        }
     }
 
     if (separatorIdx === -1 || separatorIdx === 0) {
@@ -2945,13 +3027,14 @@ function renderSingleModuleTableViewer(uniqueId, rawText) {
 function renderTableViewerRows(uniqueId, rows) {
     const tbody = document.getElementById(`tbody_${uniqueId}`);
     if (!tbody) return;
+    const agentLabel = window.tableViewerData[uniqueId + '_agent'] || 'Table Viewer';
     if (rows.length === 0) {
         tbody.innerHTML = `<tr><td colspan="100%" style="text-align: center; color: #94a3b8; padding: 15px;">No rows found.</td></tr>`;
     } else {
         tbody.innerHTML = rows.map(r => '<tr>' + r.map(c => {
             const cellStr = String(c || '');
             if (cellStr.length > 45 || cellStr.includes('\n')) {
-                return `<td style="vertical-align: middle;"><button class="btn-pfms btn-outline-pfms" style="padding:2px 6px; font-size:10px; font-weight:600; cursor:pointer;" onclick="showLongValuePopup('Cell Detail', 'Table Viewer', \`${cellStr.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`)">View</button></td>`;
+                return `<td style="vertical-align: middle;"><button class="btn-pfms btn-outline-pfms" style="padding:2px 6px; font-size:10px; font-weight:600; cursor:pointer;" onclick="showLongValuePopup('Detail Query', '${agentLabel}', \`${cellStr.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`)">View</button></td>`;
             }
             return `<td>${escapeHtml(c)}</td>`;
         }).join('') + '</tr>').join('');

@@ -91,7 +91,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'fetch_module') {
     }
     
     try {
-        $stmtName = $pdo->prepare("SELECT m.nombre as module_name, a.nombre as agent_name FROM tagente_modulo m JOIN tagente a ON m.id_agente = a.id_agente WHERE m.id_agente_modulo = ?");
+        $stmtName = $pdo->prepare("SELECT m.nombre as module_name, a.nombre as agent_name, a.alias as agent_alias FROM tagente_modulo m JOIN tagente a ON m.id_agente = a.id_agente WHERE m.id_agente_modulo = ?");
         $stmtName->execute([$module_id]);
         $modInfo = $stmtName->fetch(PDO::FETCH_ASSOC);
         $modName = $modInfo ? $modInfo['agent_name'] . ' -> ' . $modInfo['module_name'] : "Module $module_id";
@@ -104,6 +104,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'fetch_module') {
             echo json_encode([
                 'ok' => true, 
                 'module_name' => $modName,
+                'agent_name' => $modInfo ? $modInfo['agent_name'] : '',
+                'agent_alias' => $modInfo ? $modInfo['agent_alias'] : '',
                 'timestamp' => date('Y-m-d H:i:s', $data['utimestamp']),
                 'raw_data' => $data['datos']
             ]);
@@ -116,6 +118,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'fetch_module') {
                  echo json_encode([
                     'ok' => true, 
                     'module_name' => $modName,
+                    'agent_name' => $modInfo ? $modInfo['agent_name'] : '',
+                    'agent_alias' => $modInfo ? $modInfo['agent_alias'] : '',
                     'timestamp' => date('Y-m-d H:i:s', $numData['utimestamp']),
                     'raw_data' => "value | \n-------\n" . $numData['datos'] . " | "
                 ]);
@@ -791,6 +795,8 @@ const Dashboard = {
             const data = await res.json();
             if (data.ok) {
                 panel.module_name = data.module_name;
+                panel.agent_name = data.agent_name;
+                panel.agent_alias = data.agent_alias;
                 panel.timestamp = data.timestamp;
                 panel.raw_data = data.raw_data;
 
@@ -819,7 +825,11 @@ const Dashboard = {
 
         let separatorIdx = -1;
         for (let i = 0; i < lines.length; i++) {
-            if (lines[i].trim().match(/^[\-\+]{5,}$/)) { separatorIdx = i; break; }
+            const trimmed = lines[i].trim();
+            if (trimmed.match(/^[|:\-\+\s]{5,}$/) && trimmed.includes('-')) {
+                separatorIdx = i;
+                break;
+            }
         }
 
         const rawEl = document.getElementById(`raw-${id}`);
@@ -942,10 +952,18 @@ const Dashboard = {
     renderTableRows(id, rows) {
         const tbody = document.getElementById(`tbody-${id}`);
         if(!tbody) return;
+        const panel = this.panels.find(p => p.id === id);
+        const agentLabel = (panel && panel.agent_alias) ? `${panel.agent_alias}/${panel.agent_name}` : 'Table Viewer';
         if (rows.length === 0) {
             tbody.innerHTML = `<tr><td colspan="100%" style="text-align: center; color: #94a3b8; padding: 20px;">No data rows found.</td></tr>`;
         } else {
-            tbody.innerHTML = rows.map(r => '<tr>' + r.map(c => `<td>${this.escapeHtml(c)}</td>`).join('') + '</tr>').join('');
+            tbody.innerHTML = rows.map(r => '<tr>' + r.map(c => {
+                const cellStr = String(c || '');
+                if (cellStr.length > 45 || cellStr.includes('\n')) {
+                    return `<td style="vertical-align: middle;"><button class="btn-pfms btn-outline-pfms" style="padding:2px 6px; font-size:10px; font-weight:600; cursor:pointer;" onclick="showLongValuePopup('Detail Query', '${agentLabel}', \`${cellStr.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`)">View</button></td>`;
+                }
+                return `<td>${this.escapeHtml(c)}</td>`;
+            }).join('') + '</tr>').join('');
         }
     },
 
@@ -1022,6 +1040,200 @@ const Dashboard = {
         });
     }
 };
+
+function showLongValuePopup(moduleName, agentName, fullValue) {
+    const existing = document.getElementById('longValuePopupModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'longValuePopupModal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(15, 23, 42, 0.5);
+        -webkit-backdrop-filter: blur(4px);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 99999;
+    `;
+
+    const box = document.createElement('div');
+    box.style.cssText = `
+        background: #fff;
+        width: 600px;
+        max-width: 90%;
+        border-radius: 12px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        border: 1px solid #e2e8f0;
+        display: flex;
+        flex-direction: column;
+        max-height: 80vh;
+        animation: modalFadeIn 0.2s ease-out;
+    `;
+
+    if (!document.getElementById('modal-animation-style')) {
+        const style = document.createElement('style');
+        style.id = 'modal-animation-style';
+        style.innerText = `
+            @keyframes modalFadeIn {
+                from { opacity: 0; transform: scale(0.95); }
+                to { opacity: 1; transform: scale(1); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid #e2e8f0;
+    `;
+    header.innerHTML = `
+        <div>
+            <h5 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f172a;">${moduleName || 'Module Value'}</h5>
+            <span style="font-size: 11px; color: #64748b; font-weight: normal;">Agent: ${agentName || '-'}</span>
+        </div>
+        <span class="material-symbols-outlined" style="cursor: pointer; color: #64748b; font-size: 20px;" onclick="document.getElementById('longValuePopupModal').remove()">close</span>
+    `;
+
+    const body = document.createElement('div');
+    body.style.cssText = `
+        padding: 20px;
+        overflow-y: auto;
+        flex-grow: 1;
+        background: #f8fafc;
+        max-height: 50vh;
+    `;
+    
+    const pre = document.createElement('pre');
+    pre.style.cssText = `
+        margin: 0;
+        padding: 12px;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 11px;
+        white-space: pre-wrap;
+        word-break: break-all;
+    `;
+    pre.innerText = fullValue;
+    body.appendChild(pre);
+
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+        padding: 12px 20px;
+        border-top: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: flex-end;
+        background: #fff;
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+    `;
+    
+    const btn = document.createElement('button');
+    btn.style.cssText = `
+        padding: 8px 16px;
+        border-radius: 6px;
+        background: #004d40;
+        color: #fff;
+        border: none;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+    `;
+    btn.innerText = 'Close';
+    btn.onmouseenter = () => btn.style.background = '#00332a';
+    btn.onmouseleave = () => btn.style.background = '#004d40';
+    btn.onclick = () => modal.remove();
+
+    const copyBtn = document.createElement('button');
+    copyBtn.style.cssText = `
+        padding: 8px 16px;
+        border-radius: 6px;
+        background: #fff;
+        color: #004d40;
+        border: 1px solid #004d40;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+        margin-right: 10px;
+    `;
+    copyBtn.innerText = 'Copy';
+    copyBtn.onmouseenter = () => {
+        copyBtn.style.background = '#e0f2f1';
+    };
+    copyBtn.onmouseleave = () => {
+        copyBtn.style.background = '#fff';
+    };
+    copyBtn.onclick = () => {
+        const doSuccess = () => {
+            copyBtn.innerText = 'Copied!';
+            copyBtn.style.background = '#e8f5e9';
+            copyBtn.style.color = '#2e7d32';
+            copyBtn.style.borderColor = '#2e7d32';
+            setTimeout(() => {
+                copyBtn.innerText = 'Copy';
+                copyBtn.style.background = '#fff';
+                copyBtn.style.color = '#004d40';
+                copyBtn.style.borderColor = '#004d40';
+            }, 2000);
+        };
+        
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(fullValue).then(doSuccess).catch(fallbackCopy);
+        } else {
+            fallbackCopy();
+        }
+        
+        function fallbackCopy() {
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = fullValue;
+                textArea.style.top = "0";
+                textArea.style.left = "0";
+                textArea.style.position = "fixed";
+                textArea.style.opacity = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                if (successful) {
+                    doSuccess();
+                } else {
+                    alert('Browser does not support clipboard copy');
+                }
+            } catch (err) {
+                alert('Failed to copy text: ' + err);
+            }
+        }
+    };
+
+    footer.appendChild(copyBtn);
+    footer.appendChild(btn);
+
+    box.appendChild(header);
+    box.appendChild(body);
+    box.appendChild(footer);
+    modal.appendChild(box);
+
+    modal.onclick = (e) => {
+        if (e.target === modal) modal.remove();
+    };
+
+    document.body.appendChild(modal);
+}
 
 document.addEventListener('DOMContentLoaded', () => Dashboard.init());
 </script>

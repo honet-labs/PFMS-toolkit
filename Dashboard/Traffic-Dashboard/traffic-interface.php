@@ -589,7 +589,7 @@ if ($api === 'series') {
     <meta charset="utf-8">
     <title>Traffic Dashboard</title>
     <link href="/pandora_console/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script src="/pandora_console/custom/panel/vendor/echarts/echarts.min.js"></script>
     <style>
         :root { --primary-bg: #f4f6f8; --card-bg: #fff; --toolbar-bg: #fff; --border-color: #e0e4e8; --text-main: #1e293b; --text-dim: #64748b; --accent: #10b981; }
         body { font-family: Arial, Helvetica, sans-serif; background: var(--primary-bg); color: var(--text-main); margin: 0; font-size: 12px; }
