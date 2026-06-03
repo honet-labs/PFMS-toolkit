@@ -1277,21 +1277,31 @@ function updateURLState(dashId = null, groupId = null, agentId = null) {
     window.history.replaceState({}, '', u.toString());
 }
 
-function init() {
-    fetch('?api=load_config')
-    .then(r => r.text().then(text => {
-        try { return JSON.parse(text); }
-        catch(e) { console.error("Malformed JSON response for load_config:", text); return []; }
-    }))
-    .then(data => { if(Array.isArray(data)) masterDashboards = data; })
-    .catch(e => {});
+async function init() {
+    try {
+        const res = await fetch('?api=load_config');
+        const text = await res.text();
+        try {
+            const data = JSON.parse(text);
+            if(Array.isArray(data)) masterDashboards = data;
+        } catch(e) {
+            console.error("Malformed JSON response for load_config:", text);
+        }
+    } catch(e) {
+        console.error("Failed to fetch load_config:", e);
+    }
 
-    fetch('?api=groups')
-    .then(r => r.text().then(text => {
-        try { return JSON.parse(text); }
-        catch(e) { console.error("Malformed JSON response for groups:", text); return {error: "Invalid JSON response"}; }
-    }))
-    .then(data => { 
+    try {
+        const r = await fetch('?api=groups');
+        const text = await r.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch(e) {
+            console.error("Malformed JSON response for groups:", text);
+            data = {error: "Invalid JSON response"};
+        }
+
         if (data.error) { console.error("Groups Error:", data.error); return; }
         const selTop = document.getElementById('top_group');
         const selSet = document.getElementById('m_default_group');
@@ -1314,17 +1324,20 @@ function init() {
         } else {
             renderDashboardList();
         }
-    }).catch(err => console.error("Groups Fetch Error:", err));
+    } catch(err) {
+        console.error("Groups Fetch Error:", err);
+    }
 
-    fetch('?api=module_list')
-    .then(r => r.text().then(text => {
-        try { return JSON.parse(text); }
-        catch(e) { console.error("Malformed JSON response for module_list:", text); return []; }
-    }))
-    .then(data => {
-        globalModuleList = data;
+    try {
+        const r = await fetch('?api=module_list');
+        const text = await r.text();
+        try {
+            globalModuleList = JSON.parse(text);
+        } catch(e) {
+            console.error("Malformed JSON response for module_list:", text);
+        }
         isFetchingModules = false;
-    });
+    } catch(e) {}
 }
 
 function renderDashboardList() {
