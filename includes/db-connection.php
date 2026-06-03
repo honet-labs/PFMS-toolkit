@@ -276,7 +276,38 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
         error_log("Active DB query error: " . $e->getMessage());
     }
 
-    // 4. Merge results using array_merge
+    // 4. Query last value before start to prevent empty charts for static modules
+    $preData = null;
+    $lookback_query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp < ?
+                       UNION ALL
+                       SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp < ?
+                       UNION ALL
+                       SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp < ?
+                       ORDER BY ts DESC LIMIT 1";
+    try {
+        $stmtLookback = $pdo->prepare($lookback_query);
+        $stmtLookback->execute([$id_mod, $start, $id_mod, $start, $id_mod, $start]);
+        $preData = $stmtLookback->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        error_log("Active DB lookback query error: " . $e->getMessage());
+    }
+
+    if (!$preData && $pdo_history !== null) {
+        try {
+            $stmtLookbackHist = $pdo_history->prepare($lookback_query);
+            $stmtLookbackHist->execute([$id_mod, $start, $id_mod, $start, $id_mod, $start]);
+            $preData = $stmtLookbackHist->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log("Historical DB lookback query error: " . $e->getMessage());
+        }
+    }
+
+    if ($preData) {
+        $preData['ts'] = (int)$start;
+        $historyData[] = $preData;
+    }
+
+    // 5. Merge results using array_merge
     $merged = array_merge($historyData, $activeData);
 
     // Deduplicate by timestamp to prevent duplicate points
