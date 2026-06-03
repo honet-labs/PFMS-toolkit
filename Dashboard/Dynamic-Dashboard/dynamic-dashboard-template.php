@@ -507,7 +507,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             padding: 8px 10px; 
             border-bottom: 1px solid #f1f5f9; 
             vertical-align: middle; 
-            overflow-wrap: anywhere; 
+            overflow-wrap: break-word; 
         }
         .table-pfms tr:hover td { background: #f8fafc; }
 
@@ -537,7 +537,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
         .table-dyn { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
         .table-dyn th { background: #fafbfc; border-bottom: 1px solid #e0e4e8; padding: 6px 10px; text-align: left; color: #7f8c8d; font-weight: normal; text-transform: uppercase; font-size: 9px; white-space: normal; }
-        .table-dyn td { border-bottom: 1px solid #f0f3f5; padding: 6px 10px; color: #0b1a26; word-break: break-word; vertical-align: middle; overflow-wrap: anywhere; }
+        .table-dyn td { border-bottom: 1px solid #f0f3f5; padding: 8px 10px; color: #0b1a26; vertical-align: middle; overflow-wrap: break-word; }
         
         .status-pill-dyn { padding: 2px 8px; border-radius: 4px; font-size: 9px; text-transform: uppercase; color: #fff; font-weight: 500; display: inline-block; min-width: 50px; text-align: center; }
         .bg-green { background: linear-gradient(135deg, #2ecc71, #27ae60) !important; color: #fff !important; } 
@@ -2689,13 +2689,13 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
         const statusLbl = {0:'UP', 1:'CRITICAL', 2:'WARNING', 4:'NOT INIT'}[m.status] || 'UNKNOWN';
         return `
             <tr>
-                <td style="color:#3498db; font-weight:600; cursor:pointer;" onclick="window.open('/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}', '_blank')">${m.agent_name}</td>
-                <td>${m.group_name}</td>
-                <td style="color:#e74c3c;">${m.ip_address}</td>
+                <td style="color:#3498db; font-weight:600; cursor:pointer; white-space:nowrap;" onclick="window.open('/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}', '_blank')">${m.agent_name}</td>
+                <td style="white-space:nowrap;">${m.group_name}</td>
+                <td style="color:#e74c3c; white-space:nowrap;">${m.ip_address}</td>
                 <td style="font-weight:500;">${m.module_name}</td>
-                <td style="font-weight:600;">${m.current}</td>
-                <td><span class="status-pill-dyn ${bgClass}">${statusLbl}</span></td>
-                <td style="text-align:center;">
+                <td style="font-weight:600; white-space:nowrap;">${m.current}</td>
+                <td style="white-space:nowrap;"><span class="status-pill-dyn ${bgClass}">${statusLbl}</span></td>
+                <td style="text-align:center; white-space:nowrap;">
                     <div style="display:inline-flex; gap:8px; align-items:center; justify-content:center; width:100%;">
                         <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}')" title="View Chart">
                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>
