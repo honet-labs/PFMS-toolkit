@@ -44,6 +44,11 @@ foreach ($config_paths as $path) {
     if (file_exists($path)) {
         require_once($path);
         $config_loaded = true;
+        // Require functions_io.php if it exists for decryption helpers
+        $io_path = dirname($path) . '/functions_io.php';
+        if (file_exists($io_path)) {
+            require_once($io_path);
+        }
         break;
     }
 }
@@ -65,6 +70,43 @@ if ($config_loaded) {
         $db_status = true;
     } catch (PDOException $e) {
         $db_error = $e->getMessage();
+    }
+}
+
+// 4. HISTORICAL DATABASE INITIALIZATION (PDO)
+$history_pdo = null;
+$history_db_status = false;
+
+if ($db_status) {
+    try {
+        $stmt = $pdo->query("SELECT token, value FROM tconfig WHERE token IN ('history_host', 'history_port', 'history_db', 'history_user', 'history_pass')");
+        $histConfig = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $histConfig[$row['token']] = $row['value'];
+        }
+        
+        if (!empty($histConfig['history_host']) && !empty($histConfig['history_db'])) {
+            $h_host = $histConfig['history_host'];
+            $h_port = !empty($histConfig['history_port']) ? (int)$histConfig['history_port'] : 3306;
+            $h_dbname = $histConfig['history_db'];
+            $h_user = $histConfig['history_user'];
+            $h_pass = $histConfig['history_pass'];
+            
+            if (function_exists('io_safe_decrypt')) {
+                $h_pass = io_safe_decrypt($h_pass);
+            }
+            
+            $h_dsn = "mysql:host={$h_host};port={$h_port};dbname={$h_dbname};charset=utf8mb4";
+            $history_pdo = new PDO($h_dsn, $h_user, $h_pass, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+                PDO::ATTR_PERSISTENT => true
+            ]);
+            $history_db_status = true;
+        }
+    } catch (Exception $e) {
+        error_log("Historical DB Connection error: " . $e->getMessage());
     }
 }
 
@@ -111,4 +153,63 @@ function timeAgo($datetime) {
     if ($hours > 0) return $hours . " hours" . ($minutes > 0 ? " " . $minutes . " minutes" : "");
     if ($minutes > 0) return $minutes . " minutes";
     return $diff . " seconds";
+}
+
+function get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, $limit = 500, $order = 'DESC') {
+    // 1. Query templates
+    $query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+              UNION ALL
+              SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+              UNION ALL
+              SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+              ORDER BY ts {$order} LIMIT {$limit}";
+
+    // 2. Fetch from active database
+    $activeData = [];
+    try {
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
+        $activeData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        error_log("Active DB query error: " . $e->getMessage());
+    }
+
+    // 3. Fetch from historical database if available
+    $historyData = [];
+    if ($history_pdo) {
+        try {
+            $stmtHist = $history_pdo->prepare($query);
+            $stmtHist->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
+            $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log("Historical DB query error: " . $e->getMessage());
+        }
+    }
+
+    // 4. Merge, deduplicate, and sort
+    if (empty($historyData)) {
+        return $activeData;
+    }
+    if (empty($activeData)) {
+        return $historyData;
+    }
+
+    $merged = array_merge($activeData, $historyData);
+    $unique = [];
+    foreach ($merged as $item) {
+        $unique[$item['ts']] = $item;
+    }
+
+    if ($order === 'DESC') {
+        krsort($unique);
+    } else {
+        ksort($unique);
+    }
+
+    $result = array_values($unique);
+    if (count($result) > $limit) {
+        $result = array_slice($result, 0, $limit);
+    }
+
+    return $result;
 }

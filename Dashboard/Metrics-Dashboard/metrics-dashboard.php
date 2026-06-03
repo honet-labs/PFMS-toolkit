@@ -17,27 +17,31 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 $PANDORA_BASE_URL = "/pandora_console";
 $CONFIG_FILE = __DIR__ . '/metrics_config.json';
 
-$config_paths = ['/var/www/html/pandora_console/include/config.php', '../../../include/config.php', '../../include/config.php', '../include/config.php'];
-$config_loaded = false;
-foreach ($config_paths as $path) { if (file_exists($path)) { require_once($path); $config_loaded = true; break; } }
+require_once __DIR__ . '/../../includes/db-connection.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 
 // 3. HELPERS & DB INIT
-function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
-function pretty_text($s) {
-    if ($s === null) return '';
-    $decoded = html_entity_decode((string)$s, ENT_QUOTES, 'UTF-8');
-    return str_replace('&#x20;', ' ', $decoded);
+if (!function_exists('h')) {
+    function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 }
-function timeAgo($datetime) {
-    if (empty($datetime) || $datetime == '0000-00-00 00:00:00') return 'N/A';
-    $diff = time() - strtotime($datetime);
-    if ($diff < 60) return "Just now";
-    if ($diff < 3600) return round($diff / 60) . " min";
-    if ($diff < 86400) return round($diff / 3600) . " hours";
-    return round($diff / 86400) . " days";
+if (!function_exists('pretty_text')) {
+    function pretty_text($s) {
+        if ($s === null) return '';
+        $decoded = html_entity_decode((string)$s, ENT_QUOTES, 'UTF-8');
+        return str_replace('&#x20;', ' ', $decoded);
+    }
+}
+if (!function_exists('timeAgo')) {
+    function timeAgo($datetime) {
+        if (empty($datetime) || $datetime == '0000-00-00 00:00:00') return 'N/A';
+        $diff = time() - strtotime($datetime);
+        if ($diff < 60) return "Just now";
+        if ($diff < 3600) return round($diff / 60) . " min";
+        if ($diff < 86400) return round($diff / 3600) . " hours";
+        return round($diff / 86400) . " days";
+    }
 }
 
 function map_pandora_status($estado) {
@@ -48,19 +52,6 @@ function map_pandora_status($estado) {
         case 4: return ['label' => 'NOT INIT', 'color' => 'bg-blue', 'val' => 4];
         default: return ['label' => 'UNKNOWN', 'color' => 'bg-gray', 'val' => 3];
     }
-}
-
-$pdo = null; $db_status = false; $db_error = '';
-if ($config_loaded) {
-    try {
-        $dsn = "mysql:host=" . $config["dbhost"] . ";dbname=" . $config["dbname"] . ";charset=utf8mb4";
-        $pdo = new PDO($dsn, $config["dbuser"], $config["dbpass"], [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false, PDO::ATTR_PERSISTENT => false
-        ]);
-        $db_status = true;
-    } catch (PDOException $e) { $db_error = $e->getMessage(); }
 }
 
 // 4. AJAX ENDPOINTS
@@ -165,16 +156,14 @@ if ($api === 'detail_graph' && $db_status) {
         $unitRow = $stmtUnit->fetch();
         $unit = $unitRow ? pretty_text($unitRow['unit']) : '';
 
-        $query = "SELECT FROM_UNIXTIME(ts, '%Y-%m-%d %H:%i') as waktu, datos FROM (
-                    SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                    UNION ALL
-                    SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                    UNION ALL
-                    SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                  ) AS combined ORDER BY ts ASC LIMIT 1500";
-        $stmt = $pdo->prepare($query);
-        $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
-        $data = $stmt->fetchAll();
+        $raw_data = get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, 1500, 'ASC');
+        $data = [];
+        foreach ($raw_data as $row) {
+            $data[] = [
+                'waktu' => date('Y-m-d H:i', $row['ts']),
+                'datos' => $row['datos']
+            ];
+        }
         echo json_encode(['ok' => true, 'data' => $data, 'unit' => $unit]);
     } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
     exit;
@@ -1131,7 +1120,25 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         
         nativeModuleChartInstance = echarts.init(document.getElementById('nativeModuleDetailChart'));
         nativeModuleChartInstance.setOption({
-            tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6 },
+            tooltip: { 
+                trigger: 'axis', 
+                backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                textStyle: { color: '#cbd5e1', fontSize: 12 }, 
+                padding: 10, 
+                borderRadius: 6,
+                formatter: function (params) {
+                    let html = params[0].name ? params[0].name + '<br/>' : '';
+                    params.forEach(p => {
+                        let val = p.value;
+                        if (val !== null && val !== undefined && !isNaN(val)) {
+                            val = parseFloat(val);
+                            val = (val % 1 === 0) ? val : val.toFixed(2);
+                        }
+                        html += `${p.marker}${p.seriesName}: <b>${val}${unit}</b><br/>`;
+                    });
+                    return html;
+                }
+            },
             grid: { left: 5, right: 15, top: 15, bottom: 25, containLabel: true },
             xAxis: { type: 'category', boundaryGap: false, data: labels, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
             yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { fontSize: 10, color: '#64748b' } },
@@ -2840,7 +2847,27 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
 
             activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
             activeCharts[cardId].setOption({
-                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6 },
+                tooltip: { 
+                    trigger: 'axis', 
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                    textStyle: { color: '#cbd5e1', fontSize: 12 }, 
+                    padding: 10, 
+                    borderRadius: 6,
+                    formatter: function(params) {
+                        let html = params[0].name ? params[0].name + '<br/>' : '';
+                        params.forEach(p => {
+                            const mod = data[p.seriesIndex];
+                            const unitStr = (mod && mod.unit) ? ' ' + mod.unit : '';
+                            let val = p.value;
+                            if (val !== null && val !== undefined && !isNaN(val)) {
+                                val = parseFloat(val);
+                                val = (val % 1 === 0) ? val : val.toFixed(2);
+                            }
+                            html += `${p.marker}${p.seriesName}: <b>${val}${unitStr}</b><br/>`;
+                        });
+                        return html;
+                    }
+                },
                 legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
                 grid: { left: 5, right: 15, top: 15, bottom: 45, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: labels, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
@@ -2874,7 +2901,27 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
 
             activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
             activeCharts[cardId].setOption({
-                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6 },
+                tooltip: { 
+                    trigger: 'axis', 
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                    textStyle: { color: '#cbd5e1', fontSize: 12 }, 
+                    padding: 10, 
+                    borderRadius: 6,
+                    formatter: function(params) {
+                        let html = params[0].name ? params[0].name + '<br/>' : '';
+                        params.forEach(p => {
+                            const foundMod = processedData.find(r => r.module_name === p.seriesName);
+                            const unitStr = (foundMod && foundMod.unit) ? ' ' + foundMod.unit : '';
+                            let val = p.value;
+                            if (val !== null && val !== undefined && !isNaN(val)) {
+                                val = parseFloat(val);
+                                val = (val % 1 === 0) ? val : val.toFixed(2);
+                            }
+                            html += `${p.marker}${p.seriesName}: <b>${val}${unitStr}</b><br/>`;
+                        });
+                        return html;
+                    }
+                },
                 legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
                 grid: { left: 5, right: 15, top: 15, bottom: 45, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: uniqueAgents, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },

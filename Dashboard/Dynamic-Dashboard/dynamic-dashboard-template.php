@@ -148,16 +148,14 @@ if ($api === 'detail_graph' && $db_status) {
         $unitRow = $stmtUnit->fetch();
         $unit = $unitRow ? pretty_text($unitRow['unit']) : '';
 
-        $query = "SELECT FROM_UNIXTIME(ts, '%Y-%m-%d %H:%i') as waktu, datos FROM (
-                    SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                    UNION ALL
-                    SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                    UNION ALL
-                    SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                  ) AS combined ORDER BY ts ASC LIMIT 1500";
-        $stmt = $pdo->prepare($query);
-        $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
-        $data = $stmt->fetchAll();
+        $raw_data = get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, 1500, 'ASC');
+        $data = [];
+        foreach ($raw_data as $row) {
+            $data[] = [
+                'waktu' => date('Y-m-d H:i', $row['ts']),
+                'datos' => $row['datos']
+            ];
+        }
         echo json_encode(['ok' => true, 'data' => $data, 'unit' => $unit]);
     } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
     exit;
@@ -195,14 +193,6 @@ if ($api === 'bulk_panel_data') {
                                 WHERE m.id_agente = ? AND m.disabled = 0");
         $stAll->execute([$agent_id]);
         $allModules = $stAll->fetchAll();
-
-        $stHist = $pdo->prepare("SELECT ts, FROM_UNIXTIME(ts, '%m-%d %H:%i') as lbl, datos as val FROM (
-                                    SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                                    UNION ALL
-                                    SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                                    UNION ALL
-                                    SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                                 ) AS combined ORDER BY ts DESC LIMIT 500");
 
         $results = [];
 
@@ -252,10 +242,17 @@ if ($api === 'bulk_panel_data') {
             $moduleResults = [];
             foreach($modulesFound as $mod) {
                 $mod_id = $mod['id_agente_modulo'];
-                $history = null;
                 if (in_array($pType, ['line', 'area', 'bar', 'heatmap'])) {
-                    $stHist->execute([$mod_id, $start, $end, $mod_id, $start, $end, $mod_id, $start, $end]);
-                    $history = array_reverse($stHist->fetchAll(PDO::FETCH_ASSOC));
+                    $raw_hist = get_module_history_data($pdo, $history_pdo, $mod_id, $start, $end, 500, 'DESC');
+                    $history = [];
+                    foreach ($raw_hist as $row) {
+                        $history[] = [
+                            'ts' => (int)$row['ts'],
+                            'lbl' => date('m-d H:i', $row['ts']),
+                            'val' => $row['datos']
+                        ];
+                    }
+                    $history = array_reverse($history);
                 }
 
                 $moduleResults[] = [
@@ -295,6 +292,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <link rel="stylesheet" href="/pandora_console/custom/panel/vendor/fonts/fonts.css" />
     <link href="/pandora_console/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <script src="/pandora_console/custom/panel/vendor/echarts/echarts.min.js"></script>
+    <script src="/pandora_console/custom/panel/vendor/html2canvas/html2canvas.min.js"></script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }
@@ -341,7 +339,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .btn-unsaved { background-color: #e67e22 !important; }
         .btn-unsaved:hover { background-color: #d35400 !important; }
 
-        .grafana-toolbar { display: flex; align-items: center; justify-content: space-between; background: #ffffff; padding: 12px 30px; border-bottom: 1px solid #dce1e5; box-shadow: 0 2px 4px rgba(0,0,0,0.02); flex-wrap: wrap; gap: 15px;}
+        .grafana-toolbar { position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; background: #ffffff; padding: 12px 30px; border-bottom: 1px solid #dce1e5; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); flex-wrap: wrap; gap: 15px;}
         .toolbar-left { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
         .toolbar-right { display: flex; align-items: center; gap: 10px; }
         .toolbar-item { display: flex; align-items: center; gap: 8px; }
@@ -576,6 +574,46 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             align-items: center;
             gap: 8px;
         }
+        @media print {
+            body, html {
+                background: #f4f6f8 !important;
+                color: #000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+            .pandora-header-top,
+            .pandora-header-bottom,
+            .grafana-toolbar,
+            .panel-controls,
+            .drag-handle,
+            .modal-overlay,
+            #view_list,
+            #listTopControls,
+            .refresh-hud,
+            .btn-icon-only,
+            .toolbar-divider {
+                display: none !important;
+            }
+            .main-content {
+                padding: 10px !important;
+                margin: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            #panelsGrid {
+                row-gap: 15px !important;
+                column-gap: 15px !important;
+                grid-auto-rows: auto !important;
+            }
+            .panel-card {
+                box-shadow: none !important;
+                border: 1px solid #e0e4e8 !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -652,10 +690,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </select>
             </div>
             
-            <div id="customTimeBox" class="toolbar-item" style="display:none; background:#f0f3f5; padding:3px 8px; border-radius:4px;">
+            <div id="customTimeBox" class="toolbar-item" style="display:none; background:#f0f3f5; padding:3px 8px; border-radius:4px; align-items:center; gap:6px;">
                 <input type="datetime-local" id="top_start" class="toolbar-input">
                 <span style="font-weight: normal; color:#7f8c8d;">-</span>
                 <input type="datetime-local" id="top_end" class="toolbar-input">
+                <button onclick="applyCustomTimeRange()" style="padding: 2px 10px; font-size:11px; height:24px; border:none; background:#1976d2; color:white; border-radius:3px; cursor:pointer; font-weight:600; display:inline-flex; align-items:center; justify-content:center;" title="Apply custom time range">Apply</button>
             </div>
 
             <div class="toolbar-divider"></div>
@@ -674,6 +713,19 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                     <option value="120">2m</option>
                     <option value="300">5m</option>
                 </select>
+            </div>
+            
+            <div class="toolbar-divider"></div>
+            <div class="toolbar-item" id="export_controls">
+                <span class="toolbar-label">Export</span>
+                <button class="btn-secondary-custom" style="height:32px; padding:0 8px; margin-left:5px;" onclick="exportToPdf()" title="Export page to PDF / Print">
+                    <span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40;">picture_as_pdf</span>
+                    <span style="font-size: 11px; font-weight: 500;">PDF</span>
+                </button>
+                <button class="btn-secondary-custom" style="height:32px; padding:0 8px; margin-left:5px;" onclick="exportToPng()" title="Export page to Image (PNG)">
+                    <span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40;">image</span>
+                    <span style="font-size: 11px; font-weight: 500;">PNG</span>
+                </button>
             </div>
         </div>
 
@@ -999,8 +1051,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
             </div>
 
-            <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; min-height:260px; position:relative;">
-                <h6 style="margin:0 0 10px 0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Historical Trend</h6>
+            <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; min-height:280px; position:relative;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h6 style="margin:0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Historical Trend</h6>
+                    <span style="font-size:10px; color:#94a3b8; font-style:italic;">Scroll to Zoom • Drag to Pan</span>
+                </div>
                 <div style="height:200px; width:100%; position:relative;">
                     <div id="nativeModuleDetailChart" style="width:100%; height:100%; min-height:200px;"></div>
                 </div>
@@ -1042,6 +1097,7 @@ let countdownValue = 0;
 let globalModuleList = [];
 let editingPanelId = null;
 let lastFetchedData = {};
+let currentDetailModuleList = null;
 let showHiddenPanels = false;
 let isFetchingModules = true;
 let exactModulePage = 1;
@@ -1106,6 +1162,55 @@ function copyPanelShareLink(panelId) {
         try { document.execCommand('copy'); alert('Link Standalone untuk Widget ini berhasil disalin ke clipboard!'); } catch (err) {}
         document.body.removeChild(textArea);
     }
+}
+
+function exportToPdf() {
+    window.print();
+}
+
+function exportToPng() {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(0,0,0,0.5)';
+    overlay.style.zIndex = '99999';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.color = '#fff';
+    overlay.style.fontFamily = 'sans-serif';
+    overlay.style.fontSize = '18px';
+    overlay.innerHTML = '<div>Generating PNG image, please wait...</div>';
+    document.body.appendChild(overlay);
+
+    const targetElement = document.getElementById('panelsGrid') || document.querySelector('.main-content');
+    
+    if (typeof html2canvas === 'undefined') {
+        document.body.removeChild(overlay);
+        alert("html2canvas library is not loaded yet.");
+        return;
+    }
+
+    html2canvas(targetElement, {
+        useCORS: true,
+        scale: 2,
+        backgroundColor: '#f4f6f8',
+        logging: false
+    }).then(canvas => {
+        document.body.removeChild(overlay);
+        const link = document.createElement('a');
+        const dash = masterDashboards.find(x => x.id === currentDashId);
+        const title = dash ? dash.title : 'Dashboard';
+        link.download = `${title.replace(/\s+/g, '_')}_export.png`;
+        link.href = canvas.toDataURL('image/png');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }).catch(err => {
+        document.body.removeChild(overlay);
+        console.error("Export Image Error:", err);
+        alert("Failed to export image: " + err.message);
+    });
 }
 
 function markUnsaved() {
@@ -1469,8 +1574,40 @@ function selectAgent(id, alias, triggerRefresh = true) {
 
 function onTimeRangeChange() {
     const val = document.getElementById('top_time').value;
-    document.getElementById('customTimeBox').style.display = (val === 'custom') ? 'flex' : 'none';
-    if(val !== 'custom') forceRefresh();
+    const customBox = document.getElementById('customTimeBox');
+    if (val === 'custom') {
+        customBox.style.display = 'flex';
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        const formatDT = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        
+        if (!document.getElementById('top_start').value) {
+            document.getElementById('top_start').value = formatDT(yesterday);
+        }
+        if (!document.getElementById('top_end').value) {
+            document.getElementById('top_end').value = formatDT(now);
+        }
+    } else {
+        customBox.style.display = 'none';
+        forceRefresh();
+    }
+}
+
+function applyCustomTimeRange() {
+    const s = document.getElementById('top_start').value;
+    const e = document.getElementById('top_end').value;
+    if (!s || !e) {
+        alert('Please select both start and end times.');
+        return;
+    }
+    const startTs = new Date(s).getTime();
+    const endTs = new Date(e).getTime();
+    if (startTs >= endTs) {
+        alert('Start time must be before end time.');
+        return;
+    }
+    forceRefresh();
 }
 
 function getTimeRange() {
@@ -1687,7 +1824,16 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const isExcluded = p.excluded && p.excluded.map(String).includes(String(moduleData.id));
     const hiddenClass = (p.hidden || isExcluded) ? 'is-hidden' : '';
 
-    return `<div class="panel-card ${hiddenClass}" style="height: 100%; margin:0;"><div class="panel-header"><div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:6px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span> ${p.title}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div></div>`;
+    let viewBtnHtml = '';
+    if (['line', 'area', 'bar'].includes(p.type) && moduleData && moduleData.id) {
+        viewBtnHtml = `
+            <button class="panel-view-btn" onclick="openPanelDetailModal('${p.id}', ${moduleData.id})" title="View Detail Chart" style="border:none; background:transparent; padding:0; cursor:pointer; color:#1976d2; margin-left:6px; display:inline-flex; align-items:center; vertical-align:middle;">
+                <span class="material-symbols-outlined" style="font-size:16px!important;">monitoring</span>
+            </button>
+        `;
+    }
+
+    return `<div class="panel-card ${hiddenClass}" style="height: 100%; margin:0;"><div class="panel-header"><div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:6px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span> ${p.title}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div></div>`;
 }
 
 function generateSummaryPanelHtml(p, modules) {
@@ -2072,7 +2218,27 @@ function refreshCurrentNodeData() {
                         if (!dom) return;
                         chartInstances[uniqueId] = echarts.init(dom);
                         chartInstances[uniqueId].setOption({
-                            tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: chartFs + 2 }, padding: 10, borderRadius: 6 },
+                            tooltip: { 
+                                trigger: 'axis', 
+                                backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                                textStyle: { color: '#cbd5e1', fontSize: chartFs + 2 }, 
+                                padding: 10, 
+                                borderRadius: 6,
+                                formatter: function(params) {
+                                    let html = params[0].name ? params[0].name + '<br/>' : '';
+                                    params.forEach(p => {
+                                        const mod = activeModules[p.seriesIndex];
+                                        const unitStr = (mod && mod.unit) ? ' ' + mod.unit : '';
+                                        let val = p.value;
+                                        if (val !== null && val !== undefined && !isNaN(val)) {
+                                            val = parseFloat(val);
+                                            val = (val % 1 === 0) ? val : val.toFixed(2);
+                                        }
+                                        html += `${p.marker}${p.seriesName}: <b>${val}${unitStr}</b><br/>`;
+                                    });
+                                    return html;
+                                }
+                            },
                             legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFs - 1), color: '#64748b' } },
                             grid: { left: 5, right: 15, top: 15, bottom: p.show_time ? 45 : 25, containLabel: true },
                             xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: labels, show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
@@ -2124,7 +2290,26 @@ function refreshCurrentNodeData() {
                             });
                         } else if (['line','area','bar'].includes(p.type)) {
                             chartInstances[uniqueId].setOption({
-                                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: chartFs + 2 }, padding: 10, borderRadius: 6 },
+                                tooltip: { 
+                                    trigger: 'axis', 
+                                    backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                                    textStyle: { color: '#cbd5e1', fontSize: chartFs + 2 }, 
+                                    padding: 10, 
+                                    borderRadius: 6,
+                                    formatter: function(params) {
+                                        let html = params[0].name ? params[0].name + '<br/>' : '';
+                                        params.forEach(p => {
+                                            const unitStr = m.unit ? ' ' + m.unit : '';
+                                            let val = p.value;
+                                            if (val !== null && val !== undefined && !isNaN(val)) {
+                                                val = parseFloat(val);
+                                                val = (val % 1 === 0) ? val : val.toFixed(2);
+                                            }
+                                            html += `${p.marker}${p.seriesName}: <b>${val}${unitStr}</b><br/>`;
+                                        });
+                                        return html;
+                                    }
+                                },
                                 grid: { left: 0, right: 0, top: 0, bottom: p.show_time ? 30 : 0, containLabel: p.show_time },
                                 xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: history.map(h=>h.lbl), show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' } },
                                 yAxis: { type: 'value', show: false, max: p.force_100 ? 100 : null },
@@ -2491,6 +2676,46 @@ function closeNativeChartModal() {
     document.getElementById('nativeChartFrame').src = '';
 }
 
+function openPanelDetailModal(panelId, currentModuleId) {
+    if (!lastFetchedData || !lastFetchedData[panelId]) return;
+    const panelData = lastFetchedData[panelId];
+    let activeModules = panelData.modules || [];
+    
+    const currentDash = masterDashboards.find(d => d.id === currentDashId);
+    if (currentDash) {
+        const p = currentDash.panels.find(x => x.id === panelId);
+        if (p && !showHiddenPanels && p.excluded) {
+            activeModules = activeModules.filter(m => !p.excluded.map(String).includes(String(m.id)));
+        }
+    }
+    
+    activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
+
+    const moduleList = activeModules.map(m => ({ id: m.id, name: m.agent_name + ' - ' + m.module_name }));
+    
+    let selectedMod = activeModules.find(m => m.id == currentModuleId);
+    if (!selectedMod && activeModules.length > 0) {
+        selectedMod = activeModules[0];
+    }
+    if (!selectedMod) return;
+
+    openNativeModuleDetailModal(selectedMod.id, selectedMod.agent_name + ' - ' + selectedMod.module_name, 86400, null, null, moduleList);
+}
+
+function changeDetailModule(newId) {
+    if (!currentDetailModuleList) return;
+    const selected = currentDetailModuleList.find(x => x.id == newId);
+    if (!selected) return;
+    
+    const currentRange = document.getElementById('nativeModuleTimeRange').value;
+    const customStart = document.getElementById('nativeModuleCustomStart').value;
+    const customEnd = document.getElementById('nativeModuleCustomEnd').value;
+    const customStartTs = customStart ? Math.floor(new Date(customStart).getTime() / 1000) : null;
+    const customEndTs = customEnd ? Math.floor(new Date(customEnd).getTime() / 1000) : null;
+
+    openNativeModuleDetailModal(parseInt(newId), selected.name, currentRange, customStartTs, customEndTs, currentDetailModuleList);
+}
+
 function show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title) {
     if (!IS_STANDALONE && typeof window.parent !== 'undefined' && window.parent && window.parent.show_module_detail_dialog && window.parent !== window) {
         try {
@@ -2520,7 +2745,7 @@ function handleNativeModuleRangeChange() {
         document.getElementById('nativeModuleCustomEnd').value = formatDT(now);
     } else {
         customBox.style.display = 'none';
-        openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, val);
+        openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, val, null, null, currentDetailModuleList);
     }
 }
 
@@ -2534,14 +2759,28 @@ function applyNativeModuleCustomRange() {
     
     if (startTs >= endTs) return alert('Start date must be before end date.');
     
-    openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, 'custom', startTs, endTs);
+    openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, 'custom', startTs, endTs, currentDetailModuleList);
 }
 
-async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400, customStart = null, customEnd = null) {
+async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400, customStart = null, customEnd = null, moduleList = null) {
     currentDetailModuleId = moduleId;
     currentDetailModuleTitle = title;
+    currentDetailModuleList = moduleList;
     
-    document.getElementById('nativeModuleDetailTitle').innerText = 'Module: ' + title;
+    const headerTitleEl = document.getElementById('nativeModuleDetailTitle');
+    if (headerTitleEl) {
+        if (moduleList && moduleList.length > 1) {
+            let selectHtml = `<select id="detailModuleSelector" class="form-control-fix" style="width: 320px; margin-left: 15px; margin-bottom:0; height:32px; padding:4px 8px; font-size:13px; font-weight:normal;" onchange="changeDetailModule(this.value)">`;
+            moduleList.forEach(m => {
+                selectHtml += `<option value="${m.id}" ${m.id == moduleId ? 'selected' : ''}>${m.name}</option>`;
+            });
+            selectHtml += `</select>`;
+            headerTitleEl.innerHTML = `<span style="font-weight:600;">Module:</span> ${selectHtml}`;
+        } else {
+            headerTitleEl.innerText = 'Module Detail: ' + title;
+        }
+    }
+    
     document.getElementById('nativeModuleDetailModal').style.display = 'flex';
     
     const selectEl = document.getElementById('nativeModuleTimeRange');
@@ -2618,10 +2857,33 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         if (!dom) return;
         nativeModuleChartInstance = echarts.init(dom);
         nativeModuleChartInstance.setOption({
-            tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6 },
+            tooltip: { 
+                trigger: 'axis', 
+                backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                textStyle: { color: '#cbd5e1', fontSize: 12 }, 
+                padding: 10, 
+                borderRadius: 6,
+                formatter: function (params) {
+                    let html = params[0].name ? params[0].name + '<br/>' : '';
+                    params.forEach(p => {
+                        let val = p.value;
+                        if (val !== null && val !== undefined && !isNaN(val)) {
+                            val = parseFloat(val);
+                            val = (val % 1 === 0) ? val : val.toFixed(2);
+                        }
+                        html += `${p.marker}${p.seriesName}: <b>${val}${unit}</b><br/>`;
+                    });
+                    return html;
+                }
+            },
             grid: { left: 5, right: 15, top: 15, bottom: 25, containLabel: true },
             xAxis: { type: 'category', boundaryGap: false, data: labels, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
             yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { fontSize: 10, color: '#64748b' } },
+            dataZoom: [{
+                type: 'inside',
+                start: 0,
+                end: 100
+            }],
             series: [{
                 name: title,
                 type: 'line',

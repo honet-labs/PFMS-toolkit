@@ -561,7 +561,7 @@ if ($api === 'series') {
     $mult_rx = $get_mult($inId, $unit);
     $mult_tx = $get_mult($outId, $unit);
 
-    $fetchData = function($id, $m) use ($pdo, $rangeHours) {
+    $fetchData = function($id, $m) use ($pdo, $history_pdo, $rangeHours) {
         if($id<=0) return ['pts' => [], 'avg' => 0];
         $from = time() - ($rangeHours * 3600);
         $to = time();
@@ -569,14 +569,64 @@ if ($api === 'series') {
             $from = strtotime($_GET['start']);
             $to = isset($_GET['end']) && !empty($_GET['end']) ? strtotime($_GET['end']) : time();
         }
-        $st = $pdo->prepare("SELECT (utimestamp DIV 600)*600 as ts, AVG(datos) as v FROM tagente_datos WHERE id_agente_modulo=? AND utimestamp BETWEEN ? AND ? GROUP BY ts ORDER BY ts");
-        $st->execute([$id, $from, $to]); 
-        $pts = []; $sum = 0; $count = 0;
-        while($r=$st->fetch(PDO::FETCH_ASSOC)) {
-            $val = (float)$r['v'] * $m;
-            $pts[] = [(int)$r['ts']*1000, $val];
-            $sum += $val; $count++;
+
+        $all_pts = [];
+        // 1. Fetch active
+        try {
+            $st = $pdo->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo=? AND utimestamp BETWEEN ? AND ?");
+            $st->execute([$id, $from, $to]);
+            while ($r = $st->fetch(PDO::FETCH_ASSOC)) {
+                $all_pts[] = $r;
+            }
+        } catch (Exception $e) {
+            error_log("Active DB traffic query error: " . $e->getMessage());
         }
+
+        // 2. Fetch historical
+        if ($history_pdo) {
+            try {
+                $stH = $history_pdo->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo=? AND utimestamp BETWEEN ? AND ?");
+                $stH->execute([$id, $from, $to]);
+                while ($r = $stH->fetch(PDO::FETCH_ASSOC)) {
+                    $all_pts[] = $r;
+                }
+            } catch (Exception $e) {
+                error_log("Historical DB traffic query error: " . $e->getMessage());
+            }
+        }
+
+        // 3. Deduplicate by exact timestamp
+        $unique_pts = [];
+        foreach ($all_pts as $pt) {
+            $unique_pts[$pt['ts']] = $pt['datos'];
+        }
+
+        // 4. Group by 10-minute intervals
+        $grouped = [];
+        foreach ($unique_pts as $ts => $val) {
+            $bin = floor($ts / 600) * 600;
+            if (!isset($grouped[$bin])) {
+                $grouped[$bin] = ['sum' => 0.0, 'count' => 0];
+            }
+            $grouped[$bin]['sum'] += (float)$val;
+            $grouped[$bin]['count']++;
+        }
+
+        // 5. Sort chronologically
+        ksort($grouped);
+
+        // 6. Format points
+        $pts = [];
+        $sum = 0.0;
+        $count = 0;
+        foreach ($grouped as $bin => $data) {
+            $avg_val = $data['sum'] / $data['count'];
+            $scaled_val = $avg_val * $m;
+            $pts[] = [(int)$bin * 1000, $scaled_val];
+            $sum += $scaled_val;
+            $count++;
+        }
+
         return ['pts' => $pts, 'avg' => $count > 0 ? $sum/$count : 0];
     };
     $rx = $fetchData($inId, $mult_rx); $tx = $fetchData($outId, $mult_tx);
