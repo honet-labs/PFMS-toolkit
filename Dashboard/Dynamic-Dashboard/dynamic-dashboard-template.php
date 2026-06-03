@@ -125,6 +125,8 @@ if ($api === 'template_nodes') {
             $list = $stmt->fetchAll();
         }
         foreach($list as &$l) { $l['alias'] = pretty_text($l['alias']); }
+        echo json_encode($list);
+        exit;
     } catch (Throwable $e) { 
         if (ob_get_level() > 0) ob_clean(); 
         header('Content-Type: application/json');
