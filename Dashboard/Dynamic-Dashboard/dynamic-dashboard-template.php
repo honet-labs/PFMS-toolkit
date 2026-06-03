@@ -2294,13 +2294,19 @@ function refreshCurrentNodeData() {
                 if (canvas) {
                     let allTimestampsSet = new Set();
                     activeModules.forEach(m => (m.history || []).forEach(h => {
-                        if (h.ts !== undefined) allTimestampsSet.add(Number(h.ts));
+                        if (h.ts !== undefined) {
+                            const roundedTs = Math.round(Number(h.ts) / 60) * 60;
+                            allTimestampsSet.add(roundedTs);
+                        }
                     }));
                     const uniqueTimestamps = Array.from(allTimestampsSet).sort((a, b) => a - b);
                     
                     const labels = uniqueTimestamps.map(ts => {
                         for (let m of activeModules) {
-                            const found = (m.history || []).find(h => Number(h.ts) === ts);
+                            const found = (m.history || []).find(h => {
+                                const rounded = Math.round(Number(h.ts) / 60) * 60;
+                                return rounded === ts;
+                            });
                             if (found) return found.lbl;
                         }
                         return '';
@@ -2310,7 +2316,10 @@ function refreshCurrentNodeData() {
                         const color = borders[idx % borders.length];
                         const historyMap = {};
                         (m.history || []).forEach(h => {
-                            if (h.ts !== undefined) historyMap[Number(h.ts)] = h.val;
+                            if (h.ts !== undefined) {
+                                const roundedTs = Math.round(Number(h.ts) / 60) * 60;
+                                historyMap[roundedTs] = h.val;
+                            }
                         });
                         let lastVal = null;
                         const data = uniqueTimestamps.map(ts => {
