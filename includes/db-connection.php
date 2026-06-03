@@ -74,41 +74,70 @@ if ($config_loaded) {
 }
 
 // 4. HISTORICAL DATABASE INITIALIZATION (PDO)
-$history_pdo = null;
+$pdo_history = null;
 $history_db_status = false;
 
-if ($db_status) {
-    try {
-        $stmt = $pdo->query("SELECT token, value FROM tconfig WHERE token IN ('history_host', 'history_port', 'history_db', 'history_user', 'history_pass')");
-        $histConfig = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $histConfig[$row['token']] = $row['value'];
-        }
-        
-        if (!empty($histConfig['history_host']) && !empty($histConfig['history_db'])) {
-            $h_host = $histConfig['history_host'];
-            $h_port = !empty($histConfig['history_port']) ? (int)$histConfig['history_port'] : 3306;
-            $h_dbname = $histConfig['history_db'];
-            $h_user = $histConfig['history_user'];
-            $h_pass = $histConfig['history_pass'];
+if ($config_loaded) {
+    // 1. Check Pandora FMS global $config settings for history database
+    if (!empty($config['dbhost_history']) && !empty($config['dbname_history'])) {
+        try {
+            $h_host = $config['dbhost_history'];
+            $h_dbname = $config['dbname_history'];
+            $h_user = $config['dbuser_history'] ?? $config['dbuser'];
+            $h_pass = $config['dbpass_history'] ?? $config['dbpass'];
+            $h_port = !empty($config['dbport_history']) ? (int)$config['dbport_history'] : 3306;
             
-            if (function_exists('io_safe_decrypt')) {
-                $h_pass = io_safe_decrypt($h_pass);
-            }
-            
+            // 2. Build secondary PDO connection with dynamic port wrapped in Try-Catch
             $h_dsn = "mysql:host={$h_host};port={$h_port};dbname={$h_dbname};charset=utf8mb4";
-            $history_pdo = new PDO($h_dsn, $h_user, $h_pass, [
+            $pdo_history = new PDO($h_dsn, $h_user, $h_pass, [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
                 PDO::ATTR_PERSISTENT => true
             ]);
             $history_db_status = true;
+        } catch (PDOException $e) {
+            error_log("Historical DB Connection via config.php failed: " . $e->getMessage());
         }
-    } catch (Exception $e) {
-        error_log("Historical DB Connection error: " . $e->getMessage());
+    }
+    
+    // Fallback to tconfig tokens if config.php did not specify history details
+    if (!$history_db_status && $db_status) {
+        try {
+            $stmt = $pdo->query("SELECT token, value FROM tconfig WHERE token IN ('history_host', 'history_port', 'history_db', 'history_user', 'history_pass')");
+            $histConfig = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $histConfig[$row['token']] = $row['value'];
+            }
+            
+            if (!empty($histConfig['history_host']) && !empty($histConfig['history_db'])) {
+                $h_host = $histConfig['history_host'];
+                $h_port = !empty($histConfig['history_port']) ? (int)$histConfig['history_port'] : 3306;
+                $h_dbname = $histConfig['history_db'];
+                $h_user = $histConfig['history_user'];
+                $h_pass = $histConfig['history_pass'];
+                
+                if (function_exists('io_safe_decrypt')) {
+                    $h_pass = io_safe_decrypt($h_pass);
+                }
+                
+                $h_dsn = "mysql:host={$h_host};port={$h_port};dbname={$h_dbname};charset=utf8mb4";
+                $pdo_history = new PDO($h_dsn, $h_user, $h_pass, [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::ATTR_EMULATE_PREPARES => false,
+                    PDO::ATTR_PERSISTENT => true
+                ]);
+                $history_db_status = true;
+            }
+        } catch (Exception $e) {
+            error_log("Historical DB Connection via tconfig tokens failed: " . $e->getMessage());
+        }
     }
 }
+
+// Backward compatibility helper mapping
+$history_pdo = $pdo_history;
 
 /**
  * Common Helper Functions
@@ -203,18 +232,30 @@ function downsample_history_data($data, $max_points) {
     return $sampled;
 }
 
-function get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, $limit = 500, $order = 'DESC') {
-    // Use a large database limit to capture the entire date range, then downsample in PHP
-    $db_limit = 50000;
+function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $limit = 1000, $order = 'DESC') {
+    // 1. Prepare query across the three history tables
     $query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
               UNION ALL
               SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
               UNION ALL
               SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-              ORDER BY ts ASC LIMIT {$db_limit}";
+              ORDER BY ts ASC";
 
-    // 1. Fetch from active database
+    $historyData = [];
     $activeData = [];
+
+    // 2. Query history database first (if connection exists)
+    if ($pdo_history !== null) {
+        try {
+            $stmtHist = $pdo_history->prepare($query);
+            $stmtHist->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
+            $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log("Historical DB query error: " . $e->getMessage());
+        }
+    }
+
+    // 3. Query active database
     try {
         $stmt = $pdo->prepare($query);
         $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
@@ -223,37 +264,36 @@ function get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, $lim
         error_log("Active DB query error: " . $e->getMessage());
     }
 
-    // 2. Fetch from historical database if available
-    $historyData = [];
-    if ($history_pdo) {
-        try {
-            $stmtHist = $history_pdo->prepare($query);
-            $stmtHist->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
-            $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) {
-            error_log("Historical DB query error: " . $e->getMessage());
-        }
-    }
+    // 4. Merge results using array_merge
+    $merged = array_merge($historyData, $activeData);
 
-    // 3. Merge and deduplicate by exact timestamp
-    $merged = array_merge($activeData, $historyData);
+    // Deduplicate by timestamp to prevent duplicate points
     $unique = [];
     foreach ($merged as $item) {
         $unique[$item['ts']] = $item;
     }
-
-    // 4. Sort chronologically (ASC) for downsampling
-    ksort($unique);
     $result = array_values($unique);
 
-    // 5. Downsample to the requested limit if we exceed it
-    if (count($result) > $limit) {
+    // If downsampling is beneficial for very large datasets, we can apply it
+    if (count($result) > $limit * 2) {
         $result = downsample_history_data($result, $limit);
     }
 
-    // 6. Apply requested ordering
-    if ($order === 'DESC') {
-        $result = array_reverse($result);
+    // 5. Sort chronologically (ASC/DESC depending on chart requirement) using usort
+    usort($result, function($a, $b) use ($order) {
+        $tsA = (int)$a['ts'];
+        $tsB = (int)$b['ts'];
+        if ($tsA === $tsB) return 0;
+        if ($order === 'DESC') {
+            return ($tsA > $tsB) ? -1 : 1;
+        } else {
+            return ($tsA < $tsB) ? -1 : 1;
+        }
+    });
+
+    // 6. Apply array_slice to limit output size to prevent frontend lag
+    if (count($result) > $limit) {
+        $result = array_slice($result, 0, $limit);
     }
 
     return $result;
