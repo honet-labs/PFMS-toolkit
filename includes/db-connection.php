@@ -25,7 +25,17 @@ $formatted_array = array_map(function($p) {
 $dynamic_breadcrumb = implode(' / ', $formatted_array);
 
 // 2. PANDORA FMS BASE CONFIG
-$PANDORA_BASE_URL = "/pandora_console";
+$script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+$PANEL_DIR_NAME = 'custom';
+if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
+    $PANDORA_BASE_URL = rtrim($matches[1], '/');
+    $PANEL_DIR_NAME = $matches[2];
+} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
+    $PANDORA_BASE_URL = '';
+    $PANEL_DIR_NAME = $matches[1];
+} else {
+    $PANDORA_BASE_URL = "/pandora_console";
+}
 
 // 2. SEARCH AND LOAD PANDORA CONFIG
 if (!isset($config) || !is_array($config)) {

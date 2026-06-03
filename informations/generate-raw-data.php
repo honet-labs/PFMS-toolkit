@@ -262,9 +262,9 @@ if (!empty($export) && !empty($rows)) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Raw Data Generator</title>
     <link rel="icon" href="/pandora_console/images/pandora.ico" type="image/x-icon">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/fonts/fonts.css" />
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" />
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <style>
         * { font-family: 'Lato', sans-serif !important; color: #333; font-size: 14px !important; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }

@@ -353,8 +353,8 @@ if ($api === 'create_folder' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <title>Script Manager - Pandora FMS</title>
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; }
         .material-symbols-outlined { vertical-align: middle; font-size: 18px; }
@@ -486,14 +486,14 @@ if ($api === 'create_folder' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="modal-overlay" id="rollbackModal"><div class="modal-box"><div style="display:flex; justify-content:space-between; margin-bottom:15px; border-bottom:1px solid #eee;"><h5>Versions: <span id="verPath"></span></h5><span class="material-symbols-outlined" style="cursor:pointer;" onclick="closeRollbackModal()">close</span></div><table class="table-pfms"><thead><tr><th>Version</th><th>Size</th><th>Created</th><th></th></tr></thead><tbody id="versionTableBody"></tbody></table></div></div>
 
     <!-- Ace Editor Local -->
-    <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/ace/ace.js"></script>
+    <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/ace/ace.js"></script>
     <script>
         const csrf = '<?= $_SESSION['pfms_csrf_token'] ?>';
         let currentPath = '';
         let selectedFile = null;
         
         // Configure Ace to use local path for themes/modes
-        ace.config.set("basePath", "<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/ace");
+        ace.config.set("basePath", "<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/ace");
         
         const editor = ace.edit("editorContainer");
         editor.setTheme("ace/theme/monokai");

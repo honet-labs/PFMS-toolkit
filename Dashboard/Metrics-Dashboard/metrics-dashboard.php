@@ -15,9 +15,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 
 // 2. CONFIG LOADING
 $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
-$custom_pos = strpos($script_dir, '/custom/panel');
-if ($custom_pos !== false) {
-    $PANDORA_BASE_URL = rtrim(substr($script_dir, 0, $custom_pos), '/');
+if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
+    $PANDORA_BASE_URL = rtrim($matches[1], '/');
+} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
+    $PANDORA_BASE_URL = '';
 } else {
     $PANDORA_BASE_URL = "/pandora_console";
 }

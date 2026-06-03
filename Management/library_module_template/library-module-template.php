@@ -328,8 +328,8 @@ if ($api === 'delete') {
     <title>Library Module Templates</title>
     
     <link rel="icon" href="/pandora_console/images/pandora.ico" type="image/x-icon">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/bootstrap/bootstrap.min.css" />
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" />
 
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #1e293b; font-size: 13px; margin: 0; padding: 0; background-color: #f4f6f8; -webkit-font-smoothing: antialiased; }
