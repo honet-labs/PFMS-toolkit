@@ -16,6 +16,15 @@ header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 header("Expires: Thu, 01 Jan 1970 00:00:00 GMT");
 
+if (isset($_GET['clear_cache'])) {
+    if (function_exists('opcache_reset') && opcache_reset()) {
+        echo "PHP OpCache reset successfully!";
+    } else {
+        echo "OpCache is not enabled or failed to reset.";
+    }
+    exit;
+}
+
 // 2. CORE UTILS & DB CONNECTION
 require_once __DIR__ . '/includes/db-connection.php';
 
