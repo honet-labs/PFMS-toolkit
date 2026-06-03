@@ -4,12 +4,8 @@
 /old/
 *.log
 
-# Dependencies
-/vendor/*
-!/vendor/fonts/
-!/vendor/bootstrap/
-!/vendor/ace/
-!/vendor/sortablejs/
+# Dependencies (Allow tracking vendor frontend assets)
+!/vendor/
 
 # OS generated files
 .DS_Store
