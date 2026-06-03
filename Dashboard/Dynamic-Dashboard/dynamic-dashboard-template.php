@@ -9,6 +9,7 @@
 $DEFAULT_TZ = "Asia/Jakarta";
 date_default_timezone_set($DEFAULT_TZ);
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+ob_start();
 
 // 1. DYNAMIC BREADCRUMB
 set_time_limit(120); 
@@ -31,14 +32,14 @@ $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 $api = $_GET['api'] ?? '';
 
 if ($api === 'load_config') {
-    ob_clean(); header('Content-Type: application/json');
+    if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if(file_exists($CONFIG_FILE)) { echo file_get_contents($CONFIG_FILE); } 
     else { echo json_encode([]); } 
     exit;
 }
 
 if ($api === 'save_config') {
-    ob_clean(); header('Content-Type: application/json');
+    if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
 
     // CSRF Validation
     $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
@@ -60,7 +61,7 @@ if ($api === 'save_config') {
 }
 
 if ($api === 'groups') {
-    ob_clean(); header('Content-Type: application/json');
+    if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['error' => 'DB Connection Error: ' . $db_error]); exit; }
     $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
     $dropdown = [['id' => '0', 'name' => '-- Semua Group (All Groups) --']];
@@ -69,7 +70,7 @@ if ($api === 'groups') {
 }
 
 if ($api === 'module_list') {
-    ob_clean(); header('Content-Type: application/json');
+    if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['error' => 'DB Connection Error: ' . $db_error]); exit; }
     $stmt = $pdo->query("SELECT DISTINCT nombre FROM tagente_modulo WHERE disabled = 0 ORDER BY nombre ASC");
     $list = [];
@@ -81,7 +82,7 @@ if ($api === 'module_list') {
 }
 
 if ($api === 'template_nodes') {
-    ob_clean(); header('Content-Type: application/json');
+    if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['error' => 'DB Connection Error: ' . $db_error]); exit; }
     $groupId = (int)($_GET['group_id'] ?? 0);
     try {
@@ -125,7 +126,7 @@ if ($api === 'template_nodes') {
         }
         foreach($list as &$l) { $l['alias'] = pretty_text($l['alias']); }
     } catch (Throwable $e) { 
-        ob_clean(); 
+        if (ob_get_level() > 0) ob_clean(); 
         header('Content-Type: application/json');
         echo json_encode(['error' => $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine()]); 
         exit; 
@@ -133,7 +134,7 @@ if ($api === 'template_nodes') {
 }
 
 if ($api === 'detail_graph' && $db_status) {
-    ob_clean(); header('Content-Type: application/json');
+    if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     $id_mod = (int)$_GET['id_mod'];
     $range = $_GET['range'] ?? '21600';
 
@@ -161,7 +162,7 @@ if ($api === 'detail_graph' && $db_status) {
             ];
         }
     } catch (Throwable $e) { 
-        ob_clean(); 
+        if (ob_get_level() > 0) ob_clean(); 
         header('Content-Type: application/json');
         echo json_encode(['ok' => false, 'error' => $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine()]); 
     }
@@ -169,7 +170,7 @@ if ($api === 'detail_graph' && $db_status) {
 }
 
 if ($api === 'bulk_panel_data') {
-    ob_clean(); header('Content-Type: application/json');
+    if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['ok' => false, 'error' => 'DB Connection Error: ' . $db_error]); exit; }
     $input = json_decode(file_get_contents('php://input'), true);
     
@@ -283,7 +284,7 @@ if ($api === 'bulk_panel_data') {
         }
         echo json_encode(['ok' => true, 'data' => $results]);
     } catch (Throwable $e) { 
-        ob_clean(); 
+        if (ob_get_level() > 0) ob_clean(); 
         header('Content-Type: application/json');
         echo json_encode(['ok' => false, 'error' => $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine()]); 
     }
