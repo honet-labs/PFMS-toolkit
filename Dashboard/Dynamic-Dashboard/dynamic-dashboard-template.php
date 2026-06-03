@@ -10,6 +10,32 @@ $DEFAULT_TZ = "Asia/Jakarta";
 date_default_timezone_set($DEFAULT_TZ);
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 ob_start();
+
+// Catch any PHP fatal error/syntax/parse/execution issue and output clean JSON
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (ob_get_level() > 0) ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode([
+            'ok' => false,
+            'error' => 'FATAL PHP ERROR: ' . $error['message'] . ' in ' . basename($error['file']) . ' on line ' . $error['line']
+        ]);
+        exit;
+    }
+});
+
+// Catch any uncaught PHP exceptions and output clean JSON
+set_exception_handler(function($e) {
+    if (ob_get_level() > 0) ob_clean();
+    header('Content-Type: application/json');
+    echo json_encode([
+        'ok' => false,
+        'error' => 'UNCAUGHT EXCEPTION: ' . $e->getMessage() . ' in ' . basename($e->getFile()) . ' on line ' . $e->getLine()
+    ]);
+    exit;
+});
+
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
@@ -103,14 +129,16 @@ if ($api === 'template_nodes') {
             $stmtAllGroups = $pdo->query("SELECT id_grupo, parent FROM tgrupo"); 
             $allGroups = $stmtAllGroups->fetchAll();
             
-            function getChildGroups($parentId, $allGroups) { 
-                $children = [$parentId]; 
-                foreach ($allGroups as $g) { 
-                    if ($g['parent'] == $parentId && $g['id_grupo'] != $parentId) { 
-                        $children = array_merge($children, getChildGroups($g['id_grupo'], $allGroups)); 
+            if (!function_exists('getChildGroups')) {
+                function getChildGroups($parentId, $allGroups) { 
+                    $children = [$parentId]; 
+                    foreach ($allGroups as $g) { 
+                        if ($g['parent'] == $parentId && $g['id_grupo'] != $parentId) { 
+                            $children = array_merge($children, getChildGroups($g['id_grupo'], $allGroups)); 
+                        } 
                     } 
-                } 
-                return array_unique($children); 
+                    return array_unique($children); 
+                }
             }
             
             $targetGroups = getChildGroups($groupId, $allGroups);
@@ -197,12 +225,14 @@ if ($api === 'bulk_panel_data') {
 
     try {
         // Helper to normalize strings
-        function normalize_mod_name($s) {
-            $s = pretty_text($s);
-            $s = preg_replace('/\s+/u', ' ', $s);
-            $s = str_replace(chr(194).chr(160), ' ', $s);
-            $s = preg_replace('/[^\x20-\x7E]/', '', $s);
-            return strtolower(trim($s));
+        if (!function_exists('normalize_mod_name')) {
+            function normalize_mod_name($s) {
+                $s = pretty_text($s);
+                $s = preg_replace('/\s+/u', ' ', $s);
+                $s = str_replace(chr(194).chr(160), ' ', $s);
+                $s = preg_replace('/[^\x20-\x7E]/', '', $s);
+                return strtolower(trim($s));
+            }
         }
 
         // Fetch ALL modules for this agent
