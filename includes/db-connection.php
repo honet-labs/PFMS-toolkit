@@ -130,7 +130,7 @@ if ($config_loaded) {
                 ]);
                 $history_db_status = true;
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("Historical DB Connection via tconfig tokens failed: " . $e->getMessage());
         }
     }
@@ -250,7 +250,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
             $stmtHist = $pdo_history->prepare($query);
             $stmtHist->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
             $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("Historical DB query error: " . $e->getMessage());
         }
     }
@@ -260,7 +260,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
         $stmt = $pdo->prepare($query);
         $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
         $activeData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         error_log("Active DB query error: " . $e->getMessage());
     }
 

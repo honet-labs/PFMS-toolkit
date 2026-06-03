@@ -2075,7 +2075,14 @@ function refreshCurrentNodeData() {
     const payload = { agent_id: agentId, start: timeRng.start, end: timeRng.end, panels: targetPanels };
 
     fetch('?api=bulk_panel_data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    .then(r=>r.json()).then(res => {
+    .then(r => r.text().then(text => {
+        try {
+            return JSON.parse(text);
+        } catch(e) {
+            console.error("Malformed JSON response from server:", text);
+            throw new Error("Server returned invalid JSON. Check browser console (F12 -> Console) to see the raw error.");
+        }
+    })).then(res => {
         if (!res.ok) throw new Error(res.error || 'Unknown server error');
         
         const lastUpd = document.getElementById('last_update_text');
