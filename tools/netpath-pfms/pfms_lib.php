@@ -134,7 +134,7 @@ function pfms_render_header(string $title, string $breadcrumb, string $actionsHt
 <head>
     <meta charset="utf-8">
     <title><?= h($title) ?> | Pandora FMS</title>
-    <link href="/pandora_console/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
     <link rel="stylesheet" href="pfms_routepath.css?v=<?= time() ?>">
 </head>
 <body style="margin:0; background:#f4f7f9; font-family:Inter, sans-serif; overflow-x:hidden;">

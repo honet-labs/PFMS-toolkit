@@ -358,11 +358,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Universal Dynamic Dashboard</title>
     <link rel="icon" href="<?= h($PANDORA_BASE_URL) ?>/images/pandora.ico" type="image/x-icon">
-    <link href="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/fonts/fonts.css" />
-    <link href="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <script src="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/echarts/echarts.min.js"></script>
-    <script src="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/html2canvas/html2canvas.min.js"></script>
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
+    <link rel="stylesheet" href="../../vendor/fonts/fonts.css" />
+    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <script src="../../vendor/echarts/echarts.min.js"></script>
+    <script src="../../vendor/html2canvas/html2canvas.min.js"></script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }
@@ -1154,7 +1154,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     </div>
 </div>
 
-<script src="/pandora_console/custom/panel/vendor/sortablejs/Sortable.min.js"></script>
+<script src="../../vendor/sortablejs/Sortable.min.js"></script>
 <script>
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
 const apiPage = 'Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php';
@@ -2040,7 +2040,7 @@ function generateSummaryPanelHtml(p, modules) {
                                 rowHtml += `<td>
                                     <div style="display:flex; align-items:center; gap:8px;">
                                         <span class="status-dot ${bgClass}" style="margin:0; width:8px; height:8px;"></span>
-                                        <a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}" target="_blank" style="color:#1976d2; font-weight:600; text-decoration:none;">${m.agent_name}</a>
+                                        <a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}" target="_blank" style="color:#1976d2; font-weight:600; text-decoration:none;">${m.agent_name}</a>
                                     </div>
                                 </td>`;
                             }
@@ -2761,7 +2761,7 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
 
         return `
             <tr>
-                <td style="color:#3498db; font-weight:600; cursor:pointer; white-space:nowrap;" onclick="window.open('/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}', '_blank')">${m.agent_name}</td>
+                <td style="color:#3498db; font-weight:600; cursor:pointer; white-space:nowrap;" onclick="window.open('${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}', '_blank')">${m.agent_name}</td>
                 <td style="white-space:nowrap;">${m.group_name}</td>
                 <td style="color:#e74c3c; white-space:nowrap;">${m.ip_address}</td>
                 <td style="font-weight:500;">${m.module_name}</td>
@@ -2800,7 +2800,7 @@ function closeStatusDetailModal() {
 function openNativeChartModal(modId, title) {
     if(!modId || modId === 0) return;
     document.getElementById('nativeChartTitle').innerHTML = `<span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40; vertical-align:middle; margin-right:5px;">monitoring</span> ${title}`;
-    const url = `/pandora_console/operation/agentes/stat_win.php?type=sparse&period=86400&id=${modId}&refresh=600&period_graph=0&draw_events=0`;
+    const url = `${PANDORA_URL}/operation/agentes/stat_win.php?type=sparse&period=86400&id=${modId}&refresh=600&period_graph=0&draw_events=0`;
     document.getElementById('nativeChartFrame').src = url;
     document.getElementById('nativeChartModal').style.display = 'flex';
 }

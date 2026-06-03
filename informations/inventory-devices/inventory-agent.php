@@ -177,10 +177,10 @@ function findModuleData($aid, $col, $map) {
 <head>
     <meta charset="UTF-8">
     <title>Inventory Agent - Filtered</title>
-    <link href="/pandora_console/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="/pandora_console/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <link href="/pandora_console/custom/panel/vendor/datatables/dataTables.bootstrap5.min.css" rel="stylesheet">
-    <link href="/pandora_console/custom/panel/vendor/datatables/buttons.bootstrap5.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/datatables/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/datatables/buttons.bootstrap5.min.css" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; margin: 0; }
         .header-box { background: #f4f6f8; padding: 15px 30px; border-bottom: 1px solid #e0e4e8; display: flex; justify-content: space-between; align-items: center; }
@@ -288,10 +288,10 @@ function findModuleData($aid, $col, $map) {
     </div>
 </div>
 
-<script src="/pandora_console/custom/panel/vendor/jquery/jquery-3.7.0.min.js"></script>
-<script src="/pandora_console/custom/panel/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="/pandora_console/custom/panel/vendor/datatables/jquery.dataTables.min.js"></script>
-<script src="/pandora_console/custom/panel/vendor/datatables/dataTables.bootstrap5.min.js"></script>
+<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/jquery/jquery-3.7.0.min.js"></script>
+<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/datatables/jquery.dataTables.min.js"></script>
+<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/custom/panel/vendor/datatables/dataTables.bootstrap5.min.js"></script>
 
 <script>
     let currentCols = [];
