@@ -194,7 +194,7 @@ if ($api === 'detail_graph') {
         $unitRow = $stmtUnit->fetch();
         $unit = $unitRow ? pretty_text($unitRow['unit']) : '';
 
-        $raw_data = get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, 1500, 'ASC');
+        $raw_data = get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, 5000, 'ASC');
         $data = [];
         foreach ($raw_data as $row) {
             $data[] = [
@@ -202,7 +202,21 @@ if ($api === 'detail_graph') {
                 'datos' => $row['datos']
             ];
         }
-        echo json_encode(['ok' => true, 'data' => $data, 'unit' => $unit]);
+        
+        // Include diagnostic info for debugging time range issues
+        $debug = [
+            'requested_start' => date('Y-m-d H:i:s', $start),
+            'requested_end' => date('Y-m-d H:i:s', $end),
+            'range_days' => round(($end - $start) / 86400, 1),
+            'history_db_connected' => ($history_pdo !== null),
+            'returned_points' => count($data),
+        ];
+        if (count($data) > 0) {
+            $debug['actual_first_point'] = $data[0]['waktu'];
+            $debug['actual_last_point'] = $data[count($data) - 1]['waktu'];
+        }
+        
+        echo json_encode(['ok' => true, 'data' => $data, 'unit' => $unit, 'debug' => $debug]);
     } catch (Throwable $e) { 
         if (ob_get_level() > 0) ob_clean(); 
         header('Content-Type: application/json');
@@ -295,7 +309,7 @@ if ($api === 'bulk_panel_data') {
             foreach($modulesFound as $mod) {
                 $mod_id = $mod['id_agente_modulo'];
                 if (in_array($pType, ['line', 'area', 'bar', 'heatmap'])) {
-                    $raw_hist = get_module_history_data($pdo, $history_pdo, $mod_id, $start, $end, 500, 'DESC');
+                    $raw_hist = get_module_history_data($pdo, $history_pdo, $mod_id, $start, $end, 2000, 'DESC');
                     $history = [];
                     foreach ($raw_hist as $row) {
                         $history[] = [
@@ -2946,6 +2960,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         }
         
         const data = res.data || [];
+        if (res.debug) console.log('detail_graph debug:', res.debug);
         document.getElementById('nativeModuleDetailCount').innerText = `${data.length} rows`;
         
         if (data.length === 0) {

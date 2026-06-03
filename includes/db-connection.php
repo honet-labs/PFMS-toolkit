@@ -234,7 +234,7 @@ function downsample_history_data($data, $max_points) {
     return $sampled;
 }
 
-function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $limit = 1000, $order = 'DESC') {
+function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $limit = 5000, $order = 'DESC') {
     // 1. Prepare query across the three history tables
     $query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
               UNION ALL

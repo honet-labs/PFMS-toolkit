@@ -156,7 +156,7 @@ if ($api === 'detail_graph' && $db_status) {
         $unitRow = $stmtUnit->fetch();
         $unit = $unitRow ? pretty_text($unitRow['unit']) : '';
 
-        $raw_data = get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, 1500, 'ASC');
+        $raw_data = get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, 5000, 'ASC');
         $data = [];
         foreach ($raw_data as $row) {
             $data[] = [
@@ -285,34 +285,27 @@ if ($api === 'card_data' && $db_status) {
         if (!empty($tableData) && isset($_GET['history']) && $_GET['history'] === '1') {
             $modIds = array_column($tableData, 'id_agente_modulo');
             if (!empty($modIds)) {
-                $placeholders = implode(',', array_fill(0, count($modIds), '?'));
                 $range = isset($_GET['time_range']) ? $_GET['time_range'] : '86400';
                 
                 if ($range === 'custom' && isset($_GET['start_time']) && isset($_GET['end_time'])) {
                     $startTime = (int)$_GET['start_time'];
                     $endTime = (int)$_GET['end_time'];
-                    $sqlHist = "SELECT id_agente_modulo, utimestamp, datos FROM tagente_datos 
-                                WHERE id_agente_modulo IN ($placeholders) AND utimestamp >= ? AND utimestamp <= ? 
-                                ORDER BY utimestamp ASC";
-                    $histParams = array_merge($modIds, [$startTime, $endTime]);
                 } else {
-                    $startTime = time() - (int)$range;
-                    $sqlHist = "SELECT id_agente_modulo, utimestamp, datos FROM tagente_datos 
-                                WHERE id_agente_modulo IN ($placeholders) AND utimestamp >= ? 
-                                ORDER BY utimestamp ASC";
-                    $histParams = array_merge($modIds, [$startTime]);
+                    $endTime = time();
+                    $startTime = $endTime - (int)$range;
                 }
                 
-                $stHist = $pdo->prepare($sqlHist);
-                $stHist->execute($histParams);
-                $histList = $stHist->fetchAll();
-                foreach ($histList as $h) {
-                    $historyData[] = [
-                        'id_mod' => (int)$h['id_agente_modulo'],
-                        'utimestamp' => (int)$h['utimestamp'],
-                        'time' => date('d/m/Y H:i:s', $h['utimestamp']),
-                        'val' => (float)$h['datos']
-                    ];
+                // Use shared function that queries BOTH active + historical databases
+                foreach ($modIds as $modId) {
+                    $modHist = get_module_history_data($pdo, $history_pdo, (int)$modId, $startTime, $endTime, 2000, 'ASC');
+                    foreach ($modHist as $h) {
+                        $historyData[] = [
+                            'id_mod' => (int)$modId,
+                            'utimestamp' => (int)$h['ts'],
+                            'time' => date('d/m/Y H:i:s', $h['ts']),
+                            'val' => (float)$h['datos']
+                        ];
+                    }
                 }
             }
         }
