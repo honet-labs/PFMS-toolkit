@@ -1143,6 +1143,16 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 <script src="/pandora_console/custom/panel/vendor/sortablejs/Sortable.min.js"></script>
 <script>
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
+const apiPage = 'Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php';
+const apiBase = '../../custom-index.php';
+
+function getApiUrl(apiName, params = {}) {
+    const u = new URL(apiBase, window.location.href);
+    u.searchParams.set('page', apiPage);
+    u.searchParams.set('api', apiName);
+    Object.keys(params).forEach(k => u.searchParams.set(k, params[k]));
+    return u.toString();
+}
 let masterDashboards = [];
 let currentDashId = null;
 let currentAgentList = [];
@@ -1288,7 +1298,7 @@ function markSaved() {
 }
 
 function saveConfigToServer(callback, quiet = false) {
-    fetch('?api=save_config', { method:'POST', body:JSON.stringify(masterDashboards), headers: {'X-CSRF-TOKEN': '<?= $csrf_token ?>'} })
+    fetch(getApiUrl('save_config'), { method:'POST', body:JSON.stringify(masterDashboards), headers: {'X-CSRF-TOKEN': '<?= $csrf_token ?>'} })
     .then(r => r.json())
     .then(res => {
         if(!res.ok) alert(`SAVE FAILED!\nReason: ${res.error?.message || res.error || 'Unknown Error'}\nTarget: ${res.file || 'File permission issue'}`);
@@ -1321,7 +1331,7 @@ function updateURLState(dashId = null, groupId = null, agentId = null) {
 
 async function init() {
     try {
-        const res = await fetch('?api=load_config');
+        const res = await fetch(getApiUrl('load_config'));
         const text = await res.text();
         try {
             const data = JSON.parse(text);
@@ -1334,7 +1344,7 @@ async function init() {
     }
 
     try {
-        const r = await fetch('?api=groups');
+        const r = await fetch(getApiUrl('groups'));
         const text = await r.text();
         let data;
         try {
@@ -1371,7 +1381,7 @@ async function init() {
     }
 
     try {
-        const r = await fetch('?api=module_list');
+        const r = await fetch(getApiUrl('module_list'));
         const text = await r.text();
         try {
             globalModuleList = JSON.parse(text);
@@ -1615,7 +1625,7 @@ function forceRefresh() {
 function onGroupChange(autoSelectAgentId = null) {
     const groupId = document.getElementById('top_group').value;
     const searchInput = document.getElementById('agent_search_input');
-    fetch(`?api=template_nodes&group_id=${groupId}`)
+    fetch(getApiUrl('template_nodes', { group_id: groupId }))
     .then(r => r.text().then(text => {
         try { return JSON.parse(text); }
         catch(e) { console.error("Malformed JSON response for template_nodes:", text); return {error: "Invalid JSON response from server. Check console."}; }
@@ -2148,7 +2158,7 @@ function refreshCurrentNodeData() {
     const timeRng = getTimeRange();
     const payload = { agent_id: agentId, start: timeRng.start, end: timeRng.end, panels: targetPanels };
 
-    fetch('?api=bulk_panel_data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    fetch(getApiUrl('bulk_panel_data'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     .then(r => r.text().then(text => {
         try {
             return JSON.parse(text);
@@ -2915,10 +2925,12 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
     }
     
     try {
-        let url = `?api=detail_graph&id_mod=${moduleId}&range=${rangeSeconds}`;
+        const params = { id_mod: moduleId, range: rangeSeconds };
         if (rangeSeconds === 'custom') {
-            url += `&start=${customStart}&end=${customEnd}`;
+            params.start = customStart;
+            params.end = customEnd;
         }
+        const url = getApiUrl('detail_graph', params);
         
         const resText = await fetch(url).then(r => r.text());
         let res;

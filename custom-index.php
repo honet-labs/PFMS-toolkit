@@ -73,6 +73,18 @@ $sys_files = ['custom-index.php'];
 $active_exclude_dirs = array_unique(array_merge($config_data['exclude_dirs'], $sys_dirs));
 $active_exclude_files = array_unique(array_merge($config_data['exclude_files'], $sys_files));
 
+// API Forwarding / Routing to sub-pages to prevent 500 errors caused by direct execution blocks in webservers
+if (isset($_GET['api']) && !empty($_GET['page'])) {
+    $target_page = $_GET['page'];
+    if (!preg_match('/\.\./', $target_page)) {
+        $target_file = $base_dir . '/' . $target_page;
+        if (file_exists($target_file) && pathinfo($target_file, PATHINFO_EXTENSION) === 'php') {
+            require $target_file;
+            exit;
+        }
+    }
+}
+
 // =====================================================================
 // 4. AJAX ENDPOINT FOR SAVING SETTINGS
 // =====================================================================
