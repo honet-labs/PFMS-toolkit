@@ -155,16 +155,65 @@ function timeAgo($datetime) {
     return $diff . " seconds";
 }
 
+function downsample_history_data($data, $max_points) {
+    $n = count($data);
+    if ($n <= $max_points) {
+        return $data;
+    }
+    
+    $step = $n / $max_points;
+    $sampled = [];
+    
+    for ($i = 0; $i < $max_points; $i++) {
+        $start_idx = (int)floor($i * $step);
+        $end_idx = (int)floor(($i + 1) * $step);
+        if ($end_idx > $n) $end_idx = $n;
+        if ($start_idx >= $end_idx) $start_idx = $end_idx - 1;
+        
+        $sum_val = 0.0;
+        $count_val = 0;
+        $timestamps = [];
+        $is_numeric = true;
+        
+        for ($j = $start_idx; $j < $end_idx; $j++) {
+            $val = $data[$j]['datos'];
+            if (is_numeric($val)) {
+                $sum_val += (float)$val;
+                $count_val++;
+            } else {
+                $is_numeric = false;
+            }
+            $timestamps[] = (int)$data[$j]['ts'];
+        }
+        
+        $avg_ts = count($timestamps) > 0 ? (int)round(array_sum($timestamps) / count($timestamps)) : 0;
+        
+        if ($is_numeric && $count_val > 0) {
+            $avg_val = $sum_val / $count_val;
+        } else {
+            $avg_val = $data[(int)floor(($start_idx + $end_idx) / 2)]['datos'];
+        }
+        
+        $sampled[] = [
+            'ts' => $avg_ts,
+            'datos' => $avg_val
+        ];
+    }
+    
+    return $sampled;
+}
+
 function get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, $limit = 500, $order = 'DESC') {
-    // 1. Query templates
+    // Use a large database limit to capture the entire date range, then downsample in PHP
+    $db_limit = 50000;
     $query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
               UNION ALL
               SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
               UNION ALL
               SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-              ORDER BY ts {$order} LIMIT {$limit}";
+              ORDER BY ts ASC LIMIT {$db_limit}";
 
-    // 2. Fetch from active database
+    // 1. Fetch from active database
     $activeData = [];
     try {
         $stmt = $pdo->prepare($query);
@@ -174,7 +223,7 @@ function get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, $lim
         error_log("Active DB query error: " . $e->getMessage());
     }
 
-    // 3. Fetch from historical database if available
+    // 2. Fetch from historical database if available
     $historyData = [];
     if ($history_pdo) {
         try {
@@ -186,29 +235,25 @@ function get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, $lim
         }
     }
 
-    // 4. Merge, deduplicate, and sort
-    if (empty($historyData)) {
-        return $activeData;
-    }
-    if (empty($activeData)) {
-        return $historyData;
-    }
-
+    // 3. Merge and deduplicate by exact timestamp
     $merged = array_merge($activeData, $historyData);
     $unique = [];
     foreach ($merged as $item) {
         $unique[$item['ts']] = $item;
     }
 
-    if ($order === 'DESC') {
-        krsort($unique);
-    } else {
-        ksort($unique);
+    // 4. Sort chronologically (ASC) for downsampling
+    ksort($unique);
+    $result = array_values($unique);
+
+    // 5. Downsample to the requested limit if we exceed it
+    if (count($result) > $limit) {
+        $result = downsample_history_data($result, $limit);
     }
 
-    $result = array_values($unique);
-    if (count($result) > $limit) {
-        $result = array_slice($result, 0, $limit);
+    // 6. Apply requested ordering
+    if ($order === 'DESC') {
+        $result = array_reverse($result);
     }
 
     return $result;
