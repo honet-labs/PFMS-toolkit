@@ -10,6 +10,10 @@ $DEFAULT_TZ = "Asia/Jakarta";
 date_default_timezone_set($DEFAULT_TZ);
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 ob_start();
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+header("Expires: Thu, 01 Jan 1970 00:00:00 GMT");
 
 // 1. DYNAMIC BREADCRUMB
 set_time_limit(120); 
@@ -141,8 +145,9 @@ if ($api === 'template_nodes') {
     }
 }
 
-if ($api === 'detail_graph' && $db_status) {
+if ($api === 'detail_graph') {
     if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
+    if (!$db_status) { echo json_encode(['ok' => false, 'error' => 'DB Connection Error: ' . $db_error]); exit; }
     $id_mod = (int)$_GET['id_mod'];
     $range = $_GET['range'] ?? '21600';
 
@@ -2867,7 +2872,14 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
             url += `&start=${customStart}&end=${customEnd}`;
         }
         
-        const res = await fetch(url).then(r => r.json());
+        const resText = await fetch(url).then(r => r.text());
+        let res;
+        try {
+            res = JSON.parse(resText);
+        } catch(e) {
+            console.error("Malformed JSON response from detail_graph:", resText);
+            throw new Error("Server returned invalid JSON. Check browser console (F12 -> Console) to see the raw error.");
+        }
         if (!res.ok) {
             tableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:30px; color:#e74c3c;">Error: ${res.error || 'Failed to load data'}</td></tr>`;
             return;
