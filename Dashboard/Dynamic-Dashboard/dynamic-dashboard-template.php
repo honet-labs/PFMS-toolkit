@@ -174,6 +174,7 @@ if ($api === 'detail_graph') {
                 'datos' => $row['datos']
             ];
         }
+        echo json_encode(['ok' => true, 'data' => $data, 'unit' => $unit]);
     } catch (Throwable $e) { 
         if (ob_get_level() > 0) ob_clean(); 
         header('Content-Type: application/json');
@@ -2687,13 +2688,30 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
     body.innerHTML = filtered.map(m => {
         const bgClass = {0:'bg-green', 1:'bg-red', 2:'bg-yellow', 4:'bg-blue'}[m.status] || 'bg-gray';
         const statusLbl = {0:'UP', 1:'CRITICAL', 2:'WARNING', 4:'NOT INIT'}[m.status] || 'UNKNOWN';
+        
+        let displayVal = m.current || '';
+        let valHtml = '';
+        if (displayVal.length > 25) {
+            const escapedVal = displayVal.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/"/g, '&quot;');
+            const escapedMod = m.module_name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const escapedAgent = m.agent_name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            valHtml = `
+                <div style="display:inline-flex; align-items:center; gap:6px;">
+                    <span style="font-size:11px;" title="${escapedVal}">${displayVal.substring(0, 20)}...</span>
+                    <button style="padding: 2px 6px; font-size: 10px; font-weight: 500; height: 18px; border-radius: 4px; background: #004d40; color: #fff; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1;" onclick="showLongValuePopup('${escapedMod}', '${escapedAgent}', '${escapedVal}')">View</button>
+                </div>
+            `;
+        } else {
+            valHtml = displayVal;
+        }
+
         return `
             <tr>
                 <td style="color:#3498db; font-weight:600; cursor:pointer; white-space:nowrap;" onclick="window.open('/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}', '_blank')">${m.agent_name}</td>
                 <td style="white-space:nowrap;">${m.group_name}</td>
                 <td style="color:#e74c3c; white-space:nowrap;">${m.ip_address}</td>
                 <td style="font-weight:500;">${m.module_name}</td>
-                <td style="font-weight:600; white-space:nowrap;">${m.current}</td>
+                <td style="font-weight:600; white-space:nowrap;">${valHtml}</td>
                 <td style="white-space:nowrap;"><span class="status-pill-dyn ${bgClass}">${statusLbl}</span></td>
                 <td style="text-align:center; white-space:nowrap;">
                     <div style="display:inline-flex; gap:8px; align-items:center; justify-content:center; width:100%;">
