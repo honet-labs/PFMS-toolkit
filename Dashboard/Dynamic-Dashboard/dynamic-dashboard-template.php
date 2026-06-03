@@ -2348,11 +2348,13 @@ function refreshCurrentNodeData() {
                                         const mod = activeModules[p.seriesIndex];
                                         const unitStr = (mod && mod.unit) ? ' ' + mod.unit : '';
                                         let val = p.value;
-                                        if (val !== null && val !== undefined && !isNaN(val)) {
-                                            val = parseFloat(val);
-                                            val = (val % 1 === 0) ? val : val.toFixed(2);
+                                        let displayVal = 'N/A';
+                                        if (val !== null && val !== undefined && val !== '' && !isNaN(val)) {
+                                            let numericVal = parseFloat(val);
+                                            numericVal = (numericVal % 1 === 0) ? numericVal : numericVal.toFixed(2);
+                                            displayVal = numericVal + unitStr;
                                         }
-                                        html += `${p.marker}${p.seriesName}: <b>${val}${unitStr}</b><br/>`;
+                                        html += `${p.marker}${p.seriesName}: <b>${displayVal}</b><br/>`;
                                     });
                                     return html;
                                 }
@@ -2419,11 +2421,13 @@ function refreshCurrentNodeData() {
                                         params.forEach(p => {
                                             const unitStr = m.unit ? ' ' + m.unit : '';
                                             let val = p.value;
-                                            if (val !== null && val !== undefined && !isNaN(val)) {
-                                                val = parseFloat(val);
-                                                val = (val % 1 === 0) ? val : val.toFixed(2);
+                                            let displayVal = 'N/A';
+                                            if (val !== null && val !== undefined && val !== '' && !isNaN(val)) {
+                                                let numericVal = parseFloat(val);
+                                                numericVal = (numericVal % 1 === 0) ? numericVal : numericVal.toFixed(2);
+                                                displayVal = numericVal + unitStr;
                                             }
-                                            html += `${p.marker}${p.seriesName}: <b>${val}${unitStr}</b><br/>`;
+                                            html += `${p.marker}${p.seriesName}: <b>${displayVal}</b><br/>`;
                                         });
                                         return html;
                                     }
