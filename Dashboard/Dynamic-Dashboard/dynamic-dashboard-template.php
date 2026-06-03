@@ -124,8 +124,12 @@ if ($api === 'template_nodes') {
             $list = $stmt->fetchAll();
         }
         foreach($list as &$l) { $l['alias'] = pretty_text($l['alias']); }
-        echo json_encode($list); exit;
-    } catch (Exception $e) { echo json_encode(['error' => $e->getMessage()]); exit; }
+    } catch (Throwable $e) { 
+        ob_clean(); 
+        header('Content-Type: application/json');
+        echo json_encode(['error' => $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine()]); 
+        exit; 
+    }
 }
 
 if ($api === 'detail_graph' && $db_status) {
@@ -156,8 +160,11 @@ if ($api === 'detail_graph' && $db_status) {
                 'datos' => $row['datos']
             ];
         }
-        echo json_encode(['ok' => true, 'data' => $data, 'unit' => $unit]);
-    } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
+    } catch (Throwable $e) { 
+        ob_clean(); 
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine()]); 
+    }
     exit;
 }
 
@@ -275,7 +282,11 @@ if ($api === 'bulk_panel_data') {
             $results[$pId] = [ 'found' => true, 'modules' => $moduleResults ];
         }
         echo json_encode(['ok' => true, 'data' => $results]);
-    } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
+    } catch (Throwable $e) { 
+        ob_clean(); 
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine()]); 
+    }
     exit;
 }
 
