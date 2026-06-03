@@ -16,7 +16,13 @@ set_time_limit(120);
 $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 
 // 2. CONFIG LOADING
-$PANDORA_BASE_URL = "/pandora_console";
+$script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+$custom_pos = strpos($script_dir, '/custom/panel');
+if ($custom_pos !== false) {
+    $PANDORA_BASE_URL = rtrim(substr($script_dir, 0, $custom_pos), '/');
+} else {
+    $PANDORA_BASE_URL = "/pandora_console"; 
+}
 $CONFIG_FILE = __DIR__ . '/dynamic-dashboards-master.json';
 
 // Use centralized db-connection.php - Load this BEFORE session_start to respect Pandora session settings
@@ -302,11 +308,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Universal Dynamic Dashboard</title>
     <link rel="icon" href="<?= h($PANDORA_BASE_URL) ?>/images/pandora.ico" type="image/x-icon">
-    <link href="/pandora_console/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="/pandora_console/custom/panel/vendor/fonts/fonts.css" />
-    <link href="/pandora_console/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <script src="/pandora_console/custom/panel/vendor/echarts/echarts.min.js"></script>
-    <script src="/pandora_console/custom/panel/vendor/html2canvas/html2canvas.min.js"></script>
+    <link href="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/fonts/fonts.css" />
+    <link href="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <script src="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/echarts/echarts.min.js"></script>
+    <script src="<?= h($PANDORA_BASE_URL) ?>/custom/panel/vendor/html2canvas/html2canvas.min.js"></script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }

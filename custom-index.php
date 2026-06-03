@@ -16,7 +16,12 @@ header("Referrer-Policy: strict-origin-when-cross-origin");
 require_once __DIR__ . '/includes/db-connection.php';
 
 $base_dir = __DIR__; 
-$base_url = '/pandora_console/custom/panel';
+$script_name = $_SERVER['SCRIPT_NAME'] ?? '';
+$base_url = rtrim(str_replace('\\', '/', dirname($script_name)), '/');
+$pandora_base = dirname(dirname($base_url));
+if ($pandora_base === '/' || $pandora_base === '\\') {
+    $pandora_base = '';
+}
 $portal_config_file = $base_dir . '/portal_config.json';
 $menu_cache_file = $base_dir . '/temp/menu_cache.json';
 
@@ -30,7 +35,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 if (empty($_SESSION['id_usuario'])) {
     // If no valid session (not logged in), redirect to home page
-    header("Location: /pandora_console/index.php");
+    header("Location: " . ($pandora_base ?: '') . "/index.php");
     exit;
 }
 
@@ -490,11 +495,11 @@ if (!empty($current_page)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PandoraFMS - Custom Extensions Portal</title>
     
-    <link rel="icon" href="/pandora_console/images/pandora.ico" type="image/x-icon">
+    <link rel="icon" href="<?= htmlspecialchars($pandora_base) ?>/images/pandora.ico" type="image/x-icon">
     
     
-    <link href="/pandora_console/custom/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="/pandora_console/custom/panel/vendor/fonts/fonts.css" />
+    <link href="<?= htmlspecialchars($base_url) ?>/vendor/fonts/fonts.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= htmlspecialchars($base_url) ?>/vendor/fonts/fonts.css" />
 
     <script>
         // Hapus Header Ganda di Iframe (Defined early to prevent not defined errors on fast iframe loads)
@@ -607,8 +612,8 @@ if (!empty($current_page)) {
 
 <div class="pandora-header-top">
     <div class="header-left">
-        <a href="/pandora_console/index.php" class="logo-link" title="Go to Pandora FMS Home">
-            <img src="/pandora_console/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Pandora Logo" class="header-logo" onerror="this.style.display='none'">
+        <a href="<?= htmlspecialchars($pandora_base ?: '') ?>/index.php" class="logo-link" title="Go to Pandora FMS Home">
+            <img src="<?= htmlspecialchars($pandora_base ?: '') ?>/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Pandora Logo" class="header-logo" onerror="this.style.display='none'">
         </a>
         <div class="header-divider"></div>
         <div class="header-title-box">
@@ -637,7 +642,7 @@ if (!empty($current_page)) {
         <button class="nav-icon-btn" title="Portal Settings" onclick="openSettings()">
             <span class="material-symbols-outlined">settings</span>
         </button>
-        <a href="/pandora_console/index.php" class="nav-icon-btn" title="Back to Pandora Console">
+        <a href="<?= htmlspecialchars($pandora_base ?: '') ?>/index.php" class="nav-icon-btn" title="Back to Pandora Console">
             <span class="material-symbols-outlined">logout</span>
         </a>
     </div>
