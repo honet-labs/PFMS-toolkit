@@ -1275,14 +1275,21 @@ function updateURLState(dashId = null, groupId = null, agentId = null) {
     window.history.replaceState({}, '', u.toString());
 }
 
-async function init() {
-    try {
-        const res = await fetch('?api=load_config');
-        const data = await res.json();
-        if(Array.isArray(data)) masterDashboards = data;
-    } catch(e) {}
+function init() {
+    fetch('?api=load_config')
+    .then(r => r.text().then(text => {
+        try { return JSON.parse(text); }
+        catch(e) { console.error("Malformed JSON response for load_config:", text); return []; }
+    }))
+    .then(data => { if(Array.isArray(data)) masterDashboards = data; })
+    .catch(e => {});
 
-    fetch('?api=groups').then(r=>r.json()).then(data => { 
+    fetch('?api=groups')
+    .then(r => r.text().then(text => {
+        try { return JSON.parse(text); }
+        catch(e) { console.error("Malformed JSON response for groups:", text); return {error: "Invalid JSON response"}; }
+    }))
+    .then(data => { 
         if (data.error) { console.error("Groups Error:", data.error); return; }
         const selTop = document.getElementById('top_group');
         const selSet = document.getElementById('m_default_group');
@@ -1307,7 +1314,12 @@ async function init() {
         }
     }).catch(err => console.error("Groups Fetch Error:", err));
 
-    fetch('?api=module_list').then(r=>r.json()).then(data => {
+    fetch('?api=module_list')
+    .then(r => r.text().then(text => {
+        try { return JSON.parse(text); }
+        catch(e) { console.error("Malformed JSON response for module_list:", text); return []; }
+    }))
+    .then(data => {
         globalModuleList = data;
         isFetchingModules = false;
     });
@@ -1546,7 +1558,12 @@ function forceRefresh() {
 function onGroupChange(autoSelectAgentId = null) {
     const groupId = document.getElementById('top_group').value;
     const searchInput = document.getElementById('agent_search_input');
-    fetch(`?api=template_nodes&group_id=${groupId}`).then(r=>r.json()).then(nodes => {
+    fetch(`?api=template_nodes&group_id=${groupId}`)
+    .then(r => r.text().then(text => {
+        try { return JSON.parse(text); }
+        catch(e) { console.error("Malformed JSON response for template_nodes:", text); return {error: "Invalid JSON response from server. Check console."}; }
+    }))
+    .then(nodes => {
         if (nodes.error) {
             console.error("Nodes Error:", nodes.error);
             currentAgentList = [];
