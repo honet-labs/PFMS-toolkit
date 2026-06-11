@@ -24,6 +24,7 @@ $directScriptUrl = $PANDORA_BASE_URL . '/' . $panelDir . '/panel/Dashboard/Traff
 
 // 2. CENTRALIZED DB & SECURITY
 require_once __DIR__ . '/../../includes/db-connection.php';
+header_remove('X-Frame-Options');
 
 $CONFIG_FILE = __DIR__ . '/traffic-interface-saved.json';
 
