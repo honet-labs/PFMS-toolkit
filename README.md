@@ -1,6 +1,6 @@
 # Pandora FMS - Custom Extensions Portal
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Sebuah portal/panel kustom yang terintegrasi secara langsung dengan **Pandora FMS Console** untuk menyediakan dashboard interaktif dan alat bantu administratif secara dinamis. Proyek ini dirancang dengan fokus pada performa tinggi, keamanan (security hardening), dan kemudahan kustomisasi (plug-and-play).
 
@@ -19,4 +19,4 @@ Untuk panduan struktur folder, penjelasan *Core Library*, keamanan, dan optimasi
 - Hak akses tulis (Write permission) pada folder `temp/` untuk kebutuhan penyimpanan *cache*.
 
 ## 📜 Lisensi
-Proyek ini bersifat open-source dan didistribusikan di bawah naungan **[Apache License 2.0](LICENSE)**. Anda bebas memodifikasi, menggunakan, dan mendistribusikan kode ini sesuai dengan ketentuan yang berlaku.
+Proyek ini bersifat open-source dan didistribusikan di bawah naungan **[MIT License](LICENSE)**. Anda bebas memodifikasi, menggunakan, dan mendistribusikan kode ini sesuai dengan ketentuan yang berlaku.
