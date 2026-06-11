@@ -304,8 +304,6 @@ if ($api === 'agents') {
 
 if ($api === 'data') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
-    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-    if (empty($csrf_token) || $client_token !== $csrf_token) { echo json_encode(['ok' => false, 'error' => 'Invalid CSRF']); exit; }
 
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
     $groupId = (int)($input['group_id'] ?? 0);
