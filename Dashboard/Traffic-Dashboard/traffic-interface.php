@@ -912,6 +912,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         @container body-container (max-width: 1024px) {
             .btn-text { display: none !important; }
             .btn-neutral { padding: 0; width: 34px; height: 34px; min-width: 34px; justify-content: center; }
+            .toolbar { padding: 8px 15px; gap: 8px; }
+        }
+
+        @container body-container (max-width: 700px) {
             .toolbar {
                 display: flex;
                 flex-direction: column;
