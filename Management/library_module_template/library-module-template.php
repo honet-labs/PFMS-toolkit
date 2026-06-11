@@ -67,7 +67,9 @@ function parse_template_file($path) {
         'name' => '',
         'type' => 'async_data',
         'exec' => '',
+        'unit' => '',
         'description' => '',
+        'module_group' => '',
         'min_warning' => '',
         'max_warning' => '',
         'min_critical' => '',
@@ -99,6 +101,10 @@ function parse_template_file($path) {
             $data['exec'] = trim(substr($line, 11));
         } elseif (str_starts_with($line, 'module_description')) {
             $data['description'] = trim(substr($line, 18));
+        } elseif (str_starts_with($line, 'module_unit')) {
+            $data['unit'] = trim(substr($line, 11));
+        } elseif (str_starts_with($line, 'module_group')) {
+            $data['module_group'] = trim(substr($line, 12));
         } elseif (str_starts_with($line, 'module_min_warning')) {
             $data['min_warning'] = trim(substr($line, 18));
         } elseif (str_starts_with($line, 'module_max_warning')) {
@@ -207,6 +213,8 @@ if ($api === 'save') {
 
     $name = trim($input['name'] ?? '');
     $description = trim($input['description'] ?? '');
+    $module_group = trim($input['module_group'] ?? '');
+    $unit = trim($input['unit'] ?? '');
     $type = trim($input['type'] ?? 'async_data');
     $exec = trim($input['exec'] ?? '');
     $group = trim($input['group'] ?? 'Unassigned');
@@ -222,6 +230,8 @@ if ($api === 'save') {
     if (empty($name) || empty($exec)) {
         echo json_encode(['ok' => false, 'error' => 'Module Name and Monitored Command (Exec) are required fields.']); exit;
     }
+
+    // No fallback for module_group if empty
 
     // Clean naming for safe filesystem storing
     $group_safe = preg_replace('/[^a-zA-Z0-9_\-\s]/', '', $group);
@@ -245,8 +255,10 @@ if ($api === 'save') {
     $txt .= "module_begin\n";
     $txt .= "module_name " . $name . "\n";
     $txt .= "module_type " . $type . "\n";
-    $txt .= "module_exec " . $exec . "\n";
+    if ($unit !== '') $txt .= "module_unit " . $unit . "\n";
     if ($description !== '') $txt .= "module_description " . $description . "\n";
+    if ($module_group !== '') $txt .= "module_group " . $module_group . "\n";
+    $txt .= "module_exec " . $exec . "\n";
     if ($min_warn !== '') $txt .= "module_min_warning " . $min_warn . "\n";
     if ($max_warn !== '') $txt .= "module_max_warning " . $max_warn . "\n";
     if ($min_crit !== '') $txt .= "module_min_critical " . $min_crit . "\n";
@@ -601,6 +613,12 @@ if ($api === 'delete') {
 
         const data = t.data;
         
+        // Filter out # Group: and # Sub Group: comments for clean preview and copy/download
+        const cleanRaw = data.raw.split('\n').filter(line => {
+            const l = line.trim().toLowerCase();
+            return !l.startsWith('# group:') && !l.startsWith('# sub group:');
+        }).join('\n').trim();
+        
         // Build Thresholds HTML
         let thresholdsHtml = '';
         if (data.min_warning !== '' || data.max_warning !== '' || data.min_critical !== '' || data.max_critical !== '') {
@@ -636,25 +654,34 @@ if ($api === 'delete') {
             </div>
             <div class="card-body-dyn">
                 <div class="row g-3 mb-3">
-                    <div class="col-md-3">
-                        <span style="font-size:10px; font-weight:600; text-transform:uppercase; color:#94a3b8; display:block;">Group Module</span>
+                    <div class="col-md-4">
+                        <span style="font-size:10px; font-weight:600; text-transform:uppercase; color:#94a3b8; display:block;">Folder Group</span>
                         <span style="font-size:12px; font-weight:500; color:#0f172a;">${t.group}</span>
                     </div>
-                    <div class="col-md-3">
-                        <span style="font-size:10px; font-weight:600; text-transform:uppercase; color:#94a3b8; display:block;">Sub Group Module</span>
+                    <div class="col-md-4">
+                        <span style="font-size:10px; font-weight:600; text-transform:uppercase; color:#94a3b8; display:block;">Folder Sub Group</span>
                         <span style="font-size:12px; font-weight:500; color:#0f172a;">${t.subgroup}</span>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
+                        <span style="font-size:10px; font-weight:600; text-transform:uppercase; color:#94a3b8; display:block;">Module Group</span>
+                        <span style="font-size:12px; font-weight:500; color:#0f172a;">${data.module_group || 'N/A'}</span>
+                    </div>
+                </div>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
                         <span style="font-size:10px; font-weight:600; text-transform:uppercase; color:#94a3b8; display:block;">Module Type</span>
                         <span style="font-size:11px; padding:2px 8px; border-radius:12px; background:#e0f2f1; color:#004d40; font-weight:600; display:inline-block; margin-top:2px;">${data.type}</span>
                     </div>
+                    <div class="col-md-4">
+                        <span style="font-size:10px; font-weight:600; text-transform:uppercase; color:#94a3b8; display:block;">Module Unit</span>
+                        <span style="font-size:12px; font-weight:500; color:#0f172a;">${data.unit || 'N/A'}</span>
+                    </div>
                 </div>
 
-                ${data.description ? `
                 <div class="mb-3" style="background:#f8fafc; border:1px solid #f1f5f9; padding:10px 15px; border-radius:6px;">
-                    <span style="font-size:10px; font-weight:600; text-transform:uppercase; color:#94a3b8; display:block; margin-bottom:2px;">Description</span>
-                    <span style="font-size:12px; color:#475569;">${data.description}</span>
-                </div>` : ''}
+                    <span style="font-size:10px; font-weight:600; text-transform:uppercase; color:#94a3b8; display:block; margin-bottom:2px;">Module Description</span>
+                    <span style="font-size:12px; color:#475569;">${data.description || 'N/A'}</span>
+                </div>
 
                 ${thresholdsHtml}
 
@@ -672,7 +699,7 @@ if ($api === 'delete') {
                         <button class="btn-outline-dyn" style="padding:4px 8px; font-size:11px;" onclick="downloadConfig()"><span class="material-symbols-outlined" style="font-size:14px!important;">download</span> Download</button>
                     </div>
                 </div>
-                <pre class="code-preview-box" id="rawOutputText">${data.raw}</pre>
+                <pre class="code-preview-box" id="rawOutputText">${cleanRaw}</pre>
             </div>
         `;
         document.getElementById('rightContainer').innerHTML = html;
@@ -701,6 +728,8 @@ if ($api === 'delete') {
         // Pre-populate values
         const name = t ? t.name : '';
         const description = t ? t.data.description : '';
+        const module_group = t ? t.data.module_group : '';
+        const unit = t ? t.data.unit : '';
         const type = t ? t.data.type : 'async_data';
         const exec = t ? t.data.exec : '';
         const group = t ? t.group : '';
@@ -750,14 +779,14 @@ if ($api === 'delete') {
 
                 <div class="row g-3 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label-dyn">Group Module (Pilih / Tulis Baru)</label>
+                        <label class="form-label-dyn">Group Module / Folder (Pilih / Tulis Baru)</label>
                         <input type="text" id="f_group" list="group_options" class="form-control-dyn" value="${group.replace(/"/g, '&quot;')}" placeholder="e.g. System" onchange="onFormGroupChange(this.value)">
                         <datalist id="group_options">
                             ${groupsData.map(g => `<option value="${g}"></option>`).join('')}
                         </datalist>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label-dyn">Sub Group Module (Pilih / Tulis Baru)</label>
+                        <label class="form-label-dyn">Sub Group Module / Folder (Pilih / Tulis Baru)</label>
                         <input type="text" id="f_subgroup" list="subgroup_options" class="form-control-dyn" value="${subgroup.replace(/"/g, '&quot;')}" placeholder="e.g. CPU">
                         <datalist id="subgroup_options">
                             <!-- Dynamic populated by Group change -->
@@ -765,9 +794,19 @@ if ($api === 'delete') {
                     </div>
                 </div>
 
-                <div class="mb-3">
-                    <label class="form-label-dyn">Description Module</label>
-                    <textarea id="f_description" class="form-control-dyn" placeholder="Deskripsi ringkas mengenai fungsi sensor ini...">${description}</textarea>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label-dyn">Module Group (Parameter)</label>
+                        <input type="text" id="f_module_group" class="form-control-dyn" value="${module_group.replace(/"/g, '&quot;')}" placeholder="e.g. Windows">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label-dyn">Module Unit (Parameter)</label>
+                        <input type="text" id="f_unit" class="form-control-dyn" value="${unit.replace(/"/g, '&quot;')}" placeholder="e.g. %, MB, s">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label-dyn">Module Description (Parameter)</label>
+                        <input type="text" id="f_description" class="form-control-dyn" value="${description.replace(/"/g, '&quot;')}" placeholder="Deskripsi ringkas fungsi sensor...">
+                    </div>
                 </div>
 
                 <div class="threshold-grid mb-3">
@@ -825,6 +864,7 @@ if ($api === 'delete') {
         }
     }
 
+    // Dynamic populated subgroup options
     function onFormGroupChange(grp) {
         const list = document.getElementById('subgroup_options');
         if (!list) return;
@@ -855,6 +895,9 @@ if ($api === 'delete') {
 
         const group = document.getElementById('f_group').value.trim() || 'Unassigned';
         const subgroup = document.getElementById('f_subgroup').value.trim() || 'General';
+        const module_group = document.getElementById('f_module_group').value.trim();
+        const unit = document.getElementById('f_unit').value.trim();
+        const description = document.getElementById('f_description').value.trim();
 
         const min_warning = document.getElementById('f_min_warning').value.trim();
         const max_warning = document.getElementById('f_max_warning').value.trim();
@@ -872,7 +915,7 @@ if ($api === 'delete') {
         }
 
         const payload = {
-            name, exec, type, group, subgroup,
+            name, exec, type, group, subgroup, module_group, description, unit,
             min_warning, max_warning, min_critical, max_critical,
             original_path: selectedTemplatePath
         };

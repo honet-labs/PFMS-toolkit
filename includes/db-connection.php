@@ -15,7 +15,7 @@ date_default_timezone_set($DEFAULT_TZ);
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 
 // 1. DYNAMIC BREADCRUMB LOGIC
-$raw_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$raw_path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
 $dir_only = dirname($raw_path);
 $clean_path = trim($dir_only, '/');
 $path_array = explode('/', $clean_path);

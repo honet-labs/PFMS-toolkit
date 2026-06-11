@@ -49,11 +49,21 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
 if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
     $PANDORA_BASE_URL = rtrim($matches[1], '/');
+    $vendor_url = $PANDORA_BASE_URL . '/' . $matches[2] . '/panel/vendor';
 } else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
     $PANDORA_BASE_URL = '';
+    $vendor_url = '/' . $matches[1] . '/panel/vendor';
 } else {
     $PANDORA_BASE_URL = "/pandora_console"; 
+    $vendor_url = "/pandora_console/custom/panel/vendor";
 }
+$panelDirName = 'custom';
+if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
+    $panelDirName = $matches[2];
+} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
+    $panelDirName = $matches[1];
+}
+$directScriptUrl = $PANDORA_BASE_URL . '/' . $panelDirName . '/panel/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php';
 $CONFIG_FILE = __DIR__ . '/dynamic-dashboards-master.json';
 
 // Use centralized db-connection.php - Load this BEFORE session_start to respect Pandora session settings
@@ -309,7 +319,7 @@ if ($api === 'bulk_panel_data') {
             $moduleResults = [];
             foreach($modulesFound as $mod) {
                 $mod_id = $mod['id_agente_modulo'];
-                if (in_array($pType, ['line', 'area', 'bar', 'heatmap'])) {
+                if (in_array($pType, ['line', 'area', 'bar', 'heatmap', 'history_table', 'single_value'])) {
                     $raw_hist = get_module_history_data($pdo, $history_pdo, $mod_id, $start, $end, 2000, 'DESC');
                     $history = [];
                     foreach ($raw_hist as $row) {
@@ -359,11 +369,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Universal Dynamic Dashboard</title>
     <link rel="icon" href="<?= h($PANDORA_BASE_URL) ?>/images/pandora.ico" type="image/x-icon">
-    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="../../vendor/fonts/fonts.css" />
-    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <script src="../../vendor/echarts/echarts.min.js"></script>
-    <script src="../../vendor/html2canvas/html2canvas.min.js"></script>
+    <link href="<?= h($vendor_url) ?>/fonts/fonts.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= h($vendor_url) ?>/fonts/fonts.css" />
+    <link href="<?= h($vendor_url) ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <script src="<?= h($vendor_url) ?>/echarts/echarts.min.js"></script>
+    <script src="<?= h($vendor_url) ?>/html2canvas/html2canvas.min.js"></script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }
@@ -374,6 +384,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .pandora-header-top, .pandora-header-bottom, .toolbar-right, .drag-handle, #view_list, #listTopControls { display: none !important; }
         .grafana-toolbar { border-top: 1px solid #dce1e5; margin-top:0 !important;}
         .main-content { padding: 20px 25px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+        button[onclick="closeDashboard()"], button[onclick="closeDashboard()"] + .toolbar-divider { display: none !important; }
         <?php endif; ?>
 
         .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 10; }
@@ -646,6 +657,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             gap: 8px;
         }
         @media print {
+            @page {
+                size: landscape;
+                margin: 10mm;
+            }
             body, html {
                 background: #f4f6f8 !important;
                 color: #000 !important;
@@ -653,6 +668,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 padding: 0 !important;
                 height: auto !important;
                 overflow: visible !important;
+                width: 100% !important;
             }
             .pandora-header-top,
             .pandora-header-bottom,
@@ -674,20 +690,25 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 max-width: 100% !important;
             }
             #panelsGrid {
+                grid-template-columns: repeat(12, 1fr) !important;
                 row-gap: 15px !important;
                 column-gap: 15px !important;
                 grid-auto-rows: auto !important;
+            }
+            .panel-rule-wrapper {
+                grid-row-end: auto !important;
             }
             .panel-card {
                 box-shadow: none !important;
                 border: 1px solid #e0e4e8 !important;
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
+                height: auto !important;
             }
         }
     </style>
 </head>
-<body>
+<body class="<?= $isStandalone ? 'is-standalone-view' : '' ?>">
 
 <div class="pandora-header-top">
     <div class="header-left">
@@ -707,6 +728,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <div class="top-controls" id="listTopControls">
         <input type="text" id="listSearch" class="list-search-box" placeholder="Search dashboards..." onkeyup="renderDashboardList()">
         <button class="btn-apply" onclick="openDashMetaModal()"><span class="material-symbols-outlined" style="font-size:18px!important;">add</span> Create Dashboard</button>
+        <input type="file" id="importBackupFile" style="display:none" onchange="importDashboardConfig(event)">
     </div>
 </div>
 
@@ -901,10 +923,12 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                     <select id="p_type" class="form-control-fix" onchange="toggleTypeFields(); toggleChartEngine();">
                         <option value="text">Value Number / Text</option>
                         <option value="gauge">Gauge Chart</option>
+                        <option value="single_value">Single Value Card (Sparkline)</option>
                         <option value="line" selected>Line Chart</option>
                         <option value="area">Area Chart</option>
                         <option value="bar">Bar Chart</option>
                         <option value="heatmap">History Heatmap Blocks</option>
+                        <option value="history_table">History Table View</option>
                         <option value="status_table">Table View (Current Status)</option>
                         <option value="status_heatmap">Heatmap View (Current Status)</option>
                         <option value="status_stats">Stats Cards (Current Status)</option>
@@ -1122,7 +1146,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
             </div>
 
-            <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; min-height:280px; position:relative;">
+            <div id="nativeModuleChartContainer" style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; min-height:280px; position:relative;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <h6 style="margin:0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Historical Trend</h6>
                     <span style="font-size:10px; color:#94a3b8; font-style:italic;">Scroll to Zoom • Drag to Pan</span>
@@ -1132,7 +1156,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
             </div>
             
-            <div style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; display:flex; flex-direction:column; flex-grow:1; min-height:300px;">
+            <div id="nativeModuleTableContainer" style="background:#ffffff; border-radius:8px; border:1px solid #e2e8f0; padding:15px; display:flex; flex-direction:column; flex-grow:1; min-height:300px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                     <h6 style="margin:0; font-weight:600; color:#1e293b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Data Log</h6>
                     <div style="font-size:11px; color:#64748b;" id="nativeModuleDetailCount">0 rows</div>
@@ -1155,7 +1179,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     </div>
 </div>
 
-<script src="../../vendor/sortablejs/Sortable.min.js"></script>
+<script src="<?= h($vendor_url) ?>/sortablejs/Sortable.min.js"></script>
 <script>
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
 const apiPage = 'Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php';
@@ -1192,16 +1216,18 @@ let hasUnsavedChanges = false;
 let nativeModuleChartInstance = null;
 let currentDetailModuleId = null;
 let currentDetailModuleTitle = '';
+let currentDetailViewType = '';
 
 // V4.8 IS_STANDALONE FLAG
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
+const DIRECT_SCRIPT_URL = '<?= $directScriptUrl ?>';
 
 // V4.8: SHARE LINK FUNCTIONS
 function copyDashboardShareLink(dashId = null) {
     const idToShare = dashId || currentDashId;
     if (!idToShare) return;
     const card = masterDashboards.find(x => x.id === idToShare);
-    const u = new URL(window.location.origin + window.location.pathname);
+    const u = new URL(window.location.origin + DIRECT_SCRIPT_URL);
     u.searchParams.set('s', '1');
     u.searchParams.set('d', idToShare);
     
@@ -1227,7 +1253,7 @@ function copyDashboardShareLink(dashId = null) {
 
 function copyPanelShareLink(panelId) {
     if (!currentDashId) return;
-    const u = new URL(window.location.origin + window.location.pathname);
+    const u = new URL(window.location.origin + DIRECT_SCRIPT_URL);
     u.searchParams.set('s', '1');
     u.searchParams.set('d', currentDashId);
     u.searchParams.set('g', document.getElementById('top_group').value);
@@ -1432,6 +1458,12 @@ function renderDashboardList() {
                 <button class="btn-action" onclick="editDashboardSettingsFromList('${d.id}')" title="Configure">
                     <span class="material-symbols-outlined">settings</span>
                 </button>
+                <button class="btn-action" onclick="exportDashboardConfig('${d.id}')" title="Backup Dashboard Config">
+                    <span class="material-symbols-outlined">download</span>
+                </button>
+                <button class="btn-action" onclick="triggerImport('${d.id}')" title="Load Dashboard Config">
+                    <span class="material-symbols-outlined">upload</span>
+                </button>
                 <button class="btn-action" onclick="duplicateDashboardFromList('${d.id}')" title="Duplicate">
                     <span class="material-symbols-outlined">content_copy</span>
                 </button>
@@ -1502,6 +1534,70 @@ function saveCurrentDashboard() {
     });
     saveConfigToServer(() => { markSaved(); alert("Dashboard Saved!"); });
 }
+
+let importTargetDashId = null;
+
+function triggerImport(id) {
+    importTargetDashId = id;
+    document.getElementById('importBackupFile').click();
+}
+
+function exportDashboardConfig(id) {
+    const targetId = id || currentDashId;
+    if(!targetId) return;
+    const d = masterDashboards.find(x => x.id === targetId);
+    if(!d) return;
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(d.panels || [], null, 2));
+    const dlAnchorElem = document.createElement('a');
+    dlAnchorElem.setAttribute("href",     dataStr);
+    dlAnchorElem.setAttribute("download", `dynamic_dashboard_${d.title.toLowerCase().replace(/\s+/g, '_')}_backup.json`);
+    dlAnchorElem.click();
+}
+
+function importDashboardConfig(event) {
+    const targetId = importTargetDashId || currentDashId;
+    if(!targetId) return;
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const loaded = JSON.parse(e.target.result);
+            if (Array.isArray(loaded)) {
+                const isValid = loaded.every(p => p && typeof p === 'object' && 'id' in p && 'title' in p);
+                if (!isValid) {
+                    alert("Format file tidak valid. Pastikan file JSON berisi konfigurasi panel yang benar.");
+                    return;
+                }
+                masterDashboards = masterDashboards.map(d => {
+                    if (d.id === targetId) {
+                        d.panels = loaded;
+                    }
+                    return d;
+                });
+                saveConfigToServer(() => {
+                    if (targetId === currentDashId) {
+                        renderPanelsGrid();
+                        forceRefresh();
+                    } else {
+                        renderDashboardList();
+                    }
+                    alert("Widgets loaded successfully!");
+                });
+            } else {
+                alert("Format file JSON tidak valid. Harus berupa array panel.");
+            }
+        } catch (err) {
+            alert("Invalid JSON file: " + err.message);
+        } finally {
+            event.target.value = '';
+            importTargetDashId = null;
+        }
+    };
+    reader.readAsText(file);
+}
+
+
 
 function duplicateDashboard() {
     if(!currentDashId) return;
@@ -1842,12 +1938,33 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const showMod = p.show_module !== false; 
     const isMultiOverlay = moduleData.module_name === 'Multi-Module Overlay';
     const chartH = Math.max(120, (parseInt(p.height) || 200) - 60);
-    const modNameHtml = showMod ? `<div class="mod-subtitle" style="${isMultiOverlay ? 'margin:0 auto;' : ''}">${moduleData.module_name}</div>` : '';
+    const modNameHtml = (showMod && !isMultiOverlay) ? `<div class="mod-subtitle">${moduleData.module_name}</div>` : '';
     const statusHtml = isMultiOverlay ? '' : `<div style="display:flex; align-items:center;"><span class="status-dot ${bgClass}"></span><span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span></div>`;
 
     if (p.type === 'text') {
         contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;"><div style="display:flex; align-items:baseline; justify-content:center;"><span class="status-dot ${bgClass}"></span><span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${modNameHtml}</div>`;
     } 
+    else if (p.type === 'single_value') {
+        const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[moduleData.status] || '#95a5a6';
+        contentHtml = `
+        <div style="height: 100%; width: 100%; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;">
+            <div style="padding: 10px 10px 0 10px; z-index: 2; pointer-events: none;">
+                <div style="font-size: ${fs}px; font-weight: ${fw}; color: ${color}; line-height: 1.1; display: flex; align-items: baseline; gap: 4px;">
+                    <span>${valText}</span>
+                    <span style="font-size: ${Math.round(fs * 0.45)}px; font-weight: normal; color: #64748b;">${moduleData.unit}</span>
+                </div>
+            </div>
+            <!-- Relative positioned ECharts Sparkline container -->
+            <div id="chart_${uniqueId}" style="flex: 1; min-height: 60px; width: 100%; cursor: pointer;" onclick="openNativeModuleDetailModal('${moduleData.id}', '${(moduleData.agent_name + ' - ' + moduleData.module_name).replace(/'/g, "\\'")}')"></div>
+            
+            ${showMod ? `
+            <div style="padding: 10px 10px 8px 10px; font-size: 11px; font-weight: 500; color: #64748b; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; z-index: 2;">
+                ${moduleData.module_name}
+            </div>
+            ` : '<div style="height: 5px;"></div>'}
+        </div>
+        `;
+    }
     else if (p.type === 'gauge') {
         contentHtml = `<div class="chart-wrapper"><div id="chart_${uniqueId}" style="width:100%; height:100%; min-height:100px;"></div><div class="gauge-text"><div><span class="gauge-val" style="font-size:${Math.round(fs*0.75)}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${modNameHtml}</div></div>`;
     }
@@ -1936,7 +2053,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const hiddenClass = (p.hidden || isExcluded) ? 'is-hidden' : '';
 
     let viewBtnHtml = '';
-    if (['line', 'area', 'bar'].includes(p.type) && moduleData && moduleData.id) {
+    if (['line', 'area', 'bar', 'history_table', 'single_value'].includes(p.type) && moduleData && moduleData.id) {
         viewBtnHtml = `
             <button class="panel-view-btn" onclick="openPanelDetailModal('${p.id}', ${moduleData.id})" title="View Detail Chart" style="border:none; background:transparent; padding:0; cursor:pointer; color:#1976d2; margin-left:6px; display:inline-flex; align-items:center; vertical-align:middle;">
                 <span class="material-symbols-outlined" style="font-size:16px!important;">monitoring</span>
@@ -2080,10 +2197,10 @@ function generateSummaryPanelHtml(p, modules) {
                             if (visibleCols.includes('history')) {
                                 rowHtml += `<td style="text-align:center;">
                                     <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; width:100%;">
-                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}')" title="View Chart">
+                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}', ${m.agent_id})" title="View Chart">
                                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>
                                         </button>
-                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog(${m.id}, ${m.agent_id}, '', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
+                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog(${m.id}, ${m.agent_id}, 'data', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
                                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#2e7d32;">table_chart</span>
                                         </button>
                                     </div>
@@ -2117,7 +2234,7 @@ function generateSummaryPanelHtml(p, modules) {
                     const bgClass = {0:'bg-green', 1:'bg-red', 2:'bg-yellow', 4:'bg-blue'}[m.status] || 'bg-gray';
                     let cleanVal = formatSmartValue(m.current, p.use_raw);
                     let shortVal = String(cleanVal).length > (p.box_size === 'small' ? 4 : 8) ? String(cleanVal).substring(0, (p.box_size === 'small' ? 4 : 8)) : cleanVal;
-                    return `<button class="heat-box-dyn ${bgClass}" style="width:${s.w}; height:${s.h}; font-size:${s.f};" title="${m.module_name}: ${m.current} ${m.unit}" onclick="openNativeChart(${m.id}, '${m.module_name}')">${shortVal}</button>`;
+                    return `<button class="heat-box-dyn ${bgClass}" style="width:${s.w}; height:${s.h}; font-size:${s.f};" title="${m.module_name.replace(/"/g, '&quot;')}: ${m.current} ${m.unit}" onclick="openNativeChart(${m.id}, '${m.module_name.replace(/'/g, "\\'")}', ${m.agent_id})">${shortVal}</button>`;
                 }).join('')}
             </div>`;
     } else if (p.type === 'pie' || p.type === 'donut') {
@@ -2126,6 +2243,87 @@ function generateSummaryPanelHtml(p, modules) {
             <div style="position:relative; width:100%; height:${chartH}px; display:flex; justify-content:center; align-items:center;">
                 <div id="chart_${p.id}" style="width:100%; height:100%;"></div>
             </div>`;
+    } else if (p.type === 'history_table') {
+        let combinedHistory = [];
+        modules.forEach(m => {
+            const history = m.history || [];
+            history.forEach(h => {
+                combinedHistory.push({
+                    ts: h.ts,
+                    lbl: h.lbl,
+                    agent_name: m.agent_name,
+                    module_name: m.module_name,
+                    val: h.val,
+                    unit: m.unit
+                });
+            });
+        });
+
+        combinedHistory.sort((a, b) => b.ts - a.ts);
+        
+        const limit = parseInt(p.row_limit) || 200;
+        const totalItems = combinedHistory.length;
+        const totalPages = Math.ceil(totalItems / limit) || 1;
+        
+        window.tableCurrentPages = window.tableCurrentPages || {};
+        const currentPage = window.tableCurrentPages[p.id] || 1;
+        const actualPage = Math.min(currentPage, totalPages);
+        window.tableCurrentPages[p.id] = actualPage;
+        
+        const startIdx = (actualPage - 1) * limit;
+        const endIdx = Math.min(startIdx + limit, totalItems);
+        const paginatedHistory = combinedHistory.slice(startIdx, endIdx);
+
+        const chartH = Math.max(150, (parseInt(p.height) || 200) - 90);
+
+        if (combinedHistory.length === 0) {
+            content = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:${chartH}px; color:#bdc3c7; font-size:11px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">history</span>No History Data</div>`;
+        } else {
+            let paginationHtml = '';
+            if (totalPages > 1) {
+                paginationHtml = `
+                    <div class="pagination-container-dyn" style="display:flex; justify-content:space-between; align-items:center; padding:10px 15px; border-top:1px solid #f0f3f5; font-size:11px; color:#64748b; background:#fff; margin-top:8px;">
+                        <div>Showing ${startIdx + 1} to ${endIdx} of ${totalItems} Entries</div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="pagination-btn-dyn" style="padding:4px 8px; border:1px solid #dce1e5; border-radius:4px; background:#fff; cursor:pointer; font-size:11px; color:#475569;" ${actualPage === 1 ? 'disabled style="opacity:0.5; cursor:default;"' : `onclick="changeTablePage('${p.id}', ${actualPage - 1})"`}>Prev</button>
+                            <span style="font-size:11px; font-weight: 600; align-self:center; color:#475569;">Page ${actualPage} / ${totalPages}</span>
+                            <button class="pagination-btn-dyn" style="padding:4px 8px; border:1px solid #dce1e5; border-radius:4px; background:#fff; cursor:pointer; font-size:11px; color:#475569;" ${actualPage === totalPages ? 'disabled style="opacity:0.5; cursor:default;"' : `onclick="changeTablePage('${p.id}', ${actualPage + 1})"`}>Next</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            content = `
+                <div class="table-scroll-wrapper" style="overflow-y:auto; max-height:${chartH}px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
+                    <table class="table-pfms" style="margin:0; font-size:11px; width:100%;">
+                        <thead>
+                            <tr style="position:sticky; top:0; background:#f8fafc; z-index:1; box-shadow: 0 1px 0 #e2e8f0;">
+                                <th style="padding:8px 12px; text-align:left; font-weight:600; color:#475569;">Timestamp</th>
+                                <th style="padding:8px 12px; text-align:left; font-weight:600; color:#475569;">Agent Name</th>
+                                <th style="padding:8px 12px; text-align:left; font-weight:600; color:#475569;">Module Name</th>
+                                <th style="padding:8px 12px; text-align:right; font-weight:600; color:#475569;">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${paginatedHistory.map(h => {
+                                let valNum = parseFloat(h.val);
+                                let displayVal = isNaN(valNum) ? h.val : ((valNum % 1 === 0) ? valNum : valNum.toFixed(2));
+                                let unitStr = h.unit ? ` ${h.unit}` : '';
+                                return `
+                                    <tr>
+                                        <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${h.lbl}</td>
+                                        <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.agent_name}</td>
+                                        <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.module_name}</td>
+                                        <td style="padding:8px 12px; text-align:right; font-weight:600; color:#1e293b; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${displayVal}${unitStr}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ${paginationHtml}
+            `;
+        }
     }
 
     const isHidden = p.hidden === true;
@@ -2217,7 +2415,7 @@ function refreshCurrentNodeData() {
             }
             activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
 
-            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut'].includes(p.type)) {
+            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table'].includes(p.type)) {
                 wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             } else {
                 if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
@@ -2385,15 +2583,18 @@ function refreshCurrentNodeData() {
                         renderSingleModuleTableViewer(uniqueId, m.current || '', agentLabel);
                         return;
                     }
+                    if (p.type === 'history_table') {
+                        return;
+                    }
                     const canvas = document.getElementById(`chart_${uniqueId}`);
                     if (!canvas) return;
                     const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[m.status] || '#95a5a6';
                     const history = m.history || [];
                     if (['line','area','bar'].includes(p.type) && p.chart_engine === 'native') return;
-                    const isHistoryChart = ['line','area','bar'].includes(p.type);
+                    const isHistoryChart = ['line','area','bar', 'single_value'].includes(p.type);
                     const isGaugeChart = p.type === 'gauge';
                     
-                    if ((isHistoryChart && history.length === 0) || (isGaugeChart && (m.current === null || m.current === undefined || m.current === ''))) {
+                    if ((isHistoryChart && history.length === 0 && p.type !== 'single_value') || (isGaugeChart && (m.current === null || m.current === undefined || m.current === ''))) {
                         const parent = canvas.parentElement;
                         if(parent) parent.innerHTML = `<div style="color:#bdc3c7; font-size:11px; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">query_stats</span>No Data</div>`;
                         return;
@@ -2403,7 +2604,31 @@ function refreshCurrentNodeData() {
                         let dom = document.getElementById(`chart_${uniqueId}`);
                         if (!dom) return;
                         chartInstances[uniqueId] = echarts.init(dom);
-                        if (p.type === 'gauge') {
+                        if (p.type === 'single_value') {
+                            if (history && history.length > 0) {
+                                chartInstances[uniqueId].setOption({
+                                    grid: { left: 0, right: 0, top: 0, bottom: 0 },
+                                    xAxis: { type: 'category', boundaryGap: false, data: history.map(h=>h.lbl), show: false },
+                                    yAxis: { type: 'value', show: false },
+                                    series: [{
+                                        type: 'line',
+                                        data: history.map(h=>h.val),
+                                        itemStyle: { color: color },
+                                        areaStyle: {
+                                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                                { offset: 0, color: color },
+                                                { offset: 1, color: 'transparent' }
+                                            ]),
+                                            opacity: 0.25
+                                        },
+                                        smooth: true,
+                                        showSymbol: false,
+                                        connectNulls: true,
+                                        lineStyle: { width: 1.5, color: color }
+                                    }]
+                                });
+                            }
+                        } else if (p.type === 'gauge') {
                             let curVal = parseFloat(m.current);
                             if (isNaN(curVal)) curVal = 0;
                             chartInstances[uniqueId].setOption({
@@ -2495,7 +2720,7 @@ function toggleTypeFields() {
     const isChart = ['line','area','bar'].includes(type);
     document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
 
-    const isTable = (type === 'status_table');
+    const isTable = (type === 'status_table' || type === 'history_table');
     const wrapLimit = document.getElementById('wrap_row_limit');
     if(wrapLimit) {
         wrapLimit.style.opacity = isTable ? '1' : '0.3';
@@ -2783,10 +3008,10 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
                 <td style="white-space:nowrap;"><span class="status-pill-dyn ${bgClass}">${statusLbl}</span></td>
                 <td style="text-align:center; white-space:nowrap;">
                     <div style="display:inline-flex; gap:8px; align-items:center; justify-content:center; width:100%;">
-                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}')" title="View Chart">
+                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}', ${m.agent_id})" title="View Chart">
                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>
                         </button>
-                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog(${m.id}, ${m.agent_id}, '', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
+                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog(${m.id}, ${m.agent_id}, 'data', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#2e7d32;">table_chart</span>
                         </button>
                     </div>
@@ -2811,12 +3036,16 @@ function closeStatusDetailModal() {
     document.getElementById('statusDetailModal').style.display = 'none';
 }
 
-function openNativeChartModal(modId, title) {
+function openNativeChartModal(modId, title, idAgent = 0) {
     if(!modId || modId === 0) return;
     document.getElementById('nativeChartTitle').innerHTML = `<span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40; vertical-align:middle; margin-right:5px;">monitoring</span> ${title}`;
     const url = `${PANDORA_URL}/operation/agentes/stat_win.php?type=sparse&period=86400&id=${modId}&refresh=600&period_graph=0&draw_events=0`;
     document.getElementById('nativeChartFrame').src = url;
     document.getElementById('nativeChartModal').style.display = 'flex';
+}
+
+function openNativeChart(modId, title, idAgent = 0) {
+    openNativeChartModal(modId, title, idAgent);
 }
 
 function closeNativeChartModal() {
@@ -2861,23 +3090,15 @@ function changeDetailModule(newId) {
     const customStartTs = customStart ? Math.floor(new Date(customStart).getTime() / 1000) : null;
     const customEndTs = customEnd ? Math.floor(new Date(customEnd).getTime() / 1000) : null;
 
-    openNativeModuleDetailModal(parseInt(newId), selected.name, currentRange, customStartTs, customEndTs, currentDetailModuleList);
+    openNativeModuleDetailModal(parseInt(newId), selected.name, currentRange, customStartTs, customEndTs, currentDetailModuleList, currentDetailViewType);
 }
 
 function show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title) {
-    if (!IS_STANDALONE && typeof window.parent !== 'undefined' && window.parent && window.parent.show_module_detail_dialog && window.parent !== window) {
-        try {
-            window.parent.show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title);
-            return;
-        } catch (e) { console.warn("Failed parent call:", e); }
+    if (window.parent && window.parent !== window && typeof window.parent.show_module_detail_dialog === 'function') {
+        window.parent.show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title);
+        return;
     }
-    if (!IS_STANDALONE && typeof window.top !== 'undefined' && window.top && window.top.show_module_detail_dialog && window.top !== window) {
-        try {
-            window.top.show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title);
-            return;
-        } catch (e) { console.warn("Failed top call:", e); }
-    }
-    openNativeModuleDetailModal(module_id, title || 'Module Detail', offset || 86400);
+    openNativeModuleDetailModal(module_id, title || 'Module Detail', offset || 86400, null, null, null, filter);
 }
 
 function handleNativeModuleRangeChange() {
@@ -2893,7 +3114,7 @@ function handleNativeModuleRangeChange() {
         document.getElementById('nativeModuleCustomEnd').value = formatDT(now);
     } else {
         customBox.style.display = 'none';
-        openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, val, null, null, currentDetailModuleList);
+        openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, val, null, null, currentDetailModuleList, currentDetailViewType);
     }
 }
 
@@ -2907,13 +3128,19 @@ function applyNativeModuleCustomRange() {
     
     if (startTs >= endTs) return alert('Start date must be before end date.');
     
-    openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, 'custom', startTs, endTs, currentDetailModuleList);
+    openNativeModuleDetailModal(currentDetailModuleId, currentDetailModuleTitle, 'custom', startTs, endTs, currentDetailModuleList, currentDetailViewType);
 }
 
-async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400, customStart = null, customEnd = null, moduleList = null) {
+async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400, customStart = null, customEnd = null, moduleList = null, viewType = '') {
     currentDetailModuleId = moduleId;
     currentDetailModuleTitle = title;
     currentDetailModuleList = moduleList;
+    currentDetailViewType = viewType;
+    
+    const chartContainer = document.getElementById('nativeModuleChartContainer');
+    if (chartContainer) {
+        chartContainer.style.display = (viewType === 'data') ? 'none' : 'block';
+    }
     
     const headerTitleEl = document.getElementById('nativeModuleDetailTitle');
     if (headerTitleEl) {
@@ -3001,60 +3228,71 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         });
         tableBody.innerHTML = html;
         
-        const labels = data.map(row => {
-            if (row.waktu && row.waktu.includes('-')) {
-                const parts = row.waktu.split(' ');
-                const ymd = parts[0].split('-');
-                return `${ymd[2]}/${ymd[1]} ${parts[1]}`;
-            }
-            return row.waktu;
-        });
-        const dataset = data.map(row => parseFloat(row.datos));
-        
-        let dom = document.getElementById('nativeModuleDetailChart');
-        if (!dom) return;
-        nativeModuleChartInstance = echarts.init(dom);
-        nativeModuleChartInstance.setOption({
-            tooltip: { 
-                trigger: 'axis', 
-                backgroundColor: 'rgba(15, 23, 42, 0.95)', 
-                textStyle: { color: '#cbd5e1', fontSize: 12 }, 
-                padding: 10, 
-                borderRadius: 6,
-                formatter: function (params) {
-                    let html = params[0].name ? params[0].name + '<br/>' : '';
-                    params.forEach(p => {
-                        let val = p.value;
-                        if (val !== null && val !== undefined && !isNaN(val)) {
-                            val = parseFloat(val);
-                            val = (val % 1 === 0) ? val : val.toFixed(2);
-                        }
-                        html += `${p.marker}${p.seriesName}: <b>${val}${unit}</b><br/>`;
-                    });
-                    return html;
+        if (viewType !== 'data') {
+            const labels = data.map(row => {
+                if (row.waktu && row.waktu.includes('-')) {
+                    const parts = row.waktu.split(' ');
+                    const ymd = parts[0].split('-');
+                    return `${ymd[2]}/${ymd[1]} ${parts[1]}`;
                 }
-            },
-            grid: { left: 5, right: 15, top: 15, bottom: 25, containLabel: true },
-            xAxis: { type: 'category', boundaryGap: false, data: labels, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
-            yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { fontSize: 10, color: '#64748b' } },
-            dataZoom: [{
-                type: 'inside',
-                start: 0,
-                end: 100
-            }],
-            series: [{
-                name: title,
-                type: 'line',
-                data: dataset,
-                itemStyle: { color: '#004d40' },
-                areaStyle: { opacity: 0.2, color: '#004d40' },
-                smooth: true,
-                showSymbol: false,
-                connectNulls: true,
-                lineStyle: { width: 2 }
-            }]
-        });
-        window.addEventListener('resize', () => nativeModuleChartInstance.resize());
+                return row.waktu;
+            });
+            const dataset = data.map(row => parseFloat(row.datos));
+            
+            let dom = document.getElementById('nativeModuleDetailChart');
+            if (dom) {
+                nativeModuleChartInstance = echarts.init(dom);
+                nativeModuleChartInstance.setOption({
+                    tooltip: { 
+                        trigger: 'axis', 
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                        textStyle: { color: '#cbd5e1', fontSize: 12 }, 
+                        padding: 10, 
+                        borderRadius: 6,
+                        formatter: function (params) {
+                            let html = params[0].name ? params[0].name + '<br/>' : '';
+                            params.forEach(p => {
+                                let val = p.value;
+                                if (val !== null && val !== undefined && !isNaN(val)) {
+                                    val = parseFloat(val);
+                                    val = (val % 1 === 0) ? val : val.toFixed(2);
+                                }
+                                html += `${p.marker}${p.seriesName}: <b>${val}${unit}</b><br/>`;
+                            });
+                            return html;
+                        }
+                    },
+                    grid: { left: 5, right: 15, top: 15, bottom: 25, containLabel: true },
+                    xAxis: { type: 'category', boundaryGap: false, data: labels, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
+                    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { fontSize: 10, color: '#64748b' } },
+                    dataZoom: [{
+                        type: 'inside',
+                        start: 0,
+                        end: 100
+                    }],
+                    series: [{
+                        name: title,
+                        type: 'line',
+                        data: dataset,
+                        itemStyle: { color: '#004d40' },
+                        areaStyle: { opacity: 0.2, color: '#004d40' },
+                        smooth: true,
+                        showSymbol: false,
+                        connectNulls: true,
+                        lineStyle: { width: 2 }
+                    }]
+                });
+                if (nativeModuleChartInstance) {
+                    nativeModuleChartInstance.resize();
+                    setTimeout(() => {
+                        if (nativeModuleChartInstance) nativeModuleChartInstance.resize();
+                    }, 50);
+                }
+                window.addEventListener('resize', () => {
+                    if (nativeModuleChartInstance) nativeModuleChartInstance.resize();
+                });
+            }
+        }
         
     } catch (e) {
         tableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:30px; color:#e74c3c;">Exception: ${e.message}</td></tr>`;
@@ -3387,6 +3625,11 @@ function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel) {
             thead.innerHTML = '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
             renderTableViewerRows(uniqueId, dataRows);
             rawEl.classList.add('d-none');
+            const wrapper = rawEl.closest('.table-viewer-card-wrap');
+            if (wrapper) {
+                const sb = wrapper.querySelector('.search-box');
+                if (sb) sb.style.display = 'block';
+            }
             return;
         }
 
@@ -3395,6 +3638,11 @@ function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel) {
         rawEl.innerText = rawText;
         rawEl.classList.remove('d-none');
         window.tableViewerData[uniqueId] = [];
+        const wrapper = rawEl.closest('.table-viewer-card-wrap');
+        if (wrapper) {
+            const sb = wrapper.querySelector('.search-box');
+            if (sb) sb.style.display = 'none';
+        }
         return;
     }
 
@@ -3442,6 +3690,11 @@ function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel) {
     window.tableViewerData[uniqueId] = dataRows;
     thead.innerHTML = '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
     renderTableViewerRows(uniqueId, dataRows);
+    const wrapper = rawEl.closest('.table-viewer-card-wrap');
+    if (wrapper) {
+        const sb = wrapper.querySelector('.search-box');
+        if (sb) sb.style.display = 'block';
+    }
 }
 
 function renderTableViewerRows(uniqueId, rows) {

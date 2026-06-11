@@ -1,0 +1,12 @@
+{
+    "opensearch": {
+        "url": "http://localhost:9200",
+        "index": "pandora-snapshots",
+        "username": "",
+        "password": "",
+        "ssl_verify": false
+    },
+    "sync_modules": [],
+    "last_cron_run": null,
+    "last_cron_status": null
+}
