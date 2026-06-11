@@ -20,7 +20,7 @@ header('Permissions-Policy: interest-cohort=()');
 $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / TRAFFIC DASHBOARD";
 $PANDORA_BASE_URL = "/pandora_console";
 $panelDir = $PANEL_DIR_NAME ?? "custom";
-$directScriptUrl = $PANDORA_BASE_URL . '/' . $panelDir . '/panel/Dashboard/Traffic-Dashboard/traffic-interface.php';
+$directScriptUrl = $_SERVER['SCRIPT_NAME'];
 
 // 2. CENTRALIZED DB & SECURITY
 require_once __DIR__ . '/../../includes/db-connection.php';
