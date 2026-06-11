@@ -19,6 +19,8 @@ header('Permissions-Policy: interest-cohort=()');
 
 $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / TRAFFIC DASHBOARD";
 $PANDORA_BASE_URL = "/pandora_console";
+$panelDir = $PANEL_DIR_NAME ?? "custom";
+$directScriptUrl = $PANDORA_BASE_URL . '/' . $panelDir . '/panel/Dashboard/Traffic-Dashboard/traffic-interface.php';
 
 // 2. CENTRALIZED DB & SECURITY
 require_once __DIR__ . '/../../includes/db-connection.php';
@@ -46,9 +48,9 @@ if (!function_exists('h')) {
 }
 
 // 4. TRAFFIC MODULE SETTINGS
-$moduleSuffixesIn  = ['_ifHCInOctets', '_ifInOctets', '_ifHCIInOctets', 'ifHCInOctets', 'ifInOctets'];
-$moduleSuffixesOut = ['_ifHCOutOctets', '_ifOutOctets', '_ifHCIOutOctets', 'ifHCOutOctets', 'ifOutOctets'];
-$moduleSuffixesSpeed = ['_ifHighSpeed', '_ifSpeed', ' - Speed', '- Speed', '_Speed', 'ifHighSpeed', 'ifSpeed']; 
+$moduleSuffixesIn  = ['_ifHCIInOctets', '_ifHCInOctets', 'ifHCInOctets', '_ifInOctets', 'ifInOctets'];
+$moduleSuffixesOut = ['_ifHCIOutOctets', '_ifHCOutOctets', 'ifHCOutOctets', '_ifOutOctets', 'ifOutOctets'];
+$moduleSuffixesSpeed = ['_ifHighSpeed', 'ifHighSpeed', '_ifSpeed', 'ifSpeed', ' - Speed', '- Speed', '_Speed']; 
 $modulePrefixesSpeed = ['ifhighspeed - ', 'ifhighspeed-', 'ifspeed - ', 'ifspeed-', 'speed - ', 'speed-'];
 $moduleSuffixesIndex = ['_ifIndex', 'ifIndex'];
 $moduleSuffixesStatus = ['_ifOperStatus', 'ifOperStatus'];
@@ -148,9 +150,10 @@ if ($api === 'export') {
         if (empty($agent_ids)) { echo "No agents found in configuration."; exit; }
 
         $placeholders = implode(',', array_fill(0, count($agent_ids), '?'));
-        $sql = "SELECT a.id_agente, a.alias, a.nombre, a.direccion, am.id_agente_modulo, am.nombre as mod_name, am.unit, ae.datos 
+        $sql = "SELECT a.id_agente, a.alias, a.nombre, a.direccion, am.id_agente_modulo, am.nombre as mod_name, am.unit, ae.datos, am.id_category, c.name AS category_name 
                 FROM tagente a
                 JOIN tagente_modulo am ON a.id_agente = am.id_agente
+                LEFT JOIN tcategory c ON am.id_category = c.id
                 LEFT JOIN tagente_estado ae ON am.id_agente_modulo = ae.id_agente_modulo
                 WHERE a.id_agente IN ($placeholders) AND a.disabled = 0 AND am.disabled = 0";
         
@@ -178,13 +181,41 @@ if ($api === 'export') {
                 $dir = null; $base = null;
                 foreach ($modulePrefixesSpeed as $p) { if(str_starts_with($modNameL, strtolower($p))) { $dir='speed'; $base=substr($modName, strlen($p)); break; } }
                 if(!$dir) {
-                    foreach ($moduleSuffixesIn as $s) { if(str_ends_with($modNameL, strtolower($s))) { $dir='in'; $base=substr($modName,0,-strlen($s)); break; } }
-                    if(!$dir) foreach ($moduleSuffixesOut as $s) { if(str_ends_with($modNameL, strtolower($s))) { $dir='out'; $base=substr($modName,0,-strlen($s)); break; } }
-                    if(!$dir) foreach ($moduleSuffixesSpeed as $s) { if(str_ends_with($modNameL, strtolower($s))) { $dir='speed'; $base=substr($modName,0,-strlen($s)); break; } }
+                    foreach ($moduleSuffixesIn as $s) {
+                        $sL = strtolower($s);
+                        $pos = strpos($modNameL, $sL);
+                        if ($pos !== false) {
+                            $dir = 'in';
+                            $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                            break;
+                        }
+                    }
+                    if(!$dir) foreach ($moduleSuffixesOut as $s) {
+                        $sL = strtolower($s);
+                        $pos = strpos($modNameL, $sL);
+                        if ($pos !== false) {
+                            $dir = 'out';
+                            $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                            break;
+                        }
+                    }
+                    if(!$dir) foreach ($moduleSuffixesSpeed as $s) {
+                        $sL = strtolower($s);
+                        $pos = strpos($modNameL, $sL);
+                        if ($pos !== false) {
+                            $dir = 'speed';
+                            $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                            break;
+                        }
+                    }
                 }
                 if (!$dir) continue;
                 $base = clean_base($base);
-                if (!isset($interfaces[$base])) $interfaces[$base] = ['name' => $base, 'rx' => 0, 'tx' => 0, 'speed' => 0, 'has_data' => false];
+                if ($base === '') $base = $modName;
+                if (!isset($interfaces[$base])) $interfaces[$base] = ['name' => $base, 'rx' => 0, 'tx' => 0, 'speed' => 0, 'has_data' => false, 'category_name' => ''];
+                if (!empty($m['category_name']) && empty($interfaces[$base]['category_name'])) {
+                    $interfaces[$base]['category_name'] = html_entity_decode((string)$m['category_name'], ENT_QUOTES, 'UTF-8');
+                }
                 $val = (float)$m['datos'];
                 if ($dir === 'speed') {
                     $mult = (stripos($modName, 'HighSpeed') !== false || strtolower($m['unit']) === 'mbps') ? 1000000.0 : 1.0;
@@ -202,6 +233,7 @@ if ($api === 'export') {
                 $tx_pct = ($iface['speed'] > 0) ? ($iface['tx'] / $iface['speed'] * 100) : 0;
                 $final_export[] = [
                     'agent' => $a['alias'], 'ip' => $a['ip'], 'interface' => $iface['name'],
+                    'category' => $iface['category_name'] ?: 'N/A',
                     'speed' => ($iface['speed'] / 1000000) . " Mbps",
                     'rx' => round($iface['rx']/1000000, 2) . " Mbps (" . round($rx_pct,2) . "%)",
                     'tx' => round($iface['tx']/1000000, 2) . " Mbps (" . round($tx_pct,2) . "%)"
@@ -216,24 +248,37 @@ if ($api === 'export') {
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="'.$filename.'.csv"');
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Agent', 'IP Address', 'Interface', 'Speed Capacity', 'Receive (RX)', 'Transmit (TX)']);
+            fputcsv($out, ['Agent', 'IP Address', 'Interface', 'Category', 'Speed Capacity', 'Receive (RX)', 'Transmit (TX)']);
             foreach ($final_export as $row) fputcsv($out, array_values($row));
             fclose($out);
         } else {
             header('Content-Type: text/plain; charset=utf-8');
             header('Content-Disposition: attachment; filename="'.$filename.'.txt"');
             echo "INTERFACE TRAFFIC REPORT - " . date('Y-m-d H:i:s') . "\n";
-            echo str_repeat("=", 100) . "\n";
-            printf("%-25s %-15s %-20s %-15s %-25s %-25s\n", "AGENT", "IP", "INTERFACE", "SPEED", "RX TRAFFIC", "TX TRAFFIC");
-            echo str_repeat("-", 100) . "\n";
+            echo str_repeat("=", 120) . "\n";
+            printf("%-25s %-15s %-20s %-15s %-15s %-25s %-25s\n", "AGENT", "IP", "INTERFACE", "CATEGORY", "SPEED", "RX TRAFFIC", "TX TRAFFIC");
+            echo str_repeat("-", 120) . "\n";
             foreach ($final_export as $row) {
-                printf("%-25s %-15s %-20s %-15s %-25s %-25s\n", substr($row['agent'],0,24), $row['ip'], substr($row['interface'],0,19), $row['speed'], $row['rx'], $row['tx']);
+                printf("%-25s %-15s %-20s %-15s %-15s %-25s %-25s\n", substr($row['agent'],0,24), $row['ip'], substr($row['interface'],0,19), substr($row['category'],0,14), $row['speed'], $row['rx'], $row['tx']);
             }
         }
     } catch (Exception $e) {
         echo "Export Error: " . $e->getMessage();
     }
     exit;
+}
+
+if ($api === 'categories') {
+    if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
+    $stmt = $pdo->query("SELECT id, name FROM tcategory ORDER BY name ASC");
+    $categories = [];
+    while($c = $stmt->fetch(PDO::FETCH_ASSOC)) { 
+        $categories[] = [
+            'id' => $c['id'], 
+            'name' => html_entity_decode((string)$c['name'], ENT_QUOTES, 'UTF-8')
+        ]; 
+    }
+    echo json_encode($categories); exit;
 }
 
 if ($api === 'groups') {
@@ -288,12 +333,14 @@ if ($api === 'data') {
         $params = [];
         $likeClauses = [];
         $suffixes = array_merge($moduleSuffixesIn, $moduleSuffixesOut, $moduleSuffixesSpeed, $moduleSuffixesIndex, $moduleSuffixesStatus);
-        foreach ($suffixes as $i => $suf) { $likeClauses[] = "am.nombre LIKE :l{$i}"; $params[":l{$i}"] = "%$suf"; }
-        foreach ($modulePrefixesSpeed as $i => $pref) { $likeClauses[] = "am.nombre LIKE :lp{$i}"; $params[":lp{$i}"] = "$pref%"; }
+        foreach ($suffixes as $i => $suf) { $likeClauses[] = "LOWER(am.nombre) LIKE :l{$i}"; $params[":l{$i}"] = "%" . strtolower($suf) . "%"; }
+        foreach ($modulePrefixesSpeed as $i => $pref) { $likeClauses[] = "LOWER(am.nombre) LIKE :lp{$i}"; $params[":lp{$i}"] = "%" . strtolower($pref) . "%"; }
         $allLikes = implode(" OR ", $likeClauses);
 
-        $sql = "SELECT am.id_agente_modulo, am.nombre AS module_name, am.unit AS module_unit, am.descripcion AS description, a.id_agente, a.alias, a.nombre AS agent_name, a.direccion AS ip 
-                FROM tagente_modulo am JOIN tagente a ON a.id_agente = am.id_agente 
+        $sql = "SELECT am.id_agente_modulo, am.nombre AS module_name, am.unit AS module_unit, am.descripcion AS description, a.id_agente, a.alias, a.nombre AS agent_name, a.direccion AS ip, am.id_category, c.name AS category_name 
+                FROM tagente_modulo am 
+                JOIN tagente a ON a.id_agente = am.id_agente 
+                LEFT JOIN tcategory c ON am.id_category = c.id
                 WHERE am.disabled = 0 AND a.disabled = 0 AND ({$allLikes})";
 
         if ($groupId > 0) { $sql .= " AND a.id_grupo = :gid"; $params[':gid'] = $groupId; }
@@ -310,22 +357,67 @@ if ($api === 'data') {
 
             foreach ($modulePrefixesSpeed as $p) { if(str_starts_with($modNameL, strtolower($p))) { $dir='speed'; $base=substr($modName, strlen($p)); break; } }
             if(!$dir) {
-                foreach ($moduleSuffixesIn as $s) { if(str_ends_with($modNameL, strtolower($s))) { $dir='in'; $base=substr($modName,0,-strlen($s)); break; } }
-                if(!$dir) foreach ($moduleSuffixesOut as $s) { if(str_ends_with($modNameL, strtolower($s))) { $dir='out'; $base=substr($modName,0,-strlen($s)); break; } }
-                if(!$dir) foreach ($moduleSuffixesSpeed as $s) { if(str_ends_with($modNameL, strtolower($s))) { $dir='speed'; $base=substr($modName,0,-strlen($s)); break; } }
-                if(!$dir) foreach ($moduleSuffixesIndex as $s) { if(str_ends_with($modNameL, strtolower($s))) { $dir='index'; $base=substr($modName,0,-strlen($s)); break; } }
-                if(!$dir) foreach ($moduleSuffixesStatus as $s) { if(str_ends_with($modNameL, strtolower($s))) { $dir='status'; $base=substr($modName,0,-strlen($s)); break; } }
+                foreach ($moduleSuffixesIn as $s) {
+                    $sL = strtolower($s);
+                    $pos = strpos($modNameL, $sL);
+                    if ($pos !== false) {
+                        $dir = 'in';
+                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                        break;
+                    }
+                }
+                if(!$dir) foreach ($moduleSuffixesOut as $s) {
+                    $sL = strtolower($s);
+                    $pos = strpos($modNameL, $sL);
+                    if ($pos !== false) {
+                        $dir = 'out';
+                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                        break;
+                    }
+                }
+                if(!$dir) foreach ($moduleSuffixesSpeed as $s) {
+                    $sL = strtolower($s);
+                    $pos = strpos($modNameL, $sL);
+                    if ($pos !== false) {
+                        $dir = 'speed';
+                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                        break;
+                    }
+                }
+                if(!$dir) foreach ($moduleSuffixesIndex as $s) {
+                    $sL = strtolower($s);
+                    $pos = strpos($modNameL, $sL);
+                    if ($pos !== false) {
+                        $dir = 'index';
+                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                        break;
+                    }
+                }
+                if(!$dir) foreach ($moduleSuffixesStatus as $s) {
+                    $sL = strtolower($s);
+                    $pos = strpos($modNameL, $sL);
+                    if ($pos !== false) {
+                        $dir = 'status';
+                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                        break;
+                    }
+                }
             }
             if (!$dir) continue;
-            $base = clean_base($base); $key = "$aid|$base";
+            $base = clean_base($base);
+            if ($base === '') $base = $modName;
+            $key = "$aid|$base";
             if (!isset($interfaces[$key])) {
-                $interfaces[$key] = ['agent_id'=>$aid, 'node'=>html_entity_decode((string)$m['alias'], ENT_QUOTES, 'UTF-8'), 'ip'=>pick_best_ip((string)$m['ip'], (string)$m['alias'], (string)$m['agent_name']), 'interface'=>$base, 'interface_alias'=>'', 'mod_in'=>0, 'mod_out'=>0, 'mod_speed'=>0, 'mod_index'=>0, 'mod_status'=>0, 'mod_speed_unit'=>'', 'mod_in_name'=>'', 'mod_out_name'=>'', 'desc_speed'=>0.0];
+                $interfaces[$key] = ['agent_id'=>$aid, 'node'=>html_entity_decode((string)$m['alias'], ENT_QUOTES, 'UTF-8'), 'ip'=>pick_best_ip((string)$m['ip'], (string)$m['alias'], (string)$m['agent_name']), 'interface'=>$base, 'interface_alias'=>'', 'mod_in'=>0, 'mod_out'=>0, 'mod_speed'=>0, 'mod_index'=>0, 'mod_status'=>0, 'mod_speed_unit'=>'', 'mod_in_name'=>'', 'mod_out_name'=>'', 'desc_speed'=>0.0, 'category_name'=>''];
             }
             if ($dir==='speed') { $interfaces[$key]['mod_speed']=$modId; $interfaces[$key]['mod_speed_unit']=(string)$m['module_unit']; $interfaces[$key]['mod_speed_name']=$modName; }
             elseif ($dir==='in') { $interfaces[$key]['mod_in']=$modId; $interfaces[$key]['mod_in_name']=$modName; }
             elseif ($dir==='out') { $interfaces[$key]['mod_out']=$modId; $interfaces[$key]['mod_out_name']=$modName; }
             elseif ($dir==='index') { $interfaces[$key]['mod_index']=$modId; }
             elseif ($dir==='status') { $interfaces[$key]['mod_status']=$modId; }
+            if (!empty($m['category_name']) && empty($interfaces[$key]['category_name'])) {
+                $interfaces[$key]['category_name'] = html_entity_decode((string)$m['category_name'], ENT_QUOTES, 'UTF-8');
+            }
             if (!empty($m['description'])) {
                 $desc = html_entity_decode((string)$m['description'], ENT_QUOTES, 'UTF-8');
                 if (stripos($desc, 'Alias:') !== false) {
@@ -428,6 +520,14 @@ if ($api === 'data') {
 
         $interfaces = array_values(array_filter($interfaces, function($i) { return ($i['rx_disp'] !== '0.00 Mbps' || $i['tx_disp'] !== '0.00 Mbps' || $i['speed_disp'] !== 'N/A'); }));
 
+        $enabled_categories = $input['enabled_categories'] ?? null;
+        if ($enabled_categories !== null) {
+            $interfaces = array_values(array_filter($interfaces, function($iface) use ($enabled_categories) {
+                $cat = $iface['category_name'] ?: 'N/A';
+                return in_array($cat, $enabled_categories);
+            }));
+        }
+
         if ($speed_filter !== 'all') {
             $interfaces = array_values(array_filter($interfaces, function($iface) use ($speed_filter) {
                 $cap = (float)$iface['cap_bps'];
@@ -452,7 +552,8 @@ if ($api === 'data') {
                     stripos($iface['ip'] ?? '', $search) !== false ||
                     stripos($iface['interface'] ?? '', $search) !== false ||
                     stripos($iface['interface_alias'] ?? '', $search) !== false ||
-                    stripos($iface['speed_disp'] ?? '', $search) !== false
+                    stripos($iface['speed_disp'] ?? '', $search) !== false ||
+                    stripos($iface['category_name'] ?? '', $search) !== false
                 );
             }));
         }
@@ -632,6 +733,7 @@ if ($api === 'series') {
     $rx = $fetchData($inId, $mult_rx); $tx = $fetchData($outId, $mult_tx);
     echo json_encode(['ok'=>true, 'rx'=>$rx['pts'], 'tx'=>$tx['pts'], 'avg_rx'=>$rx['avg'], 'avg_tx'=>$tx['avg']]); exit;
 }
+$isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
 ?>
 <!doctype html>
 <html lang="en">
@@ -644,6 +746,37 @@ if ($api === 'series') {
         :root { --primary-bg: #f4f6f8; --card-bg: #fff; --toolbar-bg: #fff; --border-color: #e0e4e8; --text-main: #1e293b; --text-dim: #64748b; --accent: #10b981; }
         body { font-family: Arial, Helvetica, sans-serif; background: var(--primary-bg); color: var(--text-main); margin: 0; font-size: 12px; }
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; }
+
+        /* HEADER BREADCRUMB SYSTEMS */
+        .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 10; }
+        .header-logo { height: 24px; width: auto; }
+        .header-divider { width: 1px; height: 28px; background-color: #dce1e5; margin: 0 20px; }
+        .header-title-box { display: flex; flex-direction: column; line-height: 1.2; margin-right: 40px; }
+        .header-title-box .main-title { font-size: 14px !important; font-weight: normal !important; color: #0b1a26 !important; }
+        .header-title-box .sub-title { font-size: 10px !important; color: #64748b !important; }
+        .nav-icon-btn { color: #4a5568 !important; text-decoration: none; display: flex; align-items: center; justify-content: center; height: 36px; width: 36px; border-radius: 50%; transition: 0.2s; border:none; background:transparent; cursor:pointer;}
+        .nav-icon-btn:hover { background: #f1f5f9; }
+
+        .pandora-header-bottom { background-color: #f4f6f8; padding: 15px 30px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e0e4e8; }
+        .breadcrumb-box { display: flex; flex-direction: column; }
+        .page-breadcrumb { font-size: 11px !important; color: #64748b !important; margin-bottom: 4px; font-weight: normal !important; text-transform: uppercase; letter-spacing: 0.5px; }
+        .page-title { font-size: 18px !important; color: #0b1a26 !important; margin: 0; font-weight: 600 !important; line-height: 1.1; display:flex; align-items:center; gap:8px;}
+        .breadcrumb-link { cursor: pointer; color: #1976d2 !important; text-decoration: none; transition:0.2s;}
+        .breadcrumb-link:hover { text-decoration: underline; color:#0d47a1!important; }
+
+        /* Top controls for alignment */
+        .top-controls { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 10px; align-items: center; justify-content: flex-end; }
+
+        <?php if ($isStandalone): ?>
+        .pandora-header-top, .pandora-header-bottom, #detailView > .header-bottom { display: none !important; }
+        .main-content { padding: 20px 25px !important; }
+        button[onclick="goBack()"] { display: none !important; }
+        <?php endif; ?>
+
+        /* Hide inner detail header-bottom when not standalone */
+        body:not(.is-standalone-view) #detailView > .header-bottom {
+            display: none !important;
+        }
         
         .header-top { background: #fff; height: 50px; display: flex; align-items: center; padding: 0 25px; border-bottom: 1px solid #e0e4e8; }
         .header-bottom { padding: 10px 25px; background: #fff; border-bottom: 1px solid #e0e4e8; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; }
@@ -710,12 +843,12 @@ if ($api === 'series') {
         #detailView table.master-table td:first-child {
             text-align: center;
         }
-        #detailView table.master-table th:nth-child(4),
-        #detailView table.master-table td:nth-child(4) {
+        #detailView table.master-table th:nth-child(5),
+        #detailView table.master-table td:nth-child(5) {
             text-align: center;
         }
-        #detailView table.master-table th:nth-child(4) > div,
-        #detailView table.master-table td:nth-child(4) > div {
+        #detailView table.master-table th:nth-child(5) > div,
+        #detailView table.master-table td:nth-child(5) > div {
             justify-content: center;
         }
         #detailView table.master-table th:last-child,
@@ -776,8 +909,8 @@ if ($api === 'series') {
         .traffic-bar { height: 4px; background: #f1f5f9; border-radius: 2px; overflow: hidden; margin-top: 5px; width: 80px; }
         .traffic-fill { height: 100%; transition: width 0.4s; }
 
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; }
-        .modal-box { background: #fff; width: 500px; border-radius: 8px; padding: 25px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: flex-start; justify-content: center; z-index: 1000; overflow-y: auto; padding: 40px 20px; box-sizing: border-box; }
+        .modal-box { background: #fff; width: 500px; border-radius: 8px; padding: 25px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); box-sizing: border-box; margin: auto; min-width: 0; }
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase; }
         .form-input { width: 100%; height: 36px; border: 1px solid #dce1e5; border-radius: 4px; padding: 0 10px; font-size: 13px; }
@@ -787,6 +920,7 @@ if ($api === 'series') {
         .badge-ok { background: #ecfdf5; color: #059669; }
         .badge-warn { background: #fff7ed; color: #ea580c; }
         .badge-crit { background: #fef2f2; color: #dc2626; }
+        .category-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; display: inline-block; white-space: nowrap; }
 
         .btn-action {
             display: inline-flex;
@@ -847,19 +981,38 @@ if ($api === 'series') {
         }
     </style>
 </head>
-<body>
+<body class="<?= $isStandalone ? 'is-standalone-view' : '' ?>">
+
+<div class="pandora-header-top">
+    <div class="header-left">
+        <img src="<?= htmlspecialchars($PANDORA_BASE_URL) ?>/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
+        <div class="header-divider"></div>
+        <div class="header-title-box"><span class="main-title">Pandora FMS</span><span class="sub-title">Custom Dashboard Portal</span></div>
+    </div>
+    <div class="header-right"><a href="<?= htmlspecialchars($PANDORA_BASE_URL) ?>/index.php" class="nav-icon-btn"><span class="material-symbols-outlined">home</span></a></div>
+</div>
+
+<div class="pandora-header-bottom">
+    <div class="breadcrumb-box">
+        <span class="page-breadcrumb" id="mainBreadcrumb"><?= h($dynamic_breadcrumb) ?></span>
+        <h1 class="page-title" id="pageMainTitle">Traffic Dashboard</h1>
+    </div>
+    
+    <div class="top-controls" id="listTopControls">
+        <button class="btn-create" onclick="openCreateModal()"><span class="material-symbols-outlined">add</span> Create Dashboard</button>
+        <input type="file" id="importBackupFile" style="display:none" onchange="importDashboardConfig(event)">
+    </div>
+</div>
 
 <div id="masterView">
-    <div class="header-bottom">
-        <h1 class="page-title">Traffic Dashboard</h1>
-        <button class="btn-create" onclick="openCreateModal()"><span class="material-symbols-outlined">add</span> Create Dashboard</button>
-    </div>
     <div class="main-content">
         <div class="card">
-            <table class="master-table">
-                <thead><tr><th>Dashboard Name</th><th>Target Group</th><th>Target Node</th><th>Actions</th></tr></thead>
-                <tbody id="masterTableBody"></tbody>
-            </table>
+            <div style="overflow-x: auto; width: 100%;">
+                <table class="master-table">
+                    <thead><tr><th>Dashboard Name</th><th>Target Group</th><th>Target Node</th><th>Actions</th></tr></thead>
+                    <tbody id="masterTableBody"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -870,6 +1023,7 @@ if ($api === 'series') {
     </div>
     <div class="toolbar">
         <div class="toolbar-left" style="display:flex; align-items:center; gap:8px;">
+            <button class="btn-neutral" onclick="goBack()" title="Back to List" style="height:32px; padding:0 10px;"><span class="material-symbols-outlined" style="font-size:18px!important; color:#1e293b;">arrow_back</span></button>
             <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="fetchData()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
             <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="rx_desc">Largest RX (Max)</option><option value="rx_asc">Smallest RX (Min)</option><option value="tx_desc">Largest TX (Max)</option><option value="tx_asc">Smallest TX (Min)</option><option value="rx_pct_desc">Largest RX % (Max)</option><option value="rx_pct_asc">Smallest RX % (Min)</option><option value="tx_pct_desc">Largest TX % (Max)</option><option value="tx_pct_asc">Smallest TX % (Min)</option><option value="top_10_rx_pct">Top 10 RX (%)</option><option value="top_10_tx_pct">Top 10 TX (%)</option></select></div>
             <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="fetchData()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
@@ -910,15 +1064,17 @@ if ($api === 'series') {
     </div>
         <div class="main-content">
             <div class="card">
-                <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 18%;">Agent</th><th style="width: 22%;">Interface</th><th style="width: 12%;">Speed</th><th style="width: 17%;">RECEIVE (RX)</th><th style="width: 17%;">TRANSMIT (TX)</th><th style="width: 10%;">Actions</th></tr></thead><tbody id="detailTableBody"></tbody></table>
+                <div style="overflow-x: auto; width: 100%;">
+                    <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 15%;">Agent</th><th style="width: 18%;">Interface</th><th style="width: 12%;">Category</th><th style="width: 10%;">Speed</th><th style="width: 15%;">RECEIVE (RX)</th><th style="width: 15%;">TRANSMIT (TX)</th><th style="width: 7%;">Actions</th></tr></thead><tbody id="detailTableBody"></tbody></table>
+                </div>
                 <div id="paginationControls" style="padding:15px 20px; border-top:1px solid #e0e4e8; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;"></div>
             </div>
         </div>
 </div>
 
 <div class="modal-overlay" id="chartModal">
-    <div class="modal-box" style="width:900px; max-width:95%; background:#fff; border:1px solid #e0e4e8; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
-        <div style="padding:15px 20px; border-bottom:1px solid #e0e4e8; display:flex; justify-content:space-between; align-items:center;">
+    <div class="modal-box" style="width:900px; max-width:95%; min-width:0; height:600px; max-height:90vh; background:#fff; border:1px solid #e0e4e8; box-shadow: 0 10px 40px rgba(0,0,0,0.15); padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="padding:15px 20px; border-bottom:1px solid #e0e4e8; display:flex; justify-content:space-between; align-items:center; flex-shrink: 0;">
             <div>
                 <strong id="chartTitle" style="color:#1e293b; font-size:16px;">History</strong>
                 <div id="chartStats" style="font-size:11px; margin-top:4px; display:flex; gap:15px;">
@@ -929,9 +1085,9 @@ if ($api === 'series') {
             <div style="display:flex; align-items:center; gap:10px;">
                 <select id="chartRange" class="toolbar-select" style="height:28px; font-size:11px;" onchange="reloadChart()">
                     <option value="1">Last 1 Hour</option>
-                    <option value="3" selected>Last 3 Hours</option>
+                    <option value="3">Last 3 Hours</option>
                     <option value="6">Last 6 Hours</option>
-                    <option value="24">Last 24 Hours</option>
+                    <option value="24" selected>Last 24 Hours</option>
                     <option value="168">Last 7 Days</option>
                     <option value="custom">Custom Range</option>
                 </select>
@@ -943,15 +1099,15 @@ if ($api === 'series') {
                 <button onclick="document.getElementById('chartModal').style.display='none'" style="background:none; border:none; color:#64748b; cursor:pointer;"><span class="material-symbols-outlined">close</span></button>
             </div>
         </div>
-        <div id="customRangeInputs" style="display:none; padding:10px 20px; background:#f8fafc; border-bottom:1px solid #e0e4e8; align-items:center; gap:10px;">
+        <div id="customRangeInputs" style="display:none; padding:10px 20px; background:#f8fafc; border-bottom:1px solid #e0e4e8; align-items:center; gap:10px; flex-shrink: 0;">
             <span style="font-size:11px; font-weight:600; color:#64748b;">FROM</span>
             <input type="datetime-local" id="c_from" class="toolbar-select" style="height:28px; font-size:11px;">
             <span style="font-size:11px; font-weight:600; color:#64748b;">TO</span>
             <input type="datetime-local" id="c_to" class="toolbar-select" style="height:28px; font-size:11px;">
             <button class="btn-create" style="height:28px; padding:0 12px; font-size:11px;" onclick="reloadChart()">Apply Range</button>
         </div>
-        <div style="padding:20px; height:450px;"><div id="trafficCanvas" style="width:100%; height:100%;"></div></div>
-        <div style="padding:10px 20px; font-size:10px; color:#94a3b8; text-align:center; border-top:1px solid #f1f5f9;">Scroll to Zoom • Drag to Pan</div>
+        <div style="padding:20px; flex: 1; min-height: 250px; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; width: 100%;"><div id="trafficCanvas" style="width:100%; height:100%; min-height: 0;"></div></div>
+        <div style="padding:10px 20px; font-size:10px; color:#94a3b8; text-align:center; border-top:1px solid #f1f5f9; flex-shrink: 0;">Scroll to Zoom • Drag to Pan</div>
     </div>
 </div>
 
@@ -1011,6 +1167,10 @@ if ($api === 'series') {
                 </label>
             </div>
         </div>
+        <div class="form-group" style="margin-top:15px; border-top: 1px solid #f1f5f9; padding-top:12px;">
+            <label style="font-weight:600; color:#475569; font-size:12px;">ENABLED CATEGORIES IN FILTER</label>
+            <div id="category_filter_container" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:8px; max-height:120px; overflow-y:auto;"></div>
+        </div>
         <div class="form-actions" style="margin-top:30px;">
             <button class="btn-neutral" onclick="closeSettingsModal()">Cancel</button>
             <button class="btn-create" onclick="saveSettings()">Save Configuration</button>
@@ -1047,8 +1207,10 @@ if ($api === 'series') {
 
 <script>
     const CSRF_TOKEN = '<?= $csrf_token ?>';
+    const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
+    const DIRECT_SCRIPT_URL = '<?= $directScriptUrl ?>';
     let masterDashboards = [], currentDashId = '', currentAgents = [], currentPage = 1, chartInstance = null;
-    let timerInterval = null, countdown = 60, editId = null;
+    let timerInterval = null, countdown = 60, editId = null, availableCategories = [];
 
     const ALL_UNITS = [
         { value: 'Auto', label: 'Auto' },
@@ -1079,6 +1241,34 @@ if ($api === 'series') {
         }
     }
 
+    function renderCategoryFilterUI() {
+        const container = document.getElementById('category_filter_container');
+        if (!container) return;
+        let html = '';
+        availableCategories.forEach(c => {
+            html += `
+                <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer; font-size:12px;">
+                    <input type="checkbox" id="cat_opt_${c.id}" value="${c.name}" checked> ${c.name}
+                </label>
+            `;
+        });
+        html += `
+            <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer; font-size:12px;">
+                <input type="checkbox" id="cat_opt_na" value="N/A" checked> N/A (Unassigned)
+            </label>
+        `;
+        container.innerHTML = html;
+    }
+
+    function syncEnabledCategoriesUI(list) {
+        availableCategories.forEach(c => {
+            const cb = document.getElementById('cat_opt_' + c.id);
+            if (cb) cb.checked = (list === null) || list.includes(c.name);
+        });
+        const cbNA = document.getElementById('cat_opt_na');
+        if (cbNA) cbNA.checked = (list === null) || list.includes('N/A');
+    }
+
     function syncEnabledUnitsUI(list) {
         ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
             const cb = document.getElementById('unit_opt_' + u);
@@ -1105,10 +1295,18 @@ if ($api === 'series') {
         const rg = await fetch('?api=groups'); const groups = await rg.json();
         const gsel = document.getElementById('m_group'); groups.forEach(g => gsel.add(new Option(decodeHtml(g.name), g.id)));
 
+        try {
+            const rc = await fetch('?api=categories');
+            availableCategories = await rc.json();
+            renderCategoryFilterUI();
+        } catch(e) {
+            console.error("Failed to load categories:", e);
+        }
+
         const params = new URLSearchParams(window.location.search);
         
         // Load from LocalStorage first (User Defaults)
-        const savedSettings = JSON.parse(localStorage.getItem('pfms_dashboard_settings') || '{}');
+        const savedSettings = IS_STANDALONE ? {} : JSON.parse(localStorage.getItem('pfms_dashboard_settings') || '{}');
         if (savedSettings.warn) document.getElementById('f_warn').value = savedSettings.warn;
         if (savedSettings.crit) document.getElementById('f_crit').value = savedSettings.crit;
         if (savedSettings.fs) document.getElementById('f_fontsize').value = savedSettings.fs;
@@ -1129,10 +1327,13 @@ if ($api === 'series') {
         if(params.has('crit')) document.getElementById('f_crit').value = params.get('crit');
         if(params.has('fs')) document.getElementById('f_fontsize').value = params.get('fs');
         if(params.has('show_units')) document.getElementById('f_showunits').checked = params.get('show_units') !== '0';
+        let activeCategoriesList = savedSettings.enabled_categories || null;
         if(params.has('enabled_units')) activeUnitsList = params.get('enabled_units').split(',');
+        if(params.has('enabled_categories')) activeCategoriesList = params.get('enabled_categories').split(',');
         
         syncEnabledUnitsUI(activeUnitsList);
         updateUnitDropdown(activeUnitsList);
+        syncEnabledCategoriesUI(activeCategoriesList);
         applyFontSize();
 
         const dashId = params.get('dash_id');
@@ -1146,6 +1347,15 @@ if ($api === 'series') {
         document.getElementById('btnSettings').style.display = 'none';
         document.getElementById('btnHidden').style.display = 'none';
         document.getElementById('search_wrapper').style.display = 'none';
+        
+        const listCtrls = document.getElementById('listTopControls');
+        if(listCtrls) listCtrls.style.display = 'flex';
+        
+        const pageTitle = document.getElementById('pageMainTitle');
+        if(pageTitle) pageTitle.innerText = "Traffic Dashboard";
+
+        const mainBreadcrumb = document.getElementById('mainBreadcrumb');
+        if (mainBreadcrumb) mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / TRAFFIC DASHBOARD";
         
         // Reset to default font for master list
         document.getElementById('detailView').style.setProperty('--table-font-size', '12px');
@@ -1162,6 +1372,12 @@ if ($api === 'series') {
                 <button class="btn-action" onclick="editDashboard('${d.id}')" title="Configure">
                     <span class="material-symbols-outlined">settings</span>
                 </button>
+                <button class="btn-action" onclick="exportDashboardConfig('${d.id}')" title="Backup Dashboard Config">
+                    <span class="material-symbols-outlined">download</span>
+                </button>
+                <button class="btn-action" onclick="triggerImport('${d.id}')" title="Load Dashboard Config">
+                    <span class="material-symbols-outlined">upload</span>
+                </button>
                 <button class="btn-action" onclick="duplicateDashboardFromList('${d.id}')" title="Duplicate">
                     <span class="material-symbols-outlined">content_copy</span>
                 </button>
@@ -1177,14 +1393,28 @@ if ($api === 'series') {
         currentDashId = id;
         document.getElementById('masterView').style.display = 'none';
         document.getElementById('detailView').style.display = 'block';
+        if (IS_STANDALONE) {
+            document.querySelectorAll('button[onclick="goBack()"]').forEach(btn => btn.style.setProperty('display', 'none', 'important'));
+        }
         document.getElementById('btnSettings').style.display = 'flex';
         document.getElementById('btnHidden').style.display = 'flex';
         if (!d.hidden_interfaces) d.hidden_interfaces = [];
         document.getElementById('search_wrapper').style.display = 'flex';
         document.getElementById('detailDashName').innerText = d.name;
+
+        const listCtrls = document.getElementById('listTopControls');
+        if(listCtrls) listCtrls.style.display = 'none';
+
+        const pageTitle = document.getElementById('pageMainTitle');
+        if(pageTitle) pageTitle.innerText = d.name;
+
+        const mainBreadcrumb = document.getElementById('mainBreadcrumb');
+        if (mainBreadcrumb) {
+            mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / TRAFFIC DASHBOARD / " + d.name.toUpperCase();
+        }
         
         // Load per-dashboard settings
-        const saved = JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
+        const saved = IS_STANDALONE ? {} : JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
         const params = new URLSearchParams(window.location.search);
 
         const warn = (isInitial && params.has('warn')) ? params.get('warn') : (saved.warn || 70);
@@ -1197,6 +1427,7 @@ if ($api === 'series') {
         const showUnits = (isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (saved.show_units !== false);
 
         const enabledUnits = (isInitial && params.has('enabled_units')) ? params.get('enabled_units').split(',') : (saved.enabled_units || null);
+        const enabledCategories = (isInitial && params.has('enabled_categories')) ? params.get('enabled_categories').split(',') : (saved.enabled_categories || null);
 
         document.getElementById('f_warn').value = warn;
         document.getElementById('f_crit').value = crit;
@@ -1208,6 +1439,7 @@ if ($api === 'series') {
 
         syncEnabledUnitsUI(enabledUnits);
         updateUnitDropdown(enabledUnits);
+        syncEnabledCategoriesUI(enabledCategories);
 
         const searchEl = document.getElementById('f_search');
         searchEl.value = search;
@@ -1338,11 +1570,19 @@ if ($api === 'series') {
             if (cb && cb.checked) enabled_units.push(u);
         });
 
+        const enabled_categories = [];
+        availableCategories.forEach(c => {
+            const cb = document.getElementById('cat_opt_' + c.id);
+            if (cb && cb.checked) enabled_categories.push(c.name);
+        });
+        const cbNA = document.getElementById('cat_opt_na');
+        if (cbNA && cbNA.checked) enabled_categories.push('N/A');
+
         localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({
-            warn, crit, fs, unit, sort, speed_filter, search, show_units: showUnits, enabled_units: enabled_units
+            warn, crit, fs, unit, sort, speed_filter, search, show_units: showUnits, enabled_units: enabled_units, enabled_categories: enabled_categories
         }));
 
-        const body = document.getElementById('detailTableBody'); body.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading...</td></tr>';
+        const body = document.getElementById('detailTableBody'); body.innerHTML = '<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>';
         const payload = { 
             group_id: d.group_id, 
             agent_id: d.agent_id, 
@@ -1354,7 +1594,8 @@ if ($api === 'series') {
             page: currentPage, 
             per_page: 20,
             warn: parseFloat(warn) || 70,
-            crit: parseFloat(crit) || 80
+            crit: parseFloat(crit) || 80,
+            enabled_categories: enabled_categories
         };
         const r = await fetch('?api=data', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':CSRF_TOKEN}, body:JSON.stringify(payload) });
         const res = await r.json();
@@ -1371,6 +1612,10 @@ if ($api === 'series') {
             const speedDisp = showUnits ? r.speed_disp : stripUnit(r.speed_disp);
             const rxDisp = showUnits ? r.rx_disp : stripUnit(r.rx_disp);
             const txDisp = showUnits ? r.tx_disp : stripUnit(r.tx_disp);
+
+            const categoryDisp = r.category_name 
+                ? `<span class="category-badge">${r.category_name}</span>`
+                : `<span class="category-badge" style="background:transparent; color:#94a3b8; border-color:#e2e8f0; border-style:dashed;">N/A</span>`;
 
             return `<tr>
             <td><span class="status-badge ${r.status_badge}">${r.status_text}</span></td>
@@ -1391,6 +1636,9 @@ if ($api === 'series') {
                 ${r.interface_alias ? `<div class="sub-text" style="color:#64748b; margin-top:2px;">${r.interface_alias}</div>` : ''}
             </td>
             <td>
+                <div style="font-weight:600;">${categoryDisp}</div>
+            </td>
+            <td>
                 <div style="display:flex; align-items:center; gap:5px; font-weight:500;">
                     ${speedDisp}
                     ${r.speed_disp === 'N/A' ? `<span class="material-symbols-outlined table-icon" style="color:#f59e0b; cursor:pointer;" onclick="alert('Please check if the IfSpeed/IfHighSpeed module is available?')">info</span>` : ''}
@@ -1406,7 +1654,7 @@ if ($api === 'series') {
                     <span class="material-symbols-outlined table-icon">delete</span>
                 </button>
             </td>
-        </tr>`;}).join('') || '<tr><td colspan="7" style="text-align:center;">No Interfaces Found</td></tr>';
+        </tr>`;}).join('') || '<tr><td colspan="8" style="text-align:center;">No Interfaces Found</td></tr>';
         
         renderPagination(res.pagination);
         updateURLState();
@@ -1470,8 +1718,16 @@ if ($api === 'series') {
             if (cb && cb.checked) enabled_units.push(u);
         });
 
+        const enabled_categories = [];
+        availableCategories.forEach(c => {
+            const cb = document.getElementById('cat_opt_' + c.id);
+            if (cb && cb.checked) enabled_categories.push(c.name);
+        });
+        const cbNA = document.getElementById('cat_opt_na');
+        if (cbNA && cbNA.checked) enabled_categories.push('N/A');
+
         // Save to LocalStorage with Dashboard ID as Key
-        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({ warn, crit, fs, unit, sort, speed_filter, search, show_units, enabled_units }));
+        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({ warn, crit, fs, unit, sort, speed_filter, search, show_units, enabled_units, enabled_categories }));
         
         updateUnitDropdown(enabled_units);
         applyFontSize();
@@ -1511,7 +1767,16 @@ if ($api === 'series') {
         newUrl.searchParams.set('crit', crit);
         newUrl.searchParams.set('fs', fs);
         newUrl.searchParams.set('show_units', showUnits);
+        const enabled_categories = [];
+        availableCategories.forEach(c => {
+            const cb = document.getElementById('cat_opt_' + c.id);
+            if (cb && cb.checked) enabled_categories.push(c.name);
+        });
+        const cbNA = document.getElementById('cat_opt_na');
+        if (cbNA && cbNA.checked) enabled_categories.push('N/A');
+
         newUrl.searchParams.set('enabled_units', enabled_units.join(','));
+        newUrl.searchParams.set('enabled_categories', enabled_categories.join(','));
         if(currentDashId) newUrl.searchParams.set('dash_id', currentDashId);
         window.history.replaceState({}, '', newUrl);
     }
@@ -1583,16 +1848,117 @@ if ($api === 'series') {
             });
         } 
     }
-    function copyShareLink() { navigator.clipboard.writeText(window.location.href).then(() => alert("Link Copied!")); }
+    function copyShareLink() {
+        const u = new URL(window.location.origin + DIRECT_SCRIPT_URL);
+        u.searchParams.set('s', '1');
+        if (currentDashId) {
+            u.searchParams.set('dash_id', currentDashId);
+        }
+        const urlString = u.toString();
+        
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(urlString).then(() => alert("Link Copied!"));
+        } else {
+            const textArea = document.createElement("textarea");
+            textArea.value = urlString;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-999999px";
+            textArea.style.top = "-999999px";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                alert("Link Copied!");
+            } catch (err) {
+                prompt("Copy manual:", urlString);
+            }
+            textArea.remove();
+        }
+    }
+
+    let importTargetDashId = null;
+    function triggerImport(id) {
+        importTargetDashId = id;
+        document.getElementById('importBackupFile').click();
+    }
+
+    function exportDashboardConfig(id) {
+        const targetId = id || currentDashId;
+        if(!targetId) return;
+        const d = masterDashboards.find(x => x.id === targetId);
+        if(!d) return;
+        const exportData = {
+            name: d.name,
+            group_id: d.group_id,
+            group_name: d.group_name,
+            agent_id: d.agent_id,
+            agent_name: d.agent_name,
+            hidden_interfaces: d.hidden_interfaces || []
+        };
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+        const dlAnchorElem = document.createElement('a');
+        dlAnchorElem.setAttribute("href",     dataStr);
+        dlAnchorElem.setAttribute("download", `traffic_dashboard_${d.name.toLowerCase().replace(/\s+/g, '_')}_backup.json`);
+        dlAnchorElem.click();
+    }
+
+    function importDashboardConfig(event) {
+        const targetId = importTargetDashId || currentDashId;
+        if(!targetId) return;
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const loaded = JSON.parse(e.target.result);
+                if (loaded && typeof loaded === 'object' && !Array.isArray(loaded)) {
+                    if (loaded.group_id === undefined || !loaded.name) {
+                        alert("Format file tidak valid. Pastikan file JSON berisi konfigurasi dashboard traffic yang benar.");
+                        return;
+                    }
+                    masterDashboards = masterDashboards.map(d => {
+                        if (d.id === targetId) {
+                            d.name = loaded.name;
+                            d.group_id = loaded.group_id;
+                            d.group_name = loaded.group_name || '';
+                            d.agent_id = loaded.agent_id || '0';
+                            d.agent_name = loaded.agent_name || '';
+                            d.hidden_interfaces = loaded.hidden_interfaces || [];
+                        }
+                        return d;
+                    });
+                    saveConfigToServer(() => {
+                        alert("Dashboard configuration loaded successfully!");
+                        if (targetId === currentDashId) {
+                            openDashboard(targetId);
+                        } else {
+                            renderMasterList();
+                        }
+                    });
+                } else {
+                    alert("Format file JSON tidak valid.");
+                }
+            } catch (err) {
+                alert("Invalid JSON file: " + err.message);
+            } finally {
+                event.target.value = '';
+                importTargetDashId = null;
+            }
+        };
+        reader.readAsText(file);
+    }
+
+
 
     let lastInId, lastOutId, lastTitle;
     function openChart(inId, outId, title) {
         lastInId = inId; lastOutId = outId; lastTitle = title;
         document.getElementById('chartTitle').innerText = title; 
         
-        // Reset chart settings to default (Last 3 Hours)
+        // Reset chart settings to default (Last 24 Hours)
         const rangeSelect = document.getElementById('chartRange');
-        rangeSelect.value = '3';
+        rangeSelect.value = '24';
         document.getElementById('customRangeInputs').style.display = 'none';
         document.getElementById('c_from').value = '';
         document.getElementById('c_to').value = '';
@@ -1661,7 +2027,7 @@ if ($api === 'series') {
                     valueFormatter: (value) => value !== null ? value.toFixed(2) + ' ' + displayUnit : '-' 
                 },
                 legend: { textStyle: { fontSize: 12, color: '#1e293b', fontWeight: 'bold' } },
-                grid: { left: 10, right: 20, top: 30, bottom: 20, containLabel: true },
+                grid: { left: 15, right: 15, top: 30, bottom: 65, containLabel: true },
                 xAxis: { 
                     type: 'time', 
                     boundaryGap: false, 
@@ -1675,7 +2041,23 @@ if ($api === 'series') {
                     splitLine: { lineStyle: { color: '#f1f5f9' } }, 
                     axisLabel: { color: '#64748b' } 
                 },
-                dataZoom: [{ type: 'inside', xAxisIndex: [0] }, { type: 'slider', xAxisIndex: [0], height: 20, bottom: 0 }],
+                dataZoom: [
+                    { type: 'inside', xAxisIndex: [0] },
+                    { 
+                        type: 'slider', 
+                        xAxisIndex: [0], 
+                        height: 20, 
+                        bottom: 15,
+                        left: 45,
+                        right: 45,
+                        labelFormatter: (value) => {
+                            const d = new Date(value);
+                            const hh = String(d.getHours()).padStart(2, '0');
+                            const mm = String(d.getMinutes()).padStart(2, '0');
+                            return hh + ':' + mm;
+                        }
+                    }
+                ],
                 series: [
                     { 
                         name: `RX`, 
@@ -1695,6 +2077,12 @@ if ($api === 'series') {
                     }
                 ]
             });
+            if (chartInstance) {
+                chartInstance.resize();
+                setTimeout(() => {
+                    if (chartInstance) chartInstance.resize();
+                }, 50);
+            }
         });
     }
 
