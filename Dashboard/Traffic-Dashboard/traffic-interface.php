@@ -1195,9 +1195,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
             </div>
             <div class="toolbar-header-right">
-                <button class="btn-neutral btn-toggle-expand" onclick="toggleToolbarExpand()" title="Filters & Actions" style="height:32px; padding:0 10px; display:flex; align-items:center; gap:6px;">
-                    <span class="material-symbols-outlined" id="expand_icon">tune</span>
-                    <span class="btn-text">Filters & Tools</span>
+                <button class="btn-neutral btn-toggle-expand" onclick="toggleToolbarExpand()" title="Settings" style="height:32px; padding:0 10px; display:flex; align-items:center; gap:6px;">
+                    <span class="material-symbols-outlined" id="expand_icon">expand_more</span>
+                    <span class="btn-text">Settings</span>
                 </button>
             </div>
         </div>
@@ -1216,7 +1216,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
                 <div class="toolbar-right">
                     <button id="btnSettings" class="btn-neutral" onclick="openSettingsModal()" title="Threshold & Display Settings" style="display:none; height:32px;">
-                        <span class="material-symbols-outlined">settings</span> <span class="btn-text">Settings</span>
+                        <span class="material-symbols-outlined">settings</span> <span class="btn-text">Thresholds</span>
                     </button>
                     <button id="btnHidden" class="btn-neutral" onclick="openHiddenModal()" title="Manage Hidden Interfaces" style="display:none; height:32px;">
                         <span class="material-symbols-outlined">visibility_off</span> <span class="btn-text">Hidden</span>
@@ -1474,11 +1474,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const isShown = collapse.classList.contains('show');
         if (isShown) {
             collapse.classList.remove('show');
-            icon.innerText = 'tune';
+            icon.innerText = 'expand_more';
             localStorage.setItem('pfms_toolbar_expand', '0');
         } else {
             collapse.classList.add('show');
-            icon.innerText = 'close';
+            icon.innerText = 'expand_less';
             localStorage.setItem('pfms_toolbar_expand', '1');
         }
     }
@@ -1694,10 +1694,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (collapse) {
             if (expandSaved) {
                 collapse.classList.add('show');
-                if (icon) icon.innerText = 'close';
+                if (icon) icon.innerText = 'expand_less';
             } else {
                 collapse.classList.remove('show');
-                if (icon) icon.innerText = 'tune';
+                if (icon) icon.innerText = 'expand_more';
             }
         }
         setupTimer();
