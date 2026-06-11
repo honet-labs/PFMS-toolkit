@@ -337,20 +337,24 @@ if ($api === 'data') {
         foreach ($modulePrefixesSpeed as $i => $pref) { $likeClauses[] = "LOWER(am.nombre) LIKE :lp{$i}"; $params[":lp{$i}"] = "%" . strtolower($pref) . "%"; }
         $allLikes = implode(" OR ", $likeClauses);
 
-        $sql = "SELECT am.id_agente_modulo, am.nombre AS module_name, am.unit AS module_unit, am.descripcion AS description, a.id_agente, a.alias, a.nombre AS agent_name, a.direccion AS ip, am.id_category, c.name AS category_name 
+        // OPTIMIZED: Left join tagente_estado directly to avoid secondary massive SQL queries.
+        // Filter by agent and group early to utilize indexes.
+        $sql = "SELECT am.id_agente_modulo, am.nombre AS module_name, am.unit AS module_unit, am.descripcion AS description, a.id_agente, a.alias, a.nombre AS agent_name, a.direccion AS ip, am.id_category, c.name AS category_name, ae.datos AS module_data
                 FROM tagente_modulo am 
                 JOIN tagente a ON a.id_agente = am.id_agente 
                 LEFT JOIN tcategory c ON am.id_category = c.id
-                WHERE am.disabled = 0 AND a.disabled = 0 AND ({$allLikes})";
+                LEFT JOIN tagente_estado ae ON ae.id_agente_modulo = am.id_agente_modulo
+                WHERE am.disabled = 0 AND a.disabled = 0";
 
         if ($groupId > 0) { $sql .= " AND a.id_grupo = :gid"; $params[':gid'] = $groupId; }
         if ($agentId > 0) { $sql .= " AND a.id_agente = :aid"; $params[':aid'] = $agentId; }
 
+        $sql .= " AND ({$allLikes})";
 
         $stmt = $pdo->prepare($sql); $stmt->execute($params); 
         $modules = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $interfaces = []; $moduleIds = [];
+        $interfaces = [];
         foreach ($modules as $m) {
             $aid = (int)$m['id_agente']; $modId = (int)$m['id_agente_modulo']; $modName = (string)$m['module_name'];
             $dir = null; $base = null; $modNameL = strtolower($modName);
@@ -408,13 +412,58 @@ if ($api === 'data') {
             if ($base === '') $base = $modName;
             $key = "$aid|$base";
             if (!isset($interfaces[$key])) {
-                $interfaces[$key] = ['agent_id'=>$aid, 'node'=>html_entity_decode((string)$m['alias'], ENT_QUOTES, 'UTF-8'), 'ip'=>pick_best_ip((string)$m['ip'], (string)$m['alias'], (string)$m['agent_name']), 'interface'=>$base, 'interface_alias'=>'', 'mod_in'=>0, 'mod_out'=>0, 'mod_speed'=>0, 'mod_index'=>0, 'mod_status'=>0, 'mod_speed_unit'=>'', 'mod_in_name'=>'', 'mod_out_name'=>'', 'desc_speed'=>0.0, 'category_name'=>''];
+                $interfaces[$key] = [
+                    'agent_id'=>$aid, 
+                    'node'=>html_entity_decode((string)$m['alias'], ENT_QUOTES, 'UTF-8'), 
+                    'ip'=>pick_best_ip((string)$m['ip'], (string)$m['alias'], (string)$m['agent_name']), 
+                    'interface'=>$base, 
+                    'interface_alias'=>'', 
+                    'mod_in'=>0, 
+                    'mod_out'=>0, 
+                    'mod_speed'=>0, 
+                    'mod_index'=>0, 
+                    'mod_status'=>0, 
+                    'mod_speed_unit'=>'', 
+                    'mod_in_name'=>'', 
+                    'mod_out_name'=>'', 
+                    'desc_speed'=>0.0, 
+                    'category_name'=>'',
+                    'rx_val'=>0.0,
+                    'tx_val'=>0.0,
+                    'speed_val'=>null,
+                    'index_val'=>null,
+                    'status_val_str'=>null
+                ];
             }
-            if ($dir==='speed') { $interfaces[$key]['mod_speed']=$modId; $interfaces[$key]['mod_speed_unit']=(string)$m['module_unit']; $interfaces[$key]['mod_speed_name']=$modName; }
-            elseif ($dir==='in') { $interfaces[$key]['mod_in']=$modId; $interfaces[$key]['mod_in_name']=$modName; }
-            elseif ($dir==='out') { $interfaces[$key]['mod_out']=$modId; $interfaces[$key]['mod_out_name']=$modName; }
-            elseif ($dir==='index') { $interfaces[$key]['mod_index']=$modId; }
-            elseif ($dir==='status') { $interfaces[$key]['mod_status']=$modId; }
+
+            $val = ($m['module_data'] !== null) ? (float)$m['module_data'] : null;
+            $val_str = ($m['module_data'] !== null) ? trim((string)$m['module_data']) : null;
+
+            if ($dir==='speed') { 
+                $interfaces[$key]['mod_speed']=$modId; 
+                $interfaces[$key]['mod_speed_unit']=(string)$m['module_unit']; 
+                $interfaces[$key]['mod_speed_name']=$modName; 
+                $interfaces[$key]['speed_val']=$val;
+            }
+            elseif ($dir==='in') { 
+                $interfaces[$key]['mod_in']=$modId; 
+                $interfaces[$key]['mod_in_name']=$modName; 
+                $interfaces[$key]['rx_val']=$val;
+            }
+            elseif ($dir==='out') { 
+                $interfaces[$key]['mod_out']=$modId; 
+                $interfaces[$key]['mod_out_name']=$modName; 
+                $interfaces[$key]['tx_val']=$val;
+            }
+            elseif ($dir==='index') { 
+                $interfaces[$key]['mod_index']=$modId; 
+                $interfaces[$key]['index_val']=$val;
+            }
+            elseif ($dir==='status') { 
+                $interfaces[$key]['mod_status']=$modId; 
+                $interfaces[$key]['status_val_str']=$val_str;
+            }
+
             if (!empty($m['category_name']) && empty($interfaces[$key]['category_name'])) {
                 $interfaces[$key]['category_name'] = html_entity_decode((string)$m['category_name'], ENT_QUOTES, 'UTF-8');
             }
@@ -433,29 +482,16 @@ if ($api === 'data') {
                     $interfaces[$key]['desc_speed'] = (float)$matches[1];
                 }
             }
-            $moduleIds[] = $modId;
-        }
-
-        $values = [];
-        $status_values = [];
-        if (!empty($moduleIds)) {
-            $ids = implode(',', array_fill(0, count(array_unique($moduleIds)), '?'));
-            $st = $pdo->prepare("SELECT id_agente_modulo, datos FROM tagente_estado WHERE id_agente_modulo IN ($ids)");
-            $st->execute(array_values(array_unique($moduleIds)));
-            while ($row = $st->fetch(PDO::FETCH_ASSOC)) {
-                $values[(int)$row['id_agente_modulo']] = (float)$row['datos'];
-                $status_values[(int)$row['id_agente_modulo']] = trim((string)$row['datos']);
-            }
         }
 
         foreach ($interfaces as &$iface) {
-            $rx_raw = $values[$iface['mod_in']] ?? 0.0; $tx_raw = $values[$iface['mod_out']] ?? 0.0;
-            $speed_raw = $values[$iface['mod_speed']] ?? null;
-            if ($values[$iface['mod_index']] ?? null) $iface['if_index'] = (int)$values[$iface['mod_index']]; else $iface['if_index'] = '-';
+            $rx_raw = $iface['rx_val'] ?? 0.0; $tx_raw = $iface['tx_val'] ?? 0.0;
+            $speed_raw = $iface['speed_val'] ?? null;
+            if (($iface['index_val'] ?? null) !== null) $iface['if_index'] = (int)$iface['index_val']; else $iface['if_index'] = '-';
 
             // Format status badge based on RFC 2863 ifOperStatus value (1 = UP, 2 = DOWN, 3 = TESTING)
             $mod_status_id = $iface['mod_status'];
-            $raw_status = $status_values[$mod_status_id] ?? null;
+            $raw_status = $iface['status_val_str'] ?? null;
 
             if ($mod_status_id <= 0 || $raw_status === null || $raw_status === '') {
                 $iface['status_text'] = 'N/A';
