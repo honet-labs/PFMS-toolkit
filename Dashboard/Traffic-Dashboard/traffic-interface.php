@@ -1584,6 +1584,15 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         applyFontSize();
 
         const url = new URL(window.location); url.searchParams.set('dash_id', id); window.history.replaceState({}, '', url);
+        if (window.parent && window.parent !== window) {
+            try {
+                const parentUrl = new URL(window.parent.location);
+                parentUrl.searchParams.set('dash_id', id);
+                window.parent.history.replaceState({}, '', parentUrl);
+            } catch (e) {
+                console.error("Failed to update parent window URL:", e);
+            }
+        }
         setupTimer();
         fetchData();
 
@@ -1643,7 +1652,24 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         });
     }
 
-    function goBack() { currentDashId = ''; const url = new URL(window.location); url.searchParams.delete('dash_id'); window.history.replaceState({}, '', url); renderMasterList(); }
+    function goBack() { 
+        currentDashId = ''; 
+        const url = new URL(window.location); 
+        url.searchParams.delete('dash_id'); 
+        ['unit', 'sort', 'speed_filter', 'search', 'warn', 'crit', 'fs', 'show_units', 'per_page', 'enabled_units', 'enabled_categories'].forEach(p => url.searchParams.delete(p));
+        window.history.replaceState({}, '', url); 
+        if (window.parent && window.parent !== window) {
+            try {
+                const parentUrl = new URL(window.parent.location);
+                parentUrl.searchParams.delete('dash_id');
+                ['unit', 'sort', 'speed_filter', 'search', 'warn', 'crit', 'fs', 'show_units', 'per_page', 'enabled_units', 'enabled_categories'].forEach(p => parentUrl.searchParams.delete(p));
+                window.parent.history.replaceState({}, '', parentUrl);
+            } catch (e) {
+                console.error("Failed to update parent window URL on goBack:", e);
+            }
+        }
+        renderMasterList(); 
+    }
 
     function duplicateDashboardFromList(id) {
         const dash = masterDashboards.find(d => d.id === id);
@@ -1926,11 +1952,31 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         });
         const cbNA = document.getElementById('cat_opt_na');
         if (cbNA && cbNA.checked) enabled_categories.push('N/A');
-
         newUrl.searchParams.set('enabled_units', enabled_units.join(','));
         newUrl.searchParams.set('enabled_categories', enabled_categories.join(','));
         if(currentDashId) newUrl.searchParams.set('dash_id', currentDashId);
         window.history.replaceState({}, '', newUrl);
+
+        if (window.parent && window.parent !== window) {
+            try {
+                const parentUrl = new URL(window.parent.location);
+                parentUrl.searchParams.set('unit', unit);
+                parentUrl.searchParams.set('sort', sort);
+                parentUrl.searchParams.set('speed_filter', speedFilter);
+                parentUrl.searchParams.set('search', search);
+                parentUrl.searchParams.set('warn', warn);
+                parentUrl.searchParams.set('crit', crit);
+                parentUrl.searchParams.set('fs', fs);
+                parentUrl.searchParams.set('show_units', showUnits);
+                parentUrl.searchParams.set('per_page', perPage);
+                parentUrl.searchParams.set('enabled_units', enabled_units.join(','));
+                parentUrl.searchParams.set('enabled_categories', enabled_categories.join(','));
+                if(currentDashId) parentUrl.searchParams.set('dash_id', currentDashId);
+                window.parent.history.replaceState({}, '', parentUrl);
+            } catch (e) {
+                console.error("Failed to update parent window URL state:", e);
+            }
+        }
     }
 
     function openCreateModal() { 
@@ -2005,6 +2051,43 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         u.searchParams.set('s', '1');
         if (currentDashId) {
             u.searchParams.set('dash_id', currentDashId);
+            
+            // Append current filter settings to the shared URL
+            const unit = document.getElementById('f_unit').value;
+            const sort = document.getElementById('f_sort').value;
+            const speedFilter = document.getElementById('f_speed_filter').value;
+            const search = document.getElementById('f_search').value;
+            const warn = document.getElementById('f_warn').value;
+            const crit = document.getElementById('f_crit').value;
+            const fs = document.getElementById('f_fontsize').value;
+            const showUnits = document.getElementById('f_showunits').checked ? '1' : '0';
+            const perPage = document.getElementById('f_perpage').value || 20;
+
+            const enabled_units = [];
+            ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(unitVal => {
+                const cb = document.getElementById('unit_opt_' + unitVal);
+                if (cb && cb.checked) enabled_units.push(unitVal);
+            });
+
+            const enabled_categories = [];
+            availableCategories.forEach(c => {
+                const cb = document.getElementById('cat_opt_' + c.id);
+                if (cb && cb.checked) enabled_categories.push(c.name);
+            });
+            const cbNA = document.getElementById('cat_opt_na');
+            if (cbNA && cbNA.checked) enabled_categories.push('N/A');
+
+            u.searchParams.set('unit', unit);
+            u.searchParams.set('sort', sort);
+            u.searchParams.set('speed_filter', speedFilter);
+            u.searchParams.set('search', search);
+            u.searchParams.set('warn', warn);
+            u.searchParams.set('crit', crit);
+            u.searchParams.set('fs', fs);
+            u.searchParams.set('show_units', showUnits);
+            u.searchParams.set('per_page', perPage);
+            u.searchParams.set('enabled_units', enabled_units.join(','));
+            u.searchParams.set('enabled_categories', enabled_categories.join(','));
         }
         const urlString = u.toString();
         
