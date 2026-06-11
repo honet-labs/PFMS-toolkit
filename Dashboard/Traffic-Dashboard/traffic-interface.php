@@ -744,7 +744,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/echarts/echarts.min.js"></script>
     <style>
         :root { --primary-bg: #f4f6f8; --card-bg: #fff; --toolbar-bg: #fff; --border-color: #e0e4e8; --text-main: #1e293b; --text-dim: #64748b; --accent: #10b981; }
-        body { font-family: Arial, Helvetica, sans-serif; background: var(--primary-bg); color: var(--text-main); margin: 0; font-size: 12px; }
+        body { font-family: Arial, Helvetica, sans-serif; background: var(--primary-bg); color: var(--text-main); margin: 0; font-size: 12px; container-type: inline-size; container-name: body-container; }
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; }
 
         /* HEADER BREADCRUMB SYSTEMS */
@@ -867,32 +867,90 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .traffic-bar { height: calc(var(--table-font-size, 12px) / 3); min-height: 4px; max-height: 10px; background: #f1f5f9; border-radius: 10px; margin-top: 5px; overflow: hidden; width: calc(var(--table-font-size, 12px) * 5.5); }
         .table-icon { font-size: calc(var(--table-font-size, 12px) + 4px) !important; }
 
-        .toolbar { display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 25px; border-bottom: 1px solid #e0e4e8; gap: 10px; flex-wrap: wrap; }
+        .toolbar { display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 25px; border-bottom: 1px solid #e0e4e8; gap: 12px; flex-wrap: wrap; }
         .toolbar-left, .toolbar-right { display:flex; align-items:center; gap:10px; flex-wrap: wrap; }
-        @media (max-width: 1024px) {
-            .toolbar { padding: 8px 25px; gap: 8px; }
-            .toolbar-label { display: none !important; }
-            .btn-text { display: none !important; }
-            .btn-neutral { padding: 6px 10px !important; min-width: 40px; justify-content: center; }
+        .toolbar-item { display: flex; align-items: center; }
+        
+        .refresh-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 11px;
+            color: #c2410c;
+            font-weight: 500;
         }
-        @media (max-width: 768px) {
-            .toolbar { padding: 10px 15px; }
+        .refresh-status span {
+            font-size: 11px;
+            white-space: nowrap;
         }
+        #countdown_text {
+            color: #ea580c;
+            font-weight: 600;
+        }
+        .refresh-select {
+            background: transparent;
+            border: none;
+            font-size: 11px;
+            color: #c2410c;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+            padding: 0;
+        }
+        .refresh-select option {
+            background: #fff;
+            color: #1e293b;
+        }
+
         #f_search { width: 0; opacity: 0; padding: 0; border: none; transition: all 0.3s ease; overflow: hidden; white-space: nowrap; }
         #f_search.active { width: 180px; opacity: 1; padding: 0 10px; border: 1px solid #dce1e5; margin-left: 8px; }
-        
-        @media (max-width: 768px) {
-            .toolbar { display: grid; grid-template-columns: 1fr; gap: 8px; padding: 8px; }
-            .toolbar-left { display: flex; justify-content: flex-start; gap: 6px; width: 100%; order: 1; align-items: center; }
-            .toolbar-right { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 6px; order: 2; border-top: 1px solid #f1f5f9; pt: 8px; }
-            .toolbar-item { min-width: 0; display: flex; align-items: center; }
-            #search_wrapper { display: flex; align-items: center; }
-            #f_search.active { width: 120px; }
+
+        @container body-container (max-width: 1024px) {
+            .btn-text { display: none !important; }
+            .btn-neutral { padding: 0; width: 34px; height: 34px; min-width: 34px; justify-content: center; }
+            .toolbar { padding: 8px 15px; gap: 8px; }
+        }
+
+        @container body-container (max-width: 768px) {
+            .toolbar {
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+                padding: 10px;
+            }
+            .toolbar-left {
+                width: 100%;
+                justify-content: space-between;
+                flex-wrap: nowrap;
+                gap: 6px;
+            }
+            .toolbar-left .toolbar-item {
+                flex: 1 1 0px;
+                min-width: 0;
+            }
+            .toolbar-left .toolbar-select {
+                width: 100%;
+                max-width: none;
+            }
+            .toolbar-right {
+                width: 100%;
+                justify-content: space-between;
+                border-top: 1px solid #f1f5f9;
+                padding-top: 8px;
+                flex-wrap: nowrap;
+                gap: 6px;
+            }
+            #f_search.active { width: 100px; }
         }
         .toolbar-select, .btn-neutral, .threshold-input { height: 32px; box-sizing: border-box; }
         .threshold-input { width: 50px; border: 1px solid #dce1e5; border-radius: 4px; padding: 0 5px; font-size: 12px; text-align: center; }
         .toolbar-label { font-size:11px; color:var(--text-dim); text-transform:uppercase; margin-right:8px; }
-        .toolbar-select { background:#fff; border:1px solid #dce1e5; border-radius:4px; padding:0 10px; font-size:13px; color:#1e293b; outline:none; transition: all 0.2s; }
+        .toolbar-select { background:#fff; border:1px solid #dce1e5; border-radius:4px; padding:0 10px; font-size:13px; color:#1e293b; outline:none; transition: all 0.2s; max-width: 180px; }
         .btn-neutral { background:#fff; color:#1e293b; border:1px solid #dce1e5; padding:0 12px; border-radius:4px; cursor:pointer; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:6px; transition: all 0.2s; margin: 0; }
         .btn-neutral:hover { background: #f8fafc; border-color: #94a3b8; }
         .btn-neutral .material-symbols-outlined { font-size: 18px!important; }
@@ -1129,15 +1187,19 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             </div>
         </div>
         <div class="toolbar-right">
-            <div style="display:flex; align-items:center; gap:5px; flex: 1;">
-                <span id="last_update_text" style="font-size:9px; color:var(--text-dim); white-space:nowrap;">-</span>
-                <span id="countdown_text" style="font-size:9px; color:#ea580c; font-weight:600; min-width:40px;">Wait...</span>
-                <select id="f_refresh" class="toolbar-select" style="height:20px; font-size:9px; width:50px; border:none; background:transparent; padding:0;" onchange="setupTimer()">
-                    <option value="0">Off</option>
-                    <option value="30">30s</option>
-                    <option value="60" selected>1m</option>
-                    <option value="300">5m</option>
-                </select>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span id="last_update_text" style="font-size:11px; color:var(--text-dim); white-space:nowrap;">-</span>
+                <div class="refresh-status">
+                    <span class="material-symbols-outlined" style="font-size:14px!important; color:#ea580c; vertical-align:middle; line-height:1;">update</span>
+                    <span id="countdown_text">Wait...</span>
+                    <span style="color:#fdba74;">|</span>
+                    <select id="f_refresh" class="refresh-select" onchange="setupTimer()">
+                        <option value="0">Off</option>
+                        <option value="30">30s</option>
+                        <option value="60" selected>1m</option>
+                        <option value="300">5m</option>
+                    </select>
+                </div>
             </div>
             <button id="btnSettings" class="btn-neutral" onclick="openSettingsModal()" title="Threshold & Display Settings" style="display:none;">
                 <span class="material-symbols-outlined">settings</span>
