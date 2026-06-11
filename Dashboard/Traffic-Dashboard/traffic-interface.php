@@ -851,11 +851,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         #detailView table.master-table td:nth-child(5) > div {
             justify-content: center;
         }
-        #detailView table.master-table th:last-child,
-        #detailView table.master-table td:last-child {
-            width: 6% !important;
+        #detailView table.master-table th.col-actions,
+        #detailView table.master-table td.col-actions {
+            width: 8% !important;
             white-space: nowrap;
-            padding: 10px 25px 10px 15px !important;
+            padding: 10px 35px 10px 25px !important;
             text-align: center !important;
         }
         .dash-link { color: #1976d2; text-decoration: none; font-weight: 600; }
@@ -912,40 +912,34 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         @container body-container (max-width: 1024px) {
             .btn-text { display: none !important; }
             .btn-neutral { padding: 0; width: 34px; height: 34px; min-width: 34px; justify-content: center; }
-            .toolbar { padding: 8px 15px; gap: 8px; }
-        }
-
-        @container body-container (max-width: 700px) {
             .toolbar {
                 display: flex;
                 flex-direction: column;
-                align-items: stretch;
-                gap: 10px;
-                padding: 10px;
+                align-items: flex-start;
+                gap: 12px;
+                padding: 12px 20px;
             }
             .toolbar-left {
                 width: 100%;
-                justify-content: space-between;
-                flex-wrap: nowrap;
-                gap: 8px;
-            }
-            .toolbar-left .toolbar-item {
-                flex: 1 1 0px;
-                min-width: 0;
-            }
-            .toolbar-left .toolbar-select {
-                width: 100%;
-                max-width: none;
-            }
-            .toolbar-right {
-                width: 100%;
-                justify-content: space-between;
-                border-top: 1px solid #f1f5f9;
-                padding-top: 8px;
+                justify-content: flex-start;
                 flex-wrap: wrap;
                 gap: 8px;
             }
-            #f_search.active { width: 120px; }
+            .toolbar-left .toolbar-item {
+                flex: 0 0 auto;
+            }
+            .toolbar-left .toolbar-select {
+                max-width: 180px;
+            }
+            .toolbar-right {
+                width: 100%;
+                justify-content: flex-start;
+                border-top: 1px solid #f1f5f9;
+                padding-top: 10px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            #f_search.active { width: 150px; }
         }
         .toolbar-select, .btn-neutral, .threshold-input { height: 32px; box-sizing: border-box; }
         .threshold-input { width: 50px; border: 1px solid #dce1e5; border-radius: 4px; padding: 0 5px; font-size: 12px; text-align: center; }
@@ -1225,7 +1219,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         <div class="main-content card-table-wrapper">
             <div class="card">
                 <div style="overflow-x: auto; width: 100%;">
-                    <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 15%;">Agent</th><th style="width: 18%;">Interface</th><th class="col-category" style="width: 12%;">Category</th><th class="col-speed" style="width: 10%;">Speed</th><th style="width: 15%;">RECEIVE (RX)</th><th style="width: 15%;">TRANSMIT (TX)</th><th style="width: 7%;">Actions</th></tr></thead><tbody id="detailTableBody"></tbody></table>
+                    <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 15%;">Agent</th><th style="width: 18%;">Interface</th><th class="col-category" style="width: 12%;">Category</th><th class="col-speed" style="width: 10%;">Speed</th><th style="width: 15%;">RECEIVE (RX)</th><th style="width: 15%;">TRANSMIT (TX)</th><th class="col-actions" style="width: 8%;">Actions</th></tr></thead><tbody id="detailTableBody"></tbody></table>
                 </div>
                 <div id="paginationControls" style="padding:15px 20px; border-top:1px solid #e0e4e8; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;"></div>
             </div>
@@ -1875,7 +1869,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             </td>
             <td><div class="col-${rxLevel}" style="font-weight:600;">${rxDisp} <span class="pct-text">(${r.rx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${rxLevel}" style="width:${r.rx_pct}%"></div></div></td>
             <td><div class="col-${txLevel}" style="font-weight:600;">${txDisp} <span class="pct-text">(${r.tx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${txLevel}" style="width:${r.tx_pct}%"></div></div></td>
-            <td class="action-cell" style="text-align:center;">
+            <td class="action-cell col-actions" style="text-align:center;">
                 <div class="action-buttons-desktop">
                     <button class="btn-icon-only" onclick="openChart(${r.mod_in}, ${r.mod_out}, '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}')" title="View Graph">
                         <span class="material-symbols-outlined table-icon" style="color:#3b82f6;">show_chart</span>
