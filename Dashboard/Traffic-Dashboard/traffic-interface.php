@@ -1114,6 +1114,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             .action-dropdown-mobile {
                 display: inline-block !important;
             }
+        }
+        @media (max-width: 600px) {
             .col-category, .col-speed {
                 display: none !important;
             }
@@ -1127,6 +1129,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             .action-dropdown-mobile {
                 display: inline-block !important;
             }
+        }
+        @container table-container (max-width: 600px) {
             .col-category, .col-speed {
                 display: none !important;
             }
@@ -2250,6 +2254,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
     let lastInId, lastOutId, lastTitle;
     function openChart(inId, outId, title) {
+        // Close any active action dropdowns
+        document.querySelectorAll('.dropdown-menu-custom.show').forEach(menu => {
+            menu.classList.remove('show');
+        });
         lastInId = inId; lastOutId = outId; lastTitle = title;
         document.getElementById('chartTitle').innerText = title; 
         
@@ -2395,6 +2403,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
     // Fungsi untuk menyembunyikan interface
     function hideInterface(agentId, iface) {
+        // Close any active action dropdowns
+        document.querySelectorAll('.dropdown-menu-custom.show').forEach(menu => {
+            menu.classList.remove('show');
+        });
         const key = agentId + '|' + iface;
         const dash = masterDashboards.find(d => d.id === currentDashId);
         if (!dash) return;
