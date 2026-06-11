@@ -1256,7 +1256,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
                 <div class="toolbar-right">
                     <button id="btnSettings" class="btn-neutral" onclick="openSettingsModal()" title="Threshold & Display Settings" style="display:none; height:32px;">
-                        <span class="material-symbols-outlined">settings</span> <span class="btn-text">Thresholds</span>
+                        <span class="material-symbols-outlined">tune</span> <span class="btn-text">Thresholds</span>
                     </button>
                     <button id="btnHidden" class="btn-neutral" onclick="openHiddenModal()" title="Manage Hidden Interfaces" style="display:none; height:32px;">
                         <span class="material-symbols-outlined">visibility_off</span> <span class="btn-text">Hidden</span>
