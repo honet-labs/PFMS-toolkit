@@ -867,7 +867,32 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .traffic-bar { height: calc(var(--table-font-size, 12px) / 3); min-height: 4px; max-height: 10px; background: #f1f5f9; border-radius: 10px; margin-top: 5px; overflow: hidden; width: calc(var(--table-font-size, 12px) * 5.5); }
         .table-icon { font-size: calc(var(--table-font-size, 12px) + 4px) !important; }
 
-        .toolbar { display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 25px; border-bottom: 1px solid #e0e4e8; gap: 12px; flex-wrap: wrap; }
+        .toolbar { display: flex; flex-direction: column; background: #fff; border-bottom: 1px solid #e0e4e8; padding: 0 !important; }
+        .toolbar-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 25px; gap: 12px; box-sizing: border-box; width: 100%; min-height: 52px; }
+        .toolbar-header-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .toolbar-header-right { display: flex; align-items: center; }
+        
+        .toolbar-collapse { 
+            max-height: 0; 
+            overflow: hidden; 
+            transition: max-height 0.25s ease-out; 
+            width: 100%; 
+            box-sizing: border-box;
+        }
+        .toolbar-collapse.show { 
+            max-height: 300px; 
+        }
+        .toolbar-collapse-content { 
+            padding: 15px 25px; 
+            border-top: 1px solid #f1f5f9; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; 
+            box-sizing: border-box; 
+            width: 100%;
+            background: #f8fafc;
+        }
+
         .toolbar-left, .toolbar-right { display:flex; align-items:center; gap:10px; flex-wrap: wrap; }
         .toolbar-item { display: flex; align-items: center; }
         
@@ -910,35 +935,16 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         #f_search.active { width: 180px; opacity: 1; padding: 0 10px; border: 1px solid #dce1e5; margin-left: 8px; }
 
         @container body-container (max-width: 1024px) {
-            .btn-text { display: none !important; }
-            .btn-neutral { padding: 0; width: 34px; height: 34px; min-width: 34px; justify-content: center; }
-            .toolbar {
-                display: flex;
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 12px;
-                padding: 12px 20px;
-            }
-            .toolbar-left {
-                width: 100%;
-                justify-content: flex-start;
-                flex-wrap: wrap;
-                gap: 8px;
-            }
-            .toolbar-left .toolbar-item {
-                flex: 0 0 auto;
-            }
-            .toolbar-left .toolbar-select {
-                max-width: 180px;
-            }
-            .toolbar-right {
-                width: 100%;
-                justify-content: flex-start;
-                border-top: 1px solid #f1f5f9;
-                padding-top: 10px;
-                flex-wrap: wrap;
-                gap: 8px;
-            }
+            .toolbar-collapse-content .btn-text { display: none !important; }
+            .toolbar-collapse-content .btn-neutral { padding: 0; width: 34px; height: 34px; min-width: 34px; justify-content: center; }
+        }
+
+        @container body-container (max-width: 600px) {
+            .toolbar-header { padding: 8px 15px; }
+            .toolbar-header-left { gap: 8px; }
+            .toolbar-collapse-content { padding: 10px 15px; }
+            .btn-toggle-expand .btn-text { display: none !important; }
+            .btn-toggle-expand { padding: 0; width: 34px; height: 34px; min-width: 34px; justify-content: center; }
             #f_search.active { width: 150px; }
         }
         .toolbar-select, .btn-neutral, .threshold-input { height: 32px; box-sizing: border-box; }
@@ -1172,20 +1178,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         <div><div class="breadcrumb">Interface Traffic</div><h1 class="page-title"><button class="btn-dash" onclick="goBack()" style="background:none; border:none; cursor:pointer; padding:0; margin-right:5px;"><span class="material-symbols-outlined" style="font-size:24px!important; color:#004d40;">arrow_back</span></button> <span id="detailDashName">DASHBOARD NAME</span></h1></div>
     </div>
     <div class="toolbar">
-        <div class="toolbar-left" style="display:flex; align-items:center; gap:8px;">
-            <button class="btn-neutral" onclick="goBack()" title="Back to List" style="height:32px; padding:0 10px;"><span class="material-symbols-outlined" style="font-size:18px!important; color:#1e293b;">arrow_back</span></button>
-            <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="fetchData()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
-            <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="rx_desc">Largest RX (Max)</option><option value="rx_asc">Smallest RX (Min)</option><option value="tx_desc">Largest TX (Max)</option><option value="tx_asc">Smallest TX (Min)</option><option value="rx_pct_desc">Largest RX % (Max)</option><option value="rx_pct_asc">Smallest RX % (Min)</option><option value="tx_pct_desc">Largest TX % (Max)</option><option value="tx_pct_asc">Smallest TX % (Min)</option><option value="top_10_rx_pct">Top 10 RX (%)</option><option value="top_10_tx_pct">Top 10 TX (%)</option></select></div>
-            <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="fetchData()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
-            <div class="toolbar-item" id="search_wrapper" style="display:flex; align-items:center;">
-                <button class="btn-neutral" style="width:32px; padding:0;" onclick="toggleSearch()" title="Search">
-                    <span class="material-symbols-outlined">search</span>
-                </button>
-                <input type="text" id="f_search" class="toolbar-select" placeholder="Filter..." onkeyup="if(event.key==='Enter') fetchData()">
-            </div>
-        </div>
-        <div class="toolbar-right">
-            <div style="display:flex; align-items:center; gap:8px;">
+        <div class="toolbar-header">
+            <div class="toolbar-header-left">
+                <button class="btn-neutral btn-back" onclick="goBack()" title="Back to List" style="height:32px; padding:0 10px;"><span class="material-symbols-outlined" style="font-size:18px!important; color:#1e293b;">arrow_back</span></button>
                 <span id="last_update_text" style="font-size:11px; color:var(--text-dim); white-space:nowrap;">-</span>
                 <div class="refresh-status">
                     <span class="material-symbols-outlined" style="font-size:14px!important; color:#ea580c; vertical-align:middle; line-height:1;">update</span>
@@ -1199,21 +1194,44 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                     </select>
                 </div>
             </div>
-            <button id="btnSettings" class="btn-neutral" onclick="openSettingsModal()" title="Threshold & Display Settings" style="display:none;">
-                <span class="material-symbols-outlined">settings</span>
-            </button>
-            <button id="btnHidden" class="btn-neutral" onclick="openHiddenModal()" title="Manage Hidden Interfaces" style="display:none;">
-                <span class="material-symbols-outlined">visibility_off</span>
-            </button>
-            <div class="dropdown">
-                <button class="btn-neutral" style="height:32px; padding:0 12px;" title="Export Data"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">download</span> <span class="btn-text">Export</span> <span class="material-symbols-outlined" style="font-size:12px!important;">expand_more</span></button>
-                <div class="dropdown-content">
-                    <a href="?api=export&format=csv"><span class="material-symbols-outlined">table_view</span> Download as CSV</a>
-                    <a href="?api=export&format=txt"><span class="material-symbols-outlined">description</span> Download as TXT</a>
+            <div class="toolbar-header-right">
+                <button class="btn-neutral btn-toggle-expand" onclick="toggleToolbarExpand()" title="Filters & Actions" style="height:32px; padding:0 10px; display:flex; align-items:center; gap:6px;">
+                    <span class="material-symbols-outlined" id="expand_icon">tune</span>
+                    <span class="btn-text">Filters & Tools</span>
+                </button>
+            </div>
+        </div>
+        <div class="toolbar-collapse" id="toolbarCollapse">
+            <div class="toolbar-collapse-content">
+                <div class="toolbar-left">
+                    <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="fetchData()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
+                    <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="rx_desc">Largest RX (Max)</option><option value="rx_asc">Smallest RX (Min)</option><option value="tx_desc">Largest TX (Max)</option><option value="tx_asc">Smallest TX (Min)</option><option value="rx_pct_desc">Largest RX % (Max)</option><option value="rx_pct_asc">Smallest RX % (Min)</option><option value="tx_pct_desc">Largest TX % (Max)</option><option value="tx_pct_asc">Smallest TX % (Min)</option><option value="top_10_rx_pct">Top 10 RX (%)</option><option value="top_10_tx_pct">Top 10 TX (%)</option></select></div>
+                    <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="fetchData()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
+                    <div class="toolbar-item" id="search_wrapper" style="display:flex; align-items:center;">
+                        <button class="btn-neutral" style="width:32px; padding:0; height:32px;" onclick="toggleSearch()" title="Search">
+                            <span class="material-symbols-outlined">search</span>
+                        </button>
+                        <input type="text" id="f_search" class="toolbar-select" placeholder="Filter..." onkeyup="if(event.key==='Enter') fetchData()">
+                    </div>
+                </div>
+                <div class="toolbar-right">
+                    <button id="btnSettings" class="btn-neutral" onclick="openSettingsModal()" title="Threshold & Display Settings" style="display:none; height:32px;">
+                        <span class="material-symbols-outlined">settings</span> <span class="btn-text">Settings</span>
+                    </button>
+                    <button id="btnHidden" class="btn-neutral" onclick="openHiddenModal()" title="Manage Hidden Interfaces" style="display:none; height:32px;">
+                        <span class="material-symbols-outlined">visibility_off</span> <span class="btn-text">Hidden</span>
+                    </button>
+                    <div class="dropdown">
+                        <button class="btn-neutral" style="height:32px; padding:0 12px;" title="Export Data"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">download</span> <span class="btn-text">Export</span> <span class="material-symbols-outlined" style="font-size:12px!important;">expand_more</span></button>
+                        <div class="dropdown-content">
+                            <a href="?api=export&format=csv"><span class="material-symbols-outlined">table_view</span> Download as CSV</a>
+                            <a href="?api=export&format=txt"><span class="material-symbols-outlined">description</span> Download as TXT</a>
+                        </div>
+                    </div>
+                    <button class="btn-neutral" style="height:32px; padding:0 12px;" onclick="copyShareLink()" title="Share Dashboard"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">share</span> <span class="btn-text">Share</span></button>
+                    <button class="btn-neutral" style="height:32px; padding:0 12px;" onclick="fetchData()" title="Refresh Data"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">sync</span> <span class="btn-text">Refresh</span></button>
                 </div>
             </div>
-            <button class="btn-neutral" style="height:32px; padding:0 12px;" onclick="copyShareLink()" title="Share Dashboard"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">share</span> <span class="btn-text">Share</span></button>
-            <button class="btn-neutral" style="height:32px; padding:0 12px;" onclick="fetchData()" title="Refresh Data"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">sync</span> <span class="btn-text">Refresh</span></button>
         </div>
     </div>
         <div class="main-content card-table-wrapper">
@@ -1450,6 +1468,21 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if(input.classList.contains('active')) input.focus();
     }
 
+    function toggleToolbarExpand() {
+        const collapse = document.getElementById('toolbarCollapse');
+        const icon = document.getElementById('expand_icon');
+        const isShown = collapse.classList.contains('show');
+        if (isShown) {
+            collapse.classList.remove('show');
+            icon.innerText = 'tune';
+            localStorage.setItem('pfms_toolbar_expand', '0');
+        } else {
+            collapse.classList.add('show');
+            icon.innerText = 'close';
+            localStorage.setItem('pfms_toolbar_expand', '1');
+        }
+    }
+
     async function init() {
         const r = await fetch('?api=load_config'); masterDashboards = await r.json();
         masterDashboards.forEach(d => { if (!d.hidden_interfaces) d.hidden_interfaces = []; });
@@ -1653,6 +1686,18 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 window.parent.history.replaceState({}, '', parentUrl);
             } catch (e) {
                 console.error("Failed to update parent window URL:", e);
+            }
+        }
+        const expandSaved = localStorage.getItem('pfms_toolbar_expand') === '1';
+        const collapse = document.getElementById('toolbarCollapse');
+        const icon = document.getElementById('expand_icon');
+        if (collapse) {
+            if (expandSaved) {
+                collapse.classList.add('show');
+                if (icon) icon.innerText = 'close';
+            } else {
+                collapse.classList.remove('show');
+                if (icon) icon.innerText = 'tune';
             }
         }
         setupTimer();
