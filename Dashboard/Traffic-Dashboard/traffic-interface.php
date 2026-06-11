@@ -312,7 +312,7 @@ if ($api === 'data') {
     $unit = $input['unit'] ?? 'Mbps';
     $speed_filter = $input['speed_filter'] ?? 'all';
     $page = max(1, (int)($input['page'] ?? 1));
-    $perPage = max(5, (int)($input['per_page'] ?? 25));
+    $perPage = max(1, (int)($input['per_page'] ?? 25));
     $warnThreshold = (float)($input['warn'] ?? 70.0);
     $critThreshold = (float)($input['crit'] ?? 80.0);
     $dashId = $input['dash_id'] ?? '';
@@ -1234,6 +1234,13 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 </div>
             </div>
             <div style="display:flex; align-items:center; justify-content:space-between; margin-top:12px;">
+                <span style="font-size:13px;">Row Limit</span>
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <input type="number" id="f_perpage" class="form-input" style="width:60px; text-align:center;" value="20" min="1" max="100">
+                    <span style="font-size:12px; color:var(--text-dim);">rows</span>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:12px;">
                 <span style="font-size:13px;">Show Unit Suffixes</span>
                 <input type="checkbox" id="f_showunits" checked style="width:18px; height:18px; cursor:pointer;">
             </div>
@@ -1405,6 +1412,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (savedSettings.crit) document.getElementById('f_crit').value = savedSettings.crit;
         if (savedSettings.fs) document.getElementById('f_fontsize').value = savedSettings.fs;
         if (savedSettings.show_units !== undefined) document.getElementById('f_showunits').checked = savedSettings.show_units;
+        if (savedSettings.per_page) document.getElementById('f_perpage').value = savedSettings.per_page;
 
         let activeUnitsList = savedSettings.enabled_units || null;
 
@@ -1421,6 +1429,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if(params.has('crit')) document.getElementById('f_crit').value = params.get('crit');
         if(params.has('fs')) document.getElementById('f_fontsize').value = params.get('fs');
         if(params.has('show_units')) document.getElementById('f_showunits').checked = params.get('show_units') !== '0';
+        if(params.has('per_page')) document.getElementById('f_perpage').value = params.get('per_page');
         let activeCategoriesList = savedSettings.enabled_categories || null;
         if(params.has('enabled_units')) activeUnitsList = params.get('enabled_units').split(',');
         if(params.has('enabled_categories')) activeCategoriesList = params.get('enabled_categories').split(',');
@@ -1546,6 +1555,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const speed_filter = (isInitial && params.has('speed_filter')) ? params.get('speed_filter') : (saved.speed_filter || 'all');
         const search = (isInitial && params.has('search')) ? params.get('search') : (saved.search || '');
         const showUnits = (isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (saved.show_units !== false);
+        const perPage = (isInitial && params.has('per_page')) ? params.get('per_page') : (saved.per_page || 20);
 
         const enabledUnits = (isInitial && params.has('enabled_units')) ? params.get('enabled_units').split(',') : (saved.enabled_units || null);
         const enabledCategories = (isInitial && params.has('enabled_categories')) ? params.get('enabled_categories').split(',') : (saved.enabled_categories || null);
@@ -1557,6 +1567,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         document.getElementById('f_sort').value = sort;
         document.getElementById('f_speed_filter').value = speed_filter;
         document.getElementById('f_showunits').checked = showUnits;
+        document.getElementById('f_perpage').value = perPage;
 
         syncEnabledUnitsUI(enabledUnits);
         updateUnitDropdown(enabledUnits);
@@ -1680,6 +1691,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const speed_filter = document.getElementById('f_speed_filter').value;
         const search = document.getElementById('f_search').value;
         const showUnits = document.getElementById('f_showunits').checked;
+        const perPage = document.getElementById('f_perpage').value || 20;
         const stripUnit = (text) => {
             if (!text || text === 'N/A') return text;
             return text.replace(/\s*(gbps|mbps|kbps|bps|mb\/s|gb\/s|b\/s|kb\/s|B\/s|KB\/s|MB\/s|GB\/s)\s*$/i, '').trim();
@@ -1700,7 +1712,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (cbNA && cbNA.checked) enabled_categories.push('N/A');
 
         localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({
-            warn, crit, fs, unit, sort, speed_filter, search, show_units: showUnits, enabled_units: enabled_units, enabled_categories: enabled_categories
+            warn, crit, fs, unit, sort, speed_filter, search, show_units: showUnits, enabled_units: enabled_units, enabled_categories: enabled_categories, per_page: perPage
         }));
 
         const body = document.getElementById('detailTableBody'); body.innerHTML = '<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>';
@@ -1713,7 +1725,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             search: search, 
             sort: sort,  
             page: currentPage, 
-            per_page: 20,
+            per_page: parseInt(perPage) || 20,
             warn: parseFloat(warn) || 70,
             crit: parseFloat(crit) || 80,
             enabled_categories: enabled_categories
@@ -1799,10 +1811,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
     function renderPagination(p) {
         const wrap = document.getElementById('paginationControls');
-        if(!p || p.total <= 20) { wrap.style.display = 'none'; return; }
+        if(!p || p.total_pages <= 1) { wrap.style.display = 'none'; return; }
         wrap.style.display = 'flex';
+        const perPage = parseInt(document.getElementById('f_perpage').value) || 20;
         wrap.innerHTML = `
-            <div style="color:var(--text-dim);">Showing <b>${(p.page-1)*20+1}</b> to <b>${Math.min(p.page*20, p.total)}</b> of <b>${p.total}</b></div>
+            <div style="color:var(--text-dim);">Showing <b>${(p.page-1)*perPage+1}</b> to <b>${Math.min(p.page*perPage, p.total)}</b> of <b>${p.total}</b></div>
             <div style="display:flex; gap:5px; align-items:center;">
                 <button class="btn-neutral" style="padding:4px 8px;" onclick="changePage(${p.page-1})" ${p.page<=1?'disabled':''}><span class="material-symbols-outlined">chevron_left</span></button>
                 <div style="display:flex; align-items:center; padding:0 10px; font-weight:600; font-size:11px;">Page ${p.page} of ${p.total_pages}</div>
@@ -1847,6 +1860,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const speed_filter = document.getElementById('f_speed_filter').value;
         const search = document.getElementById('f_search').value;
         const show_units = document.getElementById('f_showunits').checked;
+        const per_page = document.getElementById('f_perpage').value || 20;
 
         const enabled_units = [];
         ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
@@ -1863,7 +1877,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (cbNA && cbNA.checked) enabled_categories.push('N/A');
 
         // Save to LocalStorage with Dashboard ID as Key
-        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({ warn, crit, fs, unit, sort, speed_filter, search, show_units, enabled_units, enabled_categories }));
+        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({ warn, crit, fs, unit, sort, speed_filter, search, show_units, enabled_units, enabled_categories, per_page }));
         
         updateUnitDropdown(enabled_units);
         applyFontSize();
@@ -1887,6 +1901,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const crit = document.getElementById('f_crit').value;
         const fs = document.getElementById('f_fontsize').value;
         const showUnits = document.getElementById('f_showunits').checked ? '1' : '0';
+        const perPage = document.getElementById('f_perpage').value || 20;
 
         const enabled_units = [];
         ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
@@ -1903,6 +1918,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         newUrl.searchParams.set('crit', crit);
         newUrl.searchParams.set('fs', fs);
         newUrl.searchParams.set('show_units', showUnits);
+        newUrl.searchParams.set('per_page', perPage);
         const enabled_categories = [];
         availableCategories.forEach(c => {
             const cb = document.getElementById('cat_opt_' + c.id);
