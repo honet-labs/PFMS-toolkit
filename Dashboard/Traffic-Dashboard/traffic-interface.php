@@ -922,7 +922,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             padding: 15px 25px; 
             border-top: 1px solid #f1f5f9; 
             display: flex; 
-            flex-direction: column; 
+            flex-direction: row; 
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
             gap: 12px; 
             box-sizing: border-box; 
             width: 100%;
@@ -978,7 +981,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         @container body-container (max-width: 600px) {
             .toolbar-header { padding: 8px 15px; }
             .toolbar-header-left { gap: 8px; }
-            .toolbar-collapse-content { padding: 10px 15px; }
+            .toolbar-collapse-content { padding: 10px 15px; flex-direction: column; align-items: stretch; }
+            .toolbar-left, .toolbar-right { justify-content: flex-start; }
             .btn-toggle-expand .btn-text { display: none !important; }
             .btn-toggle-expand { padding: 0; width: 34px; height: 34px; min-width: 34px; justify-content: center; }
             #f_search.active { width: 150px; }
@@ -986,8 +990,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .toolbar-select, .btn-neutral, .threshold-input { height: 32px; box-sizing: border-box; }
         .threshold-input { width: 50px; border: 1px solid #dce1e5; border-radius: 4px; padding: 0 5px; font-size: 12px; text-align: center; }
         .toolbar-label { font-size:11px; color:var(--text-dim); text-transform:uppercase; margin-right:8px; }
-        .toolbar-select { background:#fff; border:1px solid #dce1e5; border-radius:4px; padding:0 10px; font-size:13px; color:#1e293b; outline:none; transition: all 0.2s; max-width: 180px; }
-        .btn-neutral { background:#fff; color:#1e293b; border:1px solid #dce1e5; padding:0 12px; border-radius:4px; cursor:pointer; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:6px; transition: all 0.2s; margin: 0; }
+        .toolbar-select { background:#fff; border:1px solid #dce1e5; border-radius:4px; padding:0 10px; font-size:13px; color:#1e293b; outline:none; transition: all 0.2s; max-width: 180px; flex-shrink: 0; }
+        .btn-neutral { background:#fff; color:#1e293b; border:1px solid #dce1e5; padding:0 12px; border-radius:4px; cursor:pointer; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:6px; transition: all 0.2s; margin: 0; white-space: nowrap; flex-shrink: 0; }
         .btn-neutral:hover { background: #f8fafc; border-color: #94a3b8; }
         .btn-neutral .material-symbols-outlined { font-size: 18px!important; }
 
