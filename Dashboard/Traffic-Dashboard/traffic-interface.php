@@ -979,6 +979,100 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .btn-icon-only.delete-icon:hover {
             color: #dc2626;
         }
+
+        /* RESPONSIVE TABLE & THREE-DOT DROPDOWN MENUS */
+        .card-table-wrapper {
+            container-type: inline-size;
+            container-name: table-container;
+        }
+        
+        .action-buttons-desktop {
+            display: inline-flex;
+            gap: 5px;
+            justify-content: flex-end;
+            align-items: center;
+        }
+        
+        .action-dropdown-mobile {
+            display: none;
+            position: relative;
+        }
+        
+        .dropdown-menu-custom {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background-color: #ffffff;
+            min-width: 160px;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            z-index: 1100;
+            padding: 4px 0;
+            margin-top: 4px;
+        }
+        
+        .dropdown-menu-custom.show {
+            display: block;
+        }
+        
+        .dropdown-menu-custom a {
+            color: #475569;
+            padding: 8px 16px;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            text-align: left;
+            transition: background 0.1s;
+        }
+        
+        .dropdown-menu-custom a:hover {
+            background-color: #f1f5f9;
+            color: #0f172a;
+        }
+        
+        .dropdown-menu-custom a.delete-item {
+            color: #ef4444;
+        }
+        
+        .dropdown-menu-custom a.delete-item:hover {
+            background-color: #fef2f2;
+            color: #dc2626;
+        }
+        
+        .dropdown-menu-custom a .material-symbols-outlined {
+            font-size: 16px !important;
+        }
+        
+        /* Media query for mobile viewports */
+        @media (max-width: 768px) {
+            .action-buttons-desktop {
+                display: none !important;
+            }
+            .action-dropdown-mobile {
+                display: inline-block !important;
+            }
+            .col-category, .col-speed {
+                display: none !important;
+            }
+        }
+        
+        /* Container query for narrow iframe embedded views */
+        @container table-container (max-width: 800px) {
+            .action-buttons-desktop {
+                display: none !important;
+            }
+            .action-dropdown-mobile {
+                display: inline-block !important;
+            }
+            .col-category, .col-speed {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body class="<?= $isStandalone ? 'is-standalone-view' : '' ?>">
@@ -1005,7 +1099,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 </div>
 
 <div id="masterView">
-    <div class="main-content">
+    <div class="main-content card-table-wrapper">
         <div class="card">
             <div style="overflow-x: auto; width: 100%;">
                 <table class="master-table">
@@ -1062,10 +1156,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             <button class="btn-neutral" style="height:32px; padding:0 12px;" onclick="fetchData()" title="Refresh Data"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">sync</span> <span class="btn-text">Refresh</span></button>
         </div>
     </div>
-        <div class="main-content">
+        <div class="main-content card-table-wrapper">
             <div class="card">
                 <div style="overflow-x: auto; width: 100%;">
-                    <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 15%;">Agent</th><th style="width: 18%;">Interface</th><th style="width: 12%;">Category</th><th style="width: 10%;">Speed</th><th style="width: 15%;">RECEIVE (RX)</th><th style="width: 15%;">TRANSMIT (TX)</th><th style="width: 7%;">Actions</th></tr></thead><tbody id="detailTableBody"></tbody></table>
+                    <table class="master-table"><thead><tr><th style="width: 8%;">Status</th><th style="width: 15%;">Agent</th><th style="width: 18%;">Interface</th><th class="col-category" style="width: 12%;">Category</th><th class="col-speed" style="width: 10%;">Speed</th><th style="width: 15%;">RECEIVE (RX)</th><th style="width: 15%;">TRANSMIT (TX)</th><th style="width: 7%;">Actions</th></tr></thead><tbody id="detailTableBody"></tbody></table>
                 </div>
                 <div id="paginationControls" style="padding:15px 20px; border-top:1px solid #e0e4e8; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;"></div>
             </div>
@@ -1365,25 +1459,52 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             <td><a href="#" class="dash-link" onclick="openDashboard('${d.id}')">${d.name}</a></td>
             <td>${d.group_name || 'All Groups'}</td>
             <td>${d.agent_name || 'All Nodes'}</td>
-            <td style="text-align:right;">
-                <button class="btn-action" onclick="openDashboard('${d.id}')" title="Open Dashboard">
-                    <span class="material-symbols-outlined">visibility</span>
-                </button>
-                <button class="btn-action" onclick="editDashboard('${d.id}')" title="Configure">
-                    <span class="material-symbols-outlined">settings</span>
-                </button>
-                <button class="btn-action" onclick="exportDashboardConfig('${d.id}')" title="Backup Dashboard Config">
-                    <span class="material-symbols-outlined">download</span>
-                </button>
-                <button class="btn-action" onclick="triggerImport('${d.id}')" title="Load Dashboard Config">
-                    <span class="material-symbols-outlined">upload</span>
-                </button>
-                <button class="btn-action" onclick="duplicateDashboardFromList('${d.id}')" title="Duplicate">
-                    <span class="material-symbols-outlined">content_copy</span>
-                </button>
-                <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')" title="Delete">
-                    <span class="material-symbols-outlined">delete</span>
-                </button>
+            <td class="action-cell" style="text-align:right;">
+                <div class="action-buttons-desktop">
+                    <button class="btn-action" onclick="openDashboard('${d.id}')" title="Open Dashboard">
+                        <span class="material-symbols-outlined">visibility</span>
+                    </button>
+                    <button class="btn-action" onclick="editDashboard('${d.id}')" title="Configure">
+                        <span class="material-symbols-outlined">settings</span>
+                    </button>
+                    <button class="btn-action" onclick="exportDashboardConfig('${d.id}')" title="Backup Dashboard Config">
+                        <span class="material-symbols-outlined">download</span>
+                    </button>
+                    <button class="btn-action" onclick="triggerImport('${d.id}')" title="Load Dashboard Config">
+                        <span class="material-symbols-outlined">upload</span>
+                    </button>
+                    <button class="btn-action" onclick="duplicateDashboardFromList('${d.id}')" title="Duplicate">
+                        <span class="material-symbols-outlined">content_copy</span>
+                    </button>
+                    <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')" title="Delete">
+                        <span class="material-symbols-outlined">delete</span>
+                    </button>
+                </div>
+                <div class="action-dropdown-mobile dropdown">
+                    <button class="btn-icon-only btn-more" onclick="toggleActionDropdown(event, this)" title="Actions">
+                        <span class="material-symbols-outlined">more_vert</span>
+                    </button>
+                    <div class="dropdown-menu-custom">
+                        <a href="#" onclick="event.preventDefault(); openDashboard('${d.id}')">
+                            <span class="material-symbols-outlined">visibility</span> Open Dashboard
+                        </a>
+                        <a href="#" onclick="event.preventDefault(); editDashboard('${d.id}')">
+                            <span class="material-symbols-outlined">settings</span> Configure
+                        </a>
+                        <a href="#" onclick="event.preventDefault(); exportDashboardConfig('${d.id}')">
+                            <span class="material-symbols-outlined">download</span> Backup Config
+                        </a>
+                        <a href="#" onclick="event.preventDefault(); triggerImport('${d.id}')">
+                            <span class="material-symbols-outlined">upload</span> Load Config
+                        </a>
+                        <a href="#" onclick="event.preventDefault(); duplicateDashboardFromList('${d.id}')">
+                            <span class="material-symbols-outlined">content_copy</span> Duplicate
+                        </a>
+                        <a href="#" class="delete-item" onclick="event.preventDefault(); deleteDashboard('${d.id}')">
+                            <span class="material-symbols-outlined">delete</span> Delete
+                        </a>
+                    </div>
+                </div>
             </td>
         </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Dashboards Created Yet.</td></tr>';
     }
@@ -1635,10 +1756,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 <div style="font-weight:600;"><span class="iface-badge">${r.interface}</span></div>
                 ${r.interface_alias ? `<div class="sub-text" style="color:#64748b; margin-top:2px;">${r.interface_alias}</div>` : ''}
             </td>
-            <td>
+            <td class="col-category">
                 <div style="font-weight:600;">${categoryDisp}</div>
             </td>
-            <td>
+            <td class="col-speed">
                 <div style="display:flex; align-items:center; gap:5px; font-weight:500;">
                     ${speedDisp}
                     ${r.speed_disp === 'N/A' ? `<span class="material-symbols-outlined table-icon" style="color:#f59e0b; cursor:pointer;" onclick="alert('Please check if the IfSpeed/IfHighSpeed module is available?')">info</span>` : ''}
@@ -1646,13 +1767,28 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             </td>
             <td><div class="col-${rxLevel}" style="font-weight:600;">${rxDisp} <span class="pct-text">(${r.rx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${rxLevel}" style="width:${r.rx_pct}%"></div></div></td>
             <td><div class="col-${txLevel}" style="font-weight:600;">${txDisp} <span class="pct-text">(${r.tx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${txLevel}" style="width:${r.tx_pct}%"></div></div></td>
-            <td style="text-align:center;">
-                <button class="btn-icon-only" onclick="openChart(${r.mod_in}, ${r.mod_out}, '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}')" title="View Graph">
-                    <span class="material-symbols-outlined table-icon" style="color:#3b82f6;">show_chart</span>
-                </button>
-                <button class="btn-icon-only delete-icon" onclick="hideInterface(${r.agent_id}, '${r.interface.replace(/'/g, "\\'")}')" title="Hide this interface">
-                    <span class="material-symbols-outlined table-icon">delete</span>
-                </button>
+            <td class="action-cell" style="text-align:center;">
+                <div class="action-buttons-desktop">
+                    <button class="btn-icon-only" onclick="openChart(${r.mod_in}, ${r.mod_out}, '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}')" title="View Graph">
+                        <span class="material-symbols-outlined table-icon" style="color:#3b82f6;">show_chart</span>
+                    </button>
+                    <button class="btn-icon-only delete-icon" onclick="hideInterface(${r.agent_id}, '${r.interface.replace(/'/g, "\\'")}')" title="Hide this interface">
+                        <span class="material-symbols-outlined table-icon">delete</span>
+                    </button>
+                </div>
+                <div class="action-dropdown-mobile dropdown">
+                    <button class="btn-icon-only btn-more" onclick="toggleActionDropdown(event, this)" title="Actions">
+                        <span class="material-symbols-outlined">more_vert</span>
+                    </button>
+                    <div class="dropdown-menu-custom">
+                        <a href="#" onclick="event.preventDefault(); openChart(${r.mod_in}, ${r.mod_out}, '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}')">
+                            <span class="material-symbols-outlined" style="color:#3b82f6;">show_chart</span> View Graph
+                        </a>
+                        <a href="#" class="delete-item" onclick="event.preventDefault(); hideInterface(${r.agent_id}, '${r.interface.replace(/'/g, "\\'")}')">
+                            <span class="material-symbols-outlined">delete</span> Hide Interface
+                        </a>
+                    </div>
+                </div>
             </td>
         </tr>`;}).join('') || '<tr><td colspan="8" style="text-align:center;">No Interfaces Found</td></tr>';
         
@@ -2152,6 +2288,17 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         });
     }
 
+    function toggleActionDropdown(event, button) {
+        event.stopPropagation();
+        document.querySelectorAll('.dropdown-menu-custom.show').forEach(menu => {
+            if (menu !== button.nextElementSibling) {
+                menu.classList.remove('show');
+            }
+        });
+        const menu = button.nextElementSibling;
+        menu.classList.toggle('show');
+    }
+
     window.addEventListener('load', init);
     window.addEventListener('resize', () => {
         if (typeof chartInstance !== 'undefined' && chartInstance && typeof chartInstance.resize === 'function') {
@@ -2162,6 +2309,12 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     document.addEventListener('click', e => { 
         if(e.target.id==='chartModal') document.getElementById('chartModal').style.display='none'; 
         if(e.target.id==='hiddenModal') closeHiddenModal(); 
+        
+        if (!e.target.closest('.action-dropdown-mobile')) {
+            document.querySelectorAll('.dropdown-menu-custom.show').forEach(menu => {
+                menu.classList.remove('show');
+            });
+        }
     });
 </script>
 </body>
