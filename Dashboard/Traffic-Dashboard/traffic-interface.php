@@ -912,10 +912,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         @container body-container (max-width: 1024px) {
             .btn-text { display: none !important; }
             .btn-neutral { padding: 0; width: 34px; height: 34px; min-width: 34px; justify-content: center; }
-            .toolbar { padding: 8px 15px; gap: 8px; }
-        }
-
-        @container body-container (max-width: 768px) {
             .toolbar {
                 display: flex;
                 flex-direction: column;
@@ -927,7 +923,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 width: 100%;
                 justify-content: space-between;
                 flex-wrap: nowrap;
-                gap: 6px;
+                gap: 8px;
             }
             .toolbar-left .toolbar-item {
                 flex: 1 1 0px;
@@ -942,10 +938,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 justify-content: space-between;
                 border-top: 1px solid #f1f5f9;
                 padding-top: 8px;
-                flex-wrap: nowrap;
-                gap: 6px;
+                flex-wrap: wrap;
+                gap: 8px;
             }
-            #f_search.active { width: 100px; }
+            #f_search.active { width: 120px; }
         }
         .toolbar-select, .btn-neutral, .threshold-input { height: 32px; box-sizing: border-box; }
         .threshold-input { width: 50px; border: 1px solid #dce1e5; border-radius: 4px; padding: 0 5px; font-size: 12px; text-align: center; }
@@ -1622,6 +1618,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const search = (isInitial && params.has('search')) ? params.get('search') : (saved.search || '');
         const showUnits = (isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (saved.show_units !== false);
         const perPage = (isInitial && params.has('per_page')) ? params.get('per_page') : (saved.per_page || 20);
+        const refresh = (isInitial && params.has('refresh')) ? params.get('refresh') : (saved.refresh || '60');
 
         const enabledUnits = (isInitial && params.has('enabled_units')) ? params.get('enabled_units').split(',') : (saved.enabled_units || null);
         const enabledCategories = (isInitial && params.has('enabled_categories')) ? params.get('enabled_categories').split(',') : (saved.enabled_categories || null);
@@ -1634,6 +1631,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         document.getElementById('f_speed_filter').value = speed_filter;
         document.getElementById('f_showunits').checked = showUnits;
         document.getElementById('f_perpage').value = perPage;
+        document.getElementById('f_refresh').value = refresh;
 
         syncEnabledUnitsUI(enabledUnits);
         updateUnitDropdown(enabledUnits);
@@ -1722,13 +1720,13 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         currentDashId = ''; 
         const url = new URL(window.location); 
         url.searchParams.delete('dash_id'); 
-        ['unit', 'sort', 'speed_filter', 'search', 'warn', 'crit', 'fs', 'show_units', 'per_page', 'enabled_units', 'enabled_categories'].forEach(p => url.searchParams.delete(p));
+        ['unit', 'sort', 'speed_filter', 'search', 'warn', 'crit', 'fs', 'show_units', 'per_page', 'enabled_units', 'enabled_categories', 'refresh'].forEach(p => url.searchParams.delete(p));
         window.history.replaceState({}, '', url); 
         if (window.parent && window.parent !== window) {
             try {
                 const parentUrl = new URL(window.parent.location);
                 parentUrl.searchParams.delete('dash_id');
-                ['unit', 'sort', 'speed_filter', 'search', 'warn', 'crit', 'fs', 'show_units', 'per_page', 'enabled_units', 'enabled_categories'].forEach(p => parentUrl.searchParams.delete(p));
+                ['unit', 'sort', 'speed_filter', 'search', 'warn', 'crit', 'fs', 'show_units', 'per_page', 'enabled_units', 'enabled_categories', 'refresh'].forEach(p => parentUrl.searchParams.delete(p));
                 window.parent.history.replaceState({}, '', parentUrl);
             } catch (e) {
                 console.error("Failed to update parent window URL on goBack:", e);
@@ -1803,8 +1801,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const cbNA = document.getElementById('cat_opt_na');
         if (cbNA && cbNA.checked) enabled_categories.push('N/A');
 
+        const refresh = document.getElementById('f_refresh').value;
+
         localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({
-            warn, crit, fs, unit, sort, speed_filter, search, show_units: showUnits, enabled_units: enabled_units, enabled_categories: enabled_categories, per_page: perPage
+            warn, crit, fs, unit, sort, speed_filter, search, show_units: showUnits, enabled_units: enabled_units, enabled_categories: enabled_categories, per_page: perPage, refresh: refresh
         }));
 
         const body = document.getElementById('detailTableBody'); body.innerHTML = '<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>';
@@ -2001,6 +2001,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             if (cb && cb.checked) enabled_units.push(u);
         });
 
+        const refresh = document.getElementById('f_refresh').value;
+
         const newUrl = new URL(window.location);
         newUrl.searchParams.set('unit', unit);
         newUrl.searchParams.set('sort', sort);
@@ -2011,6 +2013,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         newUrl.searchParams.set('fs', fs);
         newUrl.searchParams.set('show_units', showUnits);
         newUrl.searchParams.set('per_page', perPage);
+        newUrl.searchParams.set('refresh', refresh);
         const enabled_categories = [];
         availableCategories.forEach(c => {
             const cb = document.getElementById('cat_opt_' + c.id);
@@ -2035,6 +2038,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 parentUrl.searchParams.set('fs', fs);
                 parentUrl.searchParams.set('show_units', showUnits);
                 parentUrl.searchParams.set('per_page', perPage);
+                parentUrl.searchParams.set('refresh', refresh);
                 parentUrl.searchParams.set('enabled_units', enabled_units.join(','));
                 parentUrl.searchParams.set('enabled_categories', enabled_categories.join(','));
                 if(currentDashId) parentUrl.searchParams.set('dash_id', currentDashId);
@@ -2128,6 +2132,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             const fs = document.getElementById('f_fontsize').value;
             const showUnits = document.getElementById('f_showunits').checked ? '1' : '0';
             const perPage = document.getElementById('f_perpage').value || 20;
+            const refresh = document.getElementById('f_refresh').value;
 
             const enabled_units = [];
             ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(unitVal => {
@@ -2152,6 +2157,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             u.searchParams.set('fs', fs);
             u.searchParams.set('show_units', showUnits);
             u.searchParams.set('per_page', perPage);
+            u.searchParams.set('refresh', refresh);
             u.searchParams.set('enabled_units', enabled_units.join(','));
             u.searchParams.set('enabled_categories', enabled_categories.join(','));
         }
