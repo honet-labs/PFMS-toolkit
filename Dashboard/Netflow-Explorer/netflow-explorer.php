@@ -14,6 +14,80 @@ if (isset($_GET['api']) && $_GET['api'] === 'log_js_error') {
     exit;
 }
 
+if (isset($_GET['api']) && $_GET['api'] === 'query_widget') {
+    require_once __DIR__ . '/includes/nfx_bootstrap.php';
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: application/json', true);
+    
+    $aggInput = trim((string)($_GET['agg'] ?? 'srcip'));
+    $sortInput = trim((string)($_GET['sort'] ?? 'bytes'));
+    $limitInput = (int)($_GET['limit'] ?? 10);
+    if ($limitInput < 1 || $limitInput > 200) $limitInput = 10;
+    
+    $validAggs = ['srcip', 'dstip', 'srcport', 'dstport', 'proto'];
+    $aggParts = explode(',', $aggInput);
+    $cleanAggParts = [];
+    $formatParts = [];
+    $headers = [];
+    foreach ($aggParts as $part) {
+        $p = strtolower(trim($part));
+        if (in_array($p, $validAggs, true)) {
+            $cleanAggParts[] = $p;
+            if ($p === 'srcip') { $formatParts[] = '%sa'; $headers[] = 'Src IP'; }
+            elseif ($p === 'dstip') { $formatParts[] = '%da'; $headers[] = 'Dst IP'; }
+            elseif ($p === 'srcport') { $formatParts[] = '%sp'; $headers[] = 'Src Port'; }
+            elseif ($p === 'dstport') { $formatParts[] = '%dp'; $headers[] = 'Dst Port'; }
+            elseif ($p === 'proto') { $formatParts[] = '%pr'; $headers[] = 'Proto'; }
+        }
+    }
+    if (empty($cleanAggParts)) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid aggregation fields']);
+        exit;
+    }
+    
+    $aggStr = implode(',', $cleanAggParts);
+    $formatStr = 'fmt:' . implode(',', $formatParts) . ',%pkt,%byt,%bps,%fl';
+    
+    $orderMap = ['bytes'=>'bytes','bps'=>'bps','packets'=>'packets','flows'=>'flows'];
+    $order = $orderMap[$sortInput] ?? 'bytes';
+    
+    $rows = [];
+    if ($canRun) {
+        $cmd = [$nfdumpBin, '-R', $expr, '-t', $timewin, '-A', $aggStr, '-O', $order, '-n', (string)$limitInput, '-o', $formatStr, '-q', '-N'];
+        if ($filterFile) { $cmd[] = '-f'; $cmd[] = $filterFile; }
+        
+        $res = proc_run($cmd, 30);
+        if ($res['ok']) {
+            $expectedCols = count($cleanAggParts) + 4;
+            $csvRows = parse_csv_lines_fixed($res['out'], $expectedCols);
+            foreach ($csvRows as $c) {
+                $item = [];
+                for ($i = 0; $i < count($cleanAggParts); $i++) {
+                    $item[$cleanAggParts[$i]] = $c[$i] ?? '';
+                }
+                $item['pkt'] = (int)($c[count($cleanAggParts)] ?? 0);
+                $item['byt'] = (int)($c[count($cleanAggParts) + 1] ?? 0);
+                $item['byt_fmt'] = bytes_fmt((float)$item['byt']);
+                $item['bps'] = (float)($c[count($cleanAggParts) + 2] ?? 0);
+                $item['bps_fmt'] = bps_fmt($item['bps']);
+                $item['flw'] = (int)($c[count($cleanAggParts) + 3] ?? 0);
+                $rows[] = $item;
+            }
+            echo json_encode([
+                'ok' => true,
+                'headers' => $headers,
+                'fields' => $cleanAggParts,
+                'rows' => $rows
+            ]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => trim($res['err'])]);
+        }
+    } else {
+        echo json_encode(['ok' => false, 'error' => 'nfdump cannot run. Check configuration.']);
+    }
+    exit;
+}
+
 require_once __DIR__ . '/includes/nfx_bootstrap.php';
 
 // =====================================================================
@@ -292,6 +366,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 
         <div style="display: flex; gap: 8px; margin-left: auto;">
             <button class="btn-apply" type="submit"><span class="material-symbols-outlined" style="font-size:18px!important;">search</span> SEARCH</button>
+            <button type="button" class="btn-secondary-custom" id="btnAddWidget"><span class="material-symbols-outlined" style="font-size:18px!important;">add_box</span> ADD PANEL</button>
             <a class="btn-secondary-custom" href="?"><span class="material-symbols-outlined" style="font-size:18px!important;">restart_alt</span> RESET</a>
             <?php if ($downloadUrl): ?>
                 <a class="btn-download" href="<?= htmlspecialchars($downloadUrl, ENT_QUOTES, 'UTF-8'); ?>">
@@ -328,128 +403,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-lg-6 mb-4">
-            <div class="dashboard-card">
-                <div class="dashboard-card-header">
-                    <h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40;">swap_horiz</span> Top Conversations (Src -> Dst) (V2)</h5>
-                    <div style="display:flex; gap:10px; align-items:center;">
-                        <button type="button" class="btn-secondary-custom" id="toggleSankey" style="padding: 2px 8px;" title="Toggle Sankey">
-                            <span class="material-symbols-outlined" style="font-size:16px!important;">account_tree</span>
-                        </button>
-                        <span style="background:#e0e4e8; padding:2px 8px; border-radius:4px; font-size:10px; font-weight: normal;"><?= (int)$topN; ?> ROWS</span>
-                    </div>
-                </div>
-                <div class="dashboard-card-body">
-                    <table class="table-pfms">
-                        <thead>
-                            <tr><th>Src</th><th>Dst</th><th>Flows</th><th>Packets</th><th>Bytes</th><th>B/s</th></tr>
-                        </thead>
-                        <tbody>
-                        <?php if (empty($data['top_conv'])): ?>
-                            <tr><td colspan="6" class="text-center text-muted">No data available.</td></tr>
-                        <?php else: foreach ($data['top_conv'] as $r): ?>
-                            <tr>
-                                <td class="code-ip"><?= htmlspecialchars((string)$r['src'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-ip"><?= htmlspecialchars((string)$r['dst'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?= (int)$r['flw']; ?></td>
-                                <td><?= (int)$r['pkt']; ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bytes_fmt((float)$r['byt']), ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bps_fmt((float)$r['bps']), ENT_QUOTES, 'UTF-8'); ?></td>
-                            </tr>
-                        <?php endforeach; endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-6 mb-4">
-            <div class="dashboard-card">
-                <div class="dashboard-card-header">
-                    <h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40;">login</span> Top Source IP</h5>
-                    <span style="background:#e0e4e8; padding:2px 8px; border-radius:4px; font-size:10px; font-weight: normal;"><?= (int)$topN; ?> ROWS</span>
-                </div>
-                <div class="dashboard-card-body">
-                    <table class="table-pfms">
-                        <thead>
-                            <tr><th>IP</th><th>Flows</th><th>Packets</th><th>Bytes</th><th>B/s</th></tr>
-                        </thead>
-                        <tbody>
-                        <?php if (empty($data['top_src'])): ?>
-                            <tr><td colspan="5" class="text-center text-muted">No data.</td></tr>
-                        <?php else: foreach ($data['top_src'] as $r): ?>
-                            <tr>
-                                <td class="code-ip"><?= htmlspecialchars((string)$r['ip'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?= (int)$r['flw']; ?></td>
-                                <td><?= (int)$r['pkt']; ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bytes_fmt((float)$r['byt']), ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bps_fmt((float)$r['bps']), ENT_QUOTES, 'UTF-8'); ?></td>
-                            </tr>
-                        <?php endforeach; endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-6 mb-4">
-            <div class="dashboard-card">
-                <div class="dashboard-card-header">
-                    <h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40;">logout</span> Top Destination IP</h5>
-                    <span style="background:#e0e4e8; padding:2px 8px; border-radius:4px; font-size:10px; font-weight: normal;"><?= (int)$topN; ?> ROWS</span>
-                </div>
-                <div class="dashboard-card-body">
-                    <table class="table-pfms">
-                        <thead>
-                            <tr><th>IP</th><th>Flows</th><th>Packets</th><th>Bytes</th><th>B/s</th></tr>
-                        </thead>
-                        <tbody>
-                        <?php if (empty($data['top_dst'])): ?>
-                            <tr><td colspan="5" class="text-center text-muted">No data.</td></tr>
-                        <?php else: foreach ($data['top_dst'] as $r): ?>
-                            <tr>
-                                <td class="code-ip"><?= htmlspecialchars((string)$r['ip'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?= (int)$r['flw']; ?></td>
-                                <td><?= (int)$r['pkt']; ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bytes_fmt((float)$r['byt']), ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bps_fmt((float)$r['bps']), ENT_QUOTES, 'UTF-8'); ?></td>
-                            </tr>
-                        <?php endforeach; endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-6 mb-4">
-            <div class="dashboard-card">
-                <div class="dashboard-card-header">
-                    <h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40;">router</span> Top Destination Port</h5>
-                    <span style="background:#e0e4e8; padding:2px 8px; border-radius:4px; font-size:10px; font-weight: normal;"><?= (int)$topN; ?> ROWS</span>
-                </div>
-                <div class="dashboard-card-body">
-                    <table class="table-pfms">
-                        <thead>
-                            <tr><th>Port</th><th>Flows</th><th>Packets</th><th>Bytes</th><th>B/s</th></tr>
-                        </thead>
-                        <tbody>
-                        <?php if (empty($data['top_dport'])): ?>
-                            <tr><td colspan="5" class="text-center text-muted">No data.</td></tr>
-                        <?php else: foreach ($data['top_dport'] as $r): ?>
-                            <tr>
-                                <td class="code-ip"><?= htmlspecialchars((string)$r['port'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?= (int)$r['flw']; ?></td>
-                                <td><?= (int)$r['pkt']; ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bytes_fmt((float)$r['byt']), ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bps_fmt((float)$r['bps']), ENT_QUOTES, 'UTF-8'); ?></td>
-                            </tr>
-                        <?php endforeach; endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+    <div class="row" id="dynamicWidgetsContainer">
+        <!-- Rendered dynamically by javascript -->
     </div>
 
     <div class="row">
@@ -504,7 +459,16 @@ window.NetflowExplorerConfig = {
   sankeyLimit: <?= (int)$sankeyN; ?>,
   sankeyMode: <?= $sankeyModeJs; ?>,
   autoRefresh: <?= $autoRefreshJs; ?>,
-  sankeyOpenDefault: <?= $sankeyOpen ? 'true' : 'false'; ?>
+  sankeyOpenDefault: <?= $sankeyOpen ? 'true' : 'false'; ?>,
+  queryParams: {
+    start: <?= json_encode($startBase); ?>,
+    end: <?= json_encode($endBase); ?>,
+    manual_end: <?= json_encode($manualEnd ? '1' : '0'); ?>,
+    src_ip: <?= json_encode($srcIp); ?>,
+    dst_ip: <?= json_encode($dstIp); ?>,
+    dst_port: <?= json_encode($dstPort); ?>,
+    proto: <?= json_encode($proto); ?>
+  }
 };
 </script>
 <script src="assets/js/netflow-explorer.js"></script>
@@ -521,6 +485,58 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 </script>
+
+<!-- ADD WIDGET MODAL -->
+<div class="modal-overlay" id="widgetModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1050; padding: 20px;">
+    <div class="modal-box" style="background: #fff; width: 500px; border-radius: 8px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #e0e4e8;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:10px;">
+            <h5 style="margin:0; font-weight:600; color: #0b1a26; display: flex; align-items: center; gap: 5px;"><span class="material-symbols-outlined" style="color: #004d40;">add_box</span> Add Custom Panel</h5>
+            <span class="material-symbols-outlined" style="cursor:pointer;" id="btnCloseWidgetModal">close</span>
+        </div>
+        
+        <form id="widgetForm">
+            <div class="mb-3">
+                <label class="form-label" style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 5px; display: block;">PANEL TITLE</label>
+                <input type="text" id="widgetTitle" class="form-control form-control-sm" placeholder="e.g., Top Source Ports" required style="width: 100%; height: 32px; font-size: 12px; border: 1px solid #dce1e5; border-radius: 4px; padding: 6px 12px;">
+            </div>
+            
+            <div class="mb-3" style="margin-top: 15px;">
+                <label class="form-label" style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 5px; display: block;">AGGREGATE BY</label>
+                <select id="widgetAgg" class="form-select form-select-sm" style="width: 100%; height: 32px; font-size: 12px; border: 1px solid #dce1e5; border-radius: 4px; padding: 0 12px;">
+                    <option value="srcip">Source IP (srcip)</option>
+                    <option value="dstip">Destination IP (dstip)</option>
+                    <option value="srcport">Source Port (srcport)</option>
+                    <option value="dstport">Destination Port (dstport)</option>
+                    <option value="proto">Protocol (proto)</option>
+                    <option value="srcip,dstip">Src IP & Dst IP</option>
+                    <option value="srcip,dstport">Src IP & Dst Port</option>
+                    <option value="dstip,dstport">Dst IP & Dst Port</option>
+                </select>
+            </div>
+            
+            <div style="display: flex; gap: 15px; margin-top: 15px;">
+                <div style="flex: 1;">
+                    <label class="form-label" style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 5px; display: block;">SORT BY</label>
+                    <select id="widgetSort" class="form-select form-select-sm" style="width: 100%; height: 32px; font-size: 12px; border: 1px solid #dce1e5; border-radius: 4px; padding: 0 12px;">
+                        <option value="bytes">Bytes</option>
+                        <option value="packets">Packets</option>
+                        <option value="bps">Bytes/sec</option>
+                        <option value="flows">Flows</option>
+                    </select>
+                </div>
+                <div style="width: 120px;">
+                    <label class="form-label" style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 5px; display: block;">LIMIT ROWS</label>
+                    <input type="number" id="widgetLimit" class="form-control form-control-sm" min="3" max="100" value="10" required style="width: 100%; height: 32px; font-size: 12px; border: 1px solid #dce1e5; border-radius: 4px; padding: 6px 12px;">
+                </div>
+            </div>
+            
+            <div style="display:flex; justify-content: flex-end; gap: 10px; margin-top: 25px; border-top: 1px solid #eee; padding-top: 15px;">
+                <button type="button" class="btn-secondary-custom" id="btnCancelWidget" style="padding: 6px 15px;">Cancel</button>
+                <button type="submit" class="btn-apply" style="padding: 6px 20px; background: #004d40; color: #fff; border: none; border-radius: 4px;">Save Panel</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 </body>
 </html>

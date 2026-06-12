@@ -494,4 +494,193 @@
       }
     }, 150);
   }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function loadWidgets() {
+    const container = document.getElementById('dynamicWidgetsContainer');
+    if (!container) return;
+    
+    let widgets = [];
+    try {
+      widgets = JSON.parse(localStorage.getItem('nfx_dashboard_widgets'));
+    } catch(e) {}
+    
+    if (!Array.isArray(widgets) || !widgets.length) {
+      widgets = [
+        {id: 'w_top_conv', title: 'Top Conversations (Src -> Dst)', agg: 'srcip,dstip', sort: 'bytes', limit: 10},
+        {id: 'w_top_src', title: 'Top Source IP', agg: 'srcip', sort: 'bytes', limit: 10},
+        {id: 'w_top_dst', title: 'Top Destination IP', agg: 'dstip', sort: 'bytes', limit: 10},
+        {id: 'w_top_dport', title: 'Top Destination Port', agg: 'dstport', sort: 'bytes', limit: 10}
+      ];
+      localStorage.setItem('nfx_dashboard_widgets', JSON.stringify(widgets));
+    }
+    
+    container.innerHTML = '';
+    
+    widgets.forEach(function(w) {
+      const col = document.createElement('div');
+      col.className = 'col-lg-6 mb-4';
+      col.id = 'widget_col_' + w.id;
+      
+      let html = '<div class="dashboard-card">';
+      html += '  <div class="dashboard-card-header">';
+      html += '    <h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40;">dashboard</span> ' + escapeHtml(w.title) + '</h5>';
+      html += '    <div style="display:flex; gap:10px; align-items:center;">';
+      html += '      <span style="background:#e0e4e8; padding:2px 8px; border-radius:4px; font-size:10px; font-weight: normal; text-transform: uppercase;">' + w.limit + ' ROWS</span>';
+      html += '      <button type="button" class="btn-delete-widget" data-id="' + w.id + '" style="padding: 2px 6px; border: none; background: transparent; cursor: pointer; color: #e74c3c !important; display: inline-flex; align-items: center;" title="Delete Panel">';
+      html += '        <span class="material-symbols-outlined" style="font-size:16px!important; color: #e74c3c !important;">delete</span>';
+      html += '      </button>';
+      html += '    </div>';
+      html += '  </div>';
+      html += '  <div class="dashboard-card-body" id="widget_body_' + w.id + '">';
+      html += '    <div style="padding: 20px; text-align: center; color: #7f8c8d;"><span class="material-symbols-outlined" style="font-size:18px!important; display: inline-block; animation: spin 2s linear infinite; vertical-align: middle; margin-right: 5px;">sync</span> Loading...</div>';
+      html += '  </div>';
+      html += '</div>';
+      
+      col.innerHTML = html;
+      container.appendChild(col);
+      
+      fetchWidgetData(w);
+    });
+    
+    // Add delete listeners
+    container.querySelectorAll('.btn-delete-widget').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        if (confirm('Are you sure you want to delete this custom panel?')) {
+          deleteWidget(id);
+        }
+      });
+    });
+  }
+
+  function fetchWidgetData(w) {
+    const bodyEl = document.getElementById('widget_body_' + w.id);
+    if (!bodyEl) return;
+    
+    const queryParams = config.queryParams || {};
+    const params = new URLSearchParams();
+    params.set('api', 'query_widget');
+    params.set('agg', w.agg);
+    params.set('sort', w.sort);
+    params.set('limit', w.limit);
+    Object.keys(queryParams).forEach(function(k) {
+      if (queryParams[k]) {
+        params.set(k, queryParams[k]);
+      }
+    });
+    
+    fetch('?' + params.toString())
+      .then(function(res) { return res.json(); })
+      .then(function(res) {
+        if (!res.ok) {
+          bodyEl.innerHTML = '<div style="padding: 20px; color: #ef4444;">Error: ' + escapeHtml(res.error || 'Failed to fetch data') + '</div>';
+          return;
+        }
+        
+        if (!res.rows || !res.rows.length) {
+          bodyEl.innerHTML = '<table class="table-pfms"><thead><tr><th>No Data</th></tr></thead><tbody><tr><td class="text-center text-muted">No data available.</td></tr></tbody></table>';
+          return;
+        }
+        
+        let tableHtml = '<table class="table-pfms"><thead><tr>';
+        res.headers.forEach(function(h) {
+          tableHtml += '<th>' + escapeHtml(h) + '</th>';
+        });
+        tableHtml += '<th>Flows</th><th>Packets</th><th>Bytes</th><th>B/s</th></tr></thead><tbody>';
+        
+        res.rows.forEach(function(row) {
+          tableHtml += '<tr>';
+          res.fields.forEach(function(f) {
+            const val = row[f] || '';
+            const isIp = f === 'srcip' || f === 'dstip';
+            tableHtml += '<td class="' + (isIp ? 'code-ip' : '') + '">' + escapeHtml(val) + '</td>';
+          });
+          tableHtml += '<td>' + Number(row.flw || 0).toLocaleString() + '</td>';
+          tableHtml += '<td>' + Number(row.pkt || 0).toLocaleString() + '</td>';
+          tableHtml += '<td class="code-mono">' + escapeHtml(row.byt_fmt || '0 B') + '</td>';
+          tableHtml += '<td class="code-mono">' + escapeHtml(row.bps_fmt || '0 B/s') + '</td>';
+          tableHtml += '</tr>';
+        });
+        
+        tableHtml += '</tbody></table>';
+        bodyEl.innerHTML = tableHtml;
+      })
+      .catch(function(err) {
+        bodyEl.innerHTML = '<div style="padding: 20px; color: #ef4444;">Network error occurred.</div>';
+      });
+  }
+
+  function deleteWidget(id) {
+    let widgets = [];
+    try {
+      widgets = JSON.parse(localStorage.getItem('nfx_dashboard_widgets'));
+    } catch(e) {}
+    if (Array.isArray(widgets)) {
+      widgets = widgets.filter(function(w) { return w.id !== id; });
+      localStorage.setItem('nfx_dashboard_widgets', JSON.stringify(widgets));
+      loadWidgets();
+    }
+  }
+
+  const btnAddWidget = document.getElementById('btnAddWidget');
+  const widgetModal = document.getElementById('widgetModal');
+  const btnCloseWidgetModal = document.getElementById('btnCloseWidgetModal');
+  const btnCancelWidget = document.getElementById('btnCancelWidget');
+  const widgetForm = document.getElementById('widgetForm');
+  
+  if (btnAddWidget && widgetModal) {
+    btnAddWidget.addEventListener('click', function() {
+      widgetModal.style.display = 'flex';
+      document.getElementById('widgetTitle').value = '';
+      document.getElementById('widgetTitle').focus();
+    });
+  }
+  
+  function closeModal() {
+    if (widgetModal) widgetModal.style.display = 'none';
+  }
+  if (btnCloseWidgetModal) btnCloseWidgetModal.addEventListener('click', closeModal);
+  if (btnCancelWidget) btnCancelWidget.addEventListener('click', closeModal);
+  
+  if (widgetForm) {
+    widgetForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const title = document.getElementById('widgetTitle').value;
+      const agg = document.getElementById('widgetAgg').value;
+      const sort = document.getElementById('widgetSort').value;
+      const limit = parseInt(document.getElementById('widgetLimit').value, 10) || 10;
+      
+      let widgets = [];
+      try {
+        widgets = JSON.parse(localStorage.getItem('nfx_dashboard_widgets'));
+      } catch(e) {}
+      if (!Array.isArray(widgets)) widgets = [];
+      
+      const newWidget = {
+        id: 'w_' + Date.now(),
+        title: title,
+        agg: agg,
+        sort: sort,
+        limit: limit
+      };
+      
+      widgets.push(newWidget);
+      localStorage.setItem('nfx_dashboard_widgets', JSON.stringify(widgets));
+      closeModal();
+      loadWidgets();
+    });
+  }
+
+  loadWidgets();
 }());
