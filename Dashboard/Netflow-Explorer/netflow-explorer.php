@@ -517,7 +517,8 @@ window.NetflowExplorerConfig = {
   }
 };
 </script>
-<script src="assets/js/netflow-explorer.js?v=<?= filemtime(__DIR__ . '/assets/js/netflow-explorer.js'); ?>"></script>
+
+
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
@@ -584,5 +585,6 @@ document.addEventListener("DOMContentLoaded", function() {
     </div>
 </div>
 
+<script src="assets/js/netflow-explorer.js?v=<?= filemtime(__DIR__ . '/assets/js/netflow-explorer.js'); ?>"></script>
 </body>
 </html>
