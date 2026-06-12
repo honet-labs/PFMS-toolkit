@@ -531,7 +531,7 @@
     
     let widgets = getStoredWidgets();
     
-    if (!Array.isArray(widgets) || !widgets.length) {
+    if (widgets === null || !Array.isArray(widgets)) {
       widgets = [
         {id: 'w_top_conv', title: 'Top Conversations (Src -> Dst)', agg: 'srcip,dstip', sort: 'bytes', limit: 10},
         {id: 'w_top_src', title: 'Top Source IP', agg: 'srcip', sort: 'bytes', limit: 10},
