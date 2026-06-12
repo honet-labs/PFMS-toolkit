@@ -291,7 +291,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
         <input type="hidden" name="sankey" value="<?= $sankeyOpen ? '1' : '0'; ?>" id="sankeyStateInput">
 
         <div style="display: flex; gap: 8px; margin-left: auto;">
-            <button class="btn-apply" type="submit"><span class="material-symbols-outlined" style="font-size:18px!important;">sync</span> REFRESH</button>
+            <button class="btn-apply" type="submit"><span class="material-symbols-outlined" style="font-size:18px!important;">search</span> SEARCH</button>
             <a class="btn-secondary-custom" href="?"><span class="material-symbols-outlined" style="font-size:18px!important;">restart_alt</span> RESET</a>
             <?php if ($downloadUrl): ?>
                 <a class="btn-download" href="<?= htmlspecialchars($downloadUrl, ENT_QUOTES, 'UTF-8'); ?>">
