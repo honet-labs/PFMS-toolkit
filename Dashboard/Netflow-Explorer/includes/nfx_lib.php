@@ -287,20 +287,40 @@ function sankey_group_rows(array $rows, int $maxNodesPerLayer, int $maxLinks): a
         $nodes = $row['nodes'] ?? [];
         if (count($nodes) < 2) continue;
         $norm = [];
+        $originals = [];
         for ($i = 0; $i < $layerCount; $i++) {
             $label = trim((string)($nodes[$i] ?? ''));
             if ($label === '') continue;
+            $originals[] = $label;
             if (!in_array($label, $topByLayer[$i], true)) $label = 'Other';
             $norm[] = $label;
         }
         if (count($norm) < 2) continue;
         $key = implode('|', $norm);
         if (!isset($merged[$key])) {
-            $merged[$key] = ['nodes' => $norm, 'value' => 0.0, 'packets' => 0, 'flows' => 0];
+            $merged[$key] = [
+                'nodes' => $norm,
+                'value' => 0.0,
+                'packets' => 0,
+                'flows' => 0,
+                'details' => []
+            ];
         }
         $merged[$key]['value'] += (float)($row['value'] ?? 0);
         $merged[$key]['packets'] += (int)($row['packets'] ?? 0);
         $merged[$key]['flows'] += (int)($row['flows'] ?? 0);
+
+        if (in_array('Other', $norm, true)) {
+            $origPath = implode(' -> ', $originals);
+            if (!isset($merged[$key]['details'][$origPath])) {
+                $merged[$key]['details'][$origPath] = [
+                    'value' => 0.0,
+                    'packets' => 0
+                ];
+            }
+            $merged[$key]['details'][$origPath]['value'] += (float)($row['value'] ?? 0);
+            $merged[$key]['details'][$origPath]['packets'] += (int)($row['packets'] ?? 0);
+        }
     }
 
     $out = array_values($merged);

@@ -162,6 +162,16 @@
   function renderSankey() {
     if (rendered || !chartEl) return;
 
+    function bytesFmtJs(b) {
+      if (b === 0) return '0 B';
+      const units = ['B','KB','MB','GB','TB'];
+      let i = 0;
+      let val = Number(b);
+      while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+      if (i === 0) return Math.round(val) + ' ' + units[i];
+      return val.toFixed(2) + ' ' + units[i];
+    }
+
     const sankeyData = buildSankeyRows(rawSankeyData, sankeyLimit);
     if (!sankeyData.length) {
       chartEl.innerHTML = '<div class="notice">No conversation data to visualize.</div>';
@@ -247,13 +257,33 @@
         source.push(s);
         target.push(t);
         value.push(Number(row.value || 0));
-        linkLabels.push(
-          nodes[i] + ' -> ' + nodes[i + 1] +
+        let labelText = nodes[i] + ' -> ' + nodes[i + 1] +
           '<br>Total path: ' + pathId +
-          '<br>Bytes: ' + Number(row.value || 0).toLocaleString() +
+          '<br>Bytes: ' + bytesFmtJs(row.value || 0) +
           '<br>Packets: ' + Number(row.packets || 0).toLocaleString() +
-          '<br>Flows: ' + Number(row.flows || 0).toLocaleString()
-        );
+          '<br>Flows: ' + Number(row.flows || 0).toLocaleString();
+
+        if (row.details && Object.keys(row.details).length > 0) {
+          labelText += '<br><br><b>Breakdown:</b>';
+          const sortedDetails = Object.keys(row.details).map(function (k) {
+            return {
+              path: k,
+              value: Number(row.details[k].value || 0),
+              packets: Number(row.details[k].packets || 0)
+            };
+          }).sort(function (a, b) { return b.value - a.value; });
+
+          const showLimit = 6;
+          const displayDetails = sortedDetails.slice(0, showLimit);
+          displayDetails.forEach(function (d) {
+            labelText += '<br>• ' + d.path + ': ' + bytesFmtJs(d.value);
+          });
+          if (sortedDetails.length > showLimit) {
+            labelText += '<br>• ...and ' + (sortedDetails.length - showLimit) + ' more';
+          }
+        }
+
+        linkLabels.push(labelText);
         linkColors.push('rgba(148, 163, 184, 0.26)');
         linkPathIds.push(pathId);
 
