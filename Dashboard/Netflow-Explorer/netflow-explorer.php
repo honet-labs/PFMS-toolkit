@@ -150,7 +150,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     
     <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/chartjs/plotly-2.35.2.min.js"></script>
-    <link rel="stylesheet" href="assets/css/netflow-explorer.css">
+    <link rel="stylesheet" href="assets/css/netflow-explorer.css?v=<?= filemtime(__DIR__ . '/assets/css/netflow-explorer.css'); ?>">
 
     <style>
         /* Base Global Styling Override */
@@ -484,7 +484,7 @@ window.NetflowExplorerConfig = {
   }
 };
 </script>
-<script src="assets/js/netflow-explorer.js"></script>
+<script src="assets/js/netflow-explorer.js?v=<?= filemtime(__DIR__ . '/assets/js/netflow-explorer.js'); ?>"></script>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {

@@ -551,16 +551,6 @@
       
       fetchWidgetData(w);
     });
-    
-    // Add delete listeners
-    container.querySelectorAll('.btn-delete-widget').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        const id = this.getAttribute('data-id');
-        if (confirm('Are you sure you want to delete this custom panel?')) {
-          deleteWidget(id);
-        }
-      });
-    });
   }
 
   function fetchWidgetData(w) {
@@ -568,18 +558,25 @@
     if (!bodyEl) return;
     
     const queryParams = config.queryParams || {};
+    const url = new URL(window.location.href);
+    const pageParam = url.searchParams.get('page');
+    
     const params = new URLSearchParams();
+    if (pageParam) {
+      params.set('page', pageParam);
+    }
     params.set('api', 'query_widget');
     params.set('agg', w.agg);
     params.set('sort', w.sort);
     params.set('limit', w.limit);
+    
     Object.keys(queryParams).forEach(function(k) {
       if (queryParams[k]) {
         params.set(k, queryParams[k]);
       }
     });
     
-    fetch('?' + params.toString())
+    fetch(url.pathname + '?' + params.toString())
       .then(function(res) { return res.json(); })
       .then(function(res) {
         if (!res.ok) {
@@ -679,6 +676,20 @@
       localStorage.setItem('nfx_dashboard_widgets', JSON.stringify(widgets));
       closeModal();
       loadWidgets();
+    });
+  }
+
+  // Event delegation for widget deletion
+  const containerEl = document.getElementById('dynamicWidgetsContainer');
+  if (containerEl) {
+    containerEl.addEventListener('click', function(e) {
+      const deleteBtn = e.target.closest('.btn-delete-widget');
+      if (deleteBtn) {
+        const id = deleteBtn.getAttribute('data-id');
+        if (confirm('Are you sure you want to delete this custom panel?')) {
+          deleteWidget(id);
+        }
+      }
     });
   }
 
