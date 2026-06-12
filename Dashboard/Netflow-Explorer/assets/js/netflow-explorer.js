@@ -693,5 +693,57 @@
     });
   }
 
+  // Flows search and export CSV
+  const flowsSearchInput = document.getElementById('flowsSearchInput');
+  if (flowsSearchInput) {
+    flowsSearchInput.addEventListener('keyup', function() {
+      const query = this.value.toLowerCase();
+      const rows = document.querySelectorAll('#flowsTable tbody tr');
+      rows.forEach(function(row) {
+        if (row.cells.length === 1 && row.cells[0].classList.contains('text-center')) {
+          return;
+        }
+        let text = '';
+        for (let i = 0; i < row.cells.length; i++) {
+          text += row.cells[i].textContent.toLowerCase() + ' ';
+        }
+        if (text.indexOf(query) !== -1) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    });
+  }
+
+  const btnExportFlowsCsv = document.getElementById('btnExportFlowsCsv');
+  if (btnExportFlowsCsv) {
+    btnExportFlowsCsv.addEventListener('click', function() {
+      const rows = document.querySelectorAll('#flowsTable tr');
+      let csvContent = '';
+      rows.forEach(function(row) {
+        if (row.style.display === 'none') return;
+        
+        const cols = row.querySelectorAll('th, td');
+        const rowData = [];
+        cols.forEach(function(col) {
+          let text = col.textContent.trim().replace(/"/g, '""');
+          rowData.push('"' + text + '"');
+        });
+        csvContent += rowData.join(',') + '\r\n';
+      });
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'flows_export.csv');
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+  }
+
   loadWidgets();
 }());

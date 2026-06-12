@@ -376,7 +376,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
         </div>
     </form>
 
-    <div class="dashboard-card mb-4 sankey-box" id="sankeyPanel" style="overflow: visible;">
+    <div class="dashboard-card mb-4 sankey-box <?= $sankeyOpen ? 'open' : ''; ?>" id="sankeyPanel" style="overflow: visible;">
         <div class="dashboard-card-header">
             <h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40;">account_tree</span> Traffic Sankey (<?= htmlspecialchars($sankeyMode, ENT_QUOTES, 'UTF-8'); ?>)</h5>
             <div style="display:flex; align-items:center; gap:10px;">
@@ -403,45 +403,55 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
         </div>
     </div>
 
-    <div class="row" id="dynamicWidgetsContainer">
-        <!-- Rendered dynamically by javascript -->
-    </div>
-
     <div class="row">
         <div class="col-12 mb-4">
             <div class="dashboard-card">
-                <div class="dashboard-card-header">
+                <div class="dashboard-card-header" style="display:flex; justify-content:space-between; align-items:center;">
                     <h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40;">list_alt</span> Flows (Top <?= (int)$flowN; ?> Flows Sorted by <?= htmlspecialchars($sort, ENT_QUOTES, 'UTF-8'); ?>)</h5>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <input type="text" id="flowsSearchInput" placeholder="Search flows..." style="padding: 4px 10px; font-size: 12px; border: 1px solid #dce1e5; border-radius: 4px; height: 30px; width: 180px;">
+                        <button type="button" class="btn-secondary-custom" id="btnExportFlowsCsv" style="padding: 4px 10px; height: 30px; display:inline-flex; align-items:center; gap:5px; border-radius:4px; font-size:12px; cursor:pointer;" title="Export Flows to CSV">
+                            <span class="material-symbols-outlined" style="font-size:16px!important;">download</span> Export CSV
+                        </button>
+                    </div>
                 </div>
                 <div class="dashboard-card-body">
-                    <table class="table-pfms">
+                    <table class="table-pfms" id="flowsTable">
                         <thead>
                             <tr>
                                 <th>Date first seen</th>
                                 <th>Event</th>
                                 <th>XEvent</th>
                                 <th>Proto</th>
-                                <th>Src IP Addr:Port</th>
-                                <th>Dst IP Addr:Port</th>
-                                <th>X-Src IP Addr:Port</th>
-                                <th>X-Dst IP Addr:Port</th>
+                                <th>Src IP Addr</th>
+                                <th>Src Port</th>
+                                <th>Dst IP Addr</th>
+                                <th>Dst Port</th>
+                                <th>X-Src IP Addr</th>
+                                <th>X-Src Port</th>
+                                <th>X-Dst IP Addr</th>
+                                <th>X-Dst Port</th>
                                 <th>In Byte</th>
                                 <th>Out Byte</th>
                             </tr>
                         </thead>
                         <tbody>
                         <?php if (empty($data['flows'])): ?>
-                            <tr><td colspan="10" class="text-center text-muted">No data.</td></tr>
+                            <tr><td colspan="14" class="text-center text-muted">No data.</td></tr>
                         <?php else: foreach ($data['flows'] as $r): ?>
                             <tr>
                                 <td><?= htmlspecialchars((string)$r['ts'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td><?= htmlspecialchars((string)$r['evt'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td><?= htmlspecialchars((string)$r['xevt'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td style="text-transform: uppercase; font-weight: normal !important; color: #1976d2 !important;"><?= htmlspecialchars((string)$r['pr'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-ip"><?= htmlspecialchars((string)$r['sa'] . ':' . (string)$r['sp'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-ip"><?= htmlspecialchars((string)$r['da'] . ':' . (string)$r['dp'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-ip"><?= htmlspecialchars((string)$r['xsa'] . ':' . (string)$r['xsp'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-ip"><?= htmlspecialchars((string)$r['xda'] . ':' . (string)$r['xdp'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td class="code-ip"><?= htmlspecialchars((string)$r['sa'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?= htmlspecialchars((string)$r['sp'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td class="code-ip"><?= htmlspecialchars((string)$r['da'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?= htmlspecialchars((string)$r['dp'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td class="code-ip"><?= htmlspecialchars((string)$r['xsa'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?= htmlspecialchars((string)$r['xsp'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td class="code-ip"><?= htmlspecialchars((string)$r['xda'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?= htmlspecialchars((string)$r['xdp'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td><?= number_format((float)$r['ibyt']); ?></td>
                                 <td><?= number_format((float)$r['obyt']); ?></td>
                             </tr>
@@ -451,6 +461,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
                 </div>
             </div>
         </div>
+    </div>
+
+    <div class="row" id="dynamicWidgetsContainer">
+        <!-- Rendered dynamically by javascript -->
     </div>
 
     <div style="background: #e3f2fd; border: 1px solid #bbdefb; padding: 15px 20px; border-radius: 8px; font-size: 12px; color: #0d47a1;">

@@ -49,7 +49,8 @@ if (!empty($files)) {
     $defEnd = null;
 }
 
-$manualEnd = isset($_GET['manual_end']) && (string)$_GET['manual_end'] === '1';
+$isFormSubmitted = isset($_GET['start']);
+$manualEnd = $isFormSubmitted ? (isset($_GET['manual_end']) && (string)$_GET['manual_end'] === '1') : true;
 $startBase = (string)($_GET['start'] ?? ($defStart['base'] ?? ''));
 $endBase   = (string)($_GET['end']   ?? ($defEnd['base'] ?? ''));
 
