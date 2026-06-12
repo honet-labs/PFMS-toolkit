@@ -301,4 +301,9 @@ if ($canRun) {
 $sankeyJson = json_encode($data['sankey'] ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 $sankeyModeJs = json_encode($sankeyMode, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 $autoRefreshJs = json_encode($autoRefresh, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-$sankeyOpen = (isset($_GET['sk']) && $_GET['sk'] === '1') || (isset($_GET['sankey']) && $_GET['sankey'] === '1');
+$sankeyOpen = true;
+if (isset($_GET['sk']) && $_GET['sk'] === '0') {
+    $sankeyOpen = false;
+} elseif (isset($_GET['sankey']) && $_GET['sankey'] === '0') {
+    $sankeyOpen = false;
+}
