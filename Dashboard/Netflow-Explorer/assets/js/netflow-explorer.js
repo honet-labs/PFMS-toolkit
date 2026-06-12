@@ -505,14 +505,31 @@
       .replace(/'/g, '&#039;');
   }
 
+  let inMemoryWidgets = null;
+  function getStoredWidgets() {
+    try {
+      const data = localStorage.getItem('nfx_dashboard_widgets');
+      if (data) return JSON.parse(data);
+    } catch (e) {
+      console.warn("Storage read denied: ", e);
+    }
+    return inMemoryWidgets;
+  }
+
+  function setStoredWidgets(widgets) {
+    inMemoryWidgets = widgets;
+    try {
+      localStorage.setItem('nfx_dashboard_widgets', JSON.stringify(widgets));
+    } catch (e) {
+      console.warn("Storage write denied: ", e);
+    }
+  }
+
   function loadWidgets() {
     const container = document.getElementById('dynamicWidgetsContainer');
     if (!container) return;
     
-    let widgets = [];
-    try {
-      widgets = JSON.parse(localStorage.getItem('nfx_dashboard_widgets'));
-    } catch(e) {}
+    let widgets = getStoredWidgets();
     
     if (!Array.isArray(widgets) || !widgets.length) {
       widgets = [
@@ -521,7 +538,7 @@
         {id: 'w_top_dst', title: 'Top Destination IP', agg: 'dstip', sort: 'bytes', limit: 10},
         {id: 'w_top_dport', title: 'Top Destination Port', agg: 'dstport', sort: 'bytes', limit: 10}
       ];
-      localStorage.setItem('nfx_dashboard_widgets', JSON.stringify(widgets));
+      setStoredWidgets(widgets);
     }
     
     container.innerHTML = '';
@@ -618,13 +635,10 @@
   }
 
   function deleteWidget(id) {
-    let widgets = [];
-    try {
-      widgets = JSON.parse(localStorage.getItem('nfx_dashboard_widgets'));
-    } catch(e) {}
+    let widgets = getStoredWidgets();
     if (Array.isArray(widgets)) {
       widgets = widgets.filter(function(w) { return w.id !== id; });
-      localStorage.setItem('nfx_dashboard_widgets', JSON.stringify(widgets));
+      setStoredWidgets(widgets);
       loadWidgets();
     }
   }
@@ -638,6 +652,33 @@
   if (btnAddWidget && widgetModal) {
     btnAddWidget.addEventListener('click', function() {
       widgetModal.style.display = 'flex';
+      
+      // Dynamic positioning to center in the visible viewport
+      let scrollTop = 0;
+      try {
+        if (window.parent && window.parent.scrollY !== undefined) {
+          let iframeOffset = 0;
+          try {
+            const iframes = window.parent.document.getElementsByTagName('iframe');
+            for (let i = 0; i < iframes.length; i++) {
+              if (iframes[i].contentWindow === window) {
+                iframeOffset = iframes[i].getBoundingClientRect().top + window.parent.scrollY;
+                break;
+              }
+            }
+          } catch(e) {}
+          scrollTop = Math.max(0, window.parent.scrollY - iframeOffset + 100);
+        } else {
+          scrollTop = window.scrollY + 100;
+        }
+      } catch (e) {
+        scrollTop = window.scrollY + 100;
+      }
+      
+      widgetModal.style.position = 'absolute';
+      widgetModal.style.top = scrollTop + 'px';
+      widgetModal.style.bottom = 'auto';
+      
       document.getElementById('widgetTitle').value = '';
       document.getElementById('widgetTitle').focus();
     });
@@ -658,10 +699,7 @@
       const sort = document.getElementById('widgetSort').value;
       const limit = parseInt(document.getElementById('widgetLimit').value, 10) || 10;
       
-      let widgets = [];
-      try {
-        widgets = JSON.parse(localStorage.getItem('nfx_dashboard_widgets'));
-      } catch(e) {}
+      let widgets = getStoredWidgets();
       if (!Array.isArray(widgets)) widgets = [];
       
       const newWidget = {
@@ -673,7 +711,7 @@
       };
       
       widgets.push(newWidget);
-      localStorage.setItem('nfx_dashboard_widgets', JSON.stringify(widgets));
+      setStoredWidgets(widgets);
       closeModal();
       loadWidgets();
     });
