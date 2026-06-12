@@ -268,7 +268,7 @@
 
     Plotly.newPlot(chartEl, [{
       type: 'sankey',
-      arrangement: 'fixed',
+      arrangement: 'snap',
       node: {
         pad: 24,
         thickness: 12,
@@ -375,7 +375,23 @@
   }
 
   async function copyShareUrl() {
-    const url = new URL(window.location.origin + window.location.pathname);
+    let baseUrl = '';
+    try {
+      if (window.parent && window.parent.location && window.parent.location.pathname.indexOf('custom-index.php') !== -1) {
+        baseUrl = window.parent.location.origin + window.parent.location.pathname;
+      }
+    } catch (e) {}
+
+    if (!baseUrl) {
+      const pathParts = window.location.pathname.split('/');
+      if (pathParts.length >= 4) {
+        pathParts.splice(-3);
+      }
+      baseUrl = window.location.origin + pathParts.join('/') + '/custom-index.php';
+    }
+
+    const url = new URL(baseUrl);
+    url.searchParams.set('page', 'Dashboard/Netflow-Explorer/netflow-explorer.php');
     url.searchParams.set('sk', panel && panel.classList.contains('open') ? '1' : '0');
     url.searchParams.set('ar', currentAutoRefresh());
     const text = url.toString();
@@ -426,12 +442,12 @@
       panel.classList.toggle('open');
       setSankeyState(panel.classList.contains('open'));
       if (panel.classList.contains('open')) {
-        renderSankey();
-        if (typeof Plotly !== 'undefined') {
-          window.setTimeout(function () {
+        window.setTimeout(function () {
+          renderSankey();
+          if (typeof Plotly !== 'undefined') {
             Plotly.Plots.resize(chartEl);
-          }, 50);
-        }
+          }
+        }, 150);
       }
     });
   }
@@ -441,11 +457,11 @@
   if (panel && sankeyOpenDefault) {
     panel.classList.add('open');
     setSankeyState(true);
-    renderSankey();
-    if (typeof Plotly !== 'undefined') {
-      window.setTimeout(function () {
+    window.setTimeout(function () {
+      renderSankey();
+      if (typeof Plotly !== 'undefined') {
         Plotly.Plots.resize(chartEl);
-      }, 50);
-    }
+      }
+    }, 150);
   }
 }());

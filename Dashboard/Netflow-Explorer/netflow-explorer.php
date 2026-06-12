@@ -1,5 +1,19 @@
 <?php
 declare(strict_types=1);
+
+if (isset($_GET['api']) && $_GET['api'] === 'log_js_error') {
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw, true);
+    if ($data) {
+        $logFile = __DIR__ . '/js_errors.log';
+        $logMsg = "[" . date('Y-m-d H:i:s') . "] " . ($data['message'] ?? '') . " at " . ($data['source'] ?? '') . ":" . ($data['lineno'] ?? '') . ":" . ($data['colno'] ?? '') . "\nStack: " . ($data['error'] ?? '') . "\n\n";
+        file_put_contents($logFile, $logMsg, FILE_APPEND);
+    }
+    header('Content-Type: application/json');
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
 require_once __DIR__ . '/includes/nfx_bootstrap.php';
 
 // =====================================================================
@@ -21,6 +35,38 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PandoraFMS - NetFlow Explorer</title>
+    
+    <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+        var errData = {
+            message: message,
+            source: source,
+            lineno: lineno,
+            colno: colno,
+            error: error ? error.stack : ''
+        };
+        fetch(window.location.href + (window.location.search ? '&' : '?') + 'api=log_js_error', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(errData)
+        });
+        return false;
+    };
+    window.addEventListener('unhandledrejection', function(event) {
+        var errData = {
+            message: 'Unhandled Promise Rejection: ' + event.reason,
+            source: '',
+            lineno: 0,
+            colno: 0,
+            error: event.reason && event.reason.stack ? event.reason.stack : ''
+        };
+        fetch(window.location.href + (window.location.search ? '&' : '?') + 'api=log_js_error', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(errData)
+        });
+    });
+    </script>
     
     <link rel="icon" href="/pandora_console/images/pandora.ico" type="image/x-icon">
     
