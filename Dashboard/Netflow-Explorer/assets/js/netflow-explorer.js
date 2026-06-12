@@ -174,7 +174,11 @@
 
     const sankeyData = buildSankeyRows(rawSankeyData, sankeyLimit);
     if (!sankeyData.length) {
-      chartEl.innerHTML = '<div class="notice">No conversation data to visualize.</div>';
+      chartEl.innerHTML = '<div style="padding: 60px 20px; text-align: center; color: #64748b; background: #fafbfc; border-radius: 8px; border: 1px dashed #e2e8f0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;">' +
+        '  <span class="material-symbols-outlined" style="font-size: 48px !important; color: #94a3b8 !important;">analytics</span>' +
+        '  <h6 style="margin: 0; font-weight: 600; color: #334155; font-size: 14px;">No Traffic Conversations Found</h6>' +
+        '  <p style="margin: 0; font-size: 12px; color: #64748b; max-width: 320px; line-height: 1.5;">Try adjusting your start/end files, search filters, or aggregation settings to locate flow data.</p>' +
+        '</div>';
       rendered = true;
       return;
     }
@@ -206,9 +210,17 @@
     const xs = [];
     const ys = [];
     const nodeIndex = new Map();
+    function hexToRgba(hex, alpha) {
+      hex = hex.replace('#', '');
+      let r = parseInt(hex.substring(0, 2), 16);
+      let g = parseInt(hex.substring(2, 4), 16);
+      let b = parseInt(hex.substring(4, 6), 16);
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    }
+
     const layerColors = layerCount <= 2
-      ? ['#4F81BD', '#F28E2B']
-      : ['#4F81BD', '#F28E2B', '#10B981', '#8B5CF6'];
+      ? ['#00796b', '#00acc1']
+      : ['#00796b', '#00acc1', '#0284c7', '#7c3aed'];
 
     function addNode(layer, label, x, y) {
       const key = layer + ':' + label;
@@ -284,7 +296,7 @@
         }
 
         linkLabels.push(labelText);
-        linkColors.push('rgba(148, 163, 184, 0.26)');
+        linkColors.push(hexToRgba(colors[s] || '#94a3b8', 0.22));
         linkPathIds.push(pathId);
 
         if (!nodeToLinks.has(s)) nodeToLinks.set(s, []);
@@ -349,7 +361,9 @@
         if (hoveredLink < 0 || hoveredLink >= linkPathIds.length || !hoveredPath) return;
 
         const newLinkColors = baseLinkColors.map(function (_, idx) {
-          return linkPathIds[idx] === hoveredPath ? 'rgba(59,130,246,0.78)' : 'rgba(148,163,184,0.10)';
+          return linkPathIds[idx] === hoveredPath 
+            ? hexToRgba(colors[source[idx]], 0.8) 
+            : hexToRgba(colors[source[idx]], 0.05);
         });
         const highlightNodes = new Set();
 
@@ -379,7 +393,9 @@
         });
 
         const newLinkColors = baseLinkColors.map(function (_, idx) {
-          return related.has(idx) ? 'rgba(59,130,246,0.72)' : 'rgba(148,163,184,0.10)';
+          return related.has(idx) 
+            ? hexToRgba(colors[source[idx]], 0.75) 
+            : hexToRgba(colors[source[idx]], 0.05);
         });
         const newNodeColors = baseNodeColors.map(function (color, idx) {
           return highlightNodes.has(idx) ? color : 'rgba(203,213,225,0.55)';
@@ -613,7 +629,10 @@
         }
         
         if (!res.rows || !res.rows.length) {
-          bodyEl.innerHTML = '<table class="table-pfms"><thead><tr><th>No Data</th></tr></thead><tbody><tr><td class="text-center text-muted">No data available.</td></tr></tbody></table>';
+          bodyEl.innerHTML = '<div style="padding: 40px 15px; text-align: center; color: #94a3b8; background: #fafbfc; border-radius: 4px; border: 1px dashed #e2e8f0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">' +
+            '  <span class="material-symbols-outlined" style="font-size: 32px !important; color: #cbd5e1 !important;">view_in_ar</span>' +
+            '  <div style="font-size: 12px; font-weight: 500; color: #64748b;">No matching flows in this window</div>' +
+            '</div>';
           return;
         }
         

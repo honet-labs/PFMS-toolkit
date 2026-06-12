@@ -51,6 +51,24 @@ if (isset($_GET['api']) && $_GET['api'] === 'query_widget') {
     $orderMap = ['bytes'=>'bytes','bps'=>'bps','packets'=>'packets','flows'=>'flows'];
     $order = $orderMap[$sortInput] ?? 'bytes';
     
+    // Caching for widget query results
+    $widgetCacheKey = sha1(json_encode([
+        'expr' => $expr,
+        'timewin' => $timewin,
+        'filter' => $filterParts,
+        'aggStr' => $aggStr,
+        'order' => $order,
+        'limitInput' => $limitInput,
+        'formatStr' => $formatStr
+    ]));
+    $widgetCacheFile = cache_dir($cfg) . DIRECTORY_SEPARATOR . 'widget_' . $widgetCacheKey . '.ser';
+    
+    $cachedResult = cache_get($widgetCacheFile, $cacheTtl);
+    if (is_array($cachedResult)) {
+        echo json_encode($cachedResult);
+        exit;
+    }
+    
     $rows = [];
     if ($canRun) {
         $cmd = [$nfdumpBin, '-R', $expr, '-t', $timewin, '-A', $aggStr, '-O', $order, '-n', (string)$limitInput, '-o', $formatStr, '-q', '-N'];
@@ -73,12 +91,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'query_widget') {
                 $item['flw'] = (int)($c[count($cleanAggParts) + 3] ?? 0);
                 $rows[] = $item;
             }
-            echo json_encode([
+            $resultPayload = [
                 'ok' => true,
                 'headers' => $headers,
                 'fields' => $cleanAggParts,
                 'rows' => $rows
-            ]);
+            ];
+            
+            cache_put($widgetCacheFile, $resultPayload);
+            echo json_encode($resultPayload);
         } else {
             echo json_encode(['ok' => false, 'error' => trim($res['err'])]);
         }
