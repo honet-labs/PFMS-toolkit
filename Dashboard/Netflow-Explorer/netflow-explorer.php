@@ -481,6 +481,25 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 </div>
 
 <script>
+window.onerror = function(message, source, lineno, colno, error) {
+    const errorData = {
+        message: message,
+        source: source,
+        lineno: lineno,
+        colno: colno,
+        error: error ? error.stack : ''
+    };
+    alert("JS Error: " + message + "\nLine: " + lineno + "\nSource: " + source);
+    fetch('?api=log_js_error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(errorData)
+    }).catch(e => console.error(e));
+    return false;
+};
+</script>
+
+<script>
 window.NetflowExplorerConfig = {
   rawSankeyData: <?= $sankeyJson ?: '[]'; ?>,
   sankeyLimit: <?= (int)$sankeyN; ?>,
