@@ -416,21 +416,34 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
                 <div class="dashboard-card-body">
                     <table class="table-pfms">
                         <thead>
-                            <tr><th>Start</th><th>Dur</th><th>Proto</th><th>Src</th><th>Dst</th><th>Packets</th><th>Bytes</th><th>B/s</th></tr>
+                            <tr>
+                                <th>Date first seen</th>
+                                <th>Event</th>
+                                <th>XEvent</th>
+                                <th>Proto</th>
+                                <th>Src IP Addr:Port</th>
+                                <th>Dst IP Addr:Port</th>
+                                <th>X-Src IP Addr:Port</th>
+                                <th>X-Dst IP Addr:Port</th>
+                                <th>In Byte</th>
+                                <th>Out Byte</th>
+                            </tr>
                         </thead>
                         <tbody>
                         <?php if (empty($data['flows'])): ?>
-                            <tr><td colspan="8" class="text-center text-muted">No data.</td></tr>
+                            <tr><td colspan="10" class="text-center text-muted">No data.</td></tr>
                         <?php else: foreach ($data['flows'] as $r): ?>
                             <tr>
                                 <td><?= htmlspecialchars((string)$r['ts'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?= htmlspecialchars((string)$r['td'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?= htmlspecialchars((string)$r['evt'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?= htmlspecialchars((string)$r['xevt'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td style="text-transform: uppercase; font-weight: normal !important; color: #1976d2 !important;"><?= htmlspecialchars((string)$r['pr'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td class="code-ip"><?= htmlspecialchars((string)$r['sa'] . ':' . (string)$r['sp'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td class="code-ip"><?= htmlspecialchars((string)$r['da'] . ':' . (string)$r['dp'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?= (int)$r['pkt']; ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bytes_fmt((float)$r['byt']), ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="code-mono"><?= htmlspecialchars(bps_fmt((float)$r['bps']), ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td class="code-ip"><?= htmlspecialchars((string)$r['xsa'] . ':' . (string)$r['xsp'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td class="code-ip"><?= htmlspecialchars((string)$r['xda'] . ':' . (string)$r['xdp'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?= number_format((float)$r['ibyt']); ?></td>
+                                <td><?= number_format((float)$r['obyt']); ?></td>
                             </tr>
                         <?php endforeach; endif; ?>
                         </tbody>

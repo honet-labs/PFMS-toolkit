@@ -213,23 +213,27 @@ if (!is_array($data)) {
         $orderMap = ['bytes'=>'bytes','bps'=>'bps','packets'=>'packets','tstart'=>'tstart'];
         $order = $orderMap[$sort] ?? 'bytes';
         $cmdFlows = [$nfdumpBin, '-R', $expr, '-t', $timewin, '-O', $order, '-n', (string)$flowN,
-            '-o', 'fmt:%ts,%td,%pr,%sa,%sp,%da,%dp,%pkt,%byt,%bps', '-q', '-N'];
+            '-o', 'fmt:%ts,%evt,%xevt,%pr,%sa,%sp,%da,%dp,%xsa,%xsp,%xda,%xdp,%ibyt,%obyt', '-q', '-N'];
         if ($filterFile) { $cmdFlows[] = '-f'; $cmdFlows[] = $filterFile; }
         $resFlows = proc_run($cmdFlows, 60);
         if ($resFlows['ok']) {
-            $rows = parse_csv_lines_fixed($resFlows['out'], 10);
+            $rows = parse_csv_lines_fixed($resFlows['out'], 14);
             foreach ($rows as $c) {
                 $data['flows'][] = [
-                    'ts'  => $c[0] ?? '',
-                    'td'  => $c[1] ?? '',
-                    'pr'  => $c[2] ?? '',
-                    'sa'  => $c[3] ?? '',
-                    'sp'  => $c[4] ?? '',
-                    'da'  => $c[5] ?? '',
-                    'dp'  => $c[6] ?? '',
-                    'pkt' => (int)($c[7] ?? 0),
-                    'byt' => (int)($c[8] ?? 0),
-                    'bps' => (float)($c[9] ?? 0),
+                    'ts'   => $c[0] ?? '',
+                    'evt'  => $c[1] ?? '',
+                    'xevt' => $c[2] ?? '',
+                    'pr'   => $c[3] ?? '',
+                    'sa'   => $c[4] ?? '',
+                    'sp'   => $c[5] ?? '',
+                    'da'   => $c[6] ?? '',
+                    'dp'   => $c[7] ?? '',
+                    'xsa'  => $c[8] ?? '',
+                    'xsp'  => $c[9] ?? '',
+                    'xda'  => $c[10] ?? '',
+                    'xdp'  => $c[11] ?? '',
+                    'ibyt' => (int)($c[12] ?? 0),
+                    'obyt' => (int)($c[13] ?? 0),
                 ];
             }
         } else {
