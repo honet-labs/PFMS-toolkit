@@ -41,7 +41,13 @@ $sankeyMode = strtolower(trim((string)($_GET['sankey_mode'] ?? ($_GET['mode'] ??
 if (!in_array($sankeyMode, ['srcdst','srcport','srcproto','srcdstport'], true)) $sankeyMode = 'srcdst';
 
 $files = list_nfcapd_files($netflowDir, $maxFiles);
-[$defStart, $defEnd] = pick_default_window($files, $windowMinutes);
+if (!empty($files)) {
+    $defStart = $files[count($files) - 1]; // Oldest file
+    $defEnd = $files[0];                   // Newest file
+} else {
+    $defStart = null;
+    $defEnd = null;
+}
 
 $manualEnd = isset($_GET['manual_end']) && (string)$_GET['manual_end'] === '1';
 $startBase = (string)($_GET['start'] ?? ($defStart['base'] ?? ''));
