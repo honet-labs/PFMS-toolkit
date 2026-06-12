@@ -566,6 +566,17 @@
       col.innerHTML = html;
       container.appendChild(col);
       
+      const btnDelete = col.querySelector('.btn-delete-widget');
+      if (btnDelete) {
+        btnDelete.addEventListener('click', function(e) {
+          e.stopPropagation();
+          e.preventDefault();
+          if (confirm('Are you sure you want to delete this custom panel?')) {
+            deleteWidget(w.id);
+          }
+        });
+      }
+      
       fetchWidgetData(w);
     });
   }
@@ -717,19 +728,7 @@
     });
   }
 
-  // Event delegation for widget deletion
-  const containerEl = document.getElementById('dynamicWidgetsContainer');
-  if (containerEl) {
-    containerEl.addEventListener('click', function(e) {
-      const deleteBtn = e.target.closest('.btn-delete-widget');
-      if (deleteBtn) {
-        const id = deleteBtn.getAttribute('data-id');
-        if (confirm('Are you sure you want to delete this custom panel?')) {
-          deleteWidget(id);
-        }
-      }
-    });
-  }
+  // Event delegation for widget deletion is now replaced by direct binding
 
   // Flows search and export CSV
   const flowsSearchInput = document.getElementById('flowsSearchInput');
