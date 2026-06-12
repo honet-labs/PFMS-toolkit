@@ -17,6 +17,14 @@ $common_logs = [
     ['name' => 'System Log (syslog)', 'path' => '/var/log/syslog'],
 ];
 
+$netflow_access_dir = realpath(__DIR__ . '/../../Dashboard/Netflow-Explorer');
+if ($netflow_access_dir) {
+    $netflow_access_file = $netflow_access_dir . DIRECTORY_SEPARATOR . 'nfx_access.log';
+    if (file_exists($netflow_access_file) || @touch($netflow_access_file)) {
+        $common_logs[] = ['name' => 'Netflow Explorer Access Log', 'path' => realpath($netflow_access_file)];
+    }
+}
+
 $custom_logs_file = __DIR__ . '/custom_logs.json';
 $custom_logs = file_exists($custom_logs_file) ? json_decode(file_get_contents($custom_logs_file), true) : [];
 if (!is_array($custom_logs)) $custom_logs = [];

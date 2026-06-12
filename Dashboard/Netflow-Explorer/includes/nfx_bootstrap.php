@@ -109,6 +109,47 @@ if ($proto !== '') {
 
 $filterFile = build_filter_file($cfg, $filterParts);
 
+// User access logging
+$user = 'anonymous';
+if (session_status() === PHP_SESSION_ACTIVE || !empty($_SESSION)) {
+    $user = $_SESSION['id_usuario'] ?? $_SESSION['user'] ?? $_SESSION['username'] ?? 'anonymous';
+}
+$clientIp = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+$action = 'PAGE_VIEW';
+if (isset($_GET['download']) && $_GET['download'] === '1') {
+    $action = 'EXPORT_CSV';
+} elseif (isset($_GET['api'])) {
+    $action = 'API_' . strtoupper((string)$_GET['api']);
+} elseif (!empty($_POST) || !empty($_GET['start']) || !empty($_GET['end']) || !empty($_GET['src_ip']) || !empty($_GET['dst_ip'])) {
+    $action = 'QUERY';
+}
+
+$details = [];
+if ($action === 'QUERY' || $action === 'PAGE_VIEW' || $action === 'EXPORT_CSV') {
+    if ($srcIp !== '') $details[] = "src_ip: $srcIp";
+    if ($dstIp !== '') $details[] = "dst_ip: $dstIp";
+    if ($dstPort !== '') $details[] = "dst_port: $dstPort";
+    if ($proto !== '') $details[] = "proto: $proto";
+    if ($startFile && $endFile) {
+        $details[] = "window: " . $startFile['base'] . " to " . $endFile['base'];
+    }
+    if ($sankeyMode !== '') $details[] = "mode: $sankeyMode";
+} elseif ($action === 'API_LOG_JS_ERROR') {
+    $details[] = "logged client side js error";
+}
+
+$detailsStr = !empty($details) ? implode(', ', $details) : 'no_filters';
+$logLine = sprintf(
+    "[%s] [%s] [%s] [%s] %s\n",
+    date('Y-m-d H:i:s'),
+    $clientIp,
+    $user,
+    $action,
+    $detailsStr
+);
+$accessLogFile = __DIR__ . '/../nfx_access.log';
+@file_put_contents($accessLogFile, $logLine, FILE_APPEND);
+
 function nfdump_exists(string $bin): bool {
     return is_file($bin) && is_executable($bin);
 }
