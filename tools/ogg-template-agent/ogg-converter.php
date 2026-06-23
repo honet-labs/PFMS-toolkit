@@ -96,7 +96,7 @@ $dynamic_breadcrumb = implode(' / ', $formatted_array);
         <div class="header-divider"></div>
         <div class="header-title-box">
             <span class="main-title">Pandora FMS</span>
-            <span class="sub-title">the Flexible Monitoring System</span>
+            <span class="sub-title">PFMS-Toolkit</span>
         </div>
         <div class="custom-search-container">
             <span class="material-symbols-outlined search-icon">search</span>

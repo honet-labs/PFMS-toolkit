@@ -707,40 +707,14 @@ if ($api === 'series') {
             $to = isset($_GET['end']) && !empty($_GET['end']) ? strtotime($_GET['end']) : time();
         }
 
-        $all_pts = [];
-        // 1. Fetch active
-        try {
-            $st = $pdo->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo=? AND utimestamp BETWEEN ? AND ?");
-            $st->execute([$id, $from, $to]);
-            while ($r = $st->fetch(PDO::FETCH_ASSOC)) {
-                $all_pts[] = $r;
-            }
-        } catch (Exception $e) {
-            error_log("Active DB traffic query error: " . $e->getMessage());
-        }
+        // Fetch using central optimized function that handles multiple tables (active + historical)
+        $points = get_module_history_data($pdo, $history_pdo, $id, $from, $to, 5000, 'ASC');
 
-        // 2. Fetch historical
-        if ($history_pdo) {
-            try {
-                $stH = $history_pdo->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo=? AND utimestamp BETWEEN ? AND ?");
-                $stH->execute([$id, $from, $to]);
-                while ($r = $stH->fetch(PDO::FETCH_ASSOC)) {
-                    $all_pts[] = $r;
-                }
-            } catch (Exception $e) {
-                error_log("Historical DB traffic query error: " . $e->getMessage());
-            }
-        }
-
-        // 3. Deduplicate by exact timestamp
-        $unique_pts = [];
-        foreach ($all_pts as $pt) {
-            $unique_pts[$pt['ts']] = $pt['datos'];
-        }
-
-        // 4. Group by 10-minute intervals
+        // Group by 10-minute intervals
         $grouped = [];
-        foreach ($unique_pts as $ts => $val) {
+        foreach ($points as $pt) {
+            $ts = (int)$pt['ts'];
+            $val = $pt['datos'];
             $bin = floor($ts / 600) * 600;
             if (!isset($grouped[$bin])) {
                 $grouped[$bin] = ['sum' => 0.0, 'count' => 0];
@@ -749,10 +723,10 @@ if ($api === 'series') {
             $grouped[$bin]['count']++;
         }
 
-        // 5. Sort chronologically
+        // Sort chronologically
         ksort($grouped);
 
-        // 6. Format points
+        // Format points
         $pts = [];
         $sum = 0.0;
         $count = 0;
@@ -1183,7 +1157,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <div class="header-left">
         <img src="<?= htmlspecialchars($PANDORA_BASE_URL) ?>/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
         <div class="header-divider"></div>
-        <div class="header-title-box"><span class="main-title">Pandora FMS</span><span class="sub-title">Custom Dashboard Portal</span></div>
+        <div class="header-title-box"><span class="main-title">Pandora FMS</span><span class="sub-title">PFMS-Toolkit</span></div>
     </div>
     <div class="header-right"><a href="<?= htmlspecialchars($PANDORA_BASE_URL) ?>/index.php" class="nav-icon-btn"><span class="material-symbols-outlined">home</span></a></div>
 </div>
@@ -2380,6 +2354,12 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
 
         fetch(url).then(r=>r.json()).then(d => {
+            // Ensure all timestamps and values are parsed as numbers to prevent ECharts type issues
+            d.rx = (d.rx || []).map(pt => [Number(pt[0]), pt[1] !== null ? Number(pt[1]) : null]);
+            d.tx = (d.tx || []).map(pt => [Number(pt[0]), pt[1] !== null ? Number(pt[1]) : null]);
+            d.avg_rx = Number(d.avg_rx || 0);
+            d.avg_tx = Number(d.avg_tx || 0);
+
             // Align RX and TX timestamps to solve Chart.js index tooltip misalignment
             const allTimestampsSet = new Set();
             d.rx.forEach(pt => allTimestampsSet.add(pt[0]));

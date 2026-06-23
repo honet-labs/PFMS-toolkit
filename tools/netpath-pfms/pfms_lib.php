@@ -141,7 +141,7 @@ function pfms_render_header(string $title, string $breadcrumb, string $actionsHt
     <div class="header-top-bar" style="background:#fff; border-bottom:1px solid #e0e6ed; padding:10px 20px; display:flex; align-items:center; position:sticky; top:0; z-index:1000;">
         <div style="font-weight:900; font-size:18px; color:#111;">PANDORA <span style="font-weight:300; color:#76838f;">FMS</span></div>
         <div style="width:1px; height:20px; background:#e0e6ed; margin:0 15px;"></div>
-        <div style="font-size:12px; color:#76838f; font-weight:600;">Custom Extensions</div>
+        <div style="font-size:12px; color:#76838f; font-weight:600;">PFMS-Toolkit</div>
     </div>
     <div class="dash-header" style="padding:20px; display:flex; justify-content:space-between; align-items:flex-end;">
         <div><div style="font-size:10px; color:#76838f; font-weight:700; text-transform:uppercase; margin-bottom:5px;"><?= h($breadcrumb) ?></div>

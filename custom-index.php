@@ -1,6 +1,6 @@
 <?php
 /**
- * PANDORA FMS - CUSTOM EXTENSIONS PORTAL
+ * PFMS-Toolkit
  * Version: 1.0.4 (Architecture Update & Auto-Updater)
  */
 
@@ -199,14 +199,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
     }
 
     if (!$git_available) {
-        $repo = 'aannddrrii294/cumtom-panel-pfms';
+        $repo = 'aannddrrii294/PFMS-Toolkit';
         $url = "https://api.github.com/repos/{$repo}/commits/main";
         
         $opts = [
             'http' => [
                 'method' => 'GET',
                 'header' => [
-                    'User-Agent: PandoraFMS-Custom-Portal-Updater',
+                    'User-Agent: PFMS-Toolkit-Updater',
                     'Accept: application/vnd.github.v3+json'
                 ],
                 'timeout' => 5
@@ -310,7 +310,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
     } else {
         $logs[] = "[2/4] Downloading update ZIP from GitHub...";
         
-        $zip_url = "https://github.com/aannddrrii294/cumtom-panel-pfms/archive/refs/heads/main.zip";
+        $zip_url = "https://github.com/aannddrrii294/PFMS-Toolkit/archive/refs/heads/main.zip";
         $zip_file = $base_dir . '/temp/update.zip';
         $extract_dir = $base_dir . '/temp/patch/';
 
@@ -518,7 +518,7 @@ if (!empty($current_page)) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PandoraFMS - Custom Extensions Portal</title>
+    <title>PFMS-Toolkit</title>
     
     <link rel="icon" href="<?= htmlspecialchars($pandora_base) ?>/images/pandora.ico" type="image/x-icon">
     
@@ -643,7 +643,7 @@ if (!empty($current_page)) {
         <div class="header-divider"></div>
         <div class="header-title-box">
             <span class="main-title">Pandora FMS</span>
-            <span class="sub-title">Custom Extensions Portal</span>
+            <span class="sub-title">PFMS-Toolkit</span>
         </div>
         
         <div class="custom-search-container">
@@ -738,7 +738,7 @@ if (!empty($current_page)) {
         <?php else: ?>
             <div class="welcome-screen">
                 <span class="material-symbols-outlined">extension</span>
-                <h2>Welcome to Custom Extensions</h2>
+                <h2>Welcome to PFMS-Toolkit</h2>
                 <p>Please select a module or dashboard from the sidebar menu.</p>
             </div>
         <?php endif; ?>

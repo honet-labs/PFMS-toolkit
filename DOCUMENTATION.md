@@ -1,7 +1,7 @@
-# Pandora FMS - Custom Extensions Portal Documentation
+# PFMS-Toolkit Documentation
 
 ## 📌 Project Overview
-Portal ini adalah platform kustom yang terintegrasi dengan Pandora FMS Console untuk menyediakan dashboard dan alat bantu tambahan secara dinamis. Portal ini dirancang untuk performa tinggi, keamanan tingkat lanjut, dan kemudahan kustomisasi.
+PFMS-Toolkit adalah platform kustom yang terintegrasi dengan Pandora FMS Console untuk menyediakan dashboard dan alat bantu tambahan secara dinamis. Toolkit ini dirancang untuk performa tinggi, keamanan tingkat lanjut, dan kemudahan kustomisasi.
 
 ---
 
@@ -69,4 +69,4 @@ Riwayat perubahan dan detail versi dapat dilihat pada file [CHANGELOG.md](./CHAN
 Proyek ini dirilis di bawah lisensi **[Apache License 2.0](LICENSE)**. Anda bebas menggunakan, memodifikasi, dan mendistribusikan kode ini asalkan mematuhi ketentuan lisensi tersebut.
 
 ---
-*Dokumentasi ini dibuat otomatis oleh AI Assistant untuk Pandora FMS Custom Panel Project.*
+*Dokumentasi ini dibuat otomatis oleh AI Assistant untuk PFMS-Toolkit Project.*

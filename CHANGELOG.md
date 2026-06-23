@@ -1,4 +1,4 @@
-# Changelog - Pandora FMS Custom Extensions Portal
+# Changelog - PFMS-Toolkit
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 

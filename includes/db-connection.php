@@ -7,7 +7,7 @@ header("Referrer-Policy: strict-origin-when-cross-origin");
 
 /**
  * db-connection.php
- * Core configuration and database connection for Pandora FMS Custom Panel
+ * Core configuration and database connection for PFMS-Toolkit
  */
 
 $DEFAULT_TZ = "Asia/Jakarta";
@@ -307,7 +307,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
         $historyData[] = $preData;
     }
 
-    // 5. Merge results using array_merge
+    // Merge results using array_merge
     $merged = array_merge($historyData, $activeData);
 
     // Deduplicate by timestamp to prevent duplicate points
@@ -317,26 +317,27 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     }
     $result = array_values($unique);
 
-    // If downsampling is beneficial for very large datasets, we can apply it
-    if (count($result) > $limit * 2) {
-        $result = downsample_history_data($result, $limit);
-    }
-
-    // 5. Sort chronologically (ASC/DESC depending on chart requirement) using usort
-    usort($result, function($a, $b) use ($order) {
+    // Sort chronologically ascending (ASC) for downsampling/charting consistency
+    usort($result, function($a, $b) {
         $tsA = (int)$a['ts'];
         $tsB = (int)$b['ts'];
         if ($tsA === $tsB) return 0;
-        if ($order === 'DESC') {
-            return ($tsA > $tsB) ? -1 : 1;
-        } else {
-            return ($tsA < $tsB) ? -1 : 1;
-        }
+        return ($tsA < $tsB) ? -1 : 1;
     });
 
-    // 6. Apply array_slice to limit output size to prevent frontend lag
+    // Downsample if count exceeds limit to preserve the entire time-range
     if (count($result) > $limit) {
-        $result = array_slice($result, 0, $limit);
+        $result = downsample_history_data($result, $limit);
+    }
+
+    // If descending order was requested, sort it DESC (newest first)
+    if ($order === 'DESC') {
+        usort($result, function($a, $b) {
+            $tsA = (int)$a['ts'];
+            $tsB = (int)$b['ts'];
+            if ($tsA === $tsB) return 0;
+            return ($tsA > $tsB) ? -1 : 1;
+        });
     }
 
     return $result;

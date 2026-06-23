@@ -1,8 +1,8 @@
-# Pandora FMS - Custom Extensions Portal
+# PFMS-Toolkit
 
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Sebuah portal/panel kustom yang terintegrasi secara langsung dengan **Pandora FMS Console** untuk menyediakan dashboard interaktif dan alat bantu administratif secara dinamis. Proyek ini dirancang dengan fokus pada performa tinggi, keamanan (security hardening), dan kemudahan kustomisasi (plug-and-play).
+Sebuah toolkit kustom (PFMS-Toolkit) yang terintegrasi secara langsung dengan **Pandora FMS Console** untuk menyediakan dashboard interaktif dan alat bantu administratif secara dinamis. Proyek ini dirancang dengan fokus pada performa tinggi, keamanan (security hardening), dan kemudahan kustomisasi (plug-and-play).
 
 ## 📖 Dokumentasi Lengkap
 Untuk panduan struktur folder, penjelasan *Core Library*, keamanan, dan optimasi performa database, silakan baca file **[DOCUMENTATION.md](DOCUMENTATION.md)**.

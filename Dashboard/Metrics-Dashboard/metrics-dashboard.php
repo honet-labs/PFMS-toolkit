@@ -679,7 +679,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <div class="header-left">
         <img src="<?= $PANDORA_BASE_URL ?>/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
         <div class="header-divider"></div>
-        <div class="header-title-box"><span class="main-title">Pandora FMS</span><span class="sub-title">Custom Extensions Portal</span></div>
+        <div class="header-title-box"><span class="main-title">Pandora FMS</span><span class="sub-title">PFMS-Toolkit</span></div>
     </div>
     <div class="header-right"><a href="<?= $PANDORA_BASE_URL ?>/index.php" class="nav-icon-btn"><span class="material-symbols-outlined">home</span></a></div>
 </div>

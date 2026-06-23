@@ -466,7 +466,7 @@ if (!empty($export) && !empty($results)) {
     <div class="header-left">
         <img src="/pandora_console/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
         <div class="header-divider"></div>
-        <div class="header-title-box"><span class="main-title">Pandora FMS</span><span class="sub-title">Custom Extensions Portal</span></div>
+        <div class="header-title-box"><span class="main-title">Pandora FMS</span><span class="sub-title">PFMS-Toolkit</span></div>
     </div>
     <div class="header-right"><a href="/pandora_console/index.php" class="nav-icon-btn"><span class="material-symbols-outlined">home</span></a></div>
 </div>

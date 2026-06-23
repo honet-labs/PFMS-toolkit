@@ -328,7 +328,7 @@ if ($isPure && $target_panel_id) {
         </div>
         <div class="header-divider"></div>
         <div>
-            <span style="font-size:9px; font-weight:800; color:#0b1a26; display:block;">CUSTOM PANEL</span>
+            <span style="font-size:9px; font-weight:800; color:#0b1a26; display:block;">PFMS-TOOLKIT</span>
             <span style="font-size:7px; color:#94a3b8;">Universal Heatmap</span>
         </div>
     </div>
