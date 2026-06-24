@@ -2,6 +2,8 @@
 header('Content-Type: text/plain');
 require_once __DIR__ . '/../../includes/db-connection.php';
 
+ob_start();
+
 echo "=== TEST DB FOR MODULE 13953 ===\n";
 
 // 1. Get module details
@@ -46,3 +48,7 @@ $end = time();
 echo "Running get_module_history_data...\n";
 $res = get_module_history_data($pdo, $history_pdo, 13953, $start, $end, 20, 'ASC');
 print_r($res);
+
+$output = ob_get_clean();
+file_put_contents(__DIR__ . '/diag_output.txt', $output);
+echo $output;
