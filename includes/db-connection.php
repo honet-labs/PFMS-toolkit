@@ -257,9 +257,10 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
             
             if (in_array($typeId, [3, 12]) || strpos($typeName, 'string') !== false) {
                 $target_table = 'tagente_datos_string';
-            } elseif (in_array($typeId, [4, 13]) || strpos($typeName, 'inc') !== false) {
-                $target_table = 'tagente_datos_inc';
             } else {
+                // In Pandora FMS, computed rates for incremental modules as well as numeric values 
+                // are stored in tagente_datos. tagente_datos_inc only holds the current raw counter 
+                // and should not be used for historical charts.
                 $target_table = 'tagente_datos';
             }
         }
