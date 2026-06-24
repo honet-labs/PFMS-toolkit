@@ -257,17 +257,24 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     $activeData = [];
 
     // 2. Query history database first (if connection exists)
+    // We query tables individually because the history database might not contain tagente_datos_string or tagente_datos_inc
     if ($pdo_history !== null) {
-        try {
-            $stmtHist = $pdo_history->prepare($query);
-            $stmtHist->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
-            $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Throwable $e) {
-            error_log("Historical DB query error: " . $e->getMessage());
+        $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
+        foreach ($tables as $tbl) {
+            try {
+                $stmtHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?");
+                $stmtHist->execute([$id_mod, $start, $end]);
+                $res = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+                if (!empty($res)) {
+                    $historyData = array_merge($historyData, $res);
+                }
+            } catch (Throwable $e) {
+                error_log("Historical table $tbl query failed (normal if table does not exist in history DB): " . $e->getMessage());
+            }
         }
     }
 
-    // 3. Query active database
+    // 3. Query active database (all three tables are guaranteed to exist here)
     try {
         $stmt = $pdo->prepare($query);
         $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
@@ -293,12 +300,20 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     }
 
     if (!$preData && $pdo_history !== null) {
-        try {
-            $stmtLookbackHist = $pdo_history->prepare($lookback_query);
-            $stmtLookbackHist->execute([$id_mod, $start, $id_mod, $start, $id_mod, $start]);
-            $preData = $stmtLookbackHist->fetch(PDO::FETCH_ASSOC);
-        } catch (Throwable $e) {
-            error_log("Historical DB lookback query error: " . $e->getMessage());
+        $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
+        $best_ts = 0;
+        foreach ($tables as $tbl) {
+            try {
+                $stmtLookbackHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY ts DESC LIMIT 1");
+                $stmtLookbackHist->execute([$id_mod, $start]);
+                $row = $stmtLookbackHist->fetch(PDO::FETCH_ASSOC);
+                if ($row && (int)$row['ts'] > $best_ts) {
+                    $best_ts = (int)$row['ts'];
+                    $preData = $row;
+                }
+            } catch (Throwable $e) {
+                // Ignore if table does not exist
+            }
         }
     }
 
