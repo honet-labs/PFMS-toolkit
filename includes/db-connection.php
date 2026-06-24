@@ -275,6 +275,14 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
                 $stmtHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
                 $stmtHist->execute([$id_mod, $start, $end]);
                 $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+                
+                // FALLBACK: If query succeeded but returned 0 rows, and we didn't query tagente_datos originally,
+                // try tagente_datos since Pandora FMS can archive all types of history data there
+                if (empty($historyData) && $target_table !== 'tagente_datos') {
+                    $stmtHist2 = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+                    $stmtHist2->execute([$id_mod, $start, $end]);
+                    $historyData = $stmtHist2->fetchAll(PDO::FETCH_ASSOC);
+                }
             } catch (Throwable $e) {
                 // If it fails (e.g., table doesn't exist in history DB), fall back to tagente_datos
                 if ($target_table !== 'tagente_datos') {
