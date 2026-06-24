@@ -245,58 +245,116 @@ function downsample_history_data($data, $max_points) {
 }
 
 function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $limit = 5000, $order = 'DESC') {
-    // 1. Prepare query across the three history tables
-    $query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-              UNION ALL
-              SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-              UNION ALL
-              SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-              ORDER BY ts ASC";
+    // 1. Determine the specific table for this module to optimize query performance (Numeric/String/Inc)
+    $target_table = null;
+    try {
+        $stType = $pdo->prepare("SELECT t.type FROM ttipo_modulo t JOIN tagente_modulo m ON t.id_tipo_modulo = m.id_tipo_modulo WHERE m.id_agente_modulo = ?");
+        $stType->execute([$id_mod]);
+        $typeVal = $stType->fetchColumn();
+        if ($typeVal !== false) {
+            $typeVal = (int)$typeVal;
+            if ($typeVal === 0) {
+                $target_table = 'tagente_datos';
+            } elseif ($typeVal === 1) {
+                $target_table = 'tagente_datos_string';
+            } elseif ($typeVal === 2) {
+                $target_table = 'tagente_datos_inc';
+            }
+        }
+    } catch (Throwable $e) {
+        error_log("Failed to determine module type table: " . $e->getMessage());
+    }
 
     $historyData = [];
     $activeData = [];
 
     // 2. Query history database first (if connection exists)
-    // We query tables individually because the history database might not contain tagente_datos_string or tagente_datos_inc
     if ($pdo_history !== null) {
-        $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
-        foreach ($tables as $tbl) {
+        if ($target_table !== null) {
             try {
-                $stmtHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?");
+                $stmtHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
                 $stmtHist->execute([$id_mod, $start, $end]);
-                $res = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
-                if (!empty($res)) {
-                    $historyData = array_merge($historyData, $res);
-                }
+                $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
             } catch (Throwable $e) {
-                error_log("Historical table $tbl query failed (normal if table does not exist in history DB): " . $e->getMessage());
+                // If it fails (e.g., table doesn't exist in history DB), fall back to tagente_datos
+                if ($target_table !== 'tagente_datos') {
+                    try {
+                        $stmtHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+                        $stmtHist->execute([$id_mod, $start, $end]);
+                        $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (Throwable $e2) {
+                        error_log("Historical fallback query to tagente_datos failed: " . $e2->getMessage());
+                    }
+                }
+            }
+        } else {
+            // Fallback to querying all tables individually if type is undetermined
+            $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
+            foreach ($tables as $tbl) {
+                try {
+                    $stmtHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+                    $stmtHist->execute([$id_mod, $start, $end]);
+                    $res = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($res)) {
+                        $historyData = array_merge($historyData, $res);
+                    }
+                } catch (Throwable $e) {
+                    // Ignore missing tables
+                }
             }
         }
     }
 
-    // 3. Query active database (all three tables are guaranteed to exist here)
-    try {
-        $stmt = $pdo->prepare($query);
-        $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
-        $activeData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Throwable $e) {
-        error_log("Active DB query error: " . $e->getMessage());
+    // 3. Query active database
+    if ($target_table !== null) {
+        try {
+            $stmt = $pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+            $stmt->execute([$id_mod, $start, $end]);
+            $activeData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log("Active DB query for $target_table failed: " . $e->getMessage());
+        }
+    } else {
+        // Fallback to UNION query if type is undetermined
+        $query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+                  UNION ALL
+                  SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+                  UNION ALL
+                  SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+                  ORDER BY ts DESC LIMIT " . (int)$limit;
+        try {
+            $stmt = $pdo->prepare($query);
+            $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
+            $activeData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log("Active DB query error: " . $e->getMessage());
+        }
     }
 
     // 4. Query last value before start to prevent empty charts for static modules
     $preData = null;
-    $lookback_query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp < ?
-                       UNION ALL
-                       SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp < ?
-                       UNION ALL
-                       SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp < ?
-                       ORDER BY ts DESC LIMIT 1";
-    try {
-        $stmtLookback = $pdo->prepare($lookback_query);
-        $stmtLookback->execute([$id_mod, $start, $id_mod, $start, $id_mod, $start]);
-        $preData = $stmtLookback->fetch(PDO::FETCH_ASSOC);
-    } catch (Throwable $e) {
-        error_log("Active DB lookback query error: " . $e->getMessage());
+    if ($target_table !== null) {
+        try {
+            $stmtLookback = $pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY utimestamp DESC LIMIT 1");
+            $stmtLookback->execute([$id_mod, $start]);
+            $preData = $stmtLookback->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log("Active DB lookback query error: " . $e->getMessage());
+        }
+    } else {
+        $lookback_query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp < ?
+                           UNION ALL
+                           SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp < ?
+                           UNION ALL
+                           SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp < ?
+                           ORDER BY ts DESC LIMIT 1";
+        try {
+            $stmtLookback = $pdo->prepare($lookback_query);
+            $stmtLookback->execute([$id_mod, $start, $id_mod, $start, $id_mod, $start]);
+            $preData = $stmtLookback->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log("Active DB lookback query error: " . $e->getMessage());
+        }
     }
 
     if (!$preData && $pdo_history !== null) {
