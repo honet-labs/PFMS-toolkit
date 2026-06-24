@@ -815,11 +815,11 @@ if ($api === 'delete') {
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label-dyn" style="font-size:9px!important;">Min Value</label>
-                                <input type="number" step="any" id="f_min_warning" class="form-control-dyn" value="${min_warn}" placeholder="N/A">
+                                <input type="text" id="f_min_warning" class="form-control-dyn" value="${min_warn}" placeholder="N/A">
                             </div>
                             <div class="col-6">
                                 <label class="form-label-dyn" style="font-size:9px!important;">Max Value</label>
-                                <input type="number" step="any" id="f_max_warning" class="form-control-dyn" value="${max_warn}" placeholder="N/A">
+                                <input type="text" id="f_max_warning" class="form-control-dyn" value="${max_warn}" placeholder="N/A">
                             </div>
                         </div>
                     </div>
@@ -829,11 +829,11 @@ if ($api === 'delete') {
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label-dyn" style="font-size:9px!important;">Min Value</label>
-                                <input type="number" step="any" id="f_min_critical" class="form-control-dyn" value="${min_crit}" placeholder="N/A">
+                                <input type="text" id="f_min_critical" class="form-control-dyn" value="${min_crit}" placeholder="N/A">
                             </div>
                             <div class="col-6">
                                 <label class="form-label-dyn" style="font-size:9px!important;">Max Value</label>
-                                <input type="number" step="any" id="f_max_critical" class="form-control-dyn" value="${max_crit}" placeholder="N/A">
+                                <input type="text" id="f_max_critical" class="form-control-dyn" value="${max_crit}" placeholder="N/A">
                             </div>
                         </div>
                     </div>
