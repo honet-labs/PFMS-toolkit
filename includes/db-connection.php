@@ -248,17 +248,19 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     // 1. Determine the specific table for this module to optimize query performance (Numeric/String/Inc)
     $target_table = null;
     try {
-        $stType = $pdo->prepare("SELECT t.type FROM ttipo_modulo t JOIN tagente_modulo m ON t.id_tipo_modulo = m.id_tipo_modulo WHERE m.id_agente_modulo = ?");
+        $stType = $pdo->prepare("SELECT m.id_tipo_modulo, t.name FROM tagente_modulo m JOIN ttipo_modulo t ON m.id_tipo_modulo = t.id_tipo_modulo WHERE m.id_agente_modulo = ?");
         $stType->execute([$id_mod]);
-        $typeVal = $stType->fetchColumn();
-        if ($typeVal !== false) {
-            $typeVal = (int)$typeVal;
-            if ($typeVal === 0) {
-                $target_table = 'tagente_datos';
-            } elseif ($typeVal === 1) {
+        $row = $stType->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $typeId = (int)$row['id_tipo_modulo'];
+            $typeName = strtolower((string)$row['name']);
+            
+            if (in_array($typeId, [3, 12]) || strpos($typeName, 'string') !== false) {
                 $target_table = 'tagente_datos_string';
-            } elseif ($typeVal === 2) {
+            } elseif (in_array($typeId, [4, 13]) || strpos($typeName, 'inc') !== false) {
                 $target_table = 'tagente_datos_inc';
+            } else {
+                $target_table = 'tagente_datos';
             }
         }
     } catch (Throwable $e) {
