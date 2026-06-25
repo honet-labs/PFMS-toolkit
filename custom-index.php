@@ -764,6 +764,58 @@ if (!empty($current_page)) {
             <div class="form-hint">Separate file names with commas (,). 'custom-index.php' file will always be excluded automatically.</div>
         </div>
 
+        <div class="form-group" style="margin-top: 25px; border-top: 1px solid #e0e4e8; padding-top: 20px;">
+            <label class="form-label" style="display: flex; align-items: center; gap: 5px; margin-bottom: 12px; color: #0b1a26; font-weight: 600;">
+                <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">database</span>
+                Database Connections
+            </label>
+            
+            <!-- Primary Database Connection Card -->
+            <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-weight: 600; color: #334155; font-size: 13px;">Primary Database</span>
+                    <span style="font-family: monospace; font-size: 11px; color: #64748b;">
+                        Host: <?= htmlspecialchars($config['dbhost'] ?? 'N/A') ?> | DB: <?= htmlspecialchars($config['dbname'] ?? 'N/A') ?> | User: <?= htmlspecialchars($config['dbuser'] ?? 'N/A') ?>
+                    </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <?php if ($db_status): ?>
+                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                        <span style="font-size: 12px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 3px 8px; border-radius: 4px;">Connected</span>
+                    <?php else: ?>
+                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                        <span style="font-size: 12px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 3px 8px; border-radius: 4px;" title="<?= htmlspecialchars($db_error) ?>">Failed</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Historical Database Connection Card -->
+            <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-weight: 600; color: #334155; font-size: 13px;">Historical Database</span>
+                    <?php if ($history_db_host): ?>
+                        <span style="font-family: monospace; font-size: 11px; color: #64748b;">
+                            Host: <?= htmlspecialchars($history_db_host) ?> | DB: <?= htmlspecialchars($history_db_name) ?> | User: <?= htmlspecialchars($history_db_user) ?>
+                        </span>
+                    <?php else: ?>
+                        <span style="font-size: 11px; color: #94a3b8; font-style: italic;">No historical DB configured.</span>
+                    <?php endif; ?>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <?php if ($history_db_status): ?>
+                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                        <span style="font-size: 12px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 3px 8px; border-radius: 4px;">Connected</span>
+                    <?php elseif ($history_db_host): ?>
+                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                        <span style="font-size: 12px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 3px 8px; border-radius: 4px;">Failed</span>
+                    <?php else: ?>
+                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #94a3b8; border-radius: 50%;"></span>
+                        <span style="font-size: 12px; color: #475569; font-weight: 600; background-color: #e2e8f0; padding: 3px 8px; border-radius: 4px;">Not Configured</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:25px;">
             <button class="btn-outline" onclick="closeSettings()">Cancel</button>
             <button class="btn-apply" onclick="saveSettings()">

@@ -86,6 +86,9 @@ if ($config_loaded) {
 // 4. HISTORICAL DATABASE INITIALIZATION (PDO)
 $pdo_history = null;
 $history_db_status = false;
+$history_db_host = null;
+$history_db_name = null;
+$history_db_user = null;
 
 if ($config_loaded) {
     // 1. Check Pandora FMS global $config settings for history database
@@ -96,6 +99,10 @@ if ($config_loaded) {
             $h_user = $config['dbuser_history'] ?? $config['dbuser'];
             $h_pass = $config['dbpass_history'] ?? $config['dbpass'];
             $h_port = !empty($config['dbport_history']) ? (int)$config['dbport_history'] : 3306;
+            
+            $history_db_host = $h_host . ($h_port != 3306 ? ':' . $h_port : '');
+            $history_db_name = $h_dbname;
+            $history_db_user = $h_user;
             
             // 2. Build secondary PDO connection with dynamic port wrapped in Try-Catch
             $h_dsn = "mysql:host={$h_host};port={$h_port};dbname={$h_dbname};charset=utf8mb4";
@@ -127,6 +134,10 @@ if ($config_loaded) {
                 $h_dbname = $histConfig['history_db'];
                 $h_user = $histConfig['history_user'];
                 $h_pass = $histConfig['history_pass'];
+                
+                $history_db_host = $h_host . ($h_port != 3306 ? ':' . $h_port : '');
+                $history_db_name = $h_dbname;
+                $history_db_user = $h_user;
                 
                 if (function_exists('io_safe_decrypt')) {
                     $h_pass = io_safe_decrypt($h_pass);
