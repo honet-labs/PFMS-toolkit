@@ -180,6 +180,87 @@ if (isset($_GET['api']) && $_GET['api'] === 'test_db_connection') {
     } else {
         echo json_encode(['ok' => false, 'error' => 'Invalid data']);
     }
+if (isset($_GET['api']) && $_GET['api'] === 'test_core_connection') {
+    ob_clean();
+    header('Content-Type: application/json');
+    
+    // CSRF Validation
+    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if ($client_token !== $csrf_token) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh page.']);
+        exit;
+    }
+
+    $type = $_GET['type'] ?? 'primary';
+    if ($type === 'primary') {
+        try {
+            $h_host = $config['dbhost'] ?? '';
+            $h_port = !empty($config['dbport']) ? (int)$config['dbport'] : 3306;
+            $h_dbname = $config['dbname'] ?? '';
+            $h_user = $config['dbuser'] ?? '';
+            $h_pass = $config['dbpass'] ?? '';
+            
+            $dsn = "mysql:host={$h_host};port={$h_port};dbname={$h_dbname};charset=utf8mb4";
+            $test_pdo = new PDO($dsn, $h_user, $h_pass, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_TIMEOUT => 2
+            ]);
+            echo json_encode(['ok' => true]);
+        } catch (PDOException $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    } elseif ($type === 'history') {
+        try {
+            $h_host = null;
+            $h_port = 3306;
+            $h_dbname = null;
+            $h_user = null;
+            $h_pass = null;
+            
+            if (isset($config['dbhost_history']) && !empty($config['dbhost_history'])) {
+                $h_host = $config['dbhost_history'];
+                $h_dbname = $config['dbname_history'] ?? $config['dbname'];
+                $h_user = $config['dbuser_history'] ?? $config['dbuser'];
+                $h_pass = $config['dbpass_history'] ?? $config['dbpass'];
+                $h_port = !empty($config['dbport_history']) ? (int)$config['dbport_history'] : 3306;
+            } elseif ($db_status) {
+                // Try from tconfig
+                $stmt = $pdo->query("SELECT token, value FROM tconfig WHERE token LIKE 'history_%'");
+                $histConfig = [];
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $histConfig[$row['token']] = $row['value'];
+                }
+                
+                if (!empty($histConfig['history_host']) && !empty($histConfig['history_db'])) {
+                    $h_host = $histConfig['history_host'];
+                    $h_port = !empty($histConfig['history_port']) ? (int)$histConfig['history_port'] : 3306;
+                    $h_dbname = $histConfig['history_db'];
+                    $h_user = $histConfig['history_user'];
+                    $h_pass = $histConfig['history_pass'];
+                    
+                    if (function_exists('io_safe_decrypt')) {
+                        $h_pass = io_safe_decrypt($h_pass);
+                    }
+                }
+            }
+            
+            if (!$h_host || !$h_dbname) {
+                echo json_encode(['ok' => false, 'error' => 'No core historical database configured.']);
+                exit;
+            }
+            
+            $dsn = "mysql:host={$h_host};port={$h_port};dbname={$h_dbname};charset=utf8mb4";
+            $test_pdo = new PDO($dsn, $h_user, $h_pass, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_TIMEOUT => 2
+            ]);
+            echo json_encode(['ok' => true]);
+        } catch (PDOException $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    } else {
+        echo json_encode(['ok' => false, 'error' => 'Invalid type']);
+    }
     exit;
 }
 
@@ -822,14 +903,19 @@ if (!empty($current_page)) {
                             Host: <?= htmlspecialchars($config['dbhost'] ?? 'N/A') ?> | DB: <?= htmlspecialchars($config['dbname'] ?? 'N/A') ?> | User: <?= htmlspecialchars($config['dbuser'] ?? 'N/A') ?>
                         </span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <?php if ($db_status): ?>
-                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
-                            <span style="font-size: 12px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 3px 8px; border-radius: 4px;">Connected</span>
-                        <?php else: ?>
-                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
-                            <span style="font-size: 12px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 3px 8px; border-radius: 4px;" title="<?= htmlspecialchars($db_error) ?>">Failed</span>
-                        <?php endif; ?>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div id="primary_conn_status" style="display: flex; align-items: center; gap: 6px;">
+                            <?php if ($db_status): ?>
+                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                                <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
+                            <?php else: ?>
+                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                                <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;" title="<?= htmlspecialchars($db_error) ?>">Failed</span>
+                            <?php endif; ?>
+                        </div>
+                        <button class="nav-icon-btn" style="height:28px; width:28px;" title="Test Connection" onclick="testCoreConnection('primary')">
+                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40!important;">sync</span>
+                        </button>
                     </div>
                 </div>
 
@@ -845,16 +931,23 @@ if (!empty($current_page)) {
                             <span style="font-size: 11px; color: #94a3b8; font-style: italic;">No core historical DB configured.</span>
                         <?php endif; ?>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <?php if ($history_db_status): ?>
-                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
-                            <span style="font-size: 12px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 3px 8px; border-radius: 4px;">Connected</span>
-                        <?php elseif ($history_db_host): ?>
-                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
-                            <span style="font-size: 12px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 3px 8px; border-radius: 4px;">Failed</span>
-                        <?php else: ?>
-                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #94a3b8; border-radius: 50%;"></span>
-                            <span style="font-size: 12px; color: #475569; font-weight: 600; background-color: #e2e8f0; padding: 3px 8px; border-radius: 4px;">Not Configured</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div id="default_history_conn_status" style="display: flex; align-items: center; gap: 6px;">
+                            <?php if ($history_db_status): ?>
+                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                                <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
+                            <?php elseif ($history_db_host): ?>
+                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                                <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;">Failed</span>
+                            <?php else: ?>
+                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #94a3b8; border-radius: 50%;"></span>
+                                <span style="font-size: 11px; color: #475569; font-weight: 600; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">Not Configured</span>
+                            <?php endif; ?>
+                        </div>
+                        <?php if ($history_db_host): ?>
+                            <button class="nav-icon-btn" style="height:28px; width:28px;" title="Test Connection" onclick="testCoreConnection('history')">
+                                <span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40!important;">sync</span>
+                            </button>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -1151,6 +1244,43 @@ if (!empty($current_page)) {
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
+    }
+
+    async function testCoreConnection(type) {
+        const statusEl = document.getElementById(type === 'primary' ? 'primary_conn_status' : 'default_history_conn_status');
+        if (!statusEl) return;
+        
+        statusEl.innerHTML = `
+            <span style="display: inline-block; width: 8px; height: 8px; background-color: #94a3b8; border-radius: 50%;"></span>
+            <span style="font-size: 11px; color: #64748b; font-weight: 600; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">Testing...</span>
+        `;
+        
+        try {
+            const response = await fetch('?api=test_core_connection&type=' + type, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '<?= $csrf_token ?>'
+                }
+            });
+            const result = await response.json();
+            if (result.ok) {
+                statusEl.innerHTML = `
+                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                    <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
+                `;
+            } else {
+                statusEl.innerHTML = `
+                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                    <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;" title="${escapeHtml(result.error)}">Failed</span>
+                `;
+            }
+        } catch (e) {
+            statusEl.innerHTML = `
+                <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;" title="Network Error">Error</span>
+            `;
+        }
     }
 
     async function testConnectionAsync(conn, index) {
