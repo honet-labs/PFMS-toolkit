@@ -179,7 +179,21 @@ if (isset($_GET['api']) && $_GET['api'] === 'test_db_connection') {
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_TIMEOUT => 2
             ]);
-            echo json_encode(['ok' => true]);
+            
+            // Also check if this is a full Pandora DB (has tagente table)
+            $result = ['ok' => true];
+            try {
+                $st = $test_pdo->query("SELECT COUNT(*) FROM tagente WHERE disabled = 0");
+                $agent_count = (int)$st->fetchColumn();
+                $result['has_tagente'] = true;
+                $result['agents_count'] = $agent_count;
+            } catch (Throwable $e) {
+                $result['has_tagente'] = false;
+                $result['agents_count'] = 0;
+                $result['warning'] = 'Connected but tagente table not found. This DB may not contain Pandora FMS agent data.';
+            }
+            
+            echo json_encode($result);
         } catch (PDOException $e) {
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
         }
@@ -1033,14 +1047,17 @@ if (!empty($current_page)) {
             </div>
 
             <!-- Custom Connections Header -->
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px; border-top: 1px solid #e0e4e8; padding-top: 15px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px; border-top: 1px solid #e0e4e8; padding-top: 15px; margin-bottom: 8px;">
                 <label class="form-label" style="display: flex; align-items: center; gap: 5px; color: #0b1a26; font-weight: 600; margin-bottom: 0;">
                     <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">dns</span>
-                    Custom Connections (Historical DB Nodes)
+                    Custom Connections (Pandora FMS DB Nodes)
                 </label>
                 <button class="btn-outline" style="padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 4px;" onclick="showAddConnectionForm()">
                     <span class="material-symbols-outlined" style="font-size: 14px !important;">add</span> Add Connection
                 </button>
+            </div>
+            <div style="font-size: 11px; color: #64748b; margin-bottom: 12px; padding: 6px 10px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 4px; line-height: 1.4;">
+                <strong>Note:</strong> Custom connections must point to a <strong>full Pandora FMS database</strong> (containing <code>tagente</code>, <code>tagente_modulo</code> tables). History-only databases without agent tables will not show agents in the dashboard.
             </div>
 
             <!-- Custom Connection Form (Hidden by default) -->
@@ -1497,10 +1514,17 @@ if (!empty($current_page)) {
             });
             const result = await response.json();
             if (result.ok) {
-                statusEl.innerHTML = `
-                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
-                    <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
-                `;
+                if (result.has_tagente) {
+                    statusEl.innerHTML = `
+                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                        <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">${result.agents_count} Agents</span>
+                    `;
+                } else {
+                    statusEl.innerHTML = `
+                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #f59e0b; border-radius: 50%;"></span>
+                        <span style="font-size: 11px; color: #92400e; font-weight: 600; background-color: #fef3c7; padding: 2px 6px; border-radius: 4px;" title="Connected but no tagente table found. This database may not contain Pandora FMS agent data.">No Agents</span>
+                    `;
+                }
             } else {
                 statusEl.innerHTML = `
                     <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
@@ -1589,8 +1613,13 @@ if (!empty($current_page)) {
             const result = await response.json();
             resultEl.style.display = 'block';
             if (result.ok) {
-                resultEl.style.color = '#065f46';
-                resultEl.innerText = '✓ Connection successful!';
+                if (result.has_tagente) {
+                    resultEl.style.color = '#065f46';
+                    resultEl.innerText = '✓ Connection successful! Found ' + result.agents_count + ' agent(s) in database.';
+                } else {
+                    resultEl.style.color = '#b45309';
+                    resultEl.innerHTML = '⚠ Connected but <b>tagente table not found</b>. This database does not appear to be a full Pandora FMS database. Agents from this node will NOT appear in the dashboard.';
+                }
             } else {
                 resultEl.style.color = '#b91c1c';
                 resultEl.innerText = '✗ Connection failed: ' + result.error;

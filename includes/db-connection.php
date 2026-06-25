@@ -327,11 +327,48 @@ function downsample_history_data($data, $max_points) {
     return $sampled;
 }
 
+
+function parse_node_id($prefixed_id) {
+    if (is_numeric($prefixed_id)) {
+        return ['node' => 'primary', 'id' => (int)$prefixed_id];
+    }
+    if (is_string($prefixed_id) && strpos($prefixed_id, ':') !== false) {
+        list($node, $id) = explode(':', $prefixed_id, 2);
+        return ['node' => $node, 'id' => (int)$id];
+    }
+    return ['node' => 'primary', 'id' => 0];
+}
+
+function parse_node_ids($prefixed_ids_str) {
+    if (empty($prefixed_ids_str)) return [];
+    $ids_by_node = [];
+    $parts = array_filter(explode(',', $prefixed_ids_str));
+    foreach ($parts as $part) {
+        $parsed = parse_node_id($part);
+        $ids_by_node[$parsed['node']][] = $parsed['id'];
+    }
+    return $ids_by_node;
+}
+
 function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $limit = 5000, $order = 'DESC') {
+    $node = 'primary';
+    if (is_string($id_mod) && strpos($id_mod, ':') !== false) {
+        list($node, $real_id) = explode(':', $id_mod, 2);
+        $id_mod = (int)$real_id;
+    } else {
+        $id_mod = (int)$id_mod;
+    }
+
+    global $custom_pdos;
+    $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+    if ($active_pdo === null) {
+        return [];
+    }
+
     // 1. Determine the specific table for this module to optimize query performance (Numeric/String/Inc)
     $target_table = null;
     try {
-        $stType = $pdo->prepare("SELECT m.id_tipo_modulo, t.name FROM tagente_modulo m JOIN ttipo_modulo t ON m.id_tipo_modulo = t.id_tipo_modulo WHERE m.id_agente_modulo = ?");
+        $stType = $active_pdo->prepare("SELECT m.id_tipo_modulo, t.name FROM tagente_modulo m JOIN ttipo_modulo t ON m.id_tipo_modulo = t.id_tipo_modulo WHERE m.id_agente_modulo = ?");
         $stType->execute([$id_mod]);
         $row = $stType->fetch(PDO::FETCH_ASSOC);
         if ($row) {
@@ -355,15 +392,13 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     $activeData = [];
 
     // 2. Query history database first (if connection exists)
-    global $custom_pdos;
     $all_history_pdos = [];
-    if ($pdo_history !== null) {
-        $all_history_pdos['default'] = $pdo_history;
-    }
-    if (!empty($custom_pdos)) {
-        foreach ($custom_pdos as $cid => $cpdo) {
-            $all_history_pdos[$cid] = $cpdo;
+    if ($node === 'primary') {
+        if ($pdo_history !== null) {
+            $all_history_pdos['default'] = $pdo_history;
         }
+    } else {
+        $all_history_pdos[$node] = $active_pdo;
     }
 
     foreach ($all_history_pdos as $h_pdo) {
@@ -422,7 +457,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     // 3. Query active database
     if ($target_table !== null) {
         try {
-            $stmt = $pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+            $stmt = $active_pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
             $stmt->execute([$id_mod, $start, $end]);
             $activeData = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {
@@ -437,7 +472,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
                   SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
                   ORDER BY ts DESC LIMIT " . (int)$limit;
         try {
-            $stmt = $pdo->prepare($query);
+            $stmt = $active_pdo->prepare($query);
             $stmt->execute([$id_mod, $start, $end, $id_mod, $start, $end, $id_mod, $start, $end]);
             $activeData = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {
@@ -449,7 +484,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     $preData = null;
     if ($target_table !== null) {
         try {
-            $stmtLookback = $pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY utimestamp DESC LIMIT 1");
+            $stmtLookback = $active_pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY utimestamp DESC LIMIT 1");
             $stmtLookback->execute([$id_mod, $start]);
             $preData = $stmtLookback->fetch(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {
@@ -463,7 +498,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
                            SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp < ?
                            ORDER BY ts DESC LIMIT 1";
         try {
-            $stmtLookback = $pdo->prepare($lookback_query);
+            $stmtLookback = $active_pdo->prepare($lookback_query);
             $stmtLookback->execute([$id_mod, $start, $id_mod, $start, $id_mod, $start]);
             $preData = $stmtLookback->fetch(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {
@@ -531,3 +566,4 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
 
     return $result;
 }
+
