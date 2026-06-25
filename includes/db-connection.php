@@ -162,6 +162,44 @@ if ($config_loaded) {
 // Backward compatibility helper mapping
 $history_pdo = $pdo_history;
 
+// 5. LOAD CUSTOM DATABASE CONNECTIONS FROM portal_config.json
+$portal_config_path = dirname(__DIR__) . '/portal_config.json';
+$custom_connections = [];
+$custom_pdos = [];
+$custom_db_statuses = [];
+
+if (file_exists($portal_config_path)) {
+    $p_config = json_decode(file_get_contents($portal_config_path), true);
+    if (is_array($p_config) && isset($p_config['custom_connections']) && is_array($p_config['custom_connections'])) {
+        $custom_connections = $p_config['custom_connections'];
+        foreach ($custom_connections as $conn) {
+            if (!empty($conn['id']) && !empty($conn['host']) && !empty($conn['dbname'])) {
+                try {
+                    $c_host = $conn['host'];
+                    $c_port = !empty($conn['port']) ? (int)$conn['port'] : 3306;
+                    $c_dbname = $conn['dbname'];
+                    $c_user = $conn['user'] ?? '';
+                    $c_pass = $conn['pass'] ?? '';
+                    
+                    $c_dsn = "mysql:host={$c_host};port={$c_port};dbname={$c_dbname};charset=utf8mb4";
+                    $c_pdo = new PDO($c_dsn, $c_user, $c_pass, [
+                        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                        PDO::ATTR_EMULATE_PREPARES => false,
+                        PDO::ATTR_PERSISTENT => true,
+                        PDO::ATTR_TIMEOUT => 2
+                    ]);
+                    $custom_pdos[$conn['id']] = $c_pdo;
+                    $custom_db_statuses[$conn['id']] = true;
+                } catch (PDOException $e) {
+                    $custom_db_statuses[$conn['id']] = false;
+                    error_log("Custom DB Connection '{$conn['name']}' failed: " . $e->getMessage());
+                }
+            }
+        }
+    }
+}
+
 /**
  * Common Helper Functions
  */
@@ -283,27 +321,47 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     $activeData = [];
 
     // 2. Query history database first (if connection exists)
+    global $custom_pdos;
+    $all_history_pdos = [];
     if ($pdo_history !== null) {
+        $all_history_pdos['default'] = $pdo_history;
+    }
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $all_history_pdos[$cid] = $cpdo;
+        }
+    }
+
+    foreach ($all_history_pdos as $h_pdo) {
         if ($target_table !== null) {
             try {
-                $stmtHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+                $stmtHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
                 $stmtHist->execute([$id_mod, $start, $end]);
-                $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+                $res = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+                if (!empty($res)) {
+                    $historyData = array_merge($historyData, $res);
+                }
                 
                 // FALLBACK: If query succeeded but returned 0 rows, and we didn't query tagente_datos originally,
                 // try tagente_datos since Pandora FMS can archive all types of history data there
-                if (empty($historyData) && $target_table !== 'tagente_datos') {
-                    $stmtHist2 = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+                if (empty($res) && $target_table !== 'tagente_datos') {
+                    $stmtHist2 = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
                     $stmtHist2->execute([$id_mod, $start, $end]);
-                    $historyData = $stmtHist2->fetchAll(PDO::FETCH_ASSOC);
+                    $res2 = $stmtHist2->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($res2)) {
+                        $historyData = array_merge($historyData, $res2);
+                    }
                 }
             } catch (Throwable $e) {
                 // If it fails (e.g., table doesn't exist in history DB), fall back to tagente_datos
                 if ($target_table !== 'tagente_datos') {
                     try {
-                        $stmtHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+                        $stmtHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
                         $stmtHist->execute([$id_mod, $start, $end]);
-                        $historyData = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+                        $res = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+                        if (!empty($res)) {
+                            $historyData = array_merge($historyData, $res);
+                        }
                     } catch (Throwable $e2) {
                         error_log("Historical fallback query to tagente_datos failed: " . $e2->getMessage());
                     }
@@ -314,7 +372,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
             $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
             foreach ($tables as $tbl) {
                 try {
-                    $stmtHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+                    $stmtHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
                     $stmtHist->execute([$id_mod, $start, $end]);
                     $res = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
                     if (!empty($res)) {
@@ -379,20 +437,22 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
         }
     }
 
-    if (!$preData && $pdo_history !== null) {
+    if (!$preData && !empty($all_history_pdos)) {
         $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
         $best_ts = 0;
-        foreach ($tables as $tbl) {
-            try {
-                $stmtLookbackHist = $pdo_history->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY ts DESC LIMIT 1");
-                $stmtLookbackHist->execute([$id_mod, $start]);
-                $row = $stmtLookbackHist->fetch(PDO::FETCH_ASSOC);
-                if ($row && (int)$row['ts'] > $best_ts) {
-                    $best_ts = (int)$row['ts'];
-                    $preData = $row;
+        foreach ($all_history_pdos as $h_pdo) {
+            foreach ($tables as $tbl) {
+                try {
+                    $stmtLookbackHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY ts DESC LIMIT 1");
+                    $stmtLookbackHist->execute([$id_mod, $start]);
+                    $row = $stmtLookbackHist->fetch(PDO::FETCH_ASSOC);
+                    if ($row && (int)$row['ts'] > $best_ts) {
+                        $best_ts = (int)$row['ts'];
+                        $preData = $row;
+                    }
+                } catch (Throwable $e) {
+                    // Ignore if table does not exist
                 }
-            } catch (Throwable $e) {
-                // Ignore if table does not exist
             }
         }
     }

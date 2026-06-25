@@ -64,7 +64,8 @@ $csrf_token = $_SESSION['pfms_csrf_token'];
 // Default Configuration
 $config_data = [
     'exclude_dirs' => ['temp', 'cache', 'assets', 'includes', 'versions', 'scanning-mib', 'snmp-explorer', 'scratch'],
-    'exclude_files' => ['nfx_local_config.php', 'pdb_local_config.php', 'config.php', 'utils.php', 'check_cols.php,', 'check_schema.php', 'check_schema_v2.php', 'temp_query.php', 'pfms_latency_map.php', 'api_network.php', 'cron.php', 'pfms_latency_map.php', 'pfms_lib.php', ]
+    'exclude_files' => ['nfx_local_config.php', 'pdb_local_config.php', 'config.php', 'utils.php', 'check_cols.php,', 'check_schema.php', 'check_schema_v2.php', 'temp_query.php', 'pfms_latency_map.php', 'api_network.php', 'cron.php', 'pfms_latency_map.php', 'pfms_lib.php', ],
+    'custom_connections' => []
 ];
 
 // Load Configuration if exists
@@ -73,6 +74,7 @@ if (file_exists($portal_config_file)) {
     if (is_array($loaded_config)) {
         $config_data['exclude_dirs'] = $loaded_config['exclude_dirs'] ?? $config_data['exclude_dirs'];
         $config_data['exclude_files'] = $loaded_config['exclude_files'] ?? $config_data['exclude_files'];
+        $config_data['custom_connections'] = $loaded_config['custom_connections'] ?? $config_data['custom_connections'];
     }
 }
 
@@ -126,7 +128,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'save_settings') {
     if (is_array($input) && isset($input['exclude_dirs']) && isset($input['exclude_files'])) {
         $save_data = [
             'exclude_dirs' => array_values(array_filter(array_map('trim', $input['exclude_dirs']))),
-            'exclude_files' => array_values(array_filter(array_map('trim', $input['exclude_files'])))
+            'exclude_files' => array_values(array_filter(array_map('trim', $input['exclude_files']))),
+            'custom_connections' => isset($input['custom_connections']) && is_array($input['custom_connections']) ? $input['custom_connections'] : []
         ];
         $bytes = file_put_contents($portal_config_file, json_encode($save_data, JSON_PRETTY_PRINT));
         
@@ -134,6 +137,46 @@ if (isset($_GET['api']) && $_GET['api'] === 'save_settings') {
         if (file_exists($menu_cache_file)) @unlink($menu_cache_file);
 
         echo json_encode(['ok' => $bytes !== false, 'error' => $bytes === false ? 'Save failed. Check file/folder permissions.' : '']);
+    } else {
+        echo json_encode(['ok' => false, 'error' => 'Invalid data']);
+    }
+    exit;
+}
+
+if (isset($_GET['api']) && $_GET['api'] === 'test_db_connection') {
+    ob_clean();
+    header('Content-Type: application/json');
+    
+    // CSRF Validation
+    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if ($client_token !== $csrf_token) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh page.']);
+        exit;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (is_array($input)) {
+        $host = trim($input['host'] ?? '');
+        $port = trim($input['port'] ?? '3306');
+        $dbname = trim($input['dbname'] ?? '');
+        $user = trim($input['user'] ?? '');
+        $pass = trim($input['pass'] ?? '');
+
+        if (empty($host) || empty($dbname) || empty($user)) {
+            echo json_encode(['ok' => false, 'error' => 'Host, Database Name, and User are required.']);
+            exit;
+        }
+
+        try {
+            $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4";
+            $test_pdo = new PDO($dsn, $user, $pass, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_TIMEOUT => 2
+            ]);
+            echo json_encode(['ok' => true]);
+        } catch (PDOException $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
     } else {
         echo json_encode(['ok' => false, 'error' => 'Invalid data']);
     }
@@ -746,77 +789,143 @@ if (!empty($current_page)) {
 </div>
 
 <div class="modal-overlay" id="settingsModal">
-    <div class="modal-box">
+    <div class="modal-box" style="width: 650px; max-width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
         <div class="modal-header">
             <h5 class="modal-title"><span class="material-symbols-outlined" style="color:#004d40;">settings_suggest</span> Portal Settings</h5>
             <button class="nav-icon-btn" onclick="closeSettings()" style="height:28px; width:28px;"><span class="material-symbols-outlined" style="font-size:16px!important;">close</span></button>
         </div>
         
-        <div class="form-group">
-            <label class="form-label">Excluded Directories (Folders)</label>
-            <textarea class="form-control" id="cfg_dirs" placeholder="e.g. temp, cache, assets"></textarea>
-            <div class="form-hint">Separate folder names with commas (,). '..' and '.' systems will always be excluded automatically.</div>
-        </div>
-
-        <div class="form-group">
-            <label class="form-label">Excluded Files</label>
-            <textarea class="form-control" id="cfg_files" placeholder="e.g. config.php, utils.php"></textarea>
-            <div class="form-hint">Separate file names with commas (,). 'custom-index.php' file will always be excluded automatically.</div>
-        </div>
-
-        <div class="form-group" style="margin-top: 25px; border-top: 1px solid #e0e4e8; padding-top: 20px;">
-            <label class="form-label" style="display: flex; align-items: center; gap: 5px; margin-bottom: 12px; color: #0b1a26; font-weight: 600;">
-                <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">database</span>
-                Database Connections
-            </label>
-            
-            <!-- Primary Database Connection Card -->
-            <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <span style="font-weight: 600; color: #334155; font-size: 13px;">Primary Database</span>
-                    <span style="font-family: monospace; font-size: 11px; color: #64748b;">
-                        Host: <?= htmlspecialchars($config['dbhost'] ?? 'N/A') ?> | DB: <?= htmlspecialchars($config['dbname'] ?? 'N/A') ?> | User: <?= htmlspecialchars($config['dbuser'] ?? 'N/A') ?>
-                    </span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <?php if ($db_status): ?>
-                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
-                        <span style="font-size: 12px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 3px 8px; border-radius: 4px;">Connected</span>
-                    <?php else: ?>
-                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
-                        <span style="font-size: 12px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 3px 8px; border-radius: 4px;" title="<?= htmlspecialchars($db_error) ?>">Failed</span>
-                    <?php endif; ?>
-                </div>
+        <div style="flex-grow: 1; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;">
+            <div class="form-group">
+                <label class="form-label">Excluded Directories (Folders)</label>
+                <textarea class="form-control" id="cfg_dirs" placeholder="e.g. temp, cache, assets"></textarea>
+                <div class="form-hint">Separate folder names with commas (,). '..' and '.' systems will always be excluded automatically.</div>
             </div>
 
-            <!-- Historical Database Connection Card -->
-            <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <span style="font-weight: 600; color: #334155; font-size: 13px;">Historical Database</span>
-                    <?php if ($history_db_host): ?>
+            <div class="form-group">
+                <label class="form-label">Excluded Files</label>
+                <textarea class="form-control" id="cfg_files" placeholder="e.g. config.php, utils.php"></textarea>
+                <div class="form-hint">Separate file names with commas (,). 'custom-index.php' file will always be excluded automatically.</div>
+            </div>
+
+            <div class="form-group" style="margin-top: 25px; border-top: 1px solid #e0e4e8; padding-top: 20px;">
+                <label class="form-label" style="display: flex; align-items: center; gap: 5px; margin-bottom: 12px; color: #0b1a26; font-weight: 600;">
+                    <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">database</span>
+                    Core Database Connections
+                </label>
+                
+                <!-- Primary Database Connection Card -->
+                <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="font-weight: 600; color: #334155; font-size: 13px;">Primary Database</span>
                         <span style="font-family: monospace; font-size: 11px; color: #64748b;">
-                            Host: <?= htmlspecialchars($history_db_host) ?> | DB: <?= htmlspecialchars($history_db_name) ?> | User: <?= htmlspecialchars($history_db_user) ?>
+                            Host: <?= htmlspecialchars($config['dbhost'] ?? 'N/A') ?> | DB: <?= htmlspecialchars($config['dbname'] ?? 'N/A') ?> | User: <?= htmlspecialchars($config['dbuser'] ?? 'N/A') ?>
                         </span>
-                    <?php else: ?>
-                        <span style="font-size: 11px; color: #94a3b8; font-style: italic;">No historical DB configured.</span>
-                    <?php endif; ?>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <?php if ($db_status): ?>
+                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                            <span style="font-size: 12px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 3px 8px; border-radius: 4px;">Connected</span>
+                        <?php else: ?>
+                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                            <span style="font-size: 12px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 3px 8px; border-radius: 4px;" title="<?= htmlspecialchars($db_error) ?>">Failed</span>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <?php if ($history_db_status): ?>
-                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
-                        <span style="font-size: 12px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 3px 8px; border-radius: 4px;">Connected</span>
-                    <?php elseif ($history_db_host): ?>
-                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
-                        <span style="font-size: 12px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 3px 8px; border-radius: 4px;">Failed</span>
-                    <?php else: ?>
-                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #94a3b8; border-radius: 50%;"></span>
-                        <span style="font-size: 12px; color: #475569; font-weight: 600; background-color: #e2e8f0; padding: 3px 8px; border-radius: 4px;">Not Configured</span>
-                    <?php endif; ?>
+
+                <!-- Historical Database Connection Card -->
+                <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="font-weight: 600; color: #334155; font-size: 13px;">Default Historical Database</span>
+                        <?php if ($history_db_host): ?>
+                            <span style="font-family: monospace; font-size: 11px; color: #64748b;">
+                                Host: <?= htmlspecialchars($history_db_host) ?> | DB: <?= htmlspecialchars($history_db_name) ?> | User: <?= htmlspecialchars($history_db_user) ?>
+                            </span>
+                        <?php else: ?>
+                            <span style="font-size: 11px; color: #94a3b8; font-style: italic;">No core historical DB configured.</span>
+                        <?php endif; ?>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <?php if ($history_db_status): ?>
+                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                            <span style="font-size: 12px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 3px 8px; border-radius: 4px;">Connected</span>
+                        <?php elseif ($history_db_host): ?>
+                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                            <span style="font-size: 12px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 3px 8px; border-radius: 4px;">Failed</span>
+                        <?php else: ?>
+                            <span style="display: inline-block; width: 8px; height: 8px; background-color: #94a3b8; border-radius: 50%;"></span>
+                            <span style="font-size: 12px; color: #475569; font-weight: 600; background-color: #e2e8f0; padding: 3px 8px; border-radius: 4px;">Not Configured</span>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:25px;">
+            <!-- Custom Connections Header -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px; border-top: 1px solid #e0e4e8; padding-top: 15px; margin-bottom: 12px;">
+                <label class="form-label" style="display: flex; align-items: center; gap: 5px; color: #0b1a26; font-weight: 600; margin-bottom: 0;">
+                    <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">dns</span>
+                    Custom Connections (Historical DB Nodes)
+                </label>
+                <button class="btn-outline" style="padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 4px;" onclick="showAddConnectionForm()">
+                    <span class="material-symbols-outlined" style="font-size: 14px !important;">add</span> Add Connection
+                </button>
+            </div>
+
+            <!-- Custom Connection Form (Hidden by default) -->
+            <div id="customConnForm" style="display: none; background: #f8f9fa; border: 1px solid #004d40; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h6 id="formTitle" style="margin: 0 0 12px 0; color: #004d40; font-size: 13px; font-weight: 600;">Add Custom Connection</h6>
+                <input type="hidden" id="conn_index" value="">
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Connection Name</label>
+                        <input type="text" id="conn_name" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. Historical Node 2">
+                    </div>
+                    <div>
+                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Host</label>
+                        <input type="text" id="conn_host" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. 192.168.1.100">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Port</label>
+                        <input type="text" id="conn_port" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="3306" value="3306">
+                    </div>
+                    <div>
+                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Database Name</label>
+                        <input type="text" id="conn_dbname" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. pandora_history2">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                    <div>
+                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">User</label>
+                        <input type="text" id="conn_user" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. root">
+                    </div>
+                    <div>
+                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Password</label>
+                        <input type="password" id="conn_pass" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="Enter password">
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" id="btnTestConn" onclick="testCustomConnection()">Test Connection</button>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" onclick="cancelConnectionForm()">Cancel</button>
+                        <button class="btn-apply" style="padding: 4px 15px; font-size: 11px; background: #004d40;" onclick="saveCustomConnection()">Save Node</button>
+                    </div>
+                </div>
+                <div id="testConnResult" style="margin-top: 8px; font-size: 11px; display: none;"></div>
+            </div>
+
+            <!-- Custom Connections List Container -->
+            <div id="customConnsList">
+                <!-- Will be dynamically populated by Javascript -->
+            </div>
+        </div>
+        
+        <div style="display:flex; justify-content:flex-end; gap:10px; border-top: 1px solid #e0e4e8; padding-top: 15px;">
             <button class="btn-outline" onclick="closeSettings()">Cancel</button>
             <button class="btn-apply" onclick="saveSettings()">
                 <span class="material-symbols-outlined" style="font-size:16px!important;">save</span> Save & Reload
@@ -963,17 +1072,248 @@ if (!empty($current_page)) {
     }
 
     // Modal Settings
+    let customConnectionsCopy = [];
+
     function openSettings() {
         let dirs = currentConfig.exclude_dirs.filter(d => d !== '.' && d !== '..').join(', ');
         let files = currentConfig.exclude_files.filter(f => f !== 'custom-index.php').join(', ');
         
         document.getElementById('cfg_dirs').value = dirs;
         document.getElementById('cfg_files').value = files;
+
+        // Deep copy custom connections
+        customConnectionsCopy = JSON.parse(JSON.stringify(currentConfig.custom_connections || []));
+        cancelConnectionForm();
+        renderCustomConnectionsList();
+        
         document.getElementById('settingsModal').style.display = 'flex';
     }
 
     function closeSettings() {
         document.getElementById('settingsModal').style.display = 'none';
+    }
+
+    // Render the custom connections list
+    function renderCustomConnectionsList() {
+        const container = document.getElementById('customConnsList');
+        container.innerHTML = '';
+
+        if (customConnectionsCopy.length === 0) {
+            container.innerHTML = '<div style="font-size:12px; color:#94a3b8; font-style:italic; padding:15px; text-align:center; background:#f8f9fa; border:1px dashed #e2e8f0; border-radius:6px;">No custom connections added yet.</div>';
+            return;
+        }
+
+        customConnectionsCopy.forEach((conn, index) => {
+            const card = document.createElement('div');
+            card.style.background = '#f8f9fa';
+            card.style.border = '1px solid #e2e8f0';
+            card.style.borderRadius = '6px';
+            card.style.padding = '12px 15px';
+            card.style.marginBottom = '10px';
+            card.style.display = 'flex';
+            card.style.alignItems = 'center';
+            card.style.justifyContent = 'space-between';
+
+            card.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-weight: 600; color: #334155; font-size: 13px;">${escapeHtml(conn.name || 'Unnamed Connection')}</span>
+                    <span style="font-family: monospace; font-size: 11px; color: #64748b;">
+                        Host: ${escapeHtml(conn.host)}:${escapeHtml(conn.port || '3306')} | DB: ${escapeHtml(conn.dbname)} | User: ${escapeHtml(conn.user)}
+                    </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div id="conn_status_${index}" style="display: flex; align-items: center; gap: 6px;">
+                        <span style="display: inline-block; width: 8px; height: 8px; background-color: #94a3b8; border-radius: 50%;"></span>
+                        <span style="font-size: 11px; color: #64748b; font-weight: 600; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">Testing...</span>
+                    </div>
+                    <div style="display: flex; gap: 4px;">
+                        <button class="nav-icon-btn" style="height:28px; width:28px;" title="Edit Connection" onclick="editConnection(${index})">
+                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#0284c7!important;">edit</span>
+                        </button>
+                        <button class="nav-icon-btn" style="height:28px; width:28px;" title="Delete Connection" onclick="deleteConnection(${index})">
+                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#ef4444!important;">delete</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+            
+            // Trigger connection test asynchronously
+            testConnectionAsync(conn, index);
+        });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    async function testConnectionAsync(conn, index) {
+        const statusEl = document.getElementById(`conn_status_${index}`);
+        if (!statusEl) return;
+
+        try {
+            const response = await fetch('?api=test_db_connection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '<?= $csrf_token ?>'
+                },
+                body: JSON.stringify({
+                    host: conn.host,
+                    port: conn.port || '3306',
+                    dbname: conn.dbname,
+                    user: conn.user,
+                    pass: conn.pass
+                })
+            });
+            const result = await response.json();
+            if (result.ok) {
+                statusEl.innerHTML = `
+                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                    <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
+                `;
+            } else {
+                statusEl.innerHTML = `
+                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                    <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;" title="${escapeHtml(result.error)}">Failed</span>
+                `;
+            }
+        } catch (e) {
+            statusEl.innerHTML = `
+                <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;" title="Network Error">Error</span>
+            `;
+        }
+    }
+
+    function showAddConnectionForm() {
+        document.getElementById('formTitle').innerText = 'Add Custom Connection';
+        document.getElementById('conn_index').value = '';
+        document.getElementById('conn_name').value = '';
+        document.getElementById('conn_host').value = '';
+        document.getElementById('conn_port').value = '3306';
+        document.getElementById('conn_dbname').value = '';
+        document.getElementById('conn_user').value = '';
+        document.getElementById('conn_pass').value = '';
+        
+        document.getElementById('testConnResult').style.display = 'none';
+        document.getElementById('customConnForm').style.display = 'block';
+    }
+
+    function cancelConnectionForm() {
+        document.getElementById('customConnForm').style.display = 'none';
+    }
+
+    function editConnection(index) {
+        const conn = customConnectionsCopy[index];
+        if (!conn) return;
+
+        document.getElementById('formTitle').innerText = 'Edit Custom Connection';
+        document.getElementById('conn_index').value = index;
+        document.getElementById('conn_name').value = conn.name || '';
+        document.getElementById('conn_host').value = conn.host || '';
+        document.getElementById('conn_port').value = conn.port || '3306';
+        document.getElementById('conn_dbname').value = conn.dbname || '';
+        document.getElementById('conn_user').value = conn.user || '';
+        document.getElementById('conn_pass').value = conn.pass || '';
+        
+        document.getElementById('testConnResult').style.display = 'none';
+        document.getElementById('customConnForm').style.display = 'block';
+    }
+
+    function deleteConnection(index) {
+        if (confirm('Are you sure you want to delete this database connection?')) {
+            customConnectionsCopy.splice(index, 1);
+            renderCustomConnectionsList();
+            cancelConnectionForm();
+        }
+    }
+
+    async function testCustomConnection() {
+        const btn = document.getElementById('btnTestConn');
+        const resultEl = document.getElementById('testConnResult');
+        
+        const host = document.getElementById('conn_host').value.trim();
+        const port = document.getElementById('conn_port').value.trim() || '3306';
+        const dbname = document.getElementById('conn_dbname').value.trim();
+        const user = document.getElementById('conn_user').value.trim();
+        const pass = document.getElementById('conn_pass').value;
+
+        if (!host || !dbname || !user) {
+            alert('Host, Database Name, and User are required to test connection.');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = 'Testing...';
+        resultEl.style.display = 'none';
+
+        try {
+            const response = await fetch('?api=test_db_connection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '<?= $csrf_token ?>'
+                },
+                body: JSON.stringify({ host, port, dbname, user, pass })
+            });
+            const result = await response.json();
+            resultEl.style.display = 'block';
+            if (result.ok) {
+                resultEl.style.color = '#065f46';
+                resultEl.innerText = '✓ Connection successful!';
+            } else {
+                resultEl.style.color = '#b91c1c';
+                resultEl.innerText = '✗ Connection failed: ' + result.error;
+            }
+        } catch (e) {
+            resultEl.style.display = 'block';
+            resultEl.style.color = '#b91c1c';
+            resultEl.innerText = '✗ Network error trying to connect.';
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Test Connection';
+        }
+    }
+
+    function saveCustomConnection() {
+        const indexVal = document.getElementById('conn_index').value;
+        const name = document.getElementById('conn_name').value.trim();
+        const host = document.getElementById('conn_host').value.trim();
+        const port = document.getElementById('conn_port').value.trim() || '3306';
+        const dbname = document.getElementById('conn_dbname').value.trim();
+        const user = document.getElementById('conn_user').value.trim();
+        const pass = document.getElementById('conn_pass').value;
+
+        if (!name || !host || !dbname || !user) {
+            alert('Name, Host, Database Name, and User are required.');
+            return;
+        }
+
+        const connObj = {
+            id: indexVal !== '' ? customConnectionsCopy[indexVal].id : 'conn_' + Date.now(),
+            name,
+            host,
+            port,
+            dbname,
+            user,
+            pass
+        };
+
+        if (indexVal !== '') {
+            customConnectionsCopy[indexVal] = connObj;
+        } else {
+            customConnectionsCopy.push(connObj);
+        }
+
+        renderCustomConnectionsList();
+        cancelConnectionForm();
     }
 
     async function saveSettings() {
@@ -986,7 +1326,8 @@ if (!empty($current_page)) {
 
         const payload = {
             exclude_dirs: dirsInput.split(','),
-            exclude_files: filesInput.split(',')
+            exclude_files: filesInput.split(','),
+            custom_connections: customConnectionsCopy
         };
 
         try {
