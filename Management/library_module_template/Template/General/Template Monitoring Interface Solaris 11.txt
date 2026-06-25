@@ -1,0 +1,7 @@
+# Group: Template
+# Sub Group: General
+module_begin
+module_name Template Monitoring Interface Solaris 11
+module_type async_data_string
+module_exec ipadm | nawk '$1=="net0" {print $3}'
+module_end

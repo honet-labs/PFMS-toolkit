@@ -1,0 +1,8 @@
+# Group: Template
+# Sub Group: General
+module_begin
+module_name Template Monitoring Services for Debian-Ubuntu-Rocky
+module_type async_data_string
+module_description You must change variable $name-services with spesific name services in your system
+module_exec systemctl show $name-services --property=ActiveState --value
+module_end

@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: Process
+module_begin
+module_name Total Process
+module_type async_data
+module_exec ps -Alf | wc -l | awk '{ print $1 }'
+module_end

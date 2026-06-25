@@ -1,0 +1,8 @@
+# Group: Linux
+# Sub Group: System
+module_begin
+module_name List Process with highest memory usage (MB)
+module_type generic_data_string
+module_group Linux
+module_exec ps -eo comm,rss --sort=-rss | grep -v -E "COMMAND|ps|awk" | head -n 5 | awk '{print $1 " (" int($2/1024) " MB)"}'
+module_end

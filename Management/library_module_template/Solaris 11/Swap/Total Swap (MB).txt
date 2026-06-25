@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: Swap
+module_begin
+module_name Total Swap (MB)
+module_type async_data
+module_exec top -b | nawk '/Memory:/ {gsub(/M/, "", $8); print $8; exit}'
+module_end

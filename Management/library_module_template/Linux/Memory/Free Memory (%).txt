@@ -1,0 +1,11 @@
+# Group: Linux
+# Sub Group: Memory
+module_begin
+module_name Free Memory (%)
+module_type async_data
+module_exec free -b | awk '/^Mem:/ {printf "%.2f", ($4/$2)*100}'
+module_min_warning 80
+module_max_warning 90
+module_min_critical 90
+module_max_critical 95
+module_end

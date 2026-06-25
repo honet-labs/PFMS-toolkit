@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: System
+module_begin
+module_name Uptime System
+module_type async_data_string
+module_exec top -b | nawk -F'up ' '/load avg:/ {v=$2; sub(/ .*/,"",v); if(v~/\+/){split(v,a,"+"); d=a[1]; split(a[2],t,":")} else{d=0; split(v,t,":")} print d" Days, "t[1]+0" Hours, "t[2]+0" Minutes"; exit}'
+module_end

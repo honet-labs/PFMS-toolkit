@@ -1,0 +1,8 @@
+# Group: Template
+# Sub Group: General
+module_begin
+module_name Template Monitoring Services for solaris 11
+module_type generic_data_string
+module_description You must change variable $name-services with spesific name services in your system
+module_exec svcs -H -o state $name-services
+module_end

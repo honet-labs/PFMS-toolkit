@@ -13,26 +13,19 @@ error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 // 1. DYNAMIC BREADCRUMB
 $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 
-// 2. CONFIG LOADING
-$PANDORA_BASE_URL = "/pandora_console";
+// 2. CONFIG LOADING & DB INITIALIZATION
+require_once __DIR__ . '/../../includes/db-connection.php';
 $CONFIG_FILE = __DIR__ . '/availability-node-save.json';
-$config_paths = ['/var/www/html/pandora_console/include/config.php', '../../../include/config.php', '../../include/config.php', '../include/config.php'];
-$config_loaded = false;
-foreach ($config_paths as $path) { if (file_exists($path)) { require_once($path); $config_loaded = true; break; } }
 
 if (session_status() === PHP_SESSION_NONE) session_start();
+// Generate CSRF Token if not exists
+if (empty($_SESSION['pfms_csrf_token'])) {
+    $_SESSION['pfms_csrf_token'] = bin2hex(random_bytes(32));
+}
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 
 // 3. HELPERS & DB INIT
 require_once(__DIR__ . '/../../tools/utils.php');
-
-$pdo = null; $db_status = false; $db_error = '';
-if ($config_loaded) {
-    try {
-        $pdo = get_db_connection($config);
-        $db_status = true;
-    } catch (PDOException $e) { $db_error = $e->getMessage(); }
-}
 
 // 4. AJAX ENDPOINTS
 $api = $_GET['api'] ?? '';
@@ -62,131 +55,169 @@ if ($api === 'save_config') {
 }
 if ($api === 'groups' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
-    $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
     $dropdown = [['id' => '0', 'name' => '--- Manual Selection / All ---']];
-    while($g = $stmt->fetch()) { $dropdown[] = ['id' => $g['id'], 'name' => pretty_text($g['name'])]; }
+    
+    // 1. Primary DB groups
+    try {
+        $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+        while($g = $stmt->fetch()) { 
+            $dropdown[] = ['id' => 'primary:' . $g['id'], 'name' => '[Primary] ' . pretty_text($g['name'])]; 
+        }
+    } catch (Throwable $e) {}
+    
+    // 2. Custom DB groups
+    global $custom_pdos, $custom_connections;
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $cname = '';
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
+            }
+            if (empty($cname)) $cname = $cid;
+            try {
+                $stmt = $cpdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+                while($g = $stmt->fetch()) { 
+                    $dropdown[] = ['id' => $cid . ':' . $g['id'], 'name' => '[' . $cname . '] ' . pretty_text($g['name'])]; 
+                }
+            } catch (Throwable $e) {}
+        }
+    }
+    
     echo json_encode($dropdown); exit;
 }
 if ($api === 'agents_list' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
-    $stmt = $pdo->query("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
-    $list = $stmt->fetchAll();
-    foreach($list as &$l) { $l['alias'] = pretty_text($l['alias']); }
+    $list = [];
+    
+    // 1. Primary DB agents
+    try {
+        $stmt = $pdo->query("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
+        while($a = $stmt->fetch()) {
+            $list[] = ['id' => 'primary:' . $a['id'], 'alias' => pretty_text($a['alias'])];
+        }
+    } catch (Throwable $e) {}
+    
+    // 2. Custom DB agents
+    global $custom_pdos, $custom_connections;
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $cname = '';
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
+            }
+            if (empty($cname)) $cname = $cid;
+            try {
+                $stmt = $cpdo->query("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
+                while($a = $stmt->fetch()) {
+                    $list[] = ['id' => $cid . ':' . $a['id'], 'alias' => '[' . $cname . '] ' . pretty_text($a['alias'])];
+                }
+            } catch (Throwable $e) {}
+        }
+    }
+    
     echo json_encode($list); exit;
 }
 
 if ($api === 'card_data' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
-    $groupId = (int)($_GET['group_id'] ?? 0);
+    $groupIdRaw = $_GET['group_id'] ?? '0';
     $keyword = $_GET['keyword'] ?? 'Host Alive';
     $limit = (int)($_GET['limit'] ?? 15);
-    $manual_ids = preg_replace('/[^0-9,]/', '', $_GET['manual_ids'] ?? '');
+    $manual_ids = $_GET['manual_ids'] ?? '';
 
     $lbl_ok = strtoupper($_GET['lbl_ok'] ?? '');
     $lbl_warn = strtoupper($_GET['lbl_warn'] ?? '');
     $lbl_crit = strtoupper($_GET['lbl_crit'] ?? '');
 
-    try {
-        $params = ['%' . str_replace(' ', '%', $keyword) . '%']; $whereClause = "";
-        if (!empty($manual_ids) && $groupId == 0) {
-            $ids_array = array_filter(explode(',', $manual_ids));
-            if (!empty($ids_array)) {
-                $whereClause = "AND a.id_agente IN (" . implode(',', array_fill(0, count($ids_array), '?')) . ")";
-                foreach ($ids_array as $id) { $params[] = (int)$id; } 
-            }
-        } elseif ($groupId > 0) {
-            $targetGroups = get_all_child_groups($pdo, $groupId);
-            $whereClause = "AND a.id_grupo IN (" . implode(',', array_fill(0, count($targetGroups), '?')) . ")";
-            foreach ($targetGroups as $tg) { $params[] = $tg; }
+    $groupParsed = parse_node_id($groupIdRaw);
+    $manualIdsParsed = parse_node_ids($manual_ids);
+
+    global $custom_pdos, $custom_connections;
+    $target_nodes = [];
+    if ($groupParsed['id'] > 0) {
+        $target_nodes[$groupParsed['node']] = [
+            'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
+            'group_id' => $groupParsed['id'],
+            'agent_ids' => []
+        ];
+    } elseif (!empty($manualIdsParsed)) {
+        foreach ($manualIdsParsed as $node => $aids) {
+            $target_nodes[$node] = [
+                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
+                'group_id' => 0,
+                'agent_ids' => $aids
+            ];
         }
+    } else {
+        $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0, 'agent_ids' => []];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = ['pdo' => $cpdo, 'group_id' => 0, 'agent_ids' => []];
+            }
+        }
+    }
 
-        // Get Total Count for Pagination
-        $sqlCount = "SELECT COUNT(*) FROM tagente a 
-                     INNER JOIN tagente_modulo m ON a.id_agente = m.id_agente 
-                     WHERE m.nombre LIKE ? AND a.disabled = 0 AND m.disabled = 0 $whereClause";
-        $stmtCount = $pdo->prepare($sqlCount);
-        $stmtCount->execute($params);
-        $totalFound = $stmtCount->fetchColumn();
+    try {
+        $stats = ['total'=>0, 'normal'=>0, 'critical'=>0, 'warning'=>0, 'unknown'=>0, 'not_init'=>0];
+        $all_rows = [];
 
-        // 1. Get ALL matching modules statuses for HUD Statistics (Grand Total)
-        // We fetch minimal data to calculate stats based on PHP logic (regex/label matching)
-        $sqlStats = "SELECT te.datos AS current_val, COALESCE(te.estado, 4) as estado
+        foreach ($target_nodes as $node => $info) {
+            $active_pdo = $info['pdo'];
+            if ($active_pdo === null) continue;
+
+            $node_params = ['%' . str_replace(' ', '%', $keyword) . '%'];
+            $whereClause = "";
+            if (!empty($info['agent_ids'])) {
+                $whereClause = "AND a.id_agente IN (" . implode(',', array_fill(0, count($info['agent_ids']), '?')) . ")";
+                foreach ($info['agent_ids'] as $id) { $node_params[] = (int)$id; } 
+            } elseif ($info['group_id'] > 0) {
+                $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
+                $whereClause = "AND a.id_grupo IN (" . implode(',', array_fill(0, count($targetGroups), '?')) . ")";
+                foreach ($targetGroups as $tg) { $node_params[] = $tg; }
+            }
+
+            // Fetch detailed statuses for this node
+            $sql = "SELECT a.id_agente, a.alias AS agent_alias, g.nombre AS group_name, a.direccion AS ip_address, 
+                           m.id_agente_modulo, m.nombre AS module_name, te.datos AS current_val, 
+                           COALESCE(te.estado, 4) as estado, te.utimestamp AS last_contact
                     FROM tagente a 
                     INNER JOIN tagente_modulo m ON a.id_agente = m.id_agente 
                     INNER JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo 
+                    LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo 
                     WHERE m.nombre LIKE ? AND a.disabled = 0 AND m.disabled = 0 $whereClause";
-        $stmtStats = $pdo->prepare($sqlStats);
-        $stmtStats->execute($params);
-        $allStatusRows = $stmtStats->fetchAll();
 
-        $stats = ['total'=>0, 'normal'=>0, 'critical'=>0, 'warning'=>0, 'unknown'=>0, 'not_init'=>0];
-        foreach ($allStatusRows as $sRow) {
-            $stats['total']++;
-            $rawVal = strtoupper((string)$sRow['current_val']);
-            $v_estado = (int)$sRow['estado'];
+            try {
+                $stmt = $active_pdo->prepare($sql);
+                $stmt->execute($node_params);
+                $rows = $stmt->fetchAll();
+                
+                $node_label = '';
+                if ($node !== 'primary') {
+                    foreach ($custom_connections as $cc) {
+                        if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
+                    }
+                    if (empty($node_label)) $node_label = '[' . $node . '] ';
+                }
 
-            // Apply the SAME custom status logic used in the main loop to ensure stats consistency
-            if (preg_match('/^[01](\.0+)?$/', trim($rawVal))) {
-                $numCheck = (float)$rawVal;
-                $v_estado = ($numCheck >= 1) ? 0 : 1;
+                foreach ($rows as $row) {
+                    $row['node'] = $node;
+                    $row['node_label'] = $node_label;
+                    $all_rows[] = $row;
+                }
+            } catch (Throwable $e) {
+                error_log("Error fetching card data for node '{$node}': " . $e->getMessage());
             }
-
-            if ($lbl_ok !== '' && strpos($rawVal, $lbl_ok) !== false) $v_estado = 0;
-            elseif ($lbl_crit !== '' && strpos($rawVal, $lbl_crit) !== false) $v_estado = 1;
-            elseif ($lbl_warn !== '' && strpos($rawVal, $lbl_warn) !== false) $v_estado = 2;
-            elseif ($lbl_ok === '' && $lbl_crit === '' && $lbl_warn === '' && stripos($keyword, 'Host Alive') === false) {
-                if (strpos($rawVal, 'RUNNING') || strpos($rawVal, 'OK') || strpos($rawVal, 'UP')) $v_estado = 0;
-                elseif (strpos($rawVal, 'STOPPED') || strpos($rawVal, 'ABENDED') || strpos($rawVal, 'DOWN') || strpos($rawVal, 'CRIT')) $v_estado = 1;
-                elseif (strpos($rawVal, 'WARN')) $v_estado = 2;
-            }
-
-            if (stripos($keyword, 'Host Alive') !== false && $lbl_ok === '' && $lbl_crit === '') {
-                $v_estado = (((float)$sRow['current_val'] >= 1) ? 0 : 1);
-            }
-
-            if ($v_estado === 0) $stats['normal']++;
-            elseif ($v_estado === 1) $stats['critical']++;
-            elseif ($v_estado === 2) $stats['warning']++;
-            elseif ($v_estado === 4) $stats['not_init']++;
-            else $stats['unknown']++;
         }
 
-        // 2. Pagination Logic (unchanged for metadata)
-        $page = (int)($_GET['page'] ?? 1);
-        if ($page < 1) $page = 1;
-        $offset = ($page - 1) * $limit;
-        $limitSql = ($limit > 0) ? " LIMIT $limit OFFSET $offset" : "";
-
-        // 3. Fetch PAGINATED Detailed Data for Table
-        $sql = "SELECT a.id_agente, a.alias AS agent_alias, g.nombre AS group_name, a.direccion AS ip_address, 
-                       m.id_agente_modulo, m.nombre AS module_name, te.datos AS current_val, 
-                       COALESCE(te.estado, 4) as estado, te.utimestamp AS last_contact
-                FROM tagente a 
-                INNER JOIN tagente_modulo m ON a.id_agente = m.id_agente 
-                INNER JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo 
-                LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo 
-                WHERE m.nombre LIKE ? AND a.disabled = 0 AND m.disabled = 0 $whereClause 
-                ORDER BY te.utimestamp DESC, a.alias ASC $limitSql";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll();
-
-        $data = [];
-        $now = time();
-
-        foreach ($rows as $row) {
-            // Main loop remains for formatting table data only
+        // Apply status logic and construct formatted array
+        $formatted_data = [];
+        foreach ($all_rows as $row) {
             $rawVal = strtoupper((string)$row['current_val']);
             $v_estado = (int)$row['estado'];
-            
-            // Re-apply logic for display (must match stats logic above)
+
+            // Apply custom status logic
             if (preg_match('/^[01](\.0+)?$/', trim($rawVal))) {
                 $numCheck = (float)$rawVal;
-                if ($numCheck == 1 && $lbl_ok !== '') $rawVal = $lbl_ok;
-                elseif ($numCheck == 0 && $lbl_crit !== '') $rawVal = $lbl_crit;
-                elseif ($numCheck == 1) $rawVal = "UP";
-                elseif ($numCheck == 0) $rawVal = "DOWN";
                 $v_estado = ($numCheck >= 1) ? 0 : 1;
             }
 
@@ -201,76 +232,177 @@ if ($api === 'card_data' && $db_status) {
 
             if (stripos($keyword, 'Host Alive') !== false && $lbl_ok === '' && $lbl_crit === '') {
                 $v_estado = (((float)$row['current_val'] >= 1) ? 0 : 1);
-                $rawVal = ($v_estado === 0) ? "UP" : "DOWN";
+            }
+
+            // Increment stats
+            $stats['total']++;
+            if ($v_estado === 0) $stats['normal']++;
+            elseif ($v_estado === 1) $stats['critical']++;
+            elseif ($v_estado === 2) $stats['warning']++;
+            elseif ($v_estado === 4) $stats['not_init']++;
+            else $stats['unknown']++;
+
+            // For display formatting:
+            $dispVal = $rawVal;
+            if (preg_match('/^[01](\.0+)?$/', trim($dispVal))) {
+                $numCheck = (float)$dispVal;
+                if ($numCheck == 1 && $lbl_ok !== '') $dispVal = $lbl_ok;
+                elseif ($numCheck == 0 && $lbl_crit !== '') $dispVal = $lbl_crit;
+                elseif ($numCheck == 1) $dispVal = "UP";
+                elseif ($numCheck == 0) $dispVal = "DOWN";
+            }
+            if (stripos($keyword, 'Host Alive') !== false && $lbl_ok === '' && $lbl_crit === '') {
+                $dispVal = ($v_estado === 0) ? "UP" : "DOWN";
             }
 
             $ts = (int)$row['last_contact'];
             $time_ago = format_time_ago($ts);
 
-            $data[] = [
-                'agent_id'    => $row['id_agente'],
-                'agent_name'  => pretty_text($row['agent_alias']),
+            $formatted_data[] = [
+                'agent_id'    => $row['node'] . ':' . $row['id_agente'],
+                'agent_name'  => $row['node_label'] . pretty_text($row['agent_alias']),
                 'group_name'  => pretty_text($row['group_name']),
                 'ip_address'  => $row['ip_address'],
-                'module_id'   => $row['id_agente_modulo'],
+                'module_id'   => $row['node'] . ':' . $row['id_agente_modulo'],
                 'module_name' => pretty_text($row['module_name']),
-                'value'       => $rawVal,
+                'value'       => $dispVal,
                 'estado'      => $v_estado,
+                'utimestamp'  => $ts,
                 'time_ago'    => $time_ago
             ];
         }
-        echo json_encode(['ok' => true, 'stats' => $stats, 'data' => $data, 'total_found' => $totalFound, 'updated' => date('H:i:s')]);
+
+        // Apply Search Filtering on backend to ensure pagination is correct
+        $search = trim($_GET['search'] ?? '');
+        if ($search !== '') {
+            $searchLower = strtolower($search);
+            $formatted_data = array_filter($formatted_data, function($item) use ($searchLower) {
+                return (strpos(strtolower($item['agent_name']), $searchLower) !== false) ||
+                       (strpos(strtolower($item['module_name']), $searchLower) !== false) ||
+                       (strpos(strtolower($item['ip_address']), $searchLower) !== false) ||
+                       (strpos(strtolower($item['group_name']), $searchLower) !== false);
+            });
+        }
+
+        // Sort by timestamp DESC
+        usort($formatted_data, function($a, $b) {
+            return $b['utimestamp'] <=> $a['utimestamp'];
+        });
+
+        $totalFound = count($formatted_data);
+
+        // Pagination slice
+        $page = (int)($_GET['page'] ?? 1);
+        if ($page < 1) $page = 1;
+        $offset = ($page - 1) * $limit;
+        $paginated_data = ($limit > 0) ? array_slice($formatted_data, $offset, $limit) : $formatted_data;
+
+        echo json_encode([
+            'ok' => true, 
+            'stats' => $stats, 
+            'data' => array_values($paginated_data), 
+            'total_found' => $totalFound, 
+            'updated' => date('H:i:s')
+        ]);
     } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
     exit;
 }
 
 if ($api === 'status_details' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
-    $groupId = (int)($_GET['group_id'] ?? 0);
+    $groupIdRaw = $_GET['group_id'] ?? '0';
     $keyword = $_GET['keyword'] ?? 'Host Alive';
-    $manual_ids = preg_replace('/[^0-9,]/', '', $_GET['manual_ids'] ?? '');
+    $manual_ids = $_GET['manual_ids'] ?? '';
     $statusFilter = $_GET['status_filter'] ?? 'all';
 
     $lbl_ok = strtoupper($_GET['lbl_ok'] ?? '');
     $lbl_warn = strtoupper($_GET['lbl_warn'] ?? '');
     $lbl_crit = strtoupper($_GET['lbl_crit'] ?? '');
 
-    try {
-        $params = ['%' . str_replace(' ', '%', $keyword) . '%']; $whereClause = "";
-        if (!empty($manual_ids) && $groupId == 0) {
-            $ids_array = array_filter(explode(',', $manual_ids));
-            if (!empty($ids_array)) {
-                $whereClause = "AND a.id_agente IN (" . implode(',', array_fill(0, count($ids_array), '?')) . ")";
-                foreach ($ids_array as $id) { $params[] = (int)$id; } 
+    $groupParsed = parse_node_id($groupIdRaw);
+    $manualIdsParsed = parse_node_ids($manual_ids);
+
+    global $custom_pdos, $custom_connections;
+    $target_nodes = [];
+    if ($groupParsed['id'] > 0) {
+        $target_nodes[$groupParsed['node']] = [
+            'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
+            'group_id' => $groupParsed['id'],
+            'agent_ids' => []
+        ];
+    } elseif (!empty($manualIdsParsed)) {
+        foreach ($manualIdsParsed as $node => $aids) {
+            $target_nodes[$node] = [
+                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
+                'group_id' => 0,
+                'agent_ids' => $aids
+            ];
+        }
+    } else {
+        $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0, 'agent_ids' => []];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = ['pdo' => $cpdo, 'group_id' => 0, 'agent_ids' => []];
             }
-        } elseif ($groupId > 0) {
-            $targetGroups = get_all_child_groups($pdo, $groupId);
-            $whereClause = "AND a.id_grupo IN (" . implode(',', array_fill(0, count($targetGroups), '?')) . ")";
-            foreach ($targetGroups as $tg) { $params[] = $tg; }
+        }
+    }
+
+    try {
+        $all_rows = [];
+        foreach ($target_nodes as $node => $info) {
+            $active_pdo = $info['pdo'];
+            if ($active_pdo === null) continue;
+
+            $node_params = ['%' . str_replace(' ', '%', $keyword) . '%'];
+            $whereClause = "";
+            if (!empty($info['agent_ids'])) {
+                $whereClause = "AND a.id_agente IN (" . implode(',', array_fill(0, count($info['agent_ids']), '?')) . ")";
+                foreach ($info['agent_ids'] as $id) { $node_params[] = (int)$id; } 
+            } elseif ($info['group_id'] > 0) {
+                $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
+                $whereClause = "AND a.id_grupo IN (" . implode(',', array_fill(0, count($targetGroups), '?')) . ")";
+                foreach ($targetGroups as $tg) { $node_params[] = $tg; }
+            }
+
+            $sql = "SELECT a.id_agente, a.alias AS agent_alias, g.nombre AS group_name, a.direccion AS ip_address, 
+                           m.id_agente_modulo, m.nombre AS module_name, te.datos AS current_val, 
+                           COALESCE(te.estado, 4) as estado, te.utimestamp AS last_contact
+                    FROM tagente a 
+                    INNER JOIN tagente_modulo m ON a.id_agente = m.id_agente 
+                    INNER JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo 
+                    LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo 
+                    WHERE m.nombre LIKE ? AND a.disabled = 0 AND m.disabled = 0 $whereClause";
+
+            try {
+                $stmt = $active_pdo->prepare($sql);
+                $stmt->execute($node_params);
+                $rows = $stmt->fetchAll();
+                
+                $node_label = '';
+                if ($node !== 'primary') {
+                    foreach ($custom_connections as $cc) {
+                        if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
+                    }
+                    if (empty($node_label)) $node_label = '[' . $node . '] ';
+                }
+
+                foreach ($rows as $row) {
+                    $row['node'] = $node;
+                    $row['node_label'] = $node_label;
+                    $all_rows[] = $row;
+                }
+            } catch (Throwable $e) {
+                error_log("Error fetching status details for node '{$node}': " . $e->getMessage());
+            }
         }
 
-        $sql = "SELECT a.id_agente, a.alias AS agent_alias, g.nombre AS group_name, a.direccion AS ip_address, 
-                       m.id_agente_modulo, m.nombre AS module_name, te.datos AS current_val, 
-                       COALESCE(te.estado, 4) as estado, te.utimestamp AS last_contact
-                FROM tagente a 
-                INNER JOIN tagente_modulo m ON a.id_agente = m.id_agente 
-                INNER JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo 
-                LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo 
-                WHERE m.nombre LIKE ? AND a.disabled = 0 AND m.disabled = 0 $whereClause 
-                ORDER BY te.utimestamp DESC, a.alias ASC";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll();
-
         $data = [];
-        foreach ($rows as $row) {
+        foreach ($all_rows as $row) {
             $rawVal = strtoupper((string)$row['current_val']);
             $v_estado = (int)$row['estado'];
             if (preg_match('/^[01](\.0+)?$/', trim($rawVal))) {
                 $numCheck = (float)$rawVal;
                 $v_estado = ($numCheck >= 1) ? 0 : 1;
-                $rawVal = ($v_estado === 0) ? "UP" : "DOWN";
             }
             if ($lbl_ok !== '' && strpos($rawVal, $lbl_ok) !== false) $v_estado = 0;
             elseif ($lbl_crit !== '' && strpos($rawVal, $lbl_crit) !== false) $v_estado = 1;
@@ -293,29 +425,48 @@ if ($api === 'status_details' && $db_status) {
                 if ($statusFilter === 'unknown' && in_array($v_estado, [0,1,2,4])) continue;
             }
 
+            // For display formatting:
+            $dispVal = $rawVal;
+            if (preg_match('/^[01](\.0+)?$/', trim($dispVal))) {
+                $numCheck = (float)$dispVal;
+                if ($numCheck == 1 && $lbl_ok !== '') $dispVal = $lbl_ok;
+                elseif ($numCheck == 0 && $lbl_crit !== '') $dispVal = $lbl_crit;
+                elseif ($numCheck == 1) $dispVal = "UP";
+                elseif ($numCheck == 0) $dispVal = "DOWN";
+            }
+            if (stripos($keyword, 'Host Alive') !== false && $lbl_ok === '' && $lbl_crit === '') {
+                $dispVal = ($v_estado === 0) ? "UP" : "DOWN";
+            }
+
             $data[] = [
-                'agent_id'    => $row['id_agente'],
-                'agent_name'  => pretty_text($row['agent_alias']),
+                'agent_id'    => $row['node'] . ':' . $row['id_agente'],
+                'agent_name'  => $row['node_label'] . pretty_text($row['agent_alias']),
                 'group_name'  => pretty_text($row['group_name']),
                 'ip_address'  => $row['ip_address'],
                 'module_name' => pretty_text($row['module_name']),
-                'value'       => $rawVal,
+                'value'       => $dispVal,
                 'estado'      => $v_estado,
+                'utimestamp'  => (int)$row['last_contact'],
                 'time_ago'    => format_time_ago((int)$row['last_contact'])
             ];
         }
-        echo json_encode(['ok' => true, 'data' => $data]);
+
+        // Sort by timestamp DESC
+        usort($data, function($a, $b) {
+            return $b['utimestamp'] <=> $a['utimestamp'];
+        });
+
+        echo json_encode(['ok' => true, 'data' => array_values($data)]);
     } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }
     exit;
 }
 
 if ($api === 'export_data' && $db_status) {
     ob_clean();
-    $agentIds  = explode(',', $_GET['agent_ids']);
-    $keyword   = $_GET['keyword'] ?: 'Host Alive';
     $startTs   = (int)$_GET['start'];
     $endTs     = (int)$_GET['end'];
     $format    = $_GET['format'] ?? 'csv';
+    $keyword   = $_GET['keyword'] ?: 'Host Alive';
     
     $lbl_ok = strtoupper($_GET['lbl_ok'] ?? '');
     $lbl_warn = strtoupper($_GET['lbl_warn'] ?? '');
@@ -323,48 +474,47 @@ if ($api === 'export_data' && $db_status) {
     $isHostAlive = (stripos($keyword, 'Host Alive') !== false);
 
     try {
+        $ids_by_node = parse_node_ids($_GET['agent_ids'] ?? '');
         $finalData = [];
-        $agIds_placeholders = implode(',', array_fill(0, count($agentIds), '?'));
-        
-        // Single Query to get all relevant modules for these agents (Batch)
-        $sqlMod = "SELECT m.id_agente_modulo, a.alias, a.direccion, g.nombre as gname, e.datos as cur_val, e.utimestamp as cur_ts, m.nombre as mname
-                   FROM tagente_modulo m
-                   INNER JOIN tagente a ON m.id_agente = a.id_agente
-                   INNER JOIN tgrupo g ON a.id_grupo = g.id_grupo
-                   INNER JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
-                   WHERE m.id_agente IN ($agIds_placeholders) AND m.nombre LIKE ?";
-        
-        $stMod = $pdo->prepare($sqlMod);
-        $paramsMod = array_merge($agentIds, ["%$keyword%"]);
-        $stMod->execute($paramsMod);
-        $modules = $stMod->fetchAll();
 
-        foreach($modules as $mod) {
-            // Optimized: We check if there's history, if not, use current state
-            $query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? 
-                      UNION ALL SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? 
-                      UNION ALL SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? 
-                      ORDER BY ts ASC";
-            $stData = $pdo->prepare($query);
-            $stData->execute([$mod['id_agente_modulo'], $startTs, $endTs, $mod['id_agente_modulo'], $startTs, $endTs, $mod['id_agente_modulo'], $startTs, $endTs]);
-            $rows = $stData->fetchAll();
+        global $custom_pdos, $custom_connections;
+        foreach ($ids_by_node as $node => $aids) {
+            $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+            if ($active_pdo === null) continue;
 
-            if (empty($rows)) {
-                $statusStr = strtoupper((string)$mod['cur_val']);
-                // Use unified status logic
-                if (preg_match('/^[01](\.0+)?$/', trim($statusStr))) {
-                    $numCheck = (float)$statusStr;
-                    if ($numCheck == 1 && $lbl_ok !== '') $statusStr = $lbl_ok;
-                    elseif ($numCheck == 0 && $lbl_crit !== '') $statusStr = $lbl_crit;
-                    elseif ($numCheck == 1) $statusStr = "UP";
-                    elseif ($numCheck == 0) $statusStr = "DOWN";
+            $node_label = '';
+            if ($node !== 'primary') {
+                foreach ($custom_connections as $cc) {
+                    if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
                 }
-                if ($isHostAlive && $lbl_ok === '' && $lbl_crit === '') $statusStr = (((float)$mod['cur_val'] >= 1) ? "UP" : "CRITICAL");
-                
-                $finalData[] = ['ts'=>date('Y-m-d H:i:s', $mod['cur_ts']), 'agent'=>$mod['alias'], 'group'=>$mod['gname'], 'ip'=>$mod['direccion'] ?: '-', 'module'=>$mod['mname'], 'status'=>$statusStr];
-            } else {
-                foreach($rows as $r) {
-                    $statusStr = strtoupper((string)$r['datos']);
+                if (empty($node_label)) $node_label = '[' . $node . '] ';
+            }
+
+            $agIds_placeholders = implode(',', array_fill(0, count($aids), '?'));
+            $sqlMod = "SELECT m.id_agente_modulo, a.alias, a.direccion, g.nombre as gname, e.datos as cur_val, e.utimestamp as cur_ts, m.nombre as mname
+                       FROM tagente_modulo m
+                       INNER JOIN tagente a ON m.id_agente = a.id_agente
+                       INNER JOIN tgrupo g ON a.id_grupo = g.id_grupo
+                       INNER JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
+                       WHERE m.id_agente IN ($agIds_placeholders) AND m.nombre LIKE ?";
+            
+            $stMod = $active_pdo->prepare($sqlMod);
+            $paramsMod = array_merge($aids, ["%$keyword%"]);
+            $stMod->execute($paramsMod);
+            $modules = $stMod->fetchAll();
+
+            foreach ($modules as $mod) {
+                // Fetch history from tagente_datos, tagente_datos_string, tagente_datos_inc
+                $query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? 
+                          UNION ALL SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? 
+                          UNION ALL SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? 
+                          ORDER BY ts ASC";
+                $stData = $active_pdo->prepare($query);
+                $stData->execute([$mod['id_agente_modulo'], $startTs, $endTs, $mod['id_agente_modulo'], $startTs, $endTs, $mod['id_agente_modulo'], $startTs, $endTs]);
+                $rows = $stData->fetchAll();
+
+                if (empty($rows)) {
+                    $statusStr = strtoupper((string)$mod['cur_val']);
                     if (preg_match('/^[01](\.0+)?$/', trim($statusStr))) {
                         $numCheck = (float)$statusStr;
                         if ($numCheck == 1 && $lbl_ok !== '') $statusStr = $lbl_ok;
@@ -372,9 +522,37 @@ if ($api === 'export_data' && $db_status) {
                         elseif ($numCheck == 1) $statusStr = "UP";
                         elseif ($numCheck == 0) $statusStr = "DOWN";
                     }
-                    if ($isHostAlive && $lbl_ok === '' && $lbl_crit === '') $statusStr = (((float)$r['datos'] >= 1) ? "UP" : "CRITICAL");
+                    if ($isHostAlive && $lbl_ok === '' && $lbl_crit === '') $statusStr = (((float)$mod['cur_val'] >= 1) ? "UP" : "CRITICAL");
                     
-                    $finalData[] = ['ts'=>date('Y-m-d H:i:s', $r['ts']), 'agent'=>$mod['alias'], 'group'=>$mod['gname'], 'ip'=>$mod['direccion'] ?: '-', 'module'=>$mod['mname'], 'status'=>$statusStr];
+                    $finalData[] = [
+                        'ts' => date('Y-m-d H:i:s', $mod['cur_ts']),
+                        'agent' => $node_label . pretty_text($mod['alias']),
+                        'group' => pretty_text($mod['gname']),
+                        'ip' => $mod['direccion'] ?: '-',
+                        'module' => pretty_text($mod['mname']),
+                        'status' => $statusStr
+                    ];
+                } else {
+                    foreach ($rows as $r) {
+                        $statusStr = strtoupper((string)$r['datos']);
+                        if (preg_match('/^[01](\.0+)?$/', trim($statusStr))) {
+                            $numCheck = (float)$statusStr;
+                            if ($numCheck == 1 && $lbl_ok !== '') $statusStr = $lbl_ok;
+                            elseif ($numCheck == 0 && $lbl_crit !== '') $statusStr = $lbl_crit;
+                            elseif ($numCheck == 1) $statusStr = "UP";
+                            elseif ($numCheck == 0) $statusStr = "DOWN";
+                        }
+                        if ($isHostAlive && $lbl_ok === '' && $lbl_crit === '') $statusStr = (((float)$r['datos'] >= 1) ? "UP" : "CRITICAL");
+                        
+                        $finalData[] = [
+                            'ts' => date('Y-m-d H:i:s', $r['ts']),
+                            'agent' => $node_label . pretty_text($mod['alias']),
+                            'group' => pretty_text($mod['gname']),
+                            'ip' => $mod['direccion'] ?: '-',
+                            'module' => pretty_text($mod['mname']),
+                            'status' => $statusStr
+                        ];
+                    }
                 }
             }
         }
@@ -722,7 +900,7 @@ function filterAgentsInList() {
     document.querySelectorAll('.agent-item').forEach(item => { item.style.display = item.dataset.name.includes(kw) ? 'flex' : 'none'; });
 }
 function handleAgentCheck(chk) {
-    const val = parseInt(chk.value);
+    const val = chk.value;
     if (chk.checked) { if (!selectedIds.includes(val)) selectedIds.push(val); } else { selectedIds = selectedIds.filter(id => id !== val); }
     document.getElementById('sel_count').innerText = `${selectedIds.length} Selected`;
 }
@@ -736,7 +914,7 @@ function toggleBuilderAgentAll() {
 
     visibleChks.forEach(c => {
         c.checked = !allChecked;
-        const val = parseInt(c.value);
+        const val = c.value;
         if (c.checked) { if (!selectedIds.includes(val)) selectedIds.push(val); } else { selectedIds = selectedIds.filter(id => id !== val); }
     });
 
@@ -883,7 +1061,15 @@ function renderTablePage(cardId) {
             const sObj = getStatusObj(r.estado);
             let bgColor = sObj.color;
             let heatLbl = r.value.length > 8 ? r.value.substring(0, 8) : r.value;
-            h += `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${r.agent_id}" target="_blank" class="heat-box ${bgColor}" title="Agent: ${r.agent_name}\nModule: ${r.module_name}\nStatus: ${r.value}\nUpdate: ${r.time_ago}">${heatLbl}</a>`;
+            const isPrimary = String(r.agent_id).startsWith('primary:');
+            let heatBoxHtml = '';
+            if (isPrimary) {
+                const rawAgentId = String(r.agent_id).split(':')[1] || r.agent_id;
+                heatBoxHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="heat-box ${bgColor}" title="Agent: ${r.agent_name}\nModule: ${r.module_name}\nStatus: ${r.value}\nUpdate: ${r.time_ago}">${heatLbl}</a>`;
+            } else {
+                heatBoxHtml = `<span class="heat-box ${bgColor}" title="Agent: ${r.agent_name} (Custom Node)\nModule: ${r.module_name}\nStatus: ${r.value}\nUpdate: ${r.time_ago}">${heatLbl}</span>`;
+            }
+            h += heatBoxHtml;
         });
         h += '</div>';
     } 
@@ -892,8 +1078,16 @@ function renderTablePage(cardId) {
         data.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let bgColor = sObj.color;
+            const isPrimary = String(r.agent_id).startsWith('primary:');
+            let agentLinkHtml = '';
+            if (isPrimary) {
+                const rawAgentId = String(r.agent_id).split(':')[1] || r.agent_id;
+                agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link">${r.agent_name}</a>`;
+            } else {
+                agentLinkHtml = `<span class="agent-link-text" style="font-weight:600; color:#334155;">${r.agent_name}</span>`;
+            }
             h += `<tr>
-                    <td><div class="node-wrap"><div class="dot ${bgColor}"></div><a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${r.agent_id}" target="_blank" class="agent-link">${r.agent_name}</a></div></td>
+                    <td><div class="node-wrap"><div class="dot ${bgColor}"></div>${agentLinkHtml}</div></td>
                     <td><code class="ip-text">${r.ip_address||'-'}</code></td>
                     <td style="color:#7f8c8d">${r.group_name}</td>
                     <td style="color:#0b1a26; font-weight: normal;">${r.module_name}</td>
@@ -990,8 +1184,16 @@ function renderDetailModalPage() {
         pageData.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let bgColor = sObj.color;
+            const isPrimary = String(r.agent_id).startsWith('primary:');
+            let agentLinkHtml = '';
+            if (isPrimary) {
+                const rawAgentId = String(r.agent_id).split(':')[1] || r.agent_id;
+                agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link">${r.agent_name}</a>`;
+            } else {
+                agentLinkHtml = `<span class="agent-link-text" style="font-weight:600; color:#334155;">${r.agent_name}</span>`;
+            }
             h += `<tr>
-                    <td><div class="node-wrap"><div class="dot ${bgColor}"></div><a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${r.agent_id}" target="_blank" class="agent-link">${r.agent_name}</a></div></td>
+                    <td><div class="node-wrap"><div class="dot ${bgColor}"></div>${agentLinkHtml}</div></td>
                     <td><code class="ip-text">${r.ip_address||'-'}</code></td>
                     <td style="color:#7f8c8d">${r.group_name}</td>
                     <td style="color:#0b1a26; font-weight: normal;">${r.module_name}</td>
@@ -1076,7 +1278,7 @@ function processExport() {
 function closeExport() { document.getElementById('exportModal').style.display = 'none'; }
 
 function openBuilder() { editingCardId=null; document.getElementById('b_title').value=''; document.getElementById('b_keyword').value='Host Alive'; document.getElementById('b_lbl_ok').value=''; document.getElementById('b_lbl_warn').value=''; document.getElementById('b_lbl_crit').value=''; document.getElementById('b_group').value='0'; document.querySelectorAll('#agent_checkbox_list input').forEach(c => c.checked = false); document.getElementById('sel_count').innerText = "0 Selected"; toggleManualSelector(); document.getElementById('builderModal').style.display='flex'; }
-function openEdit(id) { editingCardId=id; const c = dashboardCards.find(x=>x.id===id); document.getElementById('builderTitle').innerText='Edit Widget'; ['title','view_type','group','keyword','limit','refresh'].forEach(k => document.getElementById('b_'+k).value = c[k==='group'?'group_id':(k==='refresh'?'refresh_sec':k)]); document.getElementById('b_lbl_ok').value = c.lbl_ok || ''; document.getElementById('b_lbl_warn').value = c.lbl_warn || ''; document.getElementById('b_lbl_crit').value = c.lbl_crit || ''; selectedIds = c.manual_ids ? String(c.manual_ids).split(',').map(Number) : []; document.querySelectorAll('#agent_checkbox_list input').forEach(chk => { chk.checked = selectedIds.includes(parseInt(chk.value)); }); document.getElementById('sel_count').innerText = selectedIds.length + " Selected"; toggleManualSelector(); document.getElementById('builderModal').style.display='flex'; }
+function openEdit(id) { editingCardId=id; const c = dashboardCards.find(x=>x.id===id); document.getElementById('builderTitle').innerText='Edit Widget'; ['title','view_type','group','keyword','limit','refresh'].forEach(k => document.getElementById('b_'+k).value = c[k==='group'?'group_id':(k==='refresh'?'refresh_sec':k)]); document.getElementById('b_lbl_ok').value = c.lbl_ok || ''; document.getElementById('b_lbl_warn').value = c.lbl_warn || ''; document.getElementById('b_lbl_crit').value = c.lbl_crit || ''; selectedIds = c.manual_ids ? String(c.manual_ids).split(',') : []; document.querySelectorAll('#agent_checkbox_list input').forEach(chk => { chk.checked = selectedIds.includes(chk.value); }); document.getElementById('sel_count').innerText = selectedIds.length + " Selected"; toggleManualSelector(); document.getElementById('builderModal').style.display='flex'; }
 function closeBuilder() { document.getElementById('builderModal').style.display='none'; }
 
 function saveWidget() {

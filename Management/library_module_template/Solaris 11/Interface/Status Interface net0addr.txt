@@ -1,0 +1,8 @@
+# Group: Solaris 11
+# Sub Group: Interface
+module_begin
+module_name Status Interface net0/addr
+module_type async_data
+module_exec ipadm | nawk '$1=="net0/addr" {if($3=="ok") print 1; else print 0}'
+module_min_critical 0
+module_end

@@ -1,0 +1,7 @@
+# Group: Linux
+# Sub Group: Memory
+module_begin
+module_name Free Memory (GB)
+module_type async_data
+module_exec free -b | awk '/^Mem:/ {printf "%.2f", $4/1073741824}'
+module_end

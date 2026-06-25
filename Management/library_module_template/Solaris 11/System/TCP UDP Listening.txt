@@ -1,0 +1,8 @@
+# Group: Solaris 11
+# Sub Group: System
+module_begin
+module_name TCP UDP Listening
+module_type generic_data_string
+module_description Monitoring listening TCP and UDP protocols
+module_exec netstat -anu
+module_end

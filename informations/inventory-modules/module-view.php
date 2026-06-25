@@ -38,36 +38,69 @@ $statusText   = isset($_GET['status'])        ? trim($_GET['status'])        : '
 $moduleName   = isset($_GET['module_name'])   ? trim($_GET['module_name'])   : '';
 $moduleGroup  = isset($_GET['module_group'])  ? trim($_GET['module_group'])  : '';
 
-// 4. BUILD WHERE & PARAMS
-$where  = ["ta.disabled = 0", "tam.disabled = 0"];
-$params = [];
-if ($agentId !== '') { $where[] = "ta.id_agente = :agent_id"; $params[':agent_id'] = $agentId; }
-if ($agentAlias !== '') { $where[] = "ta.alias LIKE :agent_alias"; $params[':agent_alias'] = "%$agentAlias%"; }
-if ($agentName !== '') { $where[] = "ta.nombre LIKE :agent_name"; $params[':agent_name'] = "%$agentName%"; }
-if ($statusText !== '') {
-    $where[] = "CASE tae.estado WHEN 0 THEN 'OK' WHEN 1 THEN 'WARNING' WHEN 2 THEN 'CRITICAL' WHEN 3 THEN 'UNKNOWN' ELSE 'NOT_INIT' END = :status_text";
-    $params[':status_text'] = $statusText;
+$agentParsed = parse_node_id($agentId);
+
+// 4. PREPARE NODE CONNECTIONS
+global $custom_pdos, $custom_connections;
+$target_nodes = [];
+if ($agentId !== '') {
+    $target_nodes[$agentParsed['node']] = ($agentParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$agentParsed['node']] ?? null);
+} else {
+    $target_nodes['primary'] = $pdo;
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $target_nodes[$cid] = $cpdo;
+        }
+    }
 }
-if ($moduleName !== '') { $where[] = "tam.nombre LIKE :module_name"; $params[':module_name'] = "%$moduleName%"; }
-if ($moduleGroup !== '') {
-    $where[] = "(tmg.name LIKE :module_group OR tmg.name LIKE :module_group_enc)";
-    $params[':module_group'] = "%$moduleGroup%";
-    $params[':module_group_enc'] = '%' . htmlentities($moduleGroup, ENT_QUOTES, 'UTF-8') . '%';
-}
-$whereSql = implode(" AND ", $where);
 
 // 5. DATABASE QUERY
 $modulesData = [];
-$is_filtered = (count($params) > 0);
-$limit_sql = $is_filtered ? "" : "LIMIT 500"; 
-try {
-    if (!$db_status) throw new Exception($db_error);
-    $sql = "SELECT tam.id_agente_modulo AS module_id, tam.nombre AS module_name, ta.id_agente AS agent_id, ta.nombre AS agent_name, ta.alias AS agent_alias, tg.nombre AS agent_group, tmg.name AS module_group, tam.unit AS module_unit, tae.estado AS status_code, CASE tae.estado WHEN 0 THEN 'OK' WHEN 1 THEN 'WARNING' WHEN 2 THEN 'CRITICAL' WHEN 3 THEN 'UNKNOWN' ELSE 'NOT_INIT' END AS status_text, tae.datos AS last_data, FROM_UNIXTIME(tae.utimestamp) AS last_execution, CONCAT(IFNULL(CONCAT(tam.min_warning, '/', tam.max_warning), 'N/A'), ' - ', IFNULL(CONCAT(tam.min_critical, '/', tam.max_critical), 'N/A')) AS thresholds FROM tagente_modulo AS tam JOIN tagente AS ta ON ta.id_agente = tam.id_agente LEFT JOIN tgrupo AS tg ON tg.id_grupo = ta.id_grupo LEFT JOIN tagente_estado AS tae ON tae.id_agente_modulo = tam.id_agente_modulo LEFT JOIN tmodule_group AS tmg ON tmg.id_mg = tam.id_module_group WHERE $whereSql ORDER BY ta.alias ASC, tam.nombre ASC $limit_sql";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $modulesData = $stmt->fetchAll();
-} catch(Exception $e) {
-    die("<div style='font-family:Inter, sans-serif; padding:20px; text-align:center; color:#e74c3c;'><b>FATAL ERROR:</b> " . htmlspecialchars($e->getMessage()) . "</div>");
+$is_filtered = ($agentId !== '' || $agentAlias !== '' || $agentName !== '' || $statusText !== '' || $moduleName !== '' || $moduleGroup !== '');
+
+foreach ($target_nodes as $node => $active_pdo) {
+    if ($active_pdo === null) continue;
+
+    $node_label = '';
+    if ($node !== 'primary') {
+        foreach ($custom_connections as $cc) {
+            if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
+        }
+        if (empty($node_label)) $node_label = '[' . $node . '] ';
+    }
+
+    $where  = ["ta.disabled = 0", "tam.disabled = 0"];
+    $params = [];
+    if ($agentId !== '') { $where[] = "ta.id_agente = :agent_id"; $params[':agent_id'] = $agentParsed['id']; }
+    if ($agentAlias !== '') { $where[] = "ta.alias LIKE :agent_alias"; $params[':agent_alias'] = "%$agentAlias%"; }
+    if ($agentName !== '') { $where[] = "ta.nombre LIKE :agent_name"; $params[':agent_name'] = "%$agentName%"; }
+    if ($statusText !== '') {
+        $where[] = "CASE tae.estado WHEN 0 THEN 'OK' WHEN 1 THEN 'WARNING' WHEN 2 THEN 'CRITICAL' WHEN 3 THEN 'UNKNOWN' ELSE 'NOT_INIT' END = :status_text";
+        $params[':status_text'] = $statusText;
+    }
+    if ($moduleName !== '') { $where[] = "tam.nombre LIKE :module_name"; $params[':module_name'] = "%$moduleName%"; }
+    if ($moduleGroup !== '') {
+        $where[] = "(tmg.name LIKE :module_group OR tmg.name LIKE :module_group_enc)";
+        $params[':module_group'] = "%$moduleGroup%";
+        $params[':module_group_enc'] = '%' . htmlentities($moduleGroup, ENT_QUOTES, 'UTF-8') . '%';
+    }
+    $whereSql = implode(" AND ", $where);
+    $limit_sql = $is_filtered ? "" : "LIMIT 500";
+
+    try {
+        $sql = "SELECT tam.id_agente_modulo AS module_id, tam.nombre AS module_name, ta.id_agente AS agent_id, ta.nombre AS agent_name, ta.alias AS agent_alias, tg.nombre AS agent_group, tmg.name AS module_group, tam.unit AS module_unit, tae.estado AS status_code, CASE tae.estado WHEN 0 THEN 'OK' WHEN 1 THEN 'WARNING' WHEN 2 THEN 'CRITICAL' WHEN 3 THEN 'UNKNOWN' ELSE 'NOT_INIT' END AS status_text, tae.datos AS last_data, FROM_UNIXTIME(tae.utimestamp) AS last_execution, CONCAT(IFNULL(CONCAT(tam.min_warning, '/', tam.max_warning), 'N/A'), ' - ', IFNULL(CONCAT(tam.min_critical, '/', tam.max_critical), 'N/A')) AS thresholds FROM tagente_modulo AS tam JOIN tagente AS ta ON ta.id_agente = tam.id_agente LEFT JOIN tgrupo AS tg ON tg.id_grupo = ta.id_grupo LEFT JOIN tagente_estado AS tae ON tae.id_agente_modulo = tam.id_agente_modulo LEFT JOIN tmodule_group AS tmg ON tmg.id_mg = tam.id_module_group WHERE $whereSql ORDER BY ta.alias ASC, tam.nombre ASC $limit_sql";
+        $stmt = $active_pdo->prepare($sql);
+        $stmt->execute($params);
+        $res = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($res as $row) {
+            $row['agent_id'] = $node . ':' . $row['agent_id'];
+            $row['module_id'] = $node . ':' . $row['module_id'];
+            $row['agent_alias'] = $node_label . pretty_text($row['agent_alias']);
+            $modulesData[] = $row;
+        }
+    } catch(Exception $e) {
+        error_log("Failed to query node '{$node}': " . $e->getMessage());
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -142,7 +175,13 @@ try {
             </div>
         </div>
     </form>
-    <div class="dashboard-card"><div class="dashboard-card-body"><table id="moduleTable" class="table-pfms"><thead><tr><th>ID</th><th>Agent Name / Alias</th><th>Module Name</th><th>Module Group</th><th class="text-center">Status</th><th>Last Data</th><th>Thresholds (W/C)</th><th>Last Execution</th><th>Agent Group</th></tr></thead><tbody><?php foreach ($modulesData as $row): $st = strtoupper($row['status_text']); $stClass = match($st) { 'OK' => 'status-ok', 'WARNING' => 'status-warning', 'CRITICAL' => 'status-critical', default => 'status-unknown' }; $alias = pretty_text($row['agent_alias']); $mname = pretty_text($row['module_name']); $ldata = pretty_text($row['last_data']); ?><tr><td class="text-soft"><?= $row['module_id'] ?></td><td><a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=<?= $row['agent_id'] ?>" target="_blank" class="agent-link"><?= h($alias) ?></a><br><span class="text-soft" style="font-size:10px;"><?= h($row['agent_name']) ?></span></td><td><span style="font-weight: 500; color: #1e293b;"><?= h($mname) ?></span></td><td><span class="text-soft"><?= h(pretty_text($row['module_group'] ?: 'General')) ?></span></td><td class="text-center"><span class="status-pill <?= $stClass ?>"><?= $row['status_text'] ?></span></td><td><span style="font-weight: 500; color: #0b1a26;"><?= h($ldata) ?></span> <span class="text-soft"><?= h($row['module_unit']) ?></span></td><td class="text-soft"><?= h($row['thresholds']) ?></td><td class="text-soft"><?= h($row['last_execution']) ?></td><td class="text-soft" style="font-size: 12px;"><?= h(pretty_text($row['agent_group'])) ?></td></tr><?php endforeach; ?></tbody></table></div></div>
+    <div class="dashboard-card"><div class="dashboard-card-body"><table id="moduleTable" class="table-pfms"><thead><tr><th>ID</th><th>Agent Name / Alias</th><th>Module Name</th><th>Module Group</th><th class="text-center">Status</th><th>Last Data</th><th>Thresholds (W/C)</th><th>Last Execution</th><th>Agent Group</th></tr></thead><tbody><?php foreach ($modulesData as $row): $st = strtoupper($row['status_text']); $st_map = array('OK' => 'status-ok', 'WARNING' => 'status-warning', 'CRITICAL' => 'status-critical'); $stClass = isset($st_map[$st]) ? $st_map[$st] : 'status-unknown'; $alias = pretty_text($row['agent_alias']); $mname = pretty_text($row['module_name']); $ldata = pretty_text($row['last_data']); ?><tr><td class="text-soft"><?= $row['module_id'] ?></td><td><?php 
+$parsed = parse_node_id($row['agent_id']);
+if ($parsed['node'] === 'primary'): ?>
+    <a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=<?= $parsed['id'] ?>" target="_blank" class="agent-link"><?= h($alias) ?></a>
+<?php else: ?>
+    <span class="agent-link-text" style="font-weight:600; color:#334155;"><?= h($alias) ?></span>
+<?php endif; ?><br><span class="text-soft" style="font-size:10px;"><?= h($row['agent_name']) ?></span></td><td><span style="font-weight: 500; color: #1e293b;"><?= h($mname) ?></span></td><td><span class="text-soft"><?= h(pretty_text($row['module_group'] ?: 'General')) ?></span></td><td class="text-center"><span class="status-pill <?= $stClass ?>"><?= $row['status_text'] ?></span></td><td><span style="font-weight: 500; color: #0b1a26;"><?= h($ldata) ?></span> <span class="text-soft"><?= h($row['module_unit']) ?></span></td><td class="text-soft"><?= h($row['thresholds']) ?></td><td class="text-soft"><?= h($row['last_execution']) ?></td><td class="text-soft" style="font-size: 12px;"><?= h(pretty_text($row['agent_group'])) ?></td></tr><?php endforeach; ?></tbody></table></div></div>
 </div>
 <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/jquery/jquery-3.7.0.min.js"></script>
 <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/datatables/jquery.dataTables.min.js"></script>

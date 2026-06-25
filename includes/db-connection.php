@@ -12,7 +12,26 @@ header("Referrer-Policy: strict-origin-when-cross-origin");
 
 $DEFAULT_TZ = "Asia/Jakarta";
 date_default_timezone_set($DEFAULT_TZ);
-error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Polyfills for PHP 8.0 string functions (for PHP 7.x compatibility)
+if (!function_exists('str_starts_with')) {
+    function str_starts_with($haystack, $needle) {
+        return (string)$needle !== '' && strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+if (!function_exists('str_ends_with')) {
+    function str_ends_with($haystack, $needle) {
+        return $needle !== '' && substr($haystack, -strlen($needle)) === (string)$needle;
+    }
+}
+if (!function_exists('str_contains')) {
+    function str_contains($haystack, $needle) {
+        return $needle !== '' && strpos($haystack, $needle) !== false;
+    }
+}
 
 // 1. DYNAMIC BREADCRUMB LOGIC
 $raw_path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
@@ -225,9 +244,10 @@ if (file_exists($portal_config_path)) {
                     ]);
                     $custom_pdos[$conn['id']] = $c_pdo;
                     $custom_db_statuses[$conn['id']] = true;
-                } catch (PDOException $e) {
+                } catch (Throwable $e) {
                     $custom_db_statuses[$conn['id']] = false;
-                    error_log("Custom DB Connection '{$conn['name']}' failed: " . $e->getMessage());
+                    $conn_name = !empty($conn['name']) ? $conn['name'] : $conn['id'];
+                    error_log("Custom DB Connection '{$conn_name}' failed: " . $e->getMessage());
                 }
             }
         }

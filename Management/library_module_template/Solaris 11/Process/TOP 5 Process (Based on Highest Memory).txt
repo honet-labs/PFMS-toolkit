@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: Process
+module_begin
+module_name TOP 5 Process (Based on Highest Memory)
+module_type generic_data_string
+module_exec echo "  PID USERNAME  NLWP PRI NICE  SIZE   RES STATE    TIME    CPU COMMAND"; top -b | head -n 50 | nawk '/PID USERNAME/{flag=1; next} flag && NF>=10 {val=$7; gsub(/[KMG]/,"",val); if($7~/G/) val*=1048576; else if($7~/M/) val*=1024; print val, $0}' | sort -nr | head -n 5 | nawk '{$1=""; print substr($0,2)}'
+module_end

@@ -1,0 +1,7 @@
+# Group: Linux
+# Sub Group: System
+module_begin
+module_name List Process with highest CPU usage (%)
+module_type generic_data_string
+module_exec ps -eo comm,%cpu --sort=-%cpu | grep -v -E "COMMAND|ps|awk" | head -n 5 | awk '{print $1 " (" $2 "%)"}'
+module_end

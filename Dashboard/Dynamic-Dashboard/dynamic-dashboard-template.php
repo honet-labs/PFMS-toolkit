@@ -110,84 +110,156 @@ if ($api === 'save_config') {
 if ($api === 'groups') {
     if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['error' => 'DB Connection Error: ' . $db_error]); exit; }
-    $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
     $dropdown = [['id' => '0', 'name' => '-- Semua Group (All Groups) --']];
-    while($g = $stmt->fetch()) { $dropdown[] = ['id' => $g['id'], 'name' => pretty_text($g['name'])]; }
+    
+    // 1. Primary DB groups
+    try {
+        $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+        while($g = $stmt->fetch()) { 
+            $dropdown[] = ['id' => 'primary:' . $g['id'], 'name' => '[Primary] ' . pretty_text($g['name'])]; 
+        }
+    } catch (Throwable $e) {}
+    
+    // 2. Custom DB groups
+    global $custom_pdos, $custom_connections;
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $cname = '';
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
+            }
+            if (empty($cname)) $cname = $cid;
+            try {
+                $stmt = $cpdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+                while($g = $stmt->fetch()) { 
+                    $dropdown[] = ['id' => $cid . ':' . $g['id'], 'name' => '[' . $cname . '] ' . pretty_text($g['name'])]; 
+                }
+            } catch (Throwable $e) {}
+        }
+    }
+    
     echo json_encode($dropdown); exit;
 }
 
 if ($api === 'module_list') {
     if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['error' => 'DB Connection Error: ' . $db_error]); exit; }
-    $stmt = $pdo->query("SELECT DISTINCT nombre FROM tagente_modulo WHERE disabled = 0 ORDER BY nombre ASC");
+    
+    $modules = [];
+    
+    // 1. Primary DB modules
+    try {
+        $stmt = $pdo->query("SELECT DISTINCT nombre FROM tagente_modulo WHERE disabled = 0 ORDER BY nombre ASC");
+        while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $raw = $row['nombre'];
+            $modules[$raw] = true;
+        }
+    } catch (Throwable $e) {}
+    
+    // 2. Custom DB modules
+    global $custom_pdos;
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            try {
+                $stmt = $cpdo->query("SELECT DISTINCT nombre FROM tagente_modulo WHERE disabled = 0 ORDER BY nombre ASC");
+                while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $raw = $row['nombre'];
+                    $modules[$raw] = true;
+                }
+            } catch (Throwable $e) {}
+        }
+    }
+    
     $list = [];
-    while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $raw = $row['nombre'];
+    ksort($modules);
+    foreach ($modules as $raw => $_) {
         $list[] = ['raw' => $raw, 'pretty' => pretty_text($raw)];
     }
+    
     echo json_encode($list); exit;
 }
 
 if ($api === 'template_nodes') {
     if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['error' => 'DB Connection Error: ' . $db_error]); exit; }
-    $groupId = (int)($_GET['group_id'] ?? 0);
-    try {
-        if ($groupId === 0) {
-            $stmt = $pdo->query("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
-            $list = $stmt->fetchAll();
-        } else {
-            $stmtAllGroups = $pdo->query("SELECT id_grupo, parent FROM tgrupo"); 
-            $allGroups = $stmtAllGroups->fetchAll();
-            
-            if (!function_exists('getChildGroups')) {
-                function getChildGroups($parentId, $allGroups) { 
-                    $children = [$parentId]; 
-                    foreach ($allGroups as $g) { 
-                        if ($g['parent'] == $parentId && $g['id_grupo'] != $parentId) { 
-                            $children = array_merge($children, getChildGroups($g['id_grupo'], $allGroups)); 
-                        } 
-                    } 
-                    return array_unique($children); 
+    $groupIdRaw = $_GET['group_id'] ?? '0';
+    $groupParsed = parse_node_id($groupIdRaw);
+    
+    global $custom_pdos, $custom_connections;
+    $target_nodes = [];
+    if ($groupParsed['id'] > 0) {
+        $target_nodes[$groupParsed['node']] = [
+            'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
+            'group_id' => $groupParsed['id']
+        ];
+    } else {
+        $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = ['pdo' => $cpdo, 'group_id' => 0];
+            }
+        }
+    }
+    
+    $list = [];
+    foreach ($target_nodes as $node => $info) {
+        $active_pdo = $info['pdo'];
+        if ($active_pdo === null) continue;
+        
+        $node_label = '';
+        if ($node !== 'primary') {
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
+            }
+            if (empty($node_label)) $node_label = '[' . $node . '] ';
+        }
+        
+        try {
+            if ($info['group_id'] === 0) {
+                $stmt = $active_pdo->query("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
+                while ($a = $stmt->fetch()) {
+                    $list[] = [
+                        'id' => $node . ':' . $a['id'],
+                        'alias' => $node_label . pretty_text($a['alias'])
+                    ];
+                }
+            } else {
+                $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
+                $inStr = implode(',', array_fill(0, count($targetGroups), '?'));
+                
+                $hasSecGroup = false;
+                try { $active_pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSecGroup = true; } catch(Exception $e) {}
+
+                if ($hasSecGroup) {
+                    $sql = "SELECT DISTINCT a.id_agente AS id, a.alias 
+                            FROM tagente a 
+                            LEFT JOIN tagente_secondary_group sg ON a.id_agente = sg.id_agente
+                            WHERE a.disabled = 0 
+                            AND (a.id_grupo IN ($inStr) OR sg.id_grupo IN ($inStr)) 
+                            ORDER BY a.alias ASC";
+                    $stmt = $active_pdo->prepare($sql);
+                    $stmt->execute(array_merge($targetGroups, $targetGroups));
+                } else {
+                    $stmt = $active_pdo->prepare("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 AND id_grupo IN ($inStr) ORDER BY alias ASC");
+                    $stmt->execute($targetGroups);
+                }
+                while ($a = $stmt->fetch()) {
+                    $list[] = [
+                        'id' => $node . ':' . $a['id'],
+                        'alias' => $node_label . pretty_text($a['alias'])
+                    ];
                 }
             }
-            
-            $targetGroups = getChildGroups($groupId, $allGroups);
-            $inStr = implode(',', array_fill(0, count($targetGroups), '?'));
-            
-            $hasSecGroup = false;
-            try { $pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSecGroup = true; } catch(Exception $e) {}
-
-            if ($hasSecGroup) {
-                $sql = "SELECT DISTINCT a.id_agente AS id, a.alias 
-                        FROM tagente a 
-                        LEFT JOIN tagente_secondary_group sg ON a.id_agente = sg.id_agente
-                        WHERE a.disabled = 0 
-                        AND (a.id_grupo IN ($inStr) OR sg.id_grupo IN ($inStr)) 
-                        ORDER BY a.alias ASC";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute(array_merge($targetGroups, $targetGroups));
-            } else {
-                $stmt = $pdo->prepare("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 AND id_grupo IN ($inStr) ORDER BY alias ASC");
-                $stmt->execute($targetGroups);
-            }
-            $list = $stmt->fetchAll();
-        }
-        foreach($list as &$l) { $l['alias'] = pretty_text($l['alias']); }
-        echo json_encode($list);
-        exit;
-    } catch (Throwable $e) { 
-        if (ob_get_level() > 0) ob_clean(); 
-        header('Content-Type: application/json');
-        echo json_encode(['error' => $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine()]); 
-        exit; 
+        } catch (Throwable $e) {}
     }
+    
+    echo json_encode($list); exit;
 }
 
 if ($api === 'detail_graph') {
     if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['ok' => false, 'error' => 'DB Connection Error: ' . $db_error]); exit; }
-    $id_mod = (int)$_GET['id_mod'];
+    $id_mod_raw = $_GET['id_mod'];
     $range = $_GET['range'] ?? '21600';
 
     if ($range === 'custom') {
@@ -199,13 +271,23 @@ if ($api === 'detail_graph') {
     }
 
     try {
+        $parsed = parse_node_id($id_mod_raw);
+        global $custom_pdos;
+        $active_pdo = ($parsed['node'] === 'primary') ? $pdo : ($custom_pdos[$parsed['node']] ?? null);
+        $active_history_pdo = ($parsed['node'] === 'primary') ? $history_pdo : $active_pdo;
+
+        if ($active_pdo === null) {
+            echo json_encode(['ok' => false, 'error' => "Node '{$parsed['node']}' not found or connection failed"]);
+            exit;
+        }
+
         // Fetch module unit
-        $stmtUnit = $pdo->prepare("SELECT COALESCE(unit, '') as unit FROM tagente_modulo WHERE id_agente_modulo = ?");
-        $stmtUnit->execute([$id_mod]);
+        $stmtUnit = $active_pdo->prepare("SELECT COALESCE(unit, '') as unit FROM tagente_modulo WHERE id_agente_modulo = ?");
+        $stmtUnit->execute([$parsed['id']]);
         $unitRow = $stmtUnit->fetch();
         $unit = $unitRow ? pretty_text($unitRow['unit']) : '';
 
-        $raw_data = get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, 5000, 'ASC');
+        $raw_data = get_module_history_data($active_pdo, $active_history_pdo, $parsed['id'], $start, $end, 5000, 'ASC');
         $data = [];
         foreach ($raw_data as $row) {
             $data[] = [
@@ -219,7 +301,7 @@ if ($api === 'detail_graph') {
             'requested_start' => date('Y-m-d H:i:s', $start),
             'requested_end' => date('Y-m-d H:i:s', $end),
             'range_days' => round(($end - $start) / 86400, 1),
-            'history_db_connected' => ($history_pdo !== null),
+            'history_db_connected' => ($active_history_pdo !== null),
             'returned_points' => count($data),
         ];
         if (count($data) > 0) {
@@ -241,14 +323,24 @@ if ($api === 'bulk_panel_data') {
     if (!$db_status) { echo json_encode(['ok' => false, 'error' => 'DB Connection Error: ' . $db_error]); exit; }
     $input = json_decode(file_get_contents('php://input'), true);
     
-    $agent_id = (int)($input['agent_id'] ?? 0);
-    $start = (int)($input['start'] ?? (time() - 86400));
-    $end = (int)($input['end'] ?? time());
+    $agent_id_raw = $input['agent_id'] ?? '0';
+    $start = (int)$input['start'] ?? (time() - 86400);
+    $end = (int)$input['end'] ?? time();
     $panels = $input['panels'] ?? [];
 
-    if ($agent_id === 0 || empty($panels)) { echo json_encode(['ok' => false, 'error' => 'Missing param']); exit; }
+    if ($agent_id_raw === '0' || empty($panels)) { echo json_encode(['ok' => false, 'error' => 'Missing param']); exit; }
 
     try {
+        $parsed = parse_node_id($agent_id_raw);
+        global $custom_pdos;
+        $active_pdo = ($parsed['node'] === 'primary') ? $pdo : ($custom_pdos[$parsed['node']] ?? null);
+        $active_history_pdo = ($parsed['node'] === 'primary') ? $history_pdo : $active_pdo;
+
+        if ($active_pdo === null) {
+            echo json_encode(['ok' => false, 'error' => "Node '{$parsed['node']}' not found or connection failed"]);
+            exit;
+        }
+
         // Helper to normalize strings
         if (!function_exists('normalize_mod_name')) {
             function normalize_mod_name($s) {
@@ -261,14 +353,14 @@ if ($api === 'bulk_panel_data') {
         }
 
         // Fetch ALL modules for this agent
-        $stAll = $pdo->prepare("SELECT m.id_agente_modulo, m.nombre, m.min, m.max, m.unit, e.datos as current_val, COALESCE(e.estado, 4) as estado, e.utimestamp as last_contact,
+        $stAll = $active_pdo->prepare("SELECT m.id_agente_modulo, m.nombre, m.min, m.max, m.unit, e.datos as current_val, COALESCE(e.estado, 4) as estado, e.utimestamp as last_contact,
                                        a.alias as agent_name, a.direccion as ip_address, g.nombre as group_name, a.id_agente, a.nombre AS agent_db_name
                                 FROM tagente_modulo m 
                                 JOIN tagente a ON m.id_agente = a.id_agente
                                 JOIN tgrupo g ON a.id_grupo = g.id_grupo
                                 LEFT JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo 
                                 WHERE m.id_agente = ? AND m.disabled = 0");
-        $stAll->execute([$agent_id]);
+        $stAll->execute([$parsed['id']]);
         $allModules = $stAll->fetchAll();
 
         $results = [];
@@ -320,7 +412,7 @@ if ($api === 'bulk_panel_data') {
             foreach($modulesFound as $mod) {
                 $mod_id = $mod['id_agente_modulo'];
                 if (in_array($pType, ['line', 'area', 'bar', 'heatmap', 'history_table', 'single_value'])) {
-                    $raw_hist = get_module_history_data($pdo, $history_pdo, $mod_id, $start, $end, 2000, 'DESC');
+                    $raw_hist = get_module_history_data($active_pdo, $active_history_pdo, $mod_id, $start, $end, 2000, 'DESC');
                     $history = [];
                     foreach ($raw_hist as $row) {
                         $history[] = [
@@ -333,7 +425,7 @@ if ($api === 'bulk_panel_data') {
                 }
 
                 $moduleResults[] = [
-                    'id' => $mod_id,
+                    'id' => $parsed['node'] . ':' . $mod_id,
                     'module_name' => pretty_text($mod['nombre']),
                     'current' => $mod['current_val'] !== null ? $mod['current_val'] : 'N/A',
                     'status' => (int)$mod['estado'],
@@ -343,7 +435,7 @@ if ($api === 'bulk_panel_data') {
                     'max' => $mod['max'],
                     'agent_name' => $mod['agent_name'],
                     'agent_db_name' => $mod['agent_db_name'],
-                    'agent_id' => $mod['id_agente'],
+                    'agent_id' => $parsed['node'] . ':' . $mod['id_agente'],
                     'ip_address' => $mod['ip_address'],
                     'group_name' => $mod['group_name'],
                     'history' => $history
@@ -2055,7 +2147,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     let viewBtnHtml = '';
     if (['line', 'area', 'bar', 'history_table', 'single_value'].includes(p.type) && moduleData && moduleData.id) {
         viewBtnHtml = `
-            <button class="panel-view-btn" onclick="openPanelDetailModal('${p.id}', ${moduleData.id})" title="View Detail Chart" style="border:none; background:transparent; padding:0; cursor:pointer; color:#1976d2; margin-left:6px; display:inline-flex; align-items:center; vertical-align:middle;">
+            <button class="panel-view-btn" onclick="openPanelDetailModal('${p.id}', '${moduleData.id}')" title="View Detail Chart" style="border:none; background:transparent; padding:0; cursor:pointer; color:#1976d2; margin-left:6px; display:inline-flex; align-items:center; vertical-align:middle;">
                 <span class="material-symbols-outlined" style="font-size:16px!important;">monitoring</span>
             </button>
         `;
@@ -2155,10 +2247,18 @@ function generateSummaryPanelHtml(p, modules) {
                             
                             let rowHtml = '<tr>';
                             if (visibleCols.includes('agent')) {
+                                const isPrimary = String(m.agent_id).startsWith('primary:');
+                                let agentLinkHtml = '';
+                                if (isPrimary) {
+                                    const rawAgentId = String(m.agent_id).split(':')[1] || m.agent_id;
+                                    agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" style="color:#1976d2; font-weight:600; text-decoration:none;">${m.agent_name}</a>`;
+                                } else {
+                                    agentLinkHtml = `<span style="color:#334155; font-weight:600;">${m.agent_name}</span>`;
+                                }
                                 rowHtml += `<td>
                                     <div style="display:flex; align-items:center; gap:8px;">
                                         <span class="status-dot ${bgClass}" style="margin:0; width:8px; height:8px;"></span>
-                                        <a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}" target="_blank" style="color:#1976d2; font-weight:600; text-decoration:none;">${m.agent_name}</a>
+                                        ${agentLinkHtml}
                                     </div>
                                 </td>`;
                             }
@@ -2197,10 +2297,10 @@ function generateSummaryPanelHtml(p, modules) {
                             if (visibleCols.includes('history')) {
                                 rowHtml += `<td style="text-align:center;">
                                     <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; width:100%;">
-                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}', ${m.agent_id})" title="View Chart">
+                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal('${m.id}', '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}', '${m.agent_id}')" title="View Chart">
                                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>
                                         </button>
-                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog(${m.id}, ${m.agent_id}, 'data', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
+                                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog('${m.id}', '${m.agent_id}', 'data', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
                                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#2e7d32;">table_chart</span>
                                         </button>
                                     </div>
@@ -2234,7 +2334,7 @@ function generateSummaryPanelHtml(p, modules) {
                     const bgClass = {0:'bg-green', 1:'bg-red', 2:'bg-yellow', 4:'bg-blue'}[m.status] || 'bg-gray';
                     let cleanVal = formatSmartValue(m.current, p.use_raw);
                     let shortVal = String(cleanVal).length > (p.box_size === 'small' ? 4 : 8) ? String(cleanVal).substring(0, (p.box_size === 'small' ? 4 : 8)) : cleanVal;
-                    return `<button class="heat-box-dyn ${bgClass}" style="width:${s.w}; height:${s.h}; font-size:${s.f};" title="${m.module_name.replace(/"/g, '&quot;')}: ${m.current} ${m.unit}" onclick="openNativeChart(${m.id}, '${m.module_name.replace(/'/g, "\\'")}', ${m.agent_id})">${shortVal}</button>`;
+                    return `<button class="heat-box-dyn ${bgClass}" style="width:${s.w}; height:${s.h}; font-size:${s.f};" title="${m.module_name.replace(/"/g, '&quot;')}: ${m.current} ${m.unit}" onclick="openNativeChart('${m.id}', '${m.module_name.replace(/'/g, "\\'")}', '${m.agent_id}')">${shortVal}</button>`;
                 }).join('')}
             </div>`;
     } else if (p.type === 'pie' || p.type === 'donut') {
@@ -2998,9 +3098,17 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
             valHtml = displayVal;
         }
 
+        const isPrimary = String(m.agent_id).startsWith('primary:');
+        let agentLinkHtml = '';
+        if (isPrimary) {
+            const rawAgentId = String(m.agent_id).split(':')[1] || m.agent_id;
+            agentLinkHtml = `<span style="color:#3498db; font-weight:600; cursor:pointer; white-space:nowrap;" onclick="window.open('${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}', '_blank')">${m.agent_name}</span>`;
+        } else {
+            agentLinkHtml = `<span style="color:#334155; font-weight:600; white-space:nowrap;">${m.agent_name}</span>`;
+        }
         return `
             <tr>
-                <td style="color:#3498db; font-weight:600; cursor:pointer; white-space:nowrap;" onclick="window.open('${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${m.agent_id}', '_blank')">${m.agent_name}</td>
+                <td>${agentLinkHtml}</td>
                 <td style="white-space:nowrap;">${m.group_name}</td>
                 <td style="color:#e74c3c; white-space:nowrap;">${m.ip_address}</td>
                 <td style="font-weight:500;">${m.module_name}</td>
@@ -3008,10 +3116,10 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
                 <td style="white-space:nowrap;"><span class="status-pill-dyn ${bgClass}">${statusLbl}</span></td>
                 <td style="text-align:center; white-space:nowrap;">
                     <div style="display:inline-flex; gap:8px; align-items:center; justify-content:center; width:100%;">
-                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal(${m.id}, '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}', ${m.agent_id})" title="View Chart">
+                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="openNativeChartModal('${m.id}', '${m.agent_name.replace(/'/g, "\\'")} - ${m.module_name.replace(/'/g, "\\'")}', '${m.agent_id}')" title="View Chart">
                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>
                         </button>
-                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog(${m.id}, ${m.agent_id}, 'data', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
+                        <button class="icon-btn" style="padding:0; margin:0; background:none; border:none; cursor:pointer;" onclick="show_module_detail_dialog('${m.id}', '${m.agent_id}', 'data', 0, 86400, '${m.module_name.replace(/'/g, "\\'")}')" title="View Data Table">
                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#2e7d32;">table_chart</span>
                         </button>
                     </div>
@@ -3038,8 +3146,14 @@ function closeStatusDetailModal() {
 
 function openNativeChartModal(modId, title, idAgent = 0) {
     if(!modId || modId === 0) return;
+    const isPrimary = String(modId).startsWith('primary:');
+    if (!isPrimary) {
+        show_module_detail_dialog(modId, idAgent, 'graph', 0, 86400, title);
+        return;
+    }
+    const rawId = String(modId).split(':')[1] || modId;
     document.getElementById('nativeChartTitle').innerHTML = `<span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40; vertical-align:middle; margin-right:5px;">monitoring</span> ${title}`;
-    const url = `${PANDORA_URL}/operation/agentes/stat_win.php?type=sparse&period=86400&id=${modId}&refresh=600&period_graph=0&draw_events=0`;
+    const url = `${PANDORA_URL}/operation/agentes/stat_win.php?type=sparse&period=86400&id=${rawId}&refresh=600&period_graph=0&draw_events=0`;
     document.getElementById('nativeChartFrame').src = url;
     document.getElementById('nativeChartModal').style.display = 'flex';
 }
@@ -3090,7 +3204,7 @@ function changeDetailModule(newId) {
     const customStartTs = customStart ? Math.floor(new Date(customStart).getTime() / 1000) : null;
     const customEndTs = customEnd ? Math.floor(new Date(customEnd).getTime() / 1000) : null;
 
-    openNativeModuleDetailModal(parseInt(newId), selected.name, currentRange, customStartTs, customEndTs, currentDetailModuleList, currentDetailViewType);
+    openNativeModuleDetailModal(newId, selected.name, currentRange, customStartTs, customEndTs, currentDetailModuleList, currentDetailViewType);
 }
 
 function show_module_detail_dialog(module_id, id_agent, filter, interval, offset, title) {

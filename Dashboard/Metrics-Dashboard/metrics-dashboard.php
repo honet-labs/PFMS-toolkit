@@ -267,6 +267,7 @@ if ($api === 'detail_graph' && $db_status) {
 
     global $custom_pdos;
     $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+    $active_history_pdo = ($node === 'primary') ? $history_pdo : $active_pdo;
 
     try {
         $unit = '';
@@ -277,7 +278,7 @@ if ($api === 'detail_graph' && $db_status) {
             $unit = $unitRow ? pretty_text($unitRow['unit']) : '';
         }
 
-        $raw_data = get_module_history_data($pdo, $history_pdo, $id_mod, $start, $end, 5000, 'ASC');
+        $raw_data = get_module_history_data($active_pdo, $active_history_pdo, $id_mod, $start, $end, 5000, 'ASC');
         $data = [];
         foreach ($raw_data as $row) {
             $data[] = [

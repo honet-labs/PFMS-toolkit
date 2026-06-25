@@ -1,0 +1,8 @@
+# Group: Linux
+# Sub Group: Memory
+module_begin
+module_name Total Memory (MB)
+module_type async_data
+module_unit MB
+module_exec free -m | awk '/^Mem:/ {print $2}'
+module_end

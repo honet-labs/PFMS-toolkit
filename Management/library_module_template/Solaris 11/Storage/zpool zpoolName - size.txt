@@ -1,0 +1,8 @@
+# Group: Solaris 11
+# Sub Group: Storage
+module_begin
+module_name zpool zpoolName - size
+module_type async_data
+module_unit G
+module_exec zpool list -o name,size,alloc,free,capacity | tail -1 | nawk '{print $2}' | tr -d 'GMKTBgmktb%'
+module_end

@@ -1,0 +1,12 @@
+# Group: Windows
+# Sub Group: Memory
+module_begin
+module_name Memory Free (%)
+module_type async_data
+module_unit %
+module_exec powershell.exe $os = Get-CimInstance Win32_OperatingSystem; [math]::Round(($os.FreePhysicalMemory / $os.TotalVisibleMemorySize) * 100)
+module_min_warning 80
+module_max_warning 90
+module_min_critical 90
+module_max_critical 95
+module_end

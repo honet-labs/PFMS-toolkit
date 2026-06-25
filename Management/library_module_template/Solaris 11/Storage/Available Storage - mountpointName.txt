@@ -1,0 +1,8 @@
+# Group: Solaris 11
+# Sub Group: Storage
+module_begin
+module_name Available Storage - mountpointName
+module_type async_data
+module_unit G
+module_exec df -kh mountpointName | tail -1 | nawk '{print $4}' | tr -d 'GMKTBgmktb%'
+module_end

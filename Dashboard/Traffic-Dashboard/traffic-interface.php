@@ -132,114 +132,156 @@ if ($api === 'export') {
         $config = [];
         if (file_exists($CONFIG_FILE)) $config = json_decode(file_get_contents($CONFIG_FILE), true);
         
-        $agent_ids = [];
+        $agent_ids_raw = [];
         foreach ($config as $dash) {
-            $aid = (int)($dash['agent_id'] ?? 0);
-            $gid = (int)($dash['group_id'] ?? 0);
-            if ($aid > 0) {
-                $agent_ids[] = $aid;
-            } elseif ($gid > 0) {
-                $stG = $pdo->prepare("SELECT id_agente FROM tagente WHERE id_grupo = ? AND disabled = 0");
-                $stG->execute([$gid]);
-                while($rowG = $stG->fetch(PDO::FETCH_COLUMN)) $agent_ids[] = (int)$rowG;
+            $aid = $dash['agent_id'] ?? '0';
+            $gid = $dash['group_id'] ?? '0';
+            if ($aid !== '0') {
+                $agent_ids_raw[] = $aid;
+            } elseif ($gid !== '0') {
+                $groupParsed = parse_node_id($gid);
+                $node = $groupParsed['node'];
+                global $custom_pdos;
+                $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+                if ($active_pdo !== null) {
+                    $stG = $active_pdo->prepare("SELECT id_agente FROM tagente WHERE id_grupo = ? AND disabled = 0");
+                    $stG->execute([$groupParsed['id']]);
+                    while($rowG = $stG->fetch(PDO::FETCH_COLUMN)) {
+                        $agent_ids_raw[] = $node . ':' . $rowG;
+                    }
+                }
             } else {
                 $stA = $pdo->query("SELECT id_agente FROM tagente WHERE disabled = 0");
-                while($rowA = $stA->fetch(PDO::FETCH_COLUMN)) $agent_ids[] = (int)$rowA;
+                while($rowA = $stA->fetch(PDO::FETCH_COLUMN)) {
+                    $agent_ids_raw[] = 'primary:' . $rowA;
+                }
+                global $custom_pdos;
+                if (!empty($custom_pdos)) {
+                    foreach ($custom_pdos as $cid => $cpdo) {
+                        try {
+                            $stA = $cpdo->query("SELECT id_agente FROM tagente WHERE disabled = 0");
+                            while($rowA = $stA->fetch(PDO::FETCH_COLUMN)) {
+                                $agent_ids_raw[] = $cid . ':' . $rowA;
+                            }
+                        } catch (Throwable $e) {}
+                    }
+                }
             }
         }
-        $agent_ids = array_unique($agent_ids);
+        $agent_ids_raw = array_unique($agent_ids_raw);
         
-        if (empty($agent_ids)) { echo "No agents found in configuration."; exit; }
-
-        $placeholders = implode(',', array_fill(0, count($agent_ids), '?'));
-        $sql = "SELECT a.id_agente, a.alias, a.nombre, a.direccion, am.id_agente_modulo, am.nombre as mod_name, am.unit, ae.datos, am.id_category, c.name AS category_name 
-                FROM tagente a
-                JOIN tagente_modulo am ON a.id_agente = am.id_agente
-                LEFT JOIN tcategory c ON am.id_category = c.id
-                LEFT JOIN tagente_estado ae ON am.id_agente_modulo = ae.id_agente_modulo
-                WHERE a.id_agente IN ($placeholders) AND a.disabled = 0 AND am.disabled = 0";
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute(array_values($agent_ids));
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $agents_data = [];
-        foreach ($rows as $r) {
-            $aid = $r['id_agente'];
-            if (!isset($agents_data[$aid])) {
-                $agents_data[$aid] = [
-                    'alias' => $r['alias'] ?: $r['nombre'], 'ip' => pick_best_ip($r['direccion'], '', ''), 'mods' => []
-                ];
-            }
-            $agents_data[$aid]['mods'][] = $r;
+        $node_agent_ids = [];
+        foreach ($agent_ids_raw as $raw_id) {
+            $parsed = parse_node_id($raw_id);
+            $node_agent_ids[$parsed['node']][] = $parsed['id'];
         }
+        
+        if (empty($node_agent_ids)) { echo "No agents found in configuration."; exit; }
 
         $final_export = [];
-        foreach ($agents_data as $aid => $a) {
-            $interfaces = [];
-            foreach ($a['mods'] as $m) {
-                $modName = (string)$m['mod_name'];
-                $modNameL = strtolower($modName);
-                $dir = null; $base = null;
-                foreach ($modulePrefixesSpeed as $p) { if(str_starts_with($modNameL, strtolower($p))) { $dir='speed'; $base=substr($modName, strlen($p)); break; } }
-                if(!$dir) {
-                    foreach ($moduleSuffixesIn as $s) {
-                        $sL = strtolower($s);
-                        $pos = strpos($modNameL, $sL);
-                        if ($pos !== false) {
-                            $dir = 'in';
-                            $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
-                            break;
-                        }
-                    }
-                    if(!$dir) foreach ($moduleSuffixesOut as $s) {
-                        $sL = strtolower($s);
-                        $pos = strpos($modNameL, $sL);
-                        if ($pos !== false) {
-                            $dir = 'out';
-                            $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
-                            break;
-                        }
-                    }
-                    if(!$dir) foreach ($moduleSuffixesSpeed as $s) {
-                        $sL = strtolower($s);
-                        $pos = strpos($modNameL, $sL);
-                        if ($pos !== false) {
-                            $dir = 'speed';
-                            $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
-                            break;
-                        }
-                    }
+        global $custom_pdos, $custom_connections;
+        
+        foreach ($node_agent_ids as $node => $aids) {
+            $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+            if ($active_pdo === null) continue;
+            
+            $node_label = '';
+            if ($node !== 'primary') {
+                foreach ($custom_connections as $cc) {
+                    if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
                 }
-                if (!$dir) continue;
-                $base = clean_base($base);
-                if ($base === '') $base = $modName;
-                if (!isset($interfaces[$base])) $interfaces[$base] = ['name' => $base, 'rx' => 0, 'tx' => 0, 'speed' => 0, 'has_data' => false, 'category_name' => ''];
-                if (!empty($m['category_name']) && empty($interfaces[$base]['category_name'])) {
-                    $interfaces[$base]['category_name'] = html_entity_decode((string)$m['category_name'], ENT_QUOTES, 'UTF-8');
-                }
-                $val = (float)$m['datos'];
-                if ($dir === 'speed') {
-                    $mult = (stripos($modName, 'HighSpeed') !== false || strtolower($m['unit']) === 'mbps') ? 1000000.0 : 1.0;
-                    if (strtolower($m['unit']) === 'gbps') $mult = 1000000000.0;
-                    $interfaces[$base]['speed'] = $val * $mult;
-                } else {
-                    $mult = (stripos($modName, 'Mbps') !== false) ? 1000000.0 : 8.0;
-                    if ($dir === 'in') $interfaces[$base]['rx'] = $val * $mult; else $interfaces[$base]['tx'] = $val * $mult;
-                }
-                $interfaces[$base]['has_data'] = true;
+                if (empty($node_label)) $node_label = '[' . $node . '] ';
             }
-            foreach ($interfaces as $iface) {
-                if (!$iface['has_data']) continue;
-                $rx_pct = ($iface['speed'] > 0) ? ($iface['rx'] / $iface['speed'] * 100) : 0;
-                $tx_pct = ($iface['speed'] > 0) ? ($iface['tx'] / $iface['speed'] * 100) : 0;
-                $final_export[] = [
-                    'agent' => $a['alias'], 'ip' => $a['ip'], 'interface' => $iface['name'],
-                    'category' => $iface['category_name'] ?: 'N/A',
-                    'speed' => ($iface['speed'] / 1000000) . " Mbps",
-                    'rx' => round($iface['rx']/1000000, 2) . " Mbps (" . round($rx_pct,2) . "%)",
-                    'tx' => round($iface['tx']/1000000, 2) . " Mbps (" . round($tx_pct,2) . "%)"
-                ];
+            
+            $placeholders = implode(',', array_fill(0, count($aids), '?'));
+            $sql = "SELECT a.id_agente, a.alias, a.nombre, a.direccion, am.id_agente_modulo, am.nombre as mod_name, am.unit, ae.datos, am.id_category, c.name AS category_name 
+                    FROM tagente a
+                    JOIN tagente_modulo am ON a.id_agente = am.id_agente
+                    LEFT JOIN tcategory c ON am.id_category = c.id
+                    LEFT JOIN tagente_estado ae ON am.id_agente_modulo = ae.id_agente_modulo
+                    WHERE a.id_agente IN ($placeholders) AND a.disabled = 0 AND am.disabled = 0";
+            
+            $stmt = $active_pdo->prepare($sql);
+            $stmt->execute($aids);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $agents_data = [];
+            foreach ($rows as $r) {
+                $aid = $r['id_agente'];
+                if (!isset($agents_data[$aid])) {
+                    $agents_data[$aid] = [
+                        'alias' => $node_label . ($r['alias'] ?: $r['nombre']), 'ip' => pick_best_ip($r['direccion'], '', ''), 'mods' => []
+                    ];
+                }
+                $agents_data[$aid]['mods'][] = $r;
+            }
+
+            foreach ($agents_data as $aid => $a) {
+                $interfaces = [];
+                foreach ($a['mods'] as $m) {
+                    $modName = (string)$m['mod_name'];
+                    $modNameL = strtolower($modName);
+                    $dir = null; $base = null;
+                    foreach ($modulePrefixesSpeed as $p) { if(str_starts_with($modNameL, strtolower($p))) { $dir='speed'; $base=substr($modName, strlen($p)); break; } }
+                    if(!$dir) {
+                        foreach ($moduleSuffixesIn as $s) {
+                            $sL = strtolower($s);
+                            $pos = strpos($modNameL, $sL);
+                            if ($pos !== false) {
+                                $dir = 'in';
+                                $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                                break;
+                            }
+                        }
+                        if(!$dir) foreach ($moduleSuffixesOut as $s) {
+                            $sL = strtolower($s);
+                            $pos = strpos($modNameL, $sL);
+                            if ($pos !== false) {
+                                $dir = 'out';
+                                $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                                break;
+                            }
+                        }
+                        if(!$dir) foreach ($moduleSuffixesSpeed as $s) {
+                            $sL = strtolower($s);
+                            $pos = strpos($modNameL, $sL);
+                            if ($pos !== false) {
+                                $dir = 'speed';
+                                $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                                break;
+                            }
+                        }
+                    }
+                    if (!$dir) continue;
+                    $base = clean_base($base);
+                    if ($base === '') $base = $modName;
+                    if (!isset($interfaces[$base])) $interfaces[$base] = ['name' => $base, 'rx' => 0, 'tx' => 0, 'speed' => 0, 'has_data' => false, 'category_name' => ''];
+                    if (!empty($m['category_name']) && empty($interfaces[$base]['category_name'])) {
+                        $interfaces[$base]['category_name'] = html_entity_decode((string)$m['category_name'], ENT_QUOTES, 'UTF-8');
+                    }
+                    $val = (float)$m['datos'];
+                    if ($dir === 'speed') {
+                        $mult = (stripos($modName, 'HighSpeed') !== false || strtolower($m['unit']) === 'mbps') ? 1000000.0 : 1.0;
+                        if (strtolower($m['unit']) === 'gbps') $mult = 1000000000.0;
+                        $interfaces[$base]['speed'] = $val * $mult;
+                    } else {
+                        $mult = (stripos($modName, 'Mbps') !== false) ? 1000000.0 : 8.0;
+                        if ($dir === 'in') $interfaces[$base]['rx'] = $val * $mult; else $interfaces[$base]['tx'] = $val * $mult;
+                    }
+                    $interfaces[$base]['has_data'] = true;
+                }
+                foreach ($interfaces as $iface) {
+                    if (!$iface['has_data']) continue;
+                    $rx_pct = ($iface['speed'] > 0) ? ($iface['rx'] / $iface['speed'] * 100) : 0;
+                    $tx_pct = ($iface['speed'] > 0) ? ($iface['tx'] / $iface['speed'] * 100) : 0;
+                    $final_export[] = [
+                        'agent' => $a['alias'], 'ip' => $a['ip'], 'interface' => $iface['name'],
+                        'category' => $iface['category_name'] ?: 'N/A',
+                        'speed' => ($iface['speed'] / 1000000) . " Mbps",
+                        'rx' => round($iface['rx']/1000000, 2) . " Mbps (" . round($rx_pct,2) . "%)",
+                        'tx' => round($iface['tx']/1000000, 2) . " Mbps (" . round($tx_pct,2) . "%)"
+                    ];
+                }
             }
         }
 
@@ -272,42 +314,128 @@ if ($api === 'export') {
 
 if ($api === 'categories') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
-    $stmt = $pdo->query("SELECT id, name FROM tcategory ORDER BY name ASC");
     $categories = [];
-    while($c = $stmt->fetch(PDO::FETCH_ASSOC)) { 
-        $categories[] = [
-            'id' => $c['id'], 
-            'name' => html_entity_decode((string)$c['name'], ENT_QUOTES, 'UTF-8')
-        ]; 
+    $cat_map = [];
+    
+    try {
+        $stmt = $pdo->query("SELECT id, name FROM tcategory ORDER BY name ASC");
+        while($c = $stmt->fetch(PDO::FETCH_ASSOC)) { 
+            $name = html_entity_decode((string)$c['name'], ENT_QUOTES, 'UTF-8');
+            $cat_map[$name] = $c['id'];
+        }
+    } catch (Throwable $e) {}
+    
+    global $custom_pdos;
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            try {
+                $stmt = $cpdo->query("SELECT id, name FROM tcategory ORDER BY name ASC");
+                while($c = $stmt->fetch(PDO::FETCH_ASSOC)) { 
+                    $name = html_entity_decode((string)$c['name'], ENT_QUOTES, 'UTF-8');
+                    $cat_map[$name] = $c['id'];
+                }
+            } catch (Throwable $e) {}
+        }
+    }
+    
+    ksort($cat_map);
+    foreach ($cat_map as $name => $id) {
+        $categories[] = ['id' => $id, 'name' => $name];
     }
     echo json_encode($categories); exit;
 }
 
 if ($api === 'groups') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
-    $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
     $dropdown = [['id' => '0', 'name' => '-- Select Target Group --']];
-    while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { $dropdown[] = ['id' => $g['id'], 'name' => html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; }
+    
+    try {
+        $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+        while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
+            $dropdown[] = ['id' => 'primary:' . $g['id'], 'name' => '[Primary] ' . html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
+        }
+    } catch (Throwable $e) {}
+    
+    global $custom_pdos, $custom_connections;
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $cname = '';
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
+            }
+            if (empty($cname)) $cname = $cid;
+            try {
+                $stmt = $cpdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+                while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
+                    $dropdown[] = ['id' => $cid . ':' . $g['id'], 'name' => '[' . $cname . '] ' . html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
+                }
+            } catch (Throwable $e) {}
+        }
+    }
     echo json_encode($dropdown); exit;
 }
 
 if ($api === 'agents') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
-    $groupId = (int)($_GET['group_id'] ?? 0);
-    $params = [];
-    $sql = "SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0";
-    if ($groupId > 0) { $sql .= " AND id_grupo = ?"; $params[] = $groupId; }
-    $sql .= " ORDER BY alias ASC";
-    $stmt = $pdo->prepare($sql); $stmt->execute($params);
-    echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC)); exit;
+    $groupIdRaw = $_GET['group_id'] ?? '0';
+    $groupParsed = parse_node_id($groupIdRaw);
+    
+    global $custom_pdos, $custom_connections;
+    $target_nodes = [];
+    if ($groupParsed['id'] > 0) {
+        $target_nodes[$groupParsed['node']] = [
+            'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
+            'group_id' => $groupParsed['id']
+        ];
+    } else {
+        $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = ['pdo' => $cpdo, 'group_id' => 0];
+            }
+        }
+    }
+    
+    $list = [];
+    foreach ($target_nodes as $node => $info) {
+        $active_pdo = $info['pdo'];
+        if ($active_pdo === null) continue;
+        
+        $node_label = '';
+        if ($node !== 'primary') {
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
+            }
+            if (empty($node_label)) $node_label = '[' . $node . '] ';
+        }
+        
+        try {
+            $sql = "SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0";
+            $params = [];
+            if ($info['group_id'] > 0) {
+                $sql .= " AND id_grupo = ?";
+                $params[] = $info['group_id'];
+            }
+            $sql .= " ORDER BY alias ASC";
+            $stmt = $active_pdo->prepare($sql);
+            $stmt->execute($params);
+            while ($a = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $list[] = [
+                    'id' => $node . ':' . $a['id'],
+                    'alias' => $node_label . pretty_text($a['alias'])
+                ];
+            }
+        } catch (Throwable $e) {}
+    }
+    echo json_encode($list); exit;
 }
 
 if ($api === 'data') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
 
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
-    $groupId = (int)($input['group_id'] ?? 0);
-    $agentId = (int)($input['agent_id'] ?? 0);
+    $groupIdRaw = $input['group_id'] ?? '0';
+    $agentIdRaw = $input['agent_id'] ?? '0';
     $search = trim($input['search'] ?? '');
     $unit = $input['unit'] ?? 'Mbps';
     $speed_filter = $input['speed_filter'] ?? 'all';
@@ -317,7 +445,9 @@ if ($api === 'data') {
     $critThreshold = (float)($input['crit'] ?? 80.0);
     $dashId = $input['dash_id'] ?? '';
 
-    // Ambil daftar interface yang disembunyikan dari dashboard ini
+    $groupParsed = parse_node_id($groupIdRaw);
+    $agentParsed = parse_node_id($agentIdRaw);
+
     $hiddenKeys = [];
     if ($dashId && file_exists($CONFIG_FILE)) {
         $config = json_decode(file_get_contents($CONFIG_FILE), true);
@@ -330,158 +460,194 @@ if ($api === 'data') {
     }
 
     try {
-        $params = [];
-        $likeClauses = [];
-        $suffixes = array_merge($moduleSuffixesIn, $moduleSuffixesOut, $moduleSuffixesSpeed, $moduleSuffixesIndex, $moduleSuffixesStatus);
-        foreach ($suffixes as $i => $suf) { $likeClauses[] = "LOWER(am.nombre) LIKE :l{$i}"; $params[":l{$i}"] = "%" . strtolower($suf) . "%"; }
-        foreach ($modulePrefixesSpeed as $i => $pref) { $likeClauses[] = "LOWER(am.nombre) LIKE :lp{$i}"; $params[":lp{$i}"] = "%" . strtolower($pref) . "%"; }
-        $allLikes = implode(" OR ", $likeClauses);
-
-        // OPTIMIZED: Left join tagente_estado directly to avoid secondary massive SQL queries.
-        // Filter by agent and group early to utilize indexes.
-        $sql = "SELECT am.id_agente_modulo, am.nombre AS module_name, am.unit AS module_unit, am.descripcion AS description, a.id_agente, a.alias, a.nombre AS agent_name, a.direccion AS ip, am.id_category, c.name AS category_name, ae.datos AS module_data
-                FROM tagente_modulo am 
-                JOIN tagente a ON a.id_agente = am.id_agente 
-                LEFT JOIN tcategory c ON am.id_category = c.id
-                LEFT JOIN tagente_estado ae ON ae.id_agente_modulo = am.id_agente_modulo
-                WHERE am.disabled = 0 AND a.disabled = 0";
-
-        if ($groupId > 0) { $sql .= " AND a.id_grupo = :gid"; $params[':gid'] = $groupId; }
-        if ($agentId > 0) { $sql .= " AND a.id_agente = :aid"; $params[':aid'] = $agentId; }
-
-        $sql .= " AND ({$allLikes})";
-
-        $stmt = $pdo->prepare($sql); $stmt->execute($params); 
-        $modules = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        global $custom_pdos, $custom_connections;
+        $target_nodes = [];
+        if ($agentParsed['id'] > 0) {
+            $target_nodes[$agentParsed['node']] = [
+                'pdo' => ($agentParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$agentParsed['node']] ?? null),
+                'group_id' => 0,
+                'agent_id' => $agentParsed['id']
+            ];
+        } elseif ($groupParsed['id'] > 0) {
+            $target_nodes[$groupParsed['node']] = [
+                'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
+                'group_id' => $groupParsed['id'],
+                'agent_id' => 0
+            ];
+        } else {
+            $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0, 'agent_id' => 0];
+            if (!empty($custom_pdos)) {
+                foreach ($custom_pdos as $cid => $cpdo) {
+                    $target_nodes[$cid] = ['pdo' => $cpdo, 'group_id' => 0, 'agent_id' => 0];
+                }
+            }
+        }
 
         $interfaces = [];
-        foreach ($modules as $m) {
-            $aid = (int)$m['id_agente']; $modId = (int)$m['id_agente_modulo']; $modName = (string)$m['module_name'];
-            $dir = null; $base = null; $modNameL = strtolower($modName);
-
-            foreach ($modulePrefixesSpeed as $p) { if(str_starts_with($modNameL, strtolower($p))) { $dir='speed'; $base=substr($modName, strlen($p)); break; } }
-            if(!$dir) {
-                foreach ($moduleSuffixesIn as $s) {
-                    $sL = strtolower($s);
-                    $pos = strpos($modNameL, $sL);
-                    if ($pos !== false) {
-                        $dir = 'in';
-                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
-                        break;
-                    }
+        foreach ($target_nodes as $node => $info) {
+            $active_pdo = $info['pdo'];
+            if ($active_pdo === null) continue;
+            
+            $node_label = '';
+            if ($node !== 'primary') {
+                foreach ($custom_connections as $cc) {
+                    if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
                 }
-                if(!$dir) foreach ($moduleSuffixesOut as $s) {
-                    $sL = strtolower($s);
-                    $pos = strpos($modNameL, $sL);
-                    if ($pos !== false) {
-                        $dir = 'out';
-                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
-                        break;
-                    }
-                }
-                if(!$dir) foreach ($moduleSuffixesSpeed as $s) {
-                    $sL = strtolower($s);
-                    $pos = strpos($modNameL, $sL);
-                    if ($pos !== false) {
-                        $dir = 'speed';
-                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
-                        break;
-                    }
-                }
-                if(!$dir) foreach ($moduleSuffixesIndex as $s) {
-                    $sL = strtolower($s);
-                    $pos = strpos($modNameL, $sL);
-                    if ($pos !== false) {
-                        $dir = 'index';
-                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
-                        break;
-                    }
-                }
-                if(!$dir) foreach ($moduleSuffixesStatus as $s) {
-                    $sL = strtolower($s);
-                    $pos = strpos($modNameL, $sL);
-                    if ($pos !== false) {
-                        $dir = 'status';
-                        $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
-                        break;
-                    }
-                }
-            }
-            if (!$dir) continue;
-            $base = clean_base($base);
-            if ($base === '') $base = $modName;
-            $key = "$aid|$base";
-            if (!isset($interfaces[$key])) {
-                $interfaces[$key] = [
-                    'agent_id'=>$aid, 
-                    'node'=>html_entity_decode((string)$m['alias'], ENT_QUOTES, 'UTF-8'), 
-                    'ip'=>pick_best_ip((string)$m['ip'], (string)$m['alias'], (string)$m['agent_name']), 
-                    'interface'=>$base, 
-                    'interface_alias'=>'', 
-                    'mod_in'=>0, 
-                    'mod_out'=>0, 
-                    'mod_speed'=>0, 
-                    'mod_index'=>0, 
-                    'mod_status'=>0, 
-                    'mod_speed_unit'=>'', 
-                    'mod_in_name'=>'', 
-                    'mod_out_name'=>'', 
-                    'desc_speed'=>0.0, 
-                    'category_name'=>'',
-                    'rx_val'=>0.0,
-                    'tx_val'=>0.0,
-                    'speed_val'=>null,
-                    'index_val'=>null,
-                    'status_val_str'=>null
-                ];
+                if (empty($node_label)) $node_label = '[' . $node . '] ';
             }
 
-            $val = ($m['module_data'] !== null) ? (float)$m['module_data'] : null;
-            $val_str = ($m['module_data'] !== null) ? trim((string)$m['module_data']) : null;
+            try {
+                $params = [];
+                $likeClauses = [];
+                $suffixes = array_merge($moduleSuffixesIn, $moduleSuffixesOut, $moduleSuffixesSpeed, $moduleSuffixesIndex, $moduleSuffixesStatus);
+                foreach ($suffixes as $i => $suf) { $likeClauses[] = "LOWER(am.nombre) LIKE :l{$i}"; $params[":l{$i}"] = "%" . strtolower($suf) . "%"; }
+                foreach ($modulePrefixesSpeed as $i => $pref) { $likeClauses[] = "LOWER(am.nombre) LIKE :lp{$i}"; $params[":lp{$i}"] = "%" . strtolower($pref) . "%"; }
+                $allLikes = implode(" OR ", $likeClauses);
 
-            if ($dir==='speed') { 
-                $interfaces[$key]['mod_speed']=$modId; 
-                $interfaces[$key]['mod_speed_unit']=(string)$m['module_unit']; 
-                $interfaces[$key]['mod_speed_name']=$modName; 
-                $interfaces[$key]['speed_val']=$val;
-            }
-            elseif ($dir==='in') { 
-                $interfaces[$key]['mod_in']=$modId; 
-                $interfaces[$key]['mod_in_name']=$modName; 
-                $interfaces[$key]['rx_val']=$val;
-            }
-            elseif ($dir==='out') { 
-                $interfaces[$key]['mod_out']=$modId; 
-                $interfaces[$key]['mod_out_name']=$modName; 
-                $interfaces[$key]['tx_val']=$val;
-            }
-            elseif ($dir==='index') { 
-                $interfaces[$key]['mod_index']=$modId; 
-                $interfaces[$key]['index_val']=$val;
-            }
-            elseif ($dir==='status') { 
-                $interfaces[$key]['mod_status']=$modId; 
-                $interfaces[$key]['status_val_str']=$val_str;
-            }
+                $sql = "SELECT am.id_agente_modulo, am.nombre AS module_name, am.unit AS module_unit, am.descripcion AS description, a.id_agente, a.alias, a.nombre AS agent_name, a.direccion AS ip, am.id_category, c.name AS category_name, ae.datos AS module_data
+                        FROM tagente_modulo am 
+                        JOIN tagente a ON a.id_agente = am.id_agente 
+                        LEFT JOIN tcategory c ON am.id_category = c.id
+                        LEFT JOIN tagente_estado ae ON ae.id_agente_modulo = am.id_agente_modulo
+                        WHERE am.disabled = 0 AND a.disabled = 0";
 
-            if (!empty($m['category_name']) && empty($interfaces[$key]['category_name'])) {
-                $interfaces[$key]['category_name'] = html_entity_decode((string)$m['category_name'], ENT_QUOTES, 'UTF-8');
-            }
-            if (!empty($m['description'])) {
-                $desc = html_entity_decode((string)$m['description'], ENT_QUOTES, 'UTF-8');
-                if (stripos($desc, 'Alias:') !== false) {
-                    $parts = explode(' - ', $desc);
-                    foreach ($parts as $part) {
-                        if (stripos($part, 'Alias:') !== false) {
-                            $interfaces[$key]['interface_alias'] = trim(str_ireplace('Alias:', '', $part), " \t\n\r\0\x0B)");
-                            break;
+                if ($info['group_id'] > 0) { $sql .= " AND a.id_grupo = :gid"; $params[':gid'] = $info['group_id']; }
+                if ($info['agent_id'] > 0) { $sql .= " AND a.id_agente = :aid"; $params[':aid'] = $info['agent_id']; }
+
+                $sql .= " AND ({$allLikes})";
+
+                $stmt = $active_pdo->prepare($sql); $stmt->execute($params); 
+                $modules = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($modules as $m) {
+                    $aid = (int)$m['id_agente']; $modId = (int)$m['id_agente_modulo']; $modName = (string)$m['module_name'];
+                    $dir = null; $base = null; $modNameL = strtolower($modName);
+
+                    foreach ($modulePrefixesSpeed as $p) { if(str_starts_with($modNameL, strtolower($p))) { $dir='speed'; $base=substr($modName, strlen($p)); break; } }
+                    if(!$dir) {
+                        foreach ($moduleSuffixesIn as $s) {
+                            $sL = strtolower($s);
+                            $pos = strpos($modNameL, $sL);
+                            if ($pos !== false) {
+                                $dir = 'in';
+                                $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                                break;
+                            }
+                        }
+                        if(!$dir) foreach ($moduleSuffixesOut as $s) {
+                            $sL = strtolower($s);
+                            $pos = strpos($modNameL, $sL);
+                            if ($pos !== false) {
+                                $dir = 'out';
+                                $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                                break;
+                            }
+                        }
+                        if(!$dir) foreach ($moduleSuffixesSpeed as $s) {
+                            $sL = strtolower($s);
+                            $pos = strpos($modNameL, $sL);
+                            if ($pos !== false) {
+                                $dir = 'speed';
+                                $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                                break;
+                            }
+                        }
+                        if(!$dir) foreach ($moduleSuffixesIndex as $s) {
+                            $sL = strtolower($s);
+                            $pos = strpos($modNameL, $sL);
+                            if ($pos !== false) {
+                                $dir = 'index';
+                                $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                                break;
+                            }
+                        }
+                        if(!$dir) foreach ($moduleSuffixesStatus as $s) {
+                            $sL = strtolower($s);
+                            $pos = strpos($modNameL, $sL);
+                            if ($pos !== false) {
+                                $dir = 'status';
+                                $base = substr($modName, 0, $pos) . substr($modName, $pos + strlen($s));
+                                break;
+                            }
+                        }
+                    }
+                    if (!$dir) continue;
+                    $base = clean_base($base);
+                    if ($base === '') $base = $modName;
+                    $key = "$node|$aid|$base";
+                    if (!isset($interfaces[$key])) {
+                        $interfaces[$key] = [
+                            'agent_id'=>$node . ':' . $aid, 
+                            'node'=>$node_label . html_entity_decode((string)$m['alias'], ENT_QUOTES, 'UTF-8'), 
+                            'ip'=>pick_best_ip((string)$m['ip'], (string)$m['alias'], (string)$m['agent_name']), 
+                            'interface'=>$base, 
+                            'interface_alias'=>'', 
+                            'mod_in'=>0, 
+                            'mod_out'=>0, 
+                            'mod_speed'=>0, 
+                            'mod_index'=>0, 
+                            'mod_status'=>0, 
+                            'mod_speed_unit'=>'', 
+                            'mod_in_name'=>'', 
+                            'mod_out_name'=>'', 
+                            'desc_speed'=>0.0, 
+                            'category_name'=>'',
+                            'rx_val'=>0.0,
+                            'tx_val'=>0.0,
+                            'speed_val'=>null,
+                            'index_val'=>null,
+                            'status_val_str'=>null
+                        ];
+                    }
+
+                    $val = ($m['module_data'] !== null) ? (float)$m['module_data'] : null;
+                    $val_str = ($m['module_data'] !== null) ? trim((string)$m['module_data']) : null;
+
+                    if ($dir==='speed') { 
+                        $interfaces[$key]['mod_speed']=$node . ':' . $modId; 
+                        $interfaces[$key]['mod_speed_unit']=(string)$m['module_unit']; 
+                        $interfaces[$key]['mod_speed_name']=$modName; 
+                        $interfaces[$key]['speed_val']=$val;
+                    }
+                    elseif ($dir==='in') { 
+                        $interfaces[$key]['mod_in']=$node . ':' . $modId; 
+                        $interfaces[$key]['mod_in_name']=$modName; 
+                        $interfaces[$key]['rx_val']=$val;
+                    }
+                    elseif ($dir==='out') { 
+                        $interfaces[$key]['mod_out']=$node . ':' . $modId; 
+                        $interfaces[$key]['mod_out_name']=$modName; 
+                        $interfaces[$key]['tx_val']=$val;
+                    }
+                    elseif ($dir==='index') { 
+                        $interfaces[$key]['mod_index']=$node . ':' . $modId; 
+                        $interfaces[$key]['index_val']=$val;
+                    }
+                    elseif ($dir==='status') { 
+                        $interfaces[$key]['mod_status']=$node . ':' . $modId; 
+                        $interfaces[$key]['status_val_str']=$val_str;
+                    }
+
+                    if (!empty($m['category_name']) && empty($interfaces[$key]['category_name'])) {
+                        $interfaces[$key]['category_name'] = html_entity_decode((string)$m['category_name'], ENT_QUOTES, 'UTF-8');
+                    }
+                    if (!empty($m['description'])) {
+                        $desc = html_entity_decode((string)$m['description'], ENT_QUOTES, 'UTF-8');
+                        if (stripos($desc, 'Alias:') !== false) {
+                            $parts = explode(' - ', $desc);
+                            foreach ($parts as $part) {
+                                if (stripos($part, 'Alias:') !== false) {
+                                    $interfaces[$key]['interface_alias'] = trim(str_ireplace('Alias:', '', $part), " \t\n\r\0\x0B)");
+                                    break;
+                                }
+                            }
+                        }
+                        if (preg_match('/speed\s+(\d+)\s+bps/i', $desc, $matches)) {
+                            $interfaces[$key]['desc_speed'] = (float)$matches[1];
                         }
                     }
                 }
-                if (preg_match('/speed\s+(\d+)\s+bps/i', $desc, $matches)) {
-                    $interfaces[$key]['desc_speed'] = (float)$matches[1];
-                }
-            }
+            } catch (Throwable $e) {}
         }
 
         foreach ($interfaces as &$iface) {
@@ -489,11 +655,10 @@ if ($api === 'data') {
             $speed_raw = $iface['speed_val'] ?? null;
             if (($iface['index_val'] ?? null) !== null) $iface['if_index'] = (int)$iface['index_val']; else $iface['if_index'] = '-';
 
-            // Format status badge based on RFC 2863 ifOperStatus value (1 = UP, 2 = DOWN, 3 = TESTING)
             $mod_status_id = $iface['mod_status'];
             $raw_status = $iface['status_val_str'] ?? null;
 
-            if ($mod_status_id <= 0 || $raw_status === null || $raw_status === '') {
+            if (empty($mod_status_id) || $raw_status === null || $raw_status === '') {
                 $iface['status_text'] = 'N/A';
                 $iface['status_badge'] = 'badge-warn';
             } else {
@@ -594,7 +759,6 @@ if ($api === 'data') {
             }));
         }
 
-        // ** Filter interface yang disembunyikan **
         if (!empty($hiddenKeys)) {
             $interfaces = array_values(array_filter($interfaces, function($iface) use ($hiddenKeys) {
                 $key = $iface['agent_id'] . '|' . $iface['interface'];
@@ -615,7 +779,6 @@ if ($api === 'data') {
             });
             $interfaces = array_slice($interfaces, 0, 10);
         } else {
-            // Separate interfaces into Pinned (Warning/Critical) and Normal (OK)
             $pinned = [];
             $normal = [];
             foreach ($interfaces as $iface) {
@@ -626,18 +789,17 @@ if ($api === 'data') {
                 }
             }
 
-            // Helper sorting function based on the selected option
             $sorter = function($a, $b) use ($sort) {
                 if ($sort === 'default') {
                     $aPct = max((float)$a['rx_pct'], (float)$a['tx_pct']);
                     $bPct = max((float)$b['rx_pct'], (float)$b['tx_pct']);
                     if ($aPct !== $bPct) {
-                        return $bPct <=> $aPct; // Highest utilization percentage first
+                        return $bPct <=> $aPct;
                     }
                     $aCap = (float)($a['cap_bps'] ?? 0.0);
                     $bCap = (float)($b['cap_bps'] ?? 0.0);
                     if ($aCap !== $bCap) {
-                        return $bCap <=> $aCap; // Highest bandwidth speed first
+                        return $bCap <=> $aCap;
                     }
                     return 0;
                 }
@@ -652,7 +814,6 @@ if ($api === 'data') {
                 return 0;
             };
 
-            // Sort pinned group: Critical always floats above Warning
             usort($pinned, function($a, $b) use ($sorter) {
                 if ($a['rowLevel'] !== $b['rowLevel']) {
                     if ($a['rowLevel'] === 'crit') return -1;
@@ -661,10 +822,7 @@ if ($api === 'data') {
                 return $sorter($a, $b);
             });
 
-            // Sort normal group
             usort($normal, $sorter);
-
-            // Recombine, ensuring Pinned interfaces are on top
             $interfaces = array_merge($pinned, $normal);
         }
 
@@ -675,18 +833,28 @@ if ($api === 'data') {
 
 if ($api === 'series') {
     ob_clean(); header('Content-Type: application/json');
-    $inId = (int)($_GET['in']??0); $outId = (int)($_GET['out']??0);
+    $inIdRaw = $_GET['in']??'0'; 
+    $outIdRaw = $_GET['out']??'0';
     $unit = $_GET['unit'] ?? 'Mbps';
     $rangeHours = (int)($_GET['range'] ?? 24);
+    $speedBps = isset($_GET['speed']) ? (float)$_GET['speed'] : 0.0;
     
-    $get_mult = function($id, $selected_unit) use ($pdo) {
-        if($id <= 0) return 1.0;
-        $st = $pdo->prepare("SELECT nombre FROM tagente_modulo WHERE id_agente_modulo = ?");
-        $st->execute([$id]);
+    $inParsed = parse_node_id($inIdRaw);
+    $outParsed = parse_node_id($outIdRaw);
+    
+    $node = ($inParsed['id'] > 0) ? $inParsed['node'] : (($outParsed['id'] > 0) ? $outParsed['node'] : 'primary');
+    global $custom_pdos;
+    $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+    $active_history_pdo = ($node === 'primary') ? $history_pdo : $active_pdo;
+    
+    $get_mult = function($real_id, $selected_unit) use ($active_pdo) {
+        if($real_id <= 0 || $active_pdo === null) return 1.0;
+        $st = $active_pdo->prepare("SELECT nombre FROM tagente_modulo WHERE id_agente_modulo = ?");
+        $st->execute([$real_id]);
         $name = (string)$st->fetchColumn();
         $is_mbps_mod = (stripos($name, 'Mbps') !== false);
         
-        if ($selected_unit === 'Auto') return $is_mbps_mod ? 125000.0 : 1.0; // Return as Bytes/s for Auto
+        if ($selected_unit === 'Auto') return $is_mbps_mod ? 125000.0 : 1.0;
         if ($selected_unit === 'Mbps') return $is_mbps_mod ? 1.0 : (8.0 / 1000000.0);
         if ($selected_unit === 'Gbps') return $is_mbps_mod ? 0.001 : (8.0 / 1000000000.0);
         if ($selected_unit === 'Bps') return $is_mbps_mod ? (1000000.0 / 8.0) : 1.0;
@@ -695,11 +863,14 @@ if ($api === 'series') {
         return 1.0;
     };
 
-    $mult_rx = $get_mult($inId, $unit);
-    $mult_tx = $get_mult($outId, $unit);
+    $mult_rx = $get_mult($inParsed['id'], $unit);
+    $mult_tx = $get_mult($outParsed['id'], $unit);
 
-    $fetchData = function($id, $m) use ($pdo, $history_pdo, $rangeHours) {
-        if($id<=0) return ['pts' => [], 'avg' => 0];
+    $debug_info = [];
+    $fetchData = function($prefixed_id, $m) use ($active_pdo, $active_history_pdo, $rangeHours, $speedBps, &$debug_info) {
+        $parsed = parse_node_id($prefixed_id);
+        $real_id = $parsed['id'];
+        if($real_id<=0 || $active_pdo === null) return ['pts' => [], 'avg' => 0];
         $from = time() - ($rangeHours * 3600);
         $to = time();
         if (isset($_GET['start']) && !empty($_GET['start'])) {
@@ -707,10 +878,59 @@ if ($api === 'series') {
             $to = isset($_GET['end']) && !empty($_GET['end']) ? strtotime($_GET['end']) : time();
         }
 
-        // Fetch using central optimized function that handles multiple tables (active + historical)
-        $points = get_module_history_data($pdo, $history_pdo, $id, $from, $to, 5000, 'ASC');
+        $points = get_module_history_data($active_pdo, $active_history_pdo, $prefixed_id, $from, $to, 5000, 'ASC');
 
-        // Group by 10-minute intervals
+        // Filter out SNMP counter wrap spikes and extreme outliers
+        $filtered_points = [];
+        $values = [];
+        foreach ($points as $pt) {
+            $val = (float)$pt['datos'];
+            if ($val > 0) {
+                $values[] = $val;
+            }
+        }
+        
+        $median = 0.0;
+        if (count($values) > 0) {
+            sort($values);
+            $mid = (int)floor(count($values) / 2);
+            $median = $values[$mid];
+        }
+        
+        foreach ($points as $pt) {
+            $val = (float)$pt['datos'];
+            
+            // 1. Physical speed cap (if speed is provided and > 0)
+            if ($speedBps > 0) {
+                $speedBytesSec = $speedBps / 8.0;
+                // Allow up to 2x the speed to account for overhead/misconfiguration
+                if ($val > $speedBytesSec * 2.0) {
+                    continue; // Skip this spike point
+                }
+            }
+            
+            // 2. Statistical outlier cap
+            // If the point is > 50MB/s AND is > 100x the median of non-zero points, it's a spike
+            if ($median > 0 && $val > 50000000 && $val > $median * 100) {
+                continue; // Skip this spike point
+            }
+            
+            $filtered_points[] = $pt;
+        }
+        $points = $filtered_points;
+
+        $debug_info[$prefixed_id] = [
+            'real_id' => $real_id,
+            'from_str' => date('Y-m-d H:i:s', $from),
+            'to_str' => date('Y-m-d H:i:s', $to),
+            'points_count' => count($points),
+            'multiplier' => $m,
+        ];
+        if (count($points) > 0) {
+            $debug_info[$prefixed_id]['first_point'] = $points[0];
+            $debug_info[$prefixed_id]['last_point'] = $points[count($points) - 1];
+        }
+
         $grouped = [];
         foreach ($points as $pt) {
             $ts = (int)$pt['ts'];
@@ -723,10 +943,8 @@ if ($api === 'series') {
             $grouped[$bin]['count']++;
         }
 
-        // Sort chronologically
         ksort($grouped);
 
-        // Format points
         $pts = [];
         $sum = 0.0;
         $count = 0;
@@ -740,8 +958,8 @@ if ($api === 'series') {
 
         return ['pts' => $pts, 'avg' => $count > 0 ? $sum/$count : 0];
     };
-    $rx = $fetchData($inId, $mult_rx); $tx = $fetchData($outId, $mult_tx);
-    echo json_encode(['ok'=>true, 'rx'=>$rx['pts'], 'tx'=>$tx['pts'], 'avg_rx'=>$rx['avg'], 'avg_tx'=>$tx['avg']]); exit;
+    $rx = $fetchData($inIdRaw, $mult_rx); $tx = $fetchData($outIdRaw, $mult_tx);
+    echo json_encode(['ok'=>true, 'rx'=>$rx['pts'], 'tx'=>$tx['pts'], 'avg_rx'=>$rx['avg'], 'avg_tx'=>$tx['avg'], 'debug'=>$debug_info]); exit;
 }
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
 ?>
@@ -1899,17 +2117,22 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 ? `<span class="category-badge">${r.category_name}</span>`
                 : `<span class="category-badge" style="background:transparent; color:#94a3b8; border-color:#e2e8f0; border-style:dashed;">N/A</span>`;
 
+            const isPrimary = String(r.agent_id).startsWith('primary:');
+            const agentLinkHtml = isPrimary 
+                ? `<a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${String(r.agent_id).split(':')[1]}" 
+                      target="_blank" 
+                      style="color:#004d40; text-decoration:none;" 
+                      onmouseover="this.style.textDecoration='underline'" 
+                      onmouseout="this.style.textDecoration='none'">
+                       ${r.node}
+                   </a>`
+                : `<span style="color:#334155; font-weight:600;">${r.node}</span>`;
+
             return `<tr>
             <td><span class="status-badge ${r.status_badge}">${r.status_text}</span></td>
             <td>
                 <div style="font-weight:600;">
-                    <a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${r.agent_id}" 
-                       target="_blank" 
-                       style="color:#004d40; text-decoration:none;" 
-                       onmouseover="this.style.textDecoration='underline'" 
-                       onmouseout="this.style.textDecoration='none'">
-                        ${r.node}
-                    </a>
+                    ${agentLinkHtml}
                 </div>
                 <div class="sub-text">${r.ip}</div>
             </td>
@@ -1930,10 +2153,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             <td><div class="col-${txLevel}" style="font-weight:600;">${txDisp} <span class="pct-text">(${r.tx_pct_disp})</span></div><div class="traffic-bar"><div class="traffic-fill bg-${txLevel}" style="width:${r.tx_pct}%"></div></div></td>
             <td class="action-cell col-actions" style="text-align:center;">
                 <div class="action-buttons-desktop">
-                    <button class="btn-icon-only" onclick="openChart(${r.mod_in}, ${r.mod_out}, '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}')" title="View Graph">
+                    <button class="btn-icon-only" onclick="openChart('${r.mod_in}', '${r.mod_out}', '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}', ${r.cap_bps || 0})" title="View Graph">
                         <span class="material-symbols-outlined table-icon" style="color:#3b82f6;">show_chart</span>
                     </button>
-                    <button class="btn-icon-only delete-icon" onclick="hideInterface(${r.agent_id}, '${r.interface.replace(/'/g, "\\'")}')" title="Hide this interface">
+                    <button class="btn-icon-only delete-icon" onclick="hideInterface('${r.agent_id}', '${r.interface.replace(/'/g, "\\'")}')" title="Hide this interface">
                         <span class="material-symbols-outlined table-icon">delete</span>
                     </button>
                 </div>
@@ -1942,10 +2165,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <span class="material-symbols-outlined">more_vert</span>
                     </button>
                     <div class="dropdown-menu-custom">
-                        <a href="#" onclick="event.preventDefault(); openChart(${r.mod_in}, ${r.mod_out}, '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}')">
+                        <a href="#" onclick="event.preventDefault(); openChart('${r.mod_in}', '${r.mod_out}', '${r.node.replace(/'/g, "\\'")} - ${r.interface.replace(/'/g, "\\'")}', ${r.cap_bps || 0})">
                             <span class="material-symbols-outlined" style="color:#3b82f6;">show_chart</span> View Graph
                         </a>
-                        <a href="#" class="delete-item" onclick="event.preventDefault(); hideInterface(${r.agent_id}, '${r.interface.replace(/'/g, "\\'")}')">
+                        <a href="#" class="delete-item" onclick="event.preventDefault(); hideInterface('${r.agent_id}', '${r.interface.replace(/'/g, "\\'")}')">
                             <span class="material-symbols-outlined">delete</span> Hide Interface
                         </a>
                     </div>
@@ -2315,13 +2538,13 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
 
 
-    let lastInId, lastOutId, lastTitle;
-    function openChart(inId, outId, title) {
+    let lastInId, lastOutId, lastTitle, lastSpeed;
+    function openChart(inId, outId, title, speed) {
         // Close any active action dropdowns
         document.querySelectorAll('.dropdown-menu-custom.show').forEach(menu => {
             menu.classList.remove('show');
         });
-        lastInId = inId; lastOutId = outId; lastTitle = title;
+        lastInId = inId; lastOutId = outId; lastTitle = title; lastSpeed = speed || 0;
         document.getElementById('chartTitle').innerText = title; 
         
         // Reset chart settings to default (Last 24 Hours)
@@ -2340,7 +2563,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const range = document.getElementById('chartRange').value;
         const customDiv = document.getElementById('customRangeInputs');
         
-        let url = `?api=series&in=${lastInId}&out=${lastOutId}&unit=${unit}`;
+        let url = `?api=series&in=${lastInId}&out=${lastOutId}&unit=${unit}&speed=${lastSpeed}`;
         
         if (range === 'custom') {
             customDiv.style.display = 'flex';
@@ -2354,6 +2577,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
 
         fetch(url).then(r=>r.json()).then(d => {
+            if (d.debug) {
+                console.log("Traffic History Debug Details:", d.debug);
+            }
             // Ensure all timestamps and values are parsed as numbers to prevent ECharts type issues
             d.rx = (d.rx || []).map(pt => [Number(pt[0]), pt[1] !== null ? Number(pt[1]) : null]);
             d.tx = (d.tx || []).map(pt => [Number(pt[0]), pt[1] !== null ? Number(pt[1]) : null]);

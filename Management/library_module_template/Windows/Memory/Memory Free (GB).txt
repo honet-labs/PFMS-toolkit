@@ -1,0 +1,8 @@
+# Group: Windows
+# Sub Group: Memory
+module_begin
+module_name Memory Free (GB)
+module_type async_data
+module_unit GB
+module_exec powershell.exe [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 2)
+module_end

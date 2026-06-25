@@ -1,0 +1,7 @@
+# Group: Linux
+# Sub Group: System
+module_begin
+module_name Monitor Port (TCP/UDP)
+module_type generic_data_string
+module_exec ss -utlpn
+module_end

@@ -71,10 +71,11 @@ try {
     if (!isset($pdo)) throw new Exception("DB Error");
 
     // A. Fetch Custom Fields (Filtered by Exclusion List)
+    $primaryCF = [];
     $stmtAllCF = $pdo->query("SELECT id_field, name FROM tagent_custom_fields ORDER BY name ASC");
     if ($stmtAllCF) {
-        $allCF = $stmtAllCF->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($allCF as $cf) {
+        $primaryCF = $stmtAllCF->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($primaryCF as $cf) {
             // Only add to display list if NOT in excluded list
             if (!in_array($cf['id_field'], $current_settings['excluded_cf'])) {
                 $displayCustomFields[] = $cf;
@@ -82,62 +83,143 @@ try {
         }
     }
 
-    // B. Detect Column Schemas
-    $ipCol = 'direccion';
-    $checkIp = $pdo->query("SHOW COLUMNS FROM tagente LIKE 'ip_address'");
-    if ($checkIp && $checkIp->rowCount() > 0) $ipCol = 'ip_address';
-
-    $dataCol = 'value';
-    $checkData = $pdo->query("SHOW COLUMNS FROM tagent_custom_data LIKE 'description'");
-    if ($checkData && $checkData->rowCount() > 0) $dataCol = 'description';
-
-    // C. Fetch Custom Data for Displayed Fields
-    if (!empty($displayCustomFields)) {
-        $displayedIds = implode(',', array_column($displayCustomFields, 'id_field'));
-        $stmtCD = $pdo->query("SELECT id_agent, id_field, $dataCol as val FROM tagent_custom_data WHERE id_field IN ($displayedIds)");
-        if ($stmtCD) {
-            while ($row = $stmtCD->fetch(PDO::FETCH_ASSOC)) {
-                $agentCustomData[$row['id_agent']][$row['id_field']] = $row['val'];
-            }
+    // B. Query primary and custom PDOs
+    global $custom_pdos, $custom_connections;
+    $target_nodes = ['primary' => $pdo];
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $target_nodes[$cid] = $cpdo;
         }
     }
 
-    // D. Fetch Main Agent List
-    $sqlA = "SELECT a.id_agente, a.alias, a.$ipCol as ip, g.nombre as group_name, os.name as os, 
-                    os.icon_name as icon, a.ultimo_contacto
-             FROM tagente a
-             LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo
-             LEFT JOIN tconfig_os os ON a.id_os = os.id_os
-             WHERE a.disabled = 0 ORDER BY a.alias ASC";
-    $stmtA = $pdo->query($sqlA);
-    if ($stmtA) $inventoryData = $stmtA->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($target_nodes as $node => $active_pdo) {
+        if ($active_pdo === null) continue;
 
-    // E. Bulk Fetch Module Data
-    if (!empty($inventoryData) && !empty($current_settings['dynamic_columns'])) {
-        $agentIds = array_column($inventoryData, 'id_agente');
-        $idString = implode(',', array_map('intval', $agentIds));
-        $allKeywords = [];
-        foreach ($current_settings['dynamic_columns'] as $col) {
-            foreach (($col['keywords'] ?? []) as $kw) { if(trim($kw)!=='') $allKeywords[] = trim($kw); }
+        $node_label = '';
+        if ($node !== 'primary') {
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
+            }
+            if (empty($node_label)) $node_label = '[' . $node . '] ';
         }
-        $allKeywords = array_unique($allKeywords);
 
-        if (!empty($allKeywords)) {
-            $kwList = implode("','", array_map(function($k){ return str_replace("'","''",$k); }, $allKeywords));
-            $sqlM = "SELECT tm.id_agente, tm.nombre, e.datos 
-                     FROM tagente_modulo tm 
-                     INNER JOIN tagente_estado e ON tm.id_agente_modulo = e.id_agente_modulo 
-                     WHERE tm.id_agente IN ($idString) 
-                     AND (tm.nombre IN ('$kwList') OR " . 
-                     implode(" OR ", array_map(function($k){ return "tm.nombre LIKE '%" . str_replace("'","''",$k) . "%'"; }, $allKeywords)) . ")";
-            $stmtM = $pdo->query($sqlM);
-            if ($stmtM) {
-                while ($row = $stmtM->fetch(PDO::FETCH_ASSOC)) {
-                    $agentModuleMap[$row['id_agente']][$row['nombre']] = $row['datos'];
+        // B. Detect Column Schemas
+        $ipCol = 'direccion';
+        try {
+            $checkIp = $active_pdo->query("SHOW COLUMNS FROM tagente LIKE 'ip_address'");
+            if ($checkIp && $checkIp->rowCount() > 0) $ipCol = 'ip_address';
+        } catch (Throwable $e) {}
+
+        $dataCol = 'value';
+        try {
+            $checkData = $active_pdo->query("SHOW COLUMNS FROM tagent_custom_data LIKE 'description'");
+            if ($checkData && $checkData->rowCount() > 0) $dataCol = 'description';
+        } catch (Throwable $e) {}
+
+        // Fetch local custom field ID mapping for this node
+        $localCFMap = []; // name -> local id_field
+        try {
+            $stmtLocalCF = $active_pdo->query("SELECT id_field, name FROM tagent_custom_fields");
+            if ($stmtLocalCF) {
+                while ($cfRow = $stmtLocalCF->fetch(PDO::FETCH_ASSOC)) {
+                    $localCFMap[$cfRow['name']] = $cfRow['id_field'];
                 }
             }
+        } catch (Throwable $e) {}
+
+        // C. Fetch Custom Data for Displayed Fields
+        if (!empty($displayCustomFields)) {
+            $localFieldIds = [];
+            $fieldIdMapping = []; // local_id -> primary_id
+            foreach ($displayCustomFields as $cf) {
+                $cfName = $cf['name'];
+                if (isset($localCFMap[$cfName])) {
+                    $localId = $localCFMap[$cfName];
+                    $localFieldIds[] = $localId;
+                    $fieldIdMapping[$localId] = $cf['id_field'];
+                }
+            }
+
+            if (!empty($localFieldIds)) {
+                $displayedIdsStr = implode(',', $localFieldIds);
+                try {
+                    $stmtCD = $active_pdo->query("SELECT id_agent, id_field, $dataCol as val FROM tagent_custom_data WHERE id_field IN ($displayedIdsStr)");
+                    if ($stmtCD) {
+                        while ($row = $stmtCD->fetch(PDO::FETCH_ASSOC)) {
+                            $prefixedAgentId = $node . ':' . $row['id_agent'];
+                            $primaryFieldId = $fieldIdMapping[$row['id_field']] ?? null;
+                            if ($primaryFieldId !== null) {
+                                $agentCustomData[$prefixedAgentId][$primaryFieldId] = $row['val'];
+                            }
+                        }
+                    }
+                } catch (Throwable $e) {}
+            }
+        }
+
+        // D. Fetch Main Agent List
+        $nodeAgents = [];
+        try {
+            $sqlA = "SELECT a.id_agente, a.alias, a.$ipCol as ip, g.nombre as group_name, os.name as os, 
+                            os.icon_name as icon, a.ultimo_contacto
+                     FROM tagente a
+                     LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo
+                     LEFT JOIN tconfig_os os ON a.id_os = os.id_os
+                     WHERE a.disabled = 0";
+            $stmtA = $active_pdo->query($sqlA);
+            if ($stmtA) {
+                while ($row = $stmtA->fetch(PDO::FETCH_ASSOC)) {
+                    $prefixedAgentId = $node . ':' . $row['id_agente'];
+                    $row['id_agente'] = $prefixedAgentId;
+                    $row['alias'] = $node_label . pretty_text($row['alias']);
+                    $nodeAgents[] = $row;
+                }
+            }
+        } catch (Throwable $e) {}
+
+        // Merge this node's agents into inventoryData
+        $inventoryData = array_merge($inventoryData, $nodeAgents);
+
+        // E. Bulk Fetch Module Data
+        if (!empty($nodeAgents) && !empty($current_settings['dynamic_columns'])) {
+            $localAgentIds = [];
+            foreach ($nodeAgents as $na) {
+                $parsed = parse_node_id($na['id_agente']);
+                $localAgentIds[] = $parsed['id'];
+            }
+            $idString = implode(',', array_map('intval', $localAgentIds));
+            
+            $allKeywords = [];
+            foreach ($current_settings['dynamic_columns'] as $col) {
+                foreach (($col['keywords'] ?? []) as $kw) { if(trim($kw)!=='') $allKeywords[] = trim($kw); }
+            }
+            $allKeywords = array_unique($allKeywords);
+
+            if (!empty($allKeywords)) {
+                $kwList = implode("','", array_map(function($k){ return str_replace("'","''",$k); }, $allKeywords));
+                $sqlM = "SELECT tm.id_agente, tm.nombre, e.datos 
+                         FROM tagente_modulo tm 
+                         INNER JOIN tagente_estado e ON tm.id_agente_modulo = e.id_agente_modulo 
+                         WHERE tm.id_agente IN ($idString) 
+                         AND (tm.nombre IN ('$kwList') OR " . 
+                         implode(" OR ", array_map(function($k){ return "tm.nombre LIKE '%" . str_replace("'","''",$k) . "%'"; }, $allKeywords)) . ")";
+                try {
+                    $stmtM = $active_pdo->query($sqlM);
+                    if ($stmtM) {
+                        while ($row = $stmtM->fetch(PDO::FETCH_ASSOC)) {
+                            $prefixedAgentId = $node . ':' . $row['id_agente'];
+                            $agentModuleMap[$prefixedAgentId][$row['nombre']] = $row['datos'];
+                        }
+                    }
+                } catch (Throwable $e) {}
+            }
         }
     }
+
+    // Sort aggregated agents by alias
+    usort($inventoryData, function($a, $b) {
+        return strcasecmp($a['alias'], $b['alias']);
+    });
 
 } catch (Exception $e) { $db_error = $e->getMessage(); }
 
@@ -234,7 +316,15 @@ function findModuleData($aid, $col, $map) {
             <tbody>
                 <?php foreach ($inventoryData as $row): $id = $row['id_agente']; ?>
                 <tr>
-                    <td><a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=<?php echo $id; ?>" target="_blank" class="agent-link"><?php echo cleanText($row['alias']); ?></a></td>
+                    <td>
+                        <?php 
+                        $parsed = parse_node_id($id);
+                        if ($parsed['node'] === 'primary'): ?>
+                            <a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=<?php echo $parsed['id']; ?>" target="_blank" class="agent-link"><?php echo cleanText($row['alias']); ?></a>
+                        <?php else: ?>
+                            <span class="agent-link-text" style="font-weight:600; color:#334155;"><?php echo cleanText($row['alias']); ?></span>
+                        <?php endif; ?>
+                    </td>
                     <td class="font-monospace text-muted"><?php echo htmlspecialchars($row['ip']); ?></td>
                     <td style="color:#64748b;"><?php echo cleanText($row['group_name']); ?></td>
                     

@@ -1,0 +1,13 @@
+# Group: Solaris 11
+# Sub Group: CPU
+module_begin
+module_name CPU Used
+module_type async_data
+module_unit %
+module_group Basic Info
+module_exec top -b | nawk '/CPU states:/ {gsub(/%/, "", $3); print 100 - $3; exit}'
+module_min_warning 80
+module_max_warning 90
+module_min_critical 90
+module_max_critical 95
+module_end

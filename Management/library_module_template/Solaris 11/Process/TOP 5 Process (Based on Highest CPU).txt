@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: Process
+module_begin
+module_name TOP 5 Process (Based on Highest CPU)
+module_type generic_data_string
+module_exec top -b | nawk '/PID USERNAME/{c=6} c{print; c--; if(c==0) exit}'
+module_end

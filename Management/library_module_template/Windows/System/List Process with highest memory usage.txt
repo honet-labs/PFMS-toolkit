@@ -1,0 +1,7 @@
+# Group: Windows
+# Sub Group: System
+module_begin
+module_name List Process with highest memory usage
+module_type generic_data_string
+module_exec powershell.exe Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 | ForEach-Object { '{0} ({1} MB)' -f $_.Name, [math]::Round($_.WorkingSet64 / 1MB, 1) }
+module_end

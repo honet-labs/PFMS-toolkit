@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: System
+module_begin
+module_name Available Status Link
+module_type generic_data_string
+module_exec svcs -H -o state network/physical:default
+module_end

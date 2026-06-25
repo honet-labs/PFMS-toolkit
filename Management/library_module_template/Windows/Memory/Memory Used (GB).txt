@@ -1,0 +1,8 @@
+# Group: Windows
+# Sub Group: Memory
+module_begin
+module_name Memory Used (GB)
+module_type async_data
+module_unit GB
+module_exec $os = Get-CimInstance Win32_OperatingSystem; [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 2)
+module_end

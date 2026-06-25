@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: Storage
+module_begin
+module_name Storage - mountpointName
+module_type generic_data_string
+module_exec command: df -h mountpointName | tail -1 | awk '{print $6}'
+module_end

@@ -1,0 +1,14 @@
+# Group: Solaris 11
+# Sub Group: CPU
+module_begin
+module_name CPU Kernel
+module_type async_data
+module_unit %
+module_description Monitoring CPU Kernel
+module_group Solaris 11
+module_exec top -b | nawk '/CPU states:/ {gsub(/%/, "", $7); print $7; exit}'
+module_min_warning 80
+module_max_warning 90
+module_min_critical 90
+module_max_critical 95
+module_end

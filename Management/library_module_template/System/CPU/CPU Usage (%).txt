@@ -1,8 +1,0 @@
-# Group: System
-# Sub Group: CPU
-module_begin
-module_name CPU Usage (%)
-module_type async_data
-module_exec top -b -n 1 | grep "%Cpu(s)" | awk '{print 100 - $8}'
-module_description CPU Usage (%)
-module_end

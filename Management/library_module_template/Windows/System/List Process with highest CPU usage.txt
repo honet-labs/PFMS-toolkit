@@ -1,0 +1,7 @@
+# Group: Windows
+# Sub Group: System
+module_begin
+module_name List Process with highest CPU usage
+module_type generic_data_string
+module_exec powershell.exe (Get-Counter '\Process(*)\% Processor Time' -SampleInterval 1).CounterSamples | Where-Object { $_.InstanceName -notlike '_total' -and $_.InstanceName -notlike 'idle' } | Sort-Object CookedValue -Descending | Select-Object -First 5 | ForEach-Object { '{0} ({1}%)' -f $_.InstanceName, [math]::Round($_.CookedValue) }
+module_end

@@ -15,21 +15,17 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / RACK HEATM
 $PANDORA_BASE_URL = "/pandora_console";
 $v = time(); 
 
-// 1. CONFIG LOADING
+// 1. CONFIG LOADING & DB INITIALIZATION
+require_once __DIR__ . '/../../includes/db-connection.php';
 $CONFIG_FILE = __DIR__ . '/grid-health-master.json';
-$config_paths = ['/var/www/html/pandora_console/include/config.php'];
-$config_loaded = false;
-foreach ($config_paths as $path) { if (file_exists($path)) { require_once($path); $config_loaded = true; break; } }
 
 if (session_status() === PHP_SESSION_NONE) session_start();
+if (empty($_SESSION['pfms_csrf_token'])) {
+    $_SESSION['pfms_csrf_token'] = bin2hex(random_bytes(32));
+}
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 
 require_once(__DIR__ . '/../../tools/utils.php');
-
-$pdo = null; $db_status = false;
-if ($config_loaded) {
-    try { $pdo = get_db_connection($config); $db_status = true; } catch (PDOException $e) {}
-}
 
 // Multi-Dashboard Logic
 $dash_id = $_GET['dash_id'] ?? null;
@@ -61,8 +57,22 @@ $agentAliasMap = [];
 if ($db_status) {
     try {
         $resA = $pdo->query("SELECT id_agente, alias FROM tagente WHERE disabled = 0");
-        while ($rA = $resA->fetch(PDO::FETCH_ASSOC)) { $agentAliasMap[strtolower(trim($rA['alias']))] = $rA['id_agente']; }
+        while ($rA = $resA->fetch(PDO::FETCH_ASSOC)) { 
+            $agentAliasMap[strtolower(trim($rA['alias']))] = 'primary:' . $rA['id_agente']; 
+        }
     } catch (Exception $e) {}
+
+    global $custom_pdos;
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            try {
+                $resA = $cpdo->query("SELECT id_agente, alias FROM tagente WHERE disabled = 0");
+                while ($rA = $resA->fetch(PDO::FETCH_ASSOC)) { 
+                    $agentAliasMap[strtolower(trim($rA['alias']))] = $cid . ':' . $rA['id_agente']; 
+                }
+            } catch (Exception $e) {}
+        }
+    }
 }
 
 // 2. AJAX API
@@ -81,22 +91,77 @@ if ($api === 'get_master') {
 }
 if ($api === 'get_resources' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
-    $groups = $pdo->query("SELECT id_grupo as id, nombre as name FROM tgrupo ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
-    $agents = $pdo->query("SELECT id_agente as id, alias, nombre, id_grupo FROM tagente WHERE disabled = 0 ORDER BY alias ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $groups = [];
+    $agents = [];
+    
+    // Primary DB groups and agents
+    try {
+        $primary_groups = $pdo->query("SELECT id_grupo as id, nombre as name FROM tgrupo ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($primary_groups as $g) {
+            $groups[] = ['id' => 'primary:' . $g['id'], 'name' => '[Primary] ' . pretty_text($g['name'])];
+        }
+        $primary_agents = $pdo->query("SELECT id_agente as id, alias, nombre, id_grupo FROM tagente WHERE disabled = 0 ORDER BY alias ASC")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($primary_agents as $a) {
+            $agents[] = [
+                'id' => 'primary:' . $a['id'],
+                'alias' => pretty_text($a['alias']),
+                'nombre' => $a['nombre'],
+                'id_grupo' => 'primary:' . $a['id_grupo']
+            ];
+        }
+    } catch (Exception $e) {}
+    
+    // Custom DB groups and agents
+    global $custom_pdos, $custom_connections;
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $cname = '';
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
+            }
+            if (empty($cname)) $cname = $cid;
+            
+            try {
+                $custom_groups = $cpdo->query("SELECT id_grupo as id, nombre as name FROM tgrupo ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($custom_groups as $g) {
+                    $groups[] = ['id' => $cid . ':' . $g['id'], 'name' => '[' . $cname . '] ' . pretty_text($g['name'])];
+                }
+                
+                $custom_agents = $cpdo->query("SELECT id_agente as id, alias, nombre, id_grupo FROM tagente WHERE disabled = 0 ORDER BY alias ASC")->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($custom_agents as $a) {
+                    $agents[] = [
+                        'id' => $cid . ':' . $a['id'],
+                        'alias' => pretty_text($a['alias']),
+                        'nombre' => $a['nombre'],
+                        'id_grupo' => $cid . ':' . $a['id_grupo']
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+    }
+    
     echo json_encode(['groups' => $groups, 'agents' => $agents]); exit;
 }
 if ($api === 'get_agent_modules' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
-    $aid = $_GET['agent_id'] ?? 0;
-    $modules = $pdo->prepare("SELECT DISTINCT nombre FROM tagente_modulo WHERE disabled = 0 AND id_agente = ? ORDER BY nombre ASC");
-    $modules->execute([$aid]);
-    echo json_encode($modules->fetchAll(PDO::FETCH_COLUMN)); exit;
+    $aidRaw = $_GET['agent_id'] ?? '0';
+    $parsed = parse_node_id($aidRaw);
+    
+    global $custom_pdos;
+    $active_pdo = ($parsed['node'] === 'primary') ? $pdo : ($custom_pdos[$parsed['node']] ?? null);
+    if ($active_pdo && $parsed['id'] > 0) {
+        $modules = $active_pdo->prepare("SELECT DISTINCT nombre FROM tagente_modulo WHERE disabled = 0 AND id_agente = ? ORDER BY nombre ASC");
+        $modules->execute([$parsed['id']]);
+        echo json_encode($modules->fetchAll(PDO::FETCH_COLUMN)); exit;
+    }
+    echo json_encode([]); exit;
 }
 
 // 3. FETCH DATA
 $allModuleStatus = []; 
 if ($db_status) {
     try {
+        global $custom_pdos;
         foreach ($current_config['panels'] as $p) {
             $gm = trim($p['global_module'] ?? ''); $ovs = $p['overrides'] ?? [];
             $toFetch = [];
@@ -108,29 +173,35 @@ if ($db_status) {
                 }}
             }
             foreach ($toFetch as $mtf) {
-                $aid = (string)$mtf['aid']; $mname = trim((string)$mtf['mname']);
-                $ck = $aid.'|'.strtolower(trim($mname)); if (isset($allModuleStatus[$ck])) continue;
+                $aidRaw = (string)$mtf['aid']; $mname = trim((string)$mtf['mname']);
+                $ck = $aidRaw.'|'.strtolower(trim($mname)); if (isset($allModuleStatus[$ck])) continue;
+                
+                $parsed = parse_node_id($aidRaw);
+                $active_pdo = ($parsed['node'] === 'primary') ? $pdo : ($custom_pdos[$parsed['node']] ?? null);
+                
                 $v_status = 4; $last_upd = 'N/A';
-                if ($mname === '[ALL MODULES]') {
-                    $sqlM = "SELECT te.estado, te.utimestamp FROM tagente_modulo m JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo WHERE m.disabled = 0 AND m.id_agente = ? ORDER BY CASE te.estado WHEN 1 THEN 0 WHEN 2 THEN 1 WHEN 3 THEN 2 WHEN 0 THEN 3 ELSE 4 END ASC";
-                    $stmtM = $pdo->prepare($sqlM); $stmtM->execute([$aid]);
-                    $rowsM = $stmtM->fetchAll(PDO::FETCH_ASSOC);
-                    if ($rowsM) {
-                        $v_status = $rowsM[0]['estado'];
-                        $maxTs = 0; foreach($rowsM as $rm){ if($rm['utimestamp'] > $maxTs) $maxTs = $rm['utimestamp']; }
-                        $last_upd = ($maxTs > 0) ? date("Y-m-d H:i:s", $maxTs) : 'N/A';
-                    }
-                } else {
-                    $sqlM = "SELECT te.datos, COALESCE(te.estado, 4) as estado, te.utimestamp FROM tagente_modulo m JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo WHERE m.disabled = 0 AND m.id_agente = ? AND (m.nombre = ? OR m.nombre LIKE ?)";
-                    $stmtM = $pdo->prepare($sqlM); $stmtM->execute([$aid, $mname, '%' . str_replace(' ', '%', $mname) . '%']);
-                    $rowM = $stmtM->fetch(PDO::FETCH_ASSOC);
-                    if ($rowM) {
-                        $rawVal = strtoupper(trim((string)$rowM['datos'])); $v_status = (int)$rowM['estado'];
-                        if (preg_match('/^[01](\.0+)?$/', $rawVal)) { $numCheck = (float)$rawVal; $v_status = ($numCheck >= 1) ? 0 : 1; }
-                        if (strpos($rawVal,'RUNNING')!==false||strpos($rawVal,'OK')!==false||strpos($rawVal,'UP')!==false) $v_status=0;
-                        elseif (strpos($rawVal,'STOPPED')!==false||strpos($rawVal,'DOWN')!==false||strpos($rawVal,'CRIT')!==false) $v_status=1;
-                        elseif (strpos($rawVal,'WARN')!==false) $v_status=2;
-                        $last_upd = ($rowM['utimestamp'] > 0) ? date("Y-m-d H:i:s", $rowM['utimestamp']) : 'N/A';
+                if ($active_pdo && $parsed['id'] > 0) {
+                    if ($mname === '[ALL MODULES]') {
+                        $sqlM = "SELECT te.estado, te.utimestamp FROM tagente_modulo m JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo WHERE m.disabled = 0 AND m.id_agente = ? ORDER BY CASE te.estado WHEN 1 THEN 0 WHEN 2 THEN 1 WHEN 3 THEN 2 WHEN 0 THEN 3 ELSE 4 END ASC";
+                        $stmtM = $active_pdo->prepare($sqlM); $stmtM->execute([$parsed['id']]);
+                        $rowsM = $stmtM->fetchAll(PDO::FETCH_ASSOC);
+                        if ($rowsM) {
+                            $v_status = $rowsM[0]['estado'];
+                            $maxTs = 0; foreach($rowsM as $rm){ if($rm['utimestamp'] > $maxTs) $maxTs = $rm['utimestamp']; }
+                            $last_upd = ($maxTs > 0) ? date("Y-m-d H:i:s", $maxTs) : 'N/A';
+                        }
+                    } else {
+                        $sqlM = "SELECT te.datos, COALESCE(te.estado, 4) as estado, te.utimestamp FROM tagente_modulo m JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo WHERE m.disabled = 0 AND m.id_agente = ? AND (m.nombre = ? OR m.nombre LIKE ?)";
+                        $stmtM = $active_pdo->prepare($sqlM); $stmtM->execute([$parsed['id'], $mname, '%' . str_replace(' ', '%', $mname) . '%']);
+                        $rowM = $stmtM->fetch(PDO::FETCH_ASSOC);
+                        if ($rowM) {
+                            $rawVal = strtoupper(trim((string)$rowM['datos'])); $v_status = (int)$rowM['estado'];
+                            if (preg_match('/^[01](\.0+)?$/', $rawVal)) { $numCheck = (float)$rawVal; $v_status = ($numCheck >= 1) ? 0 : 1; }
+                            if (strpos($rawVal,'RUNNING')!==false||strpos($rawVal,'OK')!==false||strpos($rawVal,'UP')!==false) $v_status=0;
+                            elseif (strpos($rawVal,'STOPPED')!==false||strpos($rawVal,'DOWN')!==false||strpos($rawVal,'CRIT')!==false) $v_status=1;
+                            elseif (strpos($rawVal,'WARN')!==false) $v_status=2;
+                            $last_upd = ($rowM['utimestamp'] > 0) ? date("Y-m-d H:i:s", $rowM['utimestamp']) : 'N/A';
+                        }
                     }
                 }
                 $allModuleStatus[$ck] = ['status' => $v_status, 'last_update' => $last_upd];
@@ -517,15 +588,23 @@ if ($isPure && $target_panel_id) {
                                 $style = getStatusStyle($status);
                                 $tooltip = "Agent: ".($ov['agent_alias'] ?? 'None')."\nModule: ".($ov['module_name'] ?? 'None')."\nStatus: ".$style['label']."\nLast Update: ".($ovInfo['last_update'] ?? 'N/A');
                             ?>
-                            <div class="cell-unit" style="flex-direction: <?= ($panel['col_pos'] ?? 'top') === 'top' ? 'column' : 'column-reverse' ?>">
-                                <div class="cell-label" style="text-align: <?= $panel['col_align'] ?? 'center' ?>; width: 100%;"><?= htmlspecialchars($c) ?></div>
-                                <div class="cell <?= $style['class'] ?>" style="background:<?= $style['color'] ?>" 
-                                     title="<?= htmlspecialchars($tooltip) ?>" 
-                                     onclick="<?= ($ov && $ov['agent_id']) ? "window.open('/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente={$ov['agent_id']}', '_blank')" : "" ?>">
-                                    <?= $style['label'] ?>
-                                </div>
-                            </div>
-                            <?php endforeach; ?>
+                             <?php
+                                 $onclickAttr = "";
+                                 if ($ov && $ov['agent_id']) {
+                                     $parsed_agent = parse_node_id($ov['agent_id']);
+                                     if ($parsed_agent['node'] === 'primary') {
+                                         $onclickAttr = "window.open('/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=" . (int)$parsed_agent['id'] . "', '_blank')";
+                                     }
+                                 }
+                             ?>
+                             <div class="cell-unit" style="flex-direction: <?= ($panel['col_pos'] ?? 'top') === 'top' ? 'column' : 'column-reverse' ?>">
+                                 <div class="cell-label" style="text-align: <?= $panel['col_align'] ?? 'center' ?>; width: 100%;"><?= htmlspecialchars($c) ?></div>
+                                 <div class="cell <?= $style['class'] ?>" style="background:<?= $style['color'] ?>" 
+                                      title="<?= htmlspecialchars($tooltip) ?>" 
+                                      <?= $onclickAttr ? "onclick=\"$onclickAttr\" style=\"cursor:pointer;\"" : "" ?>>
+                                     <?= $style['label'] ?>
+                                 </div>
+                             </div><?php endforeach; ?>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -813,9 +892,17 @@ if ($isPure && $target_panel_id) {
         data.forEach(d => {
             const statusClass = d.status === 0 ? 'bg-ok' : (d.status === 1 ? 'bg-crit' : 'bg-warn');
             const statusText = d.status === 0 ? 'OK' : (d.status === 1 ? 'CRITICAL' : 'WARNING');
+            const isPrimary = String(d.agent_id).startsWith('primary:');
+            let agentLinkHtml = '';
+            if (isPrimary) {
+                const rawAgentId = String(d.agent_id).split(':')[1] || d.agent_id;
+                agentLinkHtml = `<a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="fw-bold text-primary text-decoration-none">${d.agent_alias}</a>`;
+            } else {
+                agentLinkHtml = `<span class="fw-bold text-dark">${d.agent_alias}</span>`;
+            }
             body.append(`
                 <tr>
-                    <td><a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${d.agent_id}" target="_blank" class="fw-bold text-primary text-decoration-none">${d.agent_alias}</a></td>
+                    <td>${agentLinkHtml}</td>
                     <td><span class="text-muted" style="font-family:monospace;">${d.ip_address || 'N/A'}</span></td>
                     <td>${d.module_name}</td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>

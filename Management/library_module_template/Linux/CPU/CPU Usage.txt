@@ -1,0 +1,12 @@
+# Group: Linux
+# Sub Group: CPU
+module_begin
+module_name CPU Usage
+module_type async_data
+module_unit %
+module_exec top -b -n 1 | grep "%Cpu(s)" | awk '{print 100 - $8}'
+module_min_warning 80
+module_max_warning 89
+module_min_critical 90
+module_max_critical 95
+module_end

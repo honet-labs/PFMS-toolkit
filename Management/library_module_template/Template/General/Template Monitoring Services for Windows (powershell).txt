@@ -1,0 +1,8 @@
+# Group: Template
+# Sub Group: General
+module_begin
+module_name Template Monitoring Services for Windows (powershell)
+module_type async_data_string
+module_description You must change variable $name-services with spesific name services in your system
+module_exec Powershell.exe Get-Service $name-services | Select-Object -ExpandProperty Status
+module_end

@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: Storage
+module_begin
+module_name Capacity All Storage Mountpoint
+module_type generic_data_string
+module_exec df -kh
+module_end

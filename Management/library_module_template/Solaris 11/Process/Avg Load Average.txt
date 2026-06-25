@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: Process
+module_begin
+module_name Avg Load Average
+module_type async_data
+module_exec top -b | nawk -F'load avg: ' '/load avg:/ {split($2, a, ","); gsub(/ /, "", a[1]); print a[1]; exit}'
+module_end

@@ -1,0 +1,8 @@
+# Group: Windows
+# Sub Group: CPU
+module_begin
+module_name CPU Usage
+module_type async_data
+module_unit %
+module_exec powershell.exe (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+module_end

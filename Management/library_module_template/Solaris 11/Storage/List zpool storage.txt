@@ -1,0 +1,7 @@
+# Group: Solaris 11
+# Sub Group: Storage
+module_begin
+module_name List zpool storage
+module_type generic_data_string
+module_exec zpool list -o name,size,alloc,free,capacity
+module_end

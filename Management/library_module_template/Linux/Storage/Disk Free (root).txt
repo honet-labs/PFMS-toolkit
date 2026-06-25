@@ -1,0 +1,11 @@
+# Group: Linux
+# Sub Group: Storage
+module_begin
+module_name Disk Free (root)
+module_type async_data
+module_exec df -P / | tail -1 | awk '{print $5}' | tr -d '%' | awk '{print 100 - $1}'
+module_min_warning 80
+module_max_warning 90
+module_min_critical 90
+module_max_critical 95
+module_end

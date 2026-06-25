@@ -1,0 +1,8 @@
+# Group: Solaris 11
+# Sub Group: Interface
+module_begin
+module_name Show All Status Interface Link
+module_type async_data_string
+module_description Monitoring all status interface link
+module_exec ip adm
+module_end

@@ -1,0 +1,10 @@
+# Group: Solaris 11
+# Sub Group: CPU
+module_begin
+module_name CPU Idle
+module_type async_data
+module_unit %
+module_description Monitoring CPU idle
+module_group Basic Info
+module_exec top -b | nawk '/CPU states:/ {gsub(/%/, "", $3); print $3; exit}'
+module_end

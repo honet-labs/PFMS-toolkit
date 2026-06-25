@@ -1,0 +1,7 @@
+# Group: Linux
+# Sub Group: Memory
+module_begin
+module_name Informations Memory Actual Size (GB)
+module_type generic_data_string
+module_exec free -b | awk '/^Mem:/ {printf "Total Memory: %.2f GB\nUsed Memory: %.2f GB\nCache + Buffer: %.2f GB\nFree Memory: %.2f GB\nAvailable Memory: %.2f GB\n", $2/1073741824, $3/1073741824, $6/1073741824, $4/1073741824, $7/1073741824}'
+module_end
