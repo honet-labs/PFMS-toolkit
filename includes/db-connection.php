@@ -63,14 +63,48 @@ foreach ($config_paths as $path) {
     }
 }
 
-// 3. DATABASE INITIALIZATION (PDO)
+// 3. LOAD CONFIG OVERRIDES FROM portal_config.json
+$portal_config_path = dirname(__DIR__) . '/portal_config.json';
+$primary_override = null;
+$history_override = null;
+if (file_exists($portal_config_path)) {
+    $p_config = json_decode(file_get_contents($portal_config_path), true);
+    if (is_array($p_config)) {
+        if (isset($p_config['primary_override']) && is_array($p_config['primary_override'])) {
+            $primary_override = $p_config['primary_override'];
+        }
+        if (isset($p_config['history_override']) && is_array($p_config['history_override'])) {
+            $history_override = $p_config['history_override'];
+        }
+    }
+}
+
+if ($config_loaded) {
+    if ($primary_override) {
+        $config['dbhost'] = $primary_override['host'] ?? $config['dbhost'];
+        $config['dbname'] = $primary_override['dbname'] ?? $config['dbname'];
+        $config['dbuser'] = $primary_override['user'] ?? $config['dbuser'];
+        $config['dbpass'] = isset($primary_override['pass']) ? $primary_override['pass'] : $config['dbpass'];
+        $config['dbport'] = $primary_override['port'] ?? ($config['dbport'] ?? 3306);
+    }
+    if ($history_override) {
+        $config['dbhost_history'] = $history_override['host'] ?? ($config['dbhost_history'] ?? '');
+        $config['dbname_history'] = $history_override['dbname'] ?? ($config['dbname_history'] ?? '');
+        $config['dbuser_history'] = $history_override['user'] ?? ($config['dbuser_history'] ?? '');
+        $config['dbpass_history'] = isset($history_override['pass']) ? $history_override['pass'] : ($config['dbpass_history'] ?? '');
+        $config['dbport_history'] = $history_override['port'] ?? ($config['dbport_history'] ?? 3306);
+    }
+}
+
+// 4. DATABASE INITIALIZATION (PDO)
 $pdo = null;
 $db_status = false;
 $db_error = '';
 
 if ($config_loaded) {
     try {
-        $dsn = "mysql:host=" . $config["dbhost"] . ";dbname=" . $config["dbname"] . ";charset=utf8mb4";
+        $db_port = !empty($config['dbport']) ? (int)$config['dbport'] : 3306;
+        $dsn = "mysql:host=" . $config["dbhost"] . ";port=" . $db_port . ";dbname=" . $config["dbname"] . ";charset=utf8mb4";
         $pdo = new PDO($dsn, $config["dbuser"], $config["dbpass"], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

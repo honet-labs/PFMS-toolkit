@@ -65,7 +65,9 @@ $csrf_token = $_SESSION['pfms_csrf_token'];
 $config_data = [
     'exclude_dirs' => ['temp', 'cache', 'assets', 'includes', 'versions', 'scanning-mib', 'snmp-explorer', 'scratch'],
     'exclude_files' => ['nfx_local_config.php', 'pdb_local_config.php', 'config.php', 'utils.php', 'check_cols.php,', 'check_schema.php', 'check_schema_v2.php', 'temp_query.php', 'pfms_latency_map.php', 'api_network.php', 'cron.php', 'pfms_latency_map.php', 'pfms_lib.php', ],
-    'custom_connections' => []
+    'custom_connections' => [],
+    'primary_override' => null,
+    'history_override' => null
 ];
 
 // Load Configuration if exists
@@ -75,6 +77,8 @@ if (file_exists($portal_config_file)) {
         $config_data['exclude_dirs'] = $loaded_config['exclude_dirs'] ?? $config_data['exclude_dirs'];
         $config_data['exclude_files'] = $loaded_config['exclude_files'] ?? $config_data['exclude_files'];
         $config_data['custom_connections'] = $loaded_config['custom_connections'] ?? $config_data['custom_connections'];
+        $config_data['primary_override'] = $loaded_config['primary_override'] ?? null;
+        $config_data['history_override'] = $loaded_config['history_override'] ?? null;
     }
 }
 
@@ -129,7 +133,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'save_settings') {
         $save_data = [
             'exclude_dirs' => array_values(array_filter(array_map('trim', $input['exclude_dirs']))),
             'exclude_files' => array_values(array_filter(array_map('trim', $input['exclude_files']))),
-            'custom_connections' => isset($input['custom_connections']) && is_array($input['custom_connections']) ? $input['custom_connections'] : []
+            'custom_connections' => isset($input['custom_connections']) && is_array($input['custom_connections']) ? $input['custom_connections'] : [],
+            'primary_override' => isset($input['primary_override']) ? $input['primary_override'] : null,
+            'history_override' => isset($input['history_override']) ? $input['history_override'] : null
         ];
         $bytes = file_put_contents($portal_config_file, json_encode($save_data, JSON_PRETTY_PRINT));
         
@@ -901,7 +907,12 @@ if (!empty($current_page)) {
                 <!-- Primary Database Connection Card -->
                 <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <span style="font-weight: 600; color: #334155; font-size: 13px;">Primary Database</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-weight: 600; color: #334155; font-size: 13px;">Primary Database</span>
+                            <?php if ($primary_override): ?>
+                                <span style="font-size: 9px; color: #0284c7; background: #e0f2fe; padding: 1px 6px; border-radius: 4px; font-weight: 600;">Overridden</span>
+                            <?php endif; ?>
+                        </div>
                         <span style="font-family: monospace; font-size: 11px; color: #64748b;">
                             Host: <?= htmlspecialchars($config['dbhost'] ?? 'N/A') ?> | DB: <?= htmlspecialchars($config['dbname'] ?? 'N/A') ?> | User: <?= htmlspecialchars($config['dbuser'] ?? 'N/A') ?>
                         </span>
@@ -919,13 +930,26 @@ if (!empty($current_page)) {
                         <button class="nav-icon-btn" style="height:28px; width:28px;" title="Test Connection" onclick="testCoreConnection('primary')">
                             <span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40!important;">sync</span>
                         </button>
+                        <button class="nav-icon-btn" style="height:28px; width:28px;" title="Override Credentials" onclick="editCoreOverride('primary')">
+                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#0284c7!important;">edit</span>
+                        </button>
+                        <?php if ($primary_override): ?>
+                            <button class="nav-icon-btn" style="height:28px; width:28px;" title="Restore Defaults" onclick="restoreCoreOverride('primary')">
+                                <span class="material-symbols-outlined" style="font-size:16px!important; color:#ef4444!important;">settings_backup_restore</span>
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
 
                 <!-- Historical Database Connection Card -->
-                <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <span style="font-weight: 600; color: #334155; font-size: 13px;">Default Historical Database</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-weight: 600; color: #334155; font-size: 13px;">Default Historical Database</span>
+                            <?php if ($history_override): ?>
+                                <span style="font-size: 9px; color: #0284c7; background: #e0f2fe; padding: 1px 6px; border-radius: 4px; font-weight: 600;">Overridden</span>
+                            <?php endif; ?>
+                        </div>
                         <?php if ($history_db_host): ?>
                             <span style="font-family: monospace; font-size: 11px; color: #64748b;">
                                 Host: <?= htmlspecialchars($history_db_host) ?> | DB: <?= htmlspecialchars($history_db_name) ?> | User: <?= htmlspecialchars($history_db_user) ?>
@@ -947,12 +971,64 @@ if (!empty($current_page)) {
                                 <span style="font-size: 11px; color: #475569; font-weight: 600; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">Not Configured</span>
                             <?php endif; ?>
                         </div>
-                        <?php if ($history_db_host): ?>
+                        <?php if ($history_db_host || $history_override): ?>
                             <button class="nav-icon-btn" style="height:28px; width:28px;" title="Test Connection" onclick="testCoreConnection('history')">
                                 <span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40!important;">sync</span>
                             </button>
                         <?php endif; ?>
+                        <button class="nav-icon-btn" style="height:28px; width:28px;" title="Override Credentials" onclick="editCoreOverride('history')">
+                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#0284c7!important;">edit</span>
+                        </button>
+                        <?php if ($history_override): ?>
+                            <button class="nav-icon-btn" style="height:28px; width:28px;" title="Restore Defaults" onclick="restoreCoreOverride('history')">
+                                <span class="material-symbols-outlined" style="font-size:16px!important; color:#ef4444!important;">settings_backup_restore</span>
+                            </button>
+                        <?php endif; ?>
                     </div>
+                </div>
+
+                <!-- Core DB Override Form (Hidden by default) -->
+                <div id="coreOverrideForm" style="display: none; background: #f8f9fa; border: 1px solid #004d40; border-radius: 6px; padding: 15px; margin-top: 15px; margin-bottom: 10px;">
+                    <h6 id="coreFormTitle" style="margin: 0 0 12px 0; color: #004d40; font-size: 13px; font-weight: 600;">Override Core Database Connection</h6>
+                    <input type="hidden" id="core_override_type" value="">
+                    
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 10px;">
+                        <div>
+                            <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Host</label>
+                            <input type="text" id="core_override_host" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. 127.0.0.1">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                        <div>
+                            <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Port</label>
+                            <input type="text" id="core_override_port" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="3306" value="3306">
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Database Name</label>
+                            <input type="text" id="core_override_dbname" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. pandora">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div>
+                            <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">User</label>
+                            <input type="text" id="core_override_user" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. pandora">
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Password</label>
+                            <input type="password" id="core_override_pass" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="Enter password">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" id="btnTestCoreOverride" onclick="testCoreOverrideConnection()">Test Connection</button>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" onclick="cancelCoreOverrideForm()">Cancel</button>
+                            <button class="btn-apply" style="padding: 4px 15px; font-size: 11px; background: #004d40;" onclick="saveCoreOverrideConnection()">Save Override</button>
+                        </div>
+                    </div>
+                    <div id="testCoreOverrideResult" style="margin-top: 8px; font-size: 11px; display: none;"></div>
                 </div>
             </div>
 
@@ -1169,6 +1245,8 @@ if (!empty($current_page)) {
 
     // Modal Settings
     let customConnectionsCopy = [];
+    let primaryOverrideCopy = null;
+    let historyOverrideCopy = null;
 
     function openSettings() {
         let dirs = currentConfig.exclude_dirs.filter(d => d !== '.' && d !== '..').join(', ');
@@ -1179,7 +1257,13 @@ if (!empty($current_page)) {
 
         // Deep copy custom connections
         customConnectionsCopy = JSON.parse(JSON.stringify(currentConfig.custom_connections || []));
+        
+        // Deep copy core overrides
+        primaryOverrideCopy = currentConfig.primary_override ? JSON.parse(JSON.stringify(currentConfig.primary_override)) : null;
+        historyOverrideCopy = currentConfig.history_override ? JSON.parse(JSON.stringify(currentConfig.history_override)) : null;
+
         cancelConnectionForm();
+        cancelCoreOverrideForm();
         renderCustomConnectionsList();
         
         document.getElementById('settingsModal').style.display = 'flex';
@@ -1284,6 +1368,112 @@ if (!empty($current_page)) {
                 <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;" title="Network Error">Error</span>
             `;
         }
+    }
+
+    function editCoreOverride(type) {
+        cancelConnectionForm();
+        document.getElementById('coreOverrideForm').style.display = 'block';
+        document.getElementById('core_override_type').value = type;
+        document.getElementById('coreFormTitle').innerText = 'Override ' + (type === 'primary' ? 'Primary' : 'Historical') + ' Database Connection';
+        
+        const copy = type === 'primary' ? primaryOverrideCopy : historyOverrideCopy;
+        
+        // Pre-populate with copy override OR empty (so they can specify fresh overrides)
+        document.getElementById('core_override_host').value = copy ? (copy.host || '') : '';
+        document.getElementById('core_override_port').value = copy ? (copy.port || '3306') : '3306';
+        document.getElementById('core_override_dbname').value = copy ? (copy.dbname || '') : '';
+        document.getElementById('core_override_user').value = copy ? (copy.user || '') : '';
+        document.getElementById('core_override_pass').value = copy ? (copy.pass || '') : '';
+        
+        document.getElementById('testCoreOverrideResult').style.display = 'none';
+    }
+
+    function cancelCoreOverrideForm() {
+        document.getElementById('coreOverrideForm').style.display = 'none';
+    }
+
+    function restoreCoreOverride(type) {
+        if (confirm('Are you sure you want to restore the default Pandora FMS connection settings for the ' + (type === 'primary' ? 'Primary' : 'Historical') + ' database?')) {
+            if (type === 'primary') {
+                primaryOverrideCopy = null;
+            } else {
+                historyOverrideCopy = null;
+            }
+            alert('Default connection restored. Please click "Save & Reload" to apply.');
+            cancelCoreOverrideForm();
+        }
+    }
+
+    async function testCoreOverrideConnection() {
+        const btn = document.getElementById('btnTestCoreOverride');
+        const resultEl = document.getElementById('testCoreOverrideResult');
+        
+        const host = document.getElementById('core_override_host').value.trim();
+        const port = document.getElementById('core_override_port').value.trim() || '3306';
+        const dbname = document.getElementById('core_override_dbname').value.trim();
+        const user = document.getElementById('core_override_user').value.trim();
+        const pass = document.getElementById('core_override_pass').value;
+
+        if (!host || !dbname || !user) {
+            alert('Host, Database Name, and User are required to test connection.');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = 'Testing...';
+        resultEl.style.display = 'none';
+
+        try {
+            const response = await fetch('?api=test_db_connection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '<?= $csrf_token ?>'
+                },
+                body: JSON.stringify({ host, port, dbname, user, pass })
+            });
+            const result = await response.json();
+            resultEl.style.display = 'block';
+            if (result.ok) {
+                resultEl.style.color = '#065f46';
+                resultEl.innerText = '✓ Connection successful!';
+            } else {
+                resultEl.style.color = '#b91c1c';
+                resultEl.innerText = '✗ Connection failed: ' + result.error;
+            }
+        } catch (e) {
+            resultEl.style.display = 'block';
+            resultEl.style.color = '#b91c1c';
+            resultEl.innerText = '✗ Network error trying to connect.';
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Test Connection';
+        }
+    }
+
+    function saveCoreOverrideConnection() {
+        const type = document.getElementById('core_override_type').value;
+        const host = document.getElementById('core_override_host').value.trim();
+        const port = document.getElementById('core_override_port').value.trim() || '3306';
+        const dbname = document.getElementById('core_override_dbname').value.trim();
+        const user = document.getElementById('core_override_user').value.trim();
+        const pass = document.getElementById('core_override_pass').value;
+
+        if (!host || !dbname || !user) {
+            alert('Host, Database Name, and User are required.');
+            return;
+        }
+
+        const overrideObj = { host, port, dbname, user, pass };
+        
+        if (type === 'primary') {
+            primaryOverrideCopy = overrideObj;
+        } else {
+            historyOverrideCopy = overrideObj;
+        }
+
+        alert((type === 'primary' ? 'Primary' : 'Historical') + ' Database override settings saved to memory. Click "Save & Reload" to apply permanently.');
+        cancelCoreOverrideForm();
     }
 
     async function testConnectionAsync(conn, index) {
@@ -1460,7 +1650,9 @@ if (!empty($current_page)) {
         const payload = {
             exclude_dirs: dirsInput.split(','),
             exclude_files: filesInput.split(','),
-            custom_connections: customConnectionsCopy
+            custom_connections: customConnectionsCopy,
+            primary_override: primaryOverrideCopy,
+            history_override: historyOverrideCopy
         };
 
         try {
