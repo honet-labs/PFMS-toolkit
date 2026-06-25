@@ -900,11 +900,11 @@ if ($api === 'series') {
         foreach ($points as $pt) {
             $val = (float)$pt['datos'];
             
-            // 1. Physical speed cap (if speed is provided and > 0)
-            if ($speedBps > 0) {
+            // 1. Physical speed cap (if speed is provided and > 1 Mbps to avoid low/misconfigured caps)
+            if ($speedBps > 1000000.0) {
                 $speedBytesSec = $speedBps / 8.0;
-                // Allow up to 2x the speed to account for overhead/misconfiguration
-                if ($val > $speedBytesSec * 2.0) {
+                // Allow up to 5x the speed to account for burst/overhead/misconfiguration
+                if ($val > $speedBytesSec * 5.0) {
                     continue; // Skip this spike point
                 }
             }
