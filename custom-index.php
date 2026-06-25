@@ -180,6 +180,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'test_db_connection') {
     } else {
         echo json_encode(['ok' => false, 'error' => 'Invalid data']);
     }
+    exit;
+}
+
 if (isset($_GET['api']) && $_GET['api'] === 'test_core_connection') {
     ob_clean();
     header('Content-Type: application/json');
