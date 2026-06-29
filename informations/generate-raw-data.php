@@ -194,7 +194,7 @@ if ($db_status && (!empty($agent) || !empty($pairs_raw)) && empty($errors)) {
                     $st = $active_pdo->prepare("SELECT m.id_agente_modulo, a.alias as agent, m.nombre as module, a.direccion as ip, g.nombre as group_name, m.unit as module_unit FROM tagente_modulo m JOIN tagente a ON a.id_agente = m.id_agente LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo WHERE (a.alias LIKE ? OR a.nombre LIKE ?) AND m.nombre LIKE ? LIMIT 100");
                     $st->execute([$ag_kw, $ag_kw, $mod_kw]);
                     foreach ($st->fetchAll() as $res) {
-                        $prefixed_mid = $node . ':' . $res['id_agente_modulo'];
+                        $prefixed_mid = get_node_uuid($node) . ':' . $res['id_agente_modulo'];
                         $modIds[] = $prefixed_mid;
                         $res['agent'] = $node_label . $res['agent'];
                         $res['node'] = $node;
@@ -219,7 +219,7 @@ if ($db_status && (!empty($agent) || !empty($pairs_raw)) && empty($errors)) {
                 $st = $active_pdo->prepare("SELECT m.id_agente_modulo, a.alias as agent, m.nombre as module, a.direccion as ip, g.nombre as group_name, m.unit as module_unit FROM tagente_modulo m JOIN tagente a ON a.id_agente = m.id_agente LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo WHERE (a.alias LIKE ? OR a.nombre LIKE ?) AND m.nombre LIKE ? LIMIT 500");
                 $st->execute([$ag_kw, $ag_kw, $mod_kw]);
                 foreach ($st->fetchAll() as $res) {
-                    $prefixed_mid = $node . ':' . $res['id_agente_modulo'];
+                    $prefixed_mid = get_node_uuid($node) . ':' . $res['id_agente_modulo'];
                     $modIds[] = $prefixed_mid;
                     $res['agent'] = $node_label . $res['agent'];
                     $res['node'] = $node;

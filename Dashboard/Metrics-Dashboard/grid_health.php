@@ -795,6 +795,7 @@ if ($isPure && $target_panel_id) {
     let masterConfig = <?= json_encode($master_config) ?>;
     let dashId = '<?= $dash_id ?>';
     let config = <?= json_encode($current_config) ?>;
+    const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
     let panelData = {}; // To store detailed status info for each panel
     if (!config.panels) config.panels = [];
     let refreshSec = config.refresh_sec;
@@ -892,7 +893,7 @@ if ($isPure && $target_panel_id) {
         data.forEach(d => {
             const statusClass = d.status === 0 ? 'bg-ok' : (d.status === 1 ? 'bg-crit' : 'bg-warn');
             const statusText = d.status === 0 ? 'OK' : (d.status === 1 ? 'CRITICAL' : 'WARNING');
-            const isPrimary = String(d.agent_id).startsWith('primary:');
+            const isPrimary = String(d.agent_id).startsWith(PRIMARY_UUID + ':');
             let agentLinkHtml = '';
             if (isPrimary) {
                 const rawAgentId = String(d.agent_id).split(':')[1] || d.agent_id;

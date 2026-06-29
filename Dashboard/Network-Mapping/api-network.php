@@ -218,7 +218,7 @@ try {
             if ($stmt) {
                 while ($g = $stmt->fetch()) {
                     $dropdown[] = [
-                        'id' => $node . ':' . $g['id'],
+                        'id' => get_node_uuid($node) . ':' . $g['id'],
                         'name' => $node_label . pretty_text($g['name'])
                     ];
                 }
@@ -261,7 +261,7 @@ try {
                 $stmt->execute([$real_group_id]);
                 while ($row = $stmt->fetch()) {
                     $agents[] = [
-                        'id' => $filter_node . ':' . $row['id'],
+                        'id' => get_node_uuid($filter_node) . ':' . $row['id'],
                         'alias' => $node_label . pretty_text($row['alias'])
                     ];
                 }
@@ -274,7 +274,7 @@ try {
                 if ($stmt) {
                     while ($row = $stmt->fetch()) {
                         $agents[] = [
-                            'id' => $node . ':' . $row['id'],
+                            'id' => get_node_uuid($node) . ':' . $row['id'],
                             'alias' => $node_label . pretty_text($row['alias'])
                         ];
                     }
@@ -340,7 +340,7 @@ try {
             $parsed_sid = parse_node_id($sid);
             $sid_real = $parsed_sid['id'];
             $sid_node = $parsed_sid['node'] ?: 'primary';
-            $savedNodes[$sid_node . ':' . $sid_real] = [
+            $savedNodes[get_node_uuid($sid_node) . ':' . $sid_real] = [
                 'x' => $pos['x'] ?? 0,
                 'y' => $pos['y'] ?? 0
             ];
@@ -421,7 +421,7 @@ try {
         $agentsIndexed = [];
         foreach ($rawAgents as $agent) {
             $id = (int)$agent['id'];
-            $prefixed_id = $node . ':' . $id;
+            $prefixed_id = get_node_uuid($node) . ':' . $id;
             $agentsIndexed[$id] = $agent;
 
             // Health Status Mapping
@@ -436,7 +436,7 @@ try {
                 'label' => $node_label . pretty_text($agent['alias']),
                 'ip' => $agent['ip'] ?: '-',
                 'status' => $healthLabel,
-                'id_parent' => $agent['id_parent'] ? ($node . ':' . (int)$agent['id_parent']) : null,
+                'id_parent' => $agent['id_parent'] ? (get_node_uuid($node) . ':' . (int)$agent['id_parent']) : null,
                 'x' => isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['x'] : null,
                 'y' => isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['y'] : null,
                 'is_manual' => isset($savedNodes[$prefixed_id])
@@ -506,9 +506,9 @@ try {
                     if (!isset($discoveredLinks[$key])) {
                         $trafficLabel = get_port_traffic_label($active_pdo, $lldp['id_agente'], $lldp['module_name']);
                         $discoveredLinks[$key] = [
-                            'id' => 'auto_lldp_' . $node . '_' . $key,
-                            'from' => $node . ':' . $lldp['id_agente'],
-                            'to' => $node . ':' . $targetAgentId,
+                            'id' => 'auto_lldp_' . get_node_uuid($node) . '_' . $key,
+                            'from' => get_node_uuid($node) . ':' . $lldp['id_agente'],
+                            'to' => get_node_uuid($node) . ':' . $targetAgentId,
                             'type' => 'auto',
                             'status' => 'normal',
                             'label' => 'LLDP: ' . pretty_text($remoteName) . ($trafficLabel ? "\n(" . $trafficLabel . ")" : "")
@@ -538,9 +538,9 @@ try {
                     if (!isset($discoveredLinks[$key])) {
                         $trafficLabel = get_port_traffic_label($active_pdo, $port['id_agente'], $port['port_name']);
                         $discoveredLinks[$key] = [
-                            'id' => 'auto_port_' . $node . '_' . $key,
-                            'from' => $node . ':' . $port['id_agente'],
-                            'to' => $node . ':' . $targetAgentId,
+                            'id' => 'auto_port_' . get_node_uuid($node) . '_' . $key,
+                            'from' => get_node_uuid($node) . ':' . $port['id_agente'],
+                            'to' => get_node_uuid($node) . ':' . $targetAgentId,
                             'type' => 'auto',
                             'status' => $linkStatus,
                             'label' => $cleanPort . ($trafficLabel ? "\n(" . $trafficLabel . ")" : "")
@@ -591,8 +591,8 @@ try {
             
             $edges[] = [
                 'id' => $ml['id'],
-                'from' => $src_node . ':' . $src_id,
-                'to' => $tgt_node . ':' . $tgt_id,
+                'from' => get_node_uuid($src_node) . ':' . $src_id,
+                'to' => get_node_uuid($tgt_node) . ':' . $tgt_id,
                 'type' => 'manual',
                 'status' => $linkStatus,
                 'source_port_name' => $ml['source_port_name'] ?? '',
@@ -675,7 +675,7 @@ try {
         $ports = $stmt->fetchAll();
 
         foreach ($ports as &$p) {
-            $p['id'] = $node . ':' . $p['id'];
+            $p['id'] = get_node_uuid($node) . ':' . $p['id'];
             $p['name'] = pretty_text($p['name']);
             $p['clean_name'] = str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus', 'ifAdminStatus_', '_ifAdminStatus', 'ifAdminStatus'], '', $p['name']);
         }
@@ -752,7 +752,7 @@ try {
             if (stripos($nameLower, 'ifoperstatus') !== false) {
                 $clean_val = is_numeric($mod['current_value'] ?? '') ? (int)(float)$mod['current_value'] : ($mod['current_value'] ?? '');
                 $portStatuses[] = [
-                    'id' => $node . ':' . ($mod['id'] ?? 0),
+                    'id' => get_node_uuid($node) . ':' . ($mod['id'] ?? 0),
                     'port' => str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus'], '', $mod['name'] ?? ''),
                     'status' => (int)($mod['estado'] ?? 0),
                     'value' => $clean_val

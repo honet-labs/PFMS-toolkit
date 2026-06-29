@@ -147,13 +147,13 @@ if ($api === 'export') {
                     $stG = $active_pdo->prepare("SELECT id_agente FROM tagente WHERE id_grupo = ? AND disabled = 0");
                     $stG->execute([$groupParsed['id']]);
                     while($rowG = $stG->fetch(PDO::FETCH_COLUMN)) {
-                        $agent_ids_raw[] = $node . ':' . $rowG;
+                        $agent_ids_raw[] = get_node_uuid($node) . ':' . $rowG;
                     }
                 }
             } else {
                 $stA = $pdo->query("SELECT id_agente FROM tagente WHERE disabled = 0");
                 while($rowA = $stA->fetch(PDO::FETCH_COLUMN)) {
-                    $agent_ids_raw[] = 'primary:' . $rowA;
+                    $agent_ids_raw[] = get_node_uuid('primary') . ':' . $rowA;
                 }
                 global $custom_pdos;
                 if (!empty($custom_pdos)) {
@@ -161,7 +161,7 @@ if ($api === 'export') {
                         try {
                             $stA = $cpdo->query("SELECT id_agente FROM tagente WHERE disabled = 0");
                             while($rowA = $stA->fetch(PDO::FETCH_COLUMN)) {
-                                $agent_ids_raw[] = $cid . ':' . $rowA;
+                                $agent_ids_raw[] = get_node_uuid($cid) . ':' . $rowA;
                             }
                         } catch (Throwable $e) {}
                     }
@@ -352,7 +352,7 @@ if ($api === 'groups') {
     try {
         $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
         while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
-            $dropdown[] = ['id' => 'primary:' . $g['id'], 'name' => '[Primary] ' . html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
+            $dropdown[] = ['id' => get_node_uuid('primary') . ':' . $g['id'], 'name' => '[Primary] ' . html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
         }
     } catch (Throwable $e) {}
     
@@ -367,7 +367,7 @@ if ($api === 'groups') {
             try {
                 $stmt = $cpdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
                 while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
-                    $dropdown[] = ['id' => $cid . ':' . $g['id'], 'name' => '[' . $cname . '] ' . html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
+                    $dropdown[] = ['id' => get_node_uuid($cid) . ':' . $g['id'], 'name' => '[' . $cname . '] ' . html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
                 }
             } catch (Throwable $e) {}
         }
@@ -421,7 +421,7 @@ if ($api === 'agents') {
             $stmt->execute($params);
             while ($a = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $list[] = [
-                    'id' => $node . ':' . $a['id'],
+                    'id' => get_node_uuid($node) . ':' . $a['id'],
                     'alias' => $node_label . pretty_text($a['alias'])
                 ];
             }
@@ -577,7 +577,7 @@ if ($api === 'data') {
                     $key = "$node|$aid|$base";
                     if (!isset($interfaces[$key])) {
                         $interfaces[$key] = [
-                            'agent_id'=>$node . ':' . $aid, 
+                            'agent_id'=>get_node_uuid($node) . ':' . $aid, 
                             'node'=>$node_label . html_entity_decode((string)$m['alias'], ENT_QUOTES, 'UTF-8'), 
                             'ip'=>pick_best_ip((string)$m['ip'], (string)$m['alias'], (string)$m['agent_name']), 
                             'interface'=>$base, 
@@ -599,32 +599,32 @@ if ($api === 'data') {
                             'status_val_str'=>null
                         ];
                     }
-
+ 
                     $val = ($m['module_data'] !== null) ? (float)$m['module_data'] : null;
                     $val_str = ($m['module_data'] !== null) ? trim((string)$m['module_data']) : null;
-
+ 
                     if ($dir==='speed') { 
-                        $interfaces[$key]['mod_speed']=$node . ':' . $modId; 
+                        $interfaces[$key]['mod_speed']=get_node_uuid($node) . ':' . $modId; 
                         $interfaces[$key]['mod_speed_unit']=(string)$m['module_unit']; 
                         $interfaces[$key]['mod_speed_name']=$modName; 
                         $interfaces[$key]['speed_val']=$val;
                     }
                     elseif ($dir==='in') { 
-                        $interfaces[$key]['mod_in']=$node . ':' . $modId; 
+                        $interfaces[$key]['mod_in']=get_node_uuid($node) . ':' . $modId; 
                         $interfaces[$key]['mod_in_name']=$modName; 
                         $interfaces[$key]['rx_val']=$val;
                     }
                     elseif ($dir==='out') { 
-                        $interfaces[$key]['mod_out']=$node . ':' . $modId; 
+                        $interfaces[$key]['mod_out']=get_node_uuid($node) . ':' . $modId; 
                         $interfaces[$key]['mod_out_name']=$modName; 
                         $interfaces[$key]['tx_val']=$val;
                     }
                     elseif ($dir==='index') { 
-                        $interfaces[$key]['mod_index']=$node . ':' . $modId; 
+                        $interfaces[$key]['mod_index']=get_node_uuid($node) . ':' . $modId; 
                         $interfaces[$key]['index_val']=$val;
                     }
                     elseif ($dir==='status') { 
-                        $interfaces[$key]['mod_status']=$node . ':' . $modId; 
+                        $interfaces[$key]['mod_status']=get_node_uuid($node) . ':' . $modId; 
                         $interfaces[$key]['status_val_str']=$val_str;
                     }
 
@@ -1620,6 +1620,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     const CSRF_TOKEN = '<?= $csrf_token ?>';
     const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
     const DIRECT_SCRIPT_URL = '<?= $directScriptUrl ?>';
+    const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
     let masterDashboards = [], currentDashId = '', currentAgents = [], currentPage = 1, chartInstance = null;
     let timerInterval = null, countdown = 60, editId = null, availableCategories = [];
 
@@ -2117,7 +2118,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 ? `<span class="category-badge">${r.category_name}</span>`
                 : `<span class="category-badge" style="background:transparent; color:#94a3b8; border-color:#e2e8f0; border-style:dashed;">N/A</span>`;
 
-            const isPrimary = String(r.agent_id).startsWith('primary:');
+            const isPrimary = String(r.agent_id).startsWith(PRIMARY_UUID + ':');
             const agentLinkHtml = isPrimary 
                 ? `<a href="/pandora_console/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${String(r.agent_id).split(':')[1]}" 
                       target="_blank" 

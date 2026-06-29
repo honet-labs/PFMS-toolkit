@@ -820,6 +820,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 <script>
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
+const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
 let dashboardCards = [], cardTimers = {}, globalTimerRef = null;
 let fullAgentsList = [], selectedIds = [];
 
@@ -1061,7 +1062,7 @@ function renderTablePage(cardId) {
             const sObj = getStatusObj(r.estado);
             let bgColor = sObj.color;
             let heatLbl = r.value.length > 8 ? r.value.substring(0, 8) : r.value;
-            const isPrimary = String(r.agent_id).startsWith('primary:');
+            const isPrimary = String(r.agent_id).startsWith(PRIMARY_UUID + ':');
             let heatBoxHtml = '';
             if (isPrimary) {
                 const rawAgentId = String(r.agent_id).split(':')[1] || r.agent_id;
@@ -1078,7 +1079,7 @@ function renderTablePage(cardId) {
         data.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let bgColor = sObj.color;
-            const isPrimary = String(r.agent_id).startsWith('primary:');
+            const isPrimary = String(r.agent_id).startsWith(PRIMARY_UUID + ':');
             let agentLinkHtml = '';
             if (isPrimary) {
                 const rawAgentId = String(r.agent_id).split(':')[1] || r.agent_id;
@@ -1184,7 +1185,7 @@ function renderDetailModalPage() {
         pageData.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let bgColor = sObj.color;
-            const isPrimary = String(r.agent_id).startsWith('primary:');
+            const isPrimary = String(r.agent_id).startsWith(PRIMARY_UUID + ':');
             let agentLinkHtml = '';
             if (isPrimary) {
                 const rawAgentId = String(r.agent_id).split(':')[1] || r.agent_id;

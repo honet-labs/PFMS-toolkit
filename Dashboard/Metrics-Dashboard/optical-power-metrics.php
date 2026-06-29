@@ -528,6 +528,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
 const CSRF_TOKEN = "<?= $csrf_token ?>";
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
+const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
 let dashboardCards = [], cardStates = {}, fullAgentsList = [], selectedIds = [], editingCardId = null;
 let cardDataCache = {};
 let drillAllData = [], drillFilteredData = [], drillPage = 1, drillLimit = 20;
@@ -616,7 +617,7 @@ function fetchCardData(id) {
                 const title = `${r.agent_name} - ${mname}`;
                 return `<span class="val-badge ${getStCls(st)}">${val} <button onclick="openNativeChart('${mid}', '${title.replace(/'/g, "\\'")}')" class="hist-icon" title="View History"><span class="material-symbols-outlined" style="font-size:12px;">monitoring</span></button></span>`;
             };
-            const isPrimary = String(r.agent_id).startsWith('primary:');
+            const isPrimary = String(r.agent_id).startsWith(PRIMARY_UUID + ':');
             const editAgentLink = isPrimary ? `${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${String(r.agent_id).split(':')[1]}` : '#';
             const agentLinkHtml = isPrimary ? `<a href="${editAgentLink}" target="_blank" class="agent-drill-link">${r.agent_name}</a>` : `<span class="agent-drill-link-text" style="font-weight:600; color:#334155;">${r.agent_name}</span>`;
             const formatInfo = (txt) => {
@@ -676,7 +677,7 @@ function renderDrillTable() {
     paginated.forEach(r => {
         const worst = Math.max(r.rx_st, r.tx_st);
         const dotColor = worst===0?'#2ecc71':worst===1?'#e74c3c':worst===2?'#f1c40f':'#95a5a6';
-        const isPrimary = String(r.agent_id).startsWith('primary:');
+        const isPrimary = String(r.agent_id).startsWith(PRIMARY_UUID + ':');
         const editAgentLink = isPrimary ? `${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${String(r.agent_id).split(':')[1]}` : '#';
         const agentLinkHtml = isPrimary ? `<a href="${editAgentLink}" target="_blank" class="agent-drill-link">${r.agent_name}</a>` : `<span class="agent-drill-link-text" style="font-weight:600; color:#334155;">${r.agent_name}</span>`;
         const tr = document.createElement('tr');
@@ -766,7 +767,7 @@ function sprintf(format, ...args) {
 
 function openNativeChart(modId, title) {
     if(!modId || modId === 0) return;
-    const isPrimary = String(modId).startsWith('primary:');
+    const isPrimary = String(modId).startsWith(PRIMARY_UUID + ':');
     if (!isPrimary) {
         alert("History chart is only available for primary database agents.");
         return;

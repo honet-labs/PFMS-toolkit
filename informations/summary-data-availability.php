@@ -216,7 +216,7 @@ if ($preset === 'custom' && $from_s !== '' && $to_s !== '') {
             $st->bindValue(4, ($MAX_TARGETS - count($targets) + 1), PDO::PARAM_INT);
             $st->execute();
             foreach ($st->fetchAll() as $res) {
-                $res['id_agente_modulo'] = $node . ':' . $res['id_agente_modulo'];
+                $res['id_agente_modulo'] = get_node_uuid($node) . ':' . $res['id_agente_modulo'];
                 $res['agent_alias'] = $node_label . $res['agent_alias'];
                 $res['node'] = $node;
                 $targets[] = $res;

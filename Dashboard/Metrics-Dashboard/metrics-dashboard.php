@@ -1327,6 +1327,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
 const DIRECT_SCRIPT_URL = '<?= $directScriptUrl ?>';
+const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
 
 let nativeModuleChartInstance = null;
 let currentDetailModuleId = null;
@@ -2233,7 +2234,7 @@ function renderTablePage(cardId) {
         pageData.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let unitStr = r.unit ? ` ${r.unit}` : '';
-            const isPrimaryAgent = String(r.id_agente).startsWith('primary:');
+            const isPrimaryAgent = String(r.id_agente).startsWith(PRIMARY_UUID + ':');
             if (isPrimaryAgent) {
                 const rawAgentId = String(r.id_agente).split(':')[1] || r.id_agente;
                 h += `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="heat-box ${sObj.color}" title="Agent: ${r.agent_alias}\nModule: ${r.module_name}\nValue: ${r.current_value}${unitStr}">${r.module_name}</a>`;
@@ -2265,7 +2266,7 @@ function renderTablePage(cardId) {
 
             let rowHtml = '<tr>';
             if (visibleCols.includes('agent')) {
-                const isPrimaryAgent = String(r.id_agente).startsWith('primary:');
+                const isPrimaryAgent = String(r.id_agente).startsWith(PRIMARY_UUID + ':');
                 let agentLinkHtml = '';
                 if (isPrimaryAgent) {
                     const rawAgentId = String(r.id_agente).split(':')[1] || r.id_agente;
@@ -2480,7 +2481,7 @@ function toggleCustomChartRange() {
 
 function openNativeChart(modId, title, idAgent = 0) {
     if(!modId || modId === 0) return;
-    const isPrimary = String(modId).startsWith('primary:');
+    const isPrimary = String(modId).startsWith(PRIMARY_UUID + ':');
     if (!isPrimary) {
         show_module_detail_dialog(modId, idAgent, 'graph', 0, 86400, title);
         return;
@@ -2506,7 +2507,7 @@ function renderDetailModalTable(dataArray) {
         dataArray.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let unitStr = r.unit ? ` ${r.unit}` : '';
-            const isPrimaryAgent = String(r.id_agente).startsWith('primary:');
+            const isPrimaryAgent = String(r.id_agente).startsWith(PRIMARY_UUID + ':');
             let agentLinkHtml = '';
             if (isPrimaryAgent) {
                 const rawAgentId = String(r.id_agente).split(':')[1] || r.id_agente;
@@ -2614,7 +2615,7 @@ function renderDetailModalPage() {
         pageData.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let unitStr = r.unit ? ` ${r.unit}` : '';
-            const isPrimaryAgent = String(r.id_agente).startsWith('primary:');
+            const isPrimaryAgent = String(r.id_agente).startsWith(PRIMARY_UUID + ':');
             let agentLinkHtml = '';
             if (isPrimaryAgent) {
                 const rawAgentId = String(r.id_agente).split(':')[1] || r.id_agente;

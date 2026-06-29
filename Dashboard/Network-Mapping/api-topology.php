@@ -55,8 +55,8 @@ if ($api === 'get_topology') {
                         $parsed_sid = parse_node_id($sid);
                         $sid_real = $parsed_sid['id'];
                         $sid_node = $parsed_sid['node'] ?: 'primary';
-                        $savedNodes[$sid_node . ':' . $sid_real] = [
-                            'id' => $sid_node . ':' . $sid_real,
+                        $savedNodes[get_node_uuid($sid_node) . ':' . $sid_real] = [
+                            'id' => get_node_uuid($sid_node) . ':' . $sid_real,
                             'x' => $pos['x'] ?? 0,
                             'y' => $pos['y'] ?? 0
                         ];
@@ -129,7 +129,7 @@ if ($api === 'get_topology') {
     
     foreach ($nodesRaw as $n) {
         $id = (int)$n['id'];
-        $prefixed_id = $node . ':' . $id;
+        $prefixed_id = get_node_uuid($node) . ':' . $id;
         $agentIds[] = $id;
         $agentsIndexed[$id] = $n;
     }
@@ -183,8 +183,8 @@ if ($api === 'get_topology') {
                     'group' => 'edges',
                     'data' => [
                         'id' => $edgeId,
-                        'source' => $src_node . ':' . $src_id,
-                        'target' => $tgt_node . ':' . $tgt_id,
+                        'source' => get_node_uuid($src_node) . ':' . $src_id,
+                        'target' => get_node_uuid($tgt_node) . ':' . $tgt_id,
                         'label' => ($ml['source_port_name'] ?? '') . ' - ' . ($ml['target_port_name'] ?? '')
                     ]
                 ];
@@ -205,7 +205,7 @@ if ($api === 'get_topology') {
 
         foreach ($nodesRaw as $n) {
             $id = (int)$n['id'];
-            $prefixed_id = $node . ':' . $id;
+            $prefixed_id = get_node_uuid($node) . ':' . $id;
             
             if (isset($connectedNodeIds[$prefixed_id]) || $id === $agentId) {
                 $posX = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['x'] : null;
@@ -231,7 +231,7 @@ if ($api === 'get_topology') {
         
         foreach ($nodesRaw as $n) {
             $id = (int)$n['id'];
-            $prefixed_id = $node . ':' . $id;
+            $prefixed_id = get_node_uuid($node) . ':' . $id;
             $posX = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['x'] : null;
             $posY = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['y'] : null;
             
@@ -240,8 +240,8 @@ if ($api === 'get_topology') {
                 $finalEdges[] = [
                     'group' => 'edges',
                     'data' => [
-                        'id' => "l3_parent_{$node}_{$parentId}_{$id}",
-                        'source' => $node . ':' . $parentId,
+                        'id' => "l3_parent_" . get_node_uuid($node) . "_{$parentId}_{$id}",
+                        'source' => get_node_uuid($node) . ':' . $parentId,
                         'target' => $prefixed_id,
                         'label' => 'Gateway Link'
                     ]
@@ -265,7 +265,7 @@ if ($api === 'get_topology') {
     else {
         foreach ($nodesRaw as $n) {
             $id = (int)$n['id'];
-            $prefixed_id = $node . ':' . $id;
+            $prefixed_id = get_node_uuid($node) . ':' . $id;
             $posX = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['x'] : null;
             $posY = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['y'] : null;
             
@@ -273,8 +273,8 @@ if ($api === 'get_topology') {
             if ($parentId > 0 && isset($agentsIndexed[$parentId])) {
                 $hasL2Link = false;
                 foreach ($edges as $e) {
-                    if (($e['data']['source'] == $prefixed_id && $e['data']['target'] == ($node . ':' . $parentId)) ||
-                        ($e['data']['source'] == ($node . ':' . $parentId) && $e['data']['target'] == $prefixed_id)) {
+                    if (($e['data']['source'] == $prefixed_id && $e['data']['target'] == (get_node_uuid($node) . ':' . $parentId)) ||
+                        ($e['data']['source'] == (get_node_uuid($node) . ':' . $parentId) && $e['data']['target'] == $prefixed_id)) {
                         $hasL2Link = true;
                         break;
                     }
@@ -284,8 +284,8 @@ if ($api === 'get_topology') {
                     $finalEdges[] = [
                         'group' => 'edges',
                         'data' => [
-                            'id' => "endpoint_link_{$node}_{$parentId}_{$id}",
-                            'source' => $node . ':' . $parentId,
+                            'id' => "endpoint_link_" . get_node_uuid($node) . "_{$parentId}_{$id}",
+                            'source' => get_node_uuid($node) . ':' . $parentId,
                             'target' => $prefixed_id,
                             'label' => 'Parent Link'
                         ]

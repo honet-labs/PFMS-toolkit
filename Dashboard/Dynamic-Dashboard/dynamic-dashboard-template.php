@@ -1274,6 +1274,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 <script src="<?= h($vendor_url) ?>/sortablejs/Sortable.min.js"></script>
 <script>
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
+const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
 const apiPage = 'Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php';
 const apiBase = '../../custom-index.php';
 
@@ -2247,7 +2248,7 @@ function generateSummaryPanelHtml(p, modules) {
                             
                             let rowHtml = '<tr>';
                             if (visibleCols.includes('agent')) {
-                                const isPrimary = String(m.agent_id).startsWith('primary:');
+                                const isPrimary = String(m.agent_id).startsWith(PRIMARY_UUID + ':');
                                 let agentLinkHtml = '';
                                 if (isPrimary) {
                                     const rawAgentId = String(m.agent_id).split(':')[1] || m.agent_id;
@@ -3098,7 +3099,7 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
             valHtml = displayVal;
         }
 
-        const isPrimary = String(m.agent_id).startsWith('primary:');
+        const isPrimary = String(m.agent_id).startsWith(PRIMARY_UUID + ':');
         let agentLinkHtml = '';
         if (isPrimary) {
             const rawAgentId = String(m.agent_id).split(':')[1] || m.agent_id;
@@ -3146,7 +3147,7 @@ function closeStatusDetailModal() {
 
 function openNativeChartModal(modId, title, idAgent = 0) {
     if(!modId || modId === 0) return;
-    const isPrimary = String(modId).startsWith('primary:');
+    const isPrimary = String(modId).startsWith(PRIMARY_UUID + ':');
     if (!isPrimary) {
         show_module_detail_dialog(modId, idAgent, 'graph', 0, 86400, title);
         return;

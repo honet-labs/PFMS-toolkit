@@ -254,6 +254,55 @@ if (file_exists($portal_config_path)) {
     }
 }
 
+// 6. RESOLVE SERVER UNIQUE IDENTIFIER (UUID) FOR EACH NODE
+$node_uuid_to_id = [];
+$node_id_to_uuid = [];
+
+// Resolve Primary
+$primary_uuid = 'primary';
+if ($db_status && $pdo) {
+    try {
+        $stmt = $pdo->query("SELECT value FROM tconfig WHERE token = 'server_unique_identifier'");
+        if ($stmt) {
+            $val = $stmt->fetchColumn();
+            if (!empty($val)) {
+                $primary_uuid = trim($val);
+            }
+        }
+    } catch (Throwable $e) {
+        error_log("Failed to resolve primary server_unique_identifier: " . $e->getMessage());
+    }
+}
+$node_uuid_to_id[$primary_uuid] = 'primary';
+$node_id_to_uuid['primary'] = $primary_uuid;
+
+// Resolve Custom Connections
+if (!empty($custom_pdos)) {
+    foreach ($custom_pdos as $cid => $cpdo) {
+        $custom_uuid = $cid;
+        if ($cpdo) {
+            try {
+                $stmt = $cpdo->query("SELECT value FROM tconfig WHERE token = 'server_unique_identifier'");
+                if ($stmt) {
+                    $val = $stmt->fetchColumn();
+                    if (!empty($val)) {
+                        $custom_uuid = trim($val);
+                    }
+                }
+            } catch (Throwable $e) {
+                error_log("Failed to resolve server_unique_identifier for node '{$cid}': " . $e->getMessage());
+            }
+        }
+        $node_uuid_to_id[$custom_uuid] = $cid;
+        $node_id_to_uuid[$cid] = $custom_uuid;
+    }
+}
+
+function get_node_uuid($node) {
+    global $node_id_to_uuid;
+    return $node_id_to_uuid[$node] ?? $node;
+}
+
 /**
  * Common Helper Functions
  */
@@ -349,12 +398,14 @@ function downsample_history_data($data, $max_points) {
 
 
 function parse_node_id($prefixed_id) {
+    global $node_uuid_to_id;
     if (is_numeric($prefixed_id)) {
         return ['node' => 'primary', 'id' => (int)$prefixed_id];
     }
     if (is_string($prefixed_id) && strpos($prefixed_id, ':') !== false) {
         list($node, $id) = explode(':', $prefixed_id, 2);
-        return ['node' => $node, 'id' => (int)$id];
+        $conn_id = $node_uuid_to_id[$node] ?? $node;
+        return ['node' => $conn_id, 'id' => (int)$id];
     }
     return ['node' => 'primary', 'id' => 0];
 }
@@ -371,13 +422,9 @@ function parse_node_ids($prefixed_ids_str) {
 }
 
 function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $limit = 5000, $order = 'DESC') {
-    $node = 'primary';
-    if (is_string($id_mod) && strpos($id_mod, ':') !== false) {
-        list($node, $real_id) = explode(':', $id_mod, 2);
-        $id_mod = (int)$real_id;
-    } else {
-        $id_mod = (int)$id_mod;
-    }
+    $parsed = parse_node_id($id_mod);
+    $node = $parsed['node'];
+    $id_mod = $parsed['id'];
 
     global $custom_pdos;
     $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
