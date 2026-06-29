@@ -960,8 +960,7 @@ if (!empty($current_page)) {
                         <span style="font-family: monospace; font-size: 11px; color: #64748b;">
                             Host: <?= htmlspecialchars($config['dbhost'] ?? 'N/A') ?> | DB: <?= htmlspecialchars($config['dbname'] ?? 'N/A') ?> | User: <?= htmlspecialchars($config['dbuser'] ?? 'N/A') ?>
                         </span>
-                        <span style="font-size: 11px; color: #475569; display: flex; align-items: center; gap: 4px; margin-top: 2px;">
-                            <span class="material-symbols-outlined" style="font-size: 14px; color: #64748b;">fingerprint</span>
+                        <span style="font-size: 11px; color: #475569; margin-top: 2px;">
                             Server UUID: <code id="primary_server_uuid" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;"><?= htmlspecialchars($node_id_to_uuid['primary'] ?? 'Not Found') ?></code>
                         </span>
                     </div>
@@ -1002,8 +1001,7 @@ if (!empty($current_page)) {
                             <span style="font-family: monospace; font-size: 11px; color: #64748b;">
                                 Host: <?= htmlspecialchars($history_db_host) ?> | DB: <?= htmlspecialchars($history_db_name) ?> | User: <?= htmlspecialchars($history_db_user) ?>
                             </span>
-                            <span style="font-size: 11px; color: #475569; display: flex; align-items: center; gap: 4px; margin-top: 2px;">
-                                <span class="material-symbols-outlined" style="font-size: 14px; color: #64748b;">fingerprint</span>
+                            <span style="font-size: 11px; color: #475569; margin-top: 2px;">
                                 Server UUID: <code id="history_server_uuid" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;"><?= htmlspecialchars($node_id_to_uuid['history'] ?? 'Not Found') ?></code>
                             </span>
                         <?php else: ?>
@@ -1357,8 +1355,7 @@ if (!empty($current_page)) {
                     <span style="font-family: monospace; font-size: 11px; color: #64748b;">
                         Host: ${escapeHtml(conn.host)}:${escapeHtml(conn.port || '3306')} | DB: ${escapeHtml(conn.dbname)} | User: ${escapeHtml(conn.user)}
                     </span>
-                    <span style="font-size: 11px; color: #475569; display: flex; align-items: center; gap: 4px; margin-top: 2px;">
-                        <span class="material-symbols-outlined" style="font-size: 14px; color: #64748b;">fingerprint</span>
+                    <span style="font-size: 11px; color: #475569; margin-top: 2px;">
                         Server UUID: <code id="uuid_val_${index}" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;">${escapeHtml(uuidVal)}</code>
                     </span>
                 </div>
