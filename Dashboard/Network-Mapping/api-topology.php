@@ -34,6 +34,7 @@ if ($api === 'get_topology') {
     $mapType = 'auto'; // 'auto' or 'blank'
     $manualLinks = [];
     $savedNodes = [];
+    $node = 'primary';
 
     $layout_file = __DIR__ . '/mapping_layout.json';
     if (file_exists($layout_file)) {
@@ -41,14 +42,21 @@ if ($api === 'get_topology') {
         if (isset($config['dashboards'])) {
             foreach ($config['dashboards'] as $d) {
                 if ($d['id'] === $dashId) {
-                    $groupId = (int)($d['group_id'] ?? 0);
-                    $agentId = (int)($d['agent_id'] ?? 0);
+                    $parsed_group = parse_node_id($d['group_id'] ?? '0');
+                    $parsed_agent = parse_node_id($d['agent_id'] ?? '0');
+                    $node = $parsed_agent['node'] ?: ($parsed_group['node'] ?: 'primary');
+                    
+                    $groupId = (int)$parsed_group['id'];
+                    $agentId = (int)$parsed_agent['id'];
                     $mapType = $d['map_type'] ?? 'auto';
                     $savedNodesRaw = $d['nodes'] ?? [];
                     $savedNodes = [];
-                    foreach ($savedNodesRaw as $id => $pos) {
-                        $savedNodes[(int)$id] = [
-                            'id' => (int)$id,
+                    foreach ($savedNodesRaw as $sid => $pos) {
+                        $parsed_sid = parse_node_id($sid);
+                        $sid_real = $parsed_sid['id'];
+                        $sid_node = $parsed_sid['node'] ?: 'primary';
+                        $savedNodes[$sid_node . ':' . $sid_real] = [
+                            'id' => $sid_node . ':' . $sid_real,
                             'x' => $pos['x'] ?? 0,
                             'y' => $pos['y'] ?? 0
                         ];
@@ -60,14 +68,39 @@ if ($api === 'get_topology') {
         }
     }
 
+    global $custom_pdos, $custom_connections;
+    $target_nodes = ['primary' => $pdo];
+    if (!empty($custom_pdos)) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $target_nodes[$cid] = $cpdo;
+        }
+    }
+    $active_pdo = $target_nodes[$node] ?? $pdo;
+
+    function get_node_label($node) {
+        global $custom_connections;
+        if ($node === 'primary') return '';
+        foreach ($custom_connections as $cc) {
+            if ($cc['id'] === $node) { return '[' . $cc['name'] . '] '; }
+        }
+        return '[' . $node . '] ';
+    }
+    $node_label = get_node_label($node);
+
     $isBlankCanvas = ($mapType === 'blank');
     $params = [];
     $sql = "SELECT id_agente AS id, alias, direccion AS ip, id_parent FROM tagente WHERE disabled = 0";
     
     if ($isBlankCanvas) {
-        if (!empty($savedNodes)) {
-            $savedIds = array_keys($savedNodes);
-            $inQuery = implode(',', array_map('intval', $savedIds));
+        $savedIdsForThisNode = [];
+        foreach ($savedNodes as $prefixed_sid => $pos) {
+            $p_sid = parse_node_id($prefixed_sid);
+            if ($p_sid['node'] === $node) {
+                $savedIdsForThisNode[] = (int)$p_sid['id'];
+            }
+        }
+        if (!empty($savedIdsForThisNode)) {
+            $inQuery = implode(',', $savedIdsForThisNode);
             $sql .= " AND id_agente IN ($inQuery)";
         } else {
             $sql .= " AND 1 = 0";
@@ -86,7 +119,7 @@ if ($api === 'get_topology') {
         }
     }
 
-    $stmt = $pdo->prepare($sql);
+    $stmt = $active_pdo->prepare($sql);
     $stmt->execute($params);
     $nodesRaw = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -96,13 +129,13 @@ if ($api === 'get_topology') {
     
     foreach ($nodesRaw as $n) {
         $id = (int)$n['id'];
-        $n['alias'] = pretty_text($n['alias']);
+        $prefixed_id = $node . ':' . $id;
         $agentIds[] = $id;
         $agentsIndexed[$id] = $n;
     }
 
     // Initialize Discovery Modules
-    $engine = new TopologyInferenceEngine($pdo);
+    $engine = new TopologyInferenceEngine($active_pdo);
     $engine->registerModule(new LLDPDiscoveryModule());
     $engine->registerModule(new CDPDiscoveryModule());
     $engine->registerModule(new FDBDiscoveryModule());
@@ -115,9 +148,9 @@ if ($api === 'get_topology') {
         $edges[] = [
             'group' => 'edges',
             'data' => [
-                'id' => $de['id'],
-                'source' => $de['source'],
-                'target' => $de['target'],
+                'id' => 'auto_' . $node . '_' . $de['id'],
+                'source' => $node . ':' . $de['source'],
+                'target' => $node . ':' . $de['target'],
                 'label' => $de['label']
             ]
         ];
@@ -125,13 +158,21 @@ if ($api === 'get_topology') {
 
     // Merge manual user-defined links
     foreach ($manualLinks as $ml) {
-        if (isset($agentsIndexed[(int)$ml['source']]) && isset($agentsIndexed[(int)$ml['target']])) {
-            $edgeId = $ml['id'] ?? "manual_{$ml['source']}_{$ml['target']}";
+        $parsed_src = parse_node_id($ml['source']);
+        $src_node = $parsed_src['node'] ?: $node;
+        $src_id = (int)$parsed_src['id'];
+
+        $parsed_tgt = parse_node_id($ml['target']);
+        $tgt_node = $parsed_tgt['node'] ?: $node;
+        $tgt_id = (int)$parsed_tgt['id'];
+
+        if (($src_node === $node && isset($agentsIndexed[$src_id])) || ($tgt_node === $node && isset($agentsIndexed[$tgt_id]))) {
+            $edgeId = $ml['id'] ?? "manual_{$src_node}_{$src_id}_{$tgt_node}_{$tgt_id}";
             
             $isDuplicate = false;
             foreach ($edges as $e) {
-                if (($e['data']['source'] == $ml['source'] && $e['data']['target'] == $ml['target']) ||
-                    ($e['data']['source'] == $ml['target'] && $e['data']['target'] == $ml['source'])) {
+                if (($e['data']['source'] == ($src_node . ':' . $src_id) && $e['data']['target'] == ($tgt_node . ':' . $tgt_id)) ||
+                    ($e['data']['source'] == ($tgt_node . ':' . $tgt_id) && $e['data']['target'] == ($src_node . ':' . $src_id))) {
                     $isDuplicate = true;
                     break;
                 }
@@ -142,9 +183,9 @@ if ($api === 'get_topology') {
                     'group' => 'edges',
                     'data' => [
                         'id' => $edgeId,
-                        'source' => (string)$ml['source'],
-                        'target' => (string)$ml['target'],
-                        'label' => $ml['source_port_name'] . ' - ' . $ml['target_port_name']
+                        'source' => $src_node . ':' . $src_id,
+                        'target' => $tgt_node . ':' . $tgt_id,
+                        'label' => ($ml['source_port_name'] ?? '') . ' - ' . ($ml['target_port_name'] ?? '')
                     ]
                 ];
             }
@@ -156,25 +197,23 @@ if ($api === 'get_topology') {
     $finalEdges = $edges;
 
     if ($mode === 'layer2') {
-        // LAYER 2: Focus on manageable infrastructure (switches, routers) and their active physical L2 links.
-        // We filter out standalone endpoints (servers/printers that have no physical L2 links on the map).
         $connectedNodeIds = [];
         foreach ($edges as $e) {
-            $connectedNodeIds[(int)$e['data']['source']] = true;
-            $connectedNodeIds[(int)$e['data']['target']] = true;
+            $connectedNodeIds[$e['data']['source']] = true;
+            $connectedNodeIds[$e['data']['target']] = true;
         }
 
         foreach ($nodesRaw as $n) {
             $id = (int)$n['id'];
+            $prefixed_id = $node . ':' . $id;
             
-            // Render if part of L2 link OR explicitly designated as a core agent
-            if (isset($connectedNodeIds[$id]) || $id === $agentId) {
-                $posX = isset($savedNodes[$id]) ? (float)$savedNodes[$id]['x'] : null;
-                $posY = isset($savedNodes[$id]) ? (float)$savedNodes[$id]['y'] : null;
+            if (isset($connectedNodeIds[$prefixed_id]) || $id === $agentId) {
+                $posX = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['x'] : null;
+                $posY = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['y'] : null;
                 
                 $nodeData = [
-                    'id' => (string)$id,
-                    'label' => $n['alias'],
+                    'id' => $prefixed_id,
+                    'label' => $node_label . pretty_text($n['alias']),
                     'ip' => $n['ip'],
                     'type' => 'switch'
                 ];
@@ -188,34 +227,32 @@ if ($api === 'get_topology') {
         }
     } 
     elseif ($mode === 'layer3') {
-        // LAYER 3: Focus on network routing paths and parent-child gateway dependencies.
-        // Draw routing lines based on the 'id_parent' column.
-        $finalEdges = []; // L3 uses routing hierarchy, not physical switchports
+        $finalEdges = [];
         
         foreach ($nodesRaw as $n) {
             $id = (int)$n['id'];
-            $posX = isset($savedNodes[$id]) ? (float)$savedNodes[$id]['x'] : null;
-            $posY = isset($savedNodes[$id]) ? (float)$savedNodes[$id]['y'] : null;
+            $prefixed_id = $node . ':' . $id;
+            $posX = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['x'] : null;
+            $posY = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['y'] : null;
             
-            // Connect parent router/gateway to child
             $parentId = (int)$n['id_parent'];
             if ($parentId > 0 && isset($agentsIndexed[$parentId])) {
                 $finalEdges[] = [
                     'group' => 'edges',
                     'data' => [
-                        'id' => "l3_parent_{$parentId}_{$id}",
-                        'source' => (string)$parentId,
-                        'target' => (string)$id,
+                        'id' => "l3_parent_{$node}_{$parentId}_{$id}",
+                        'source' => $node . ':' . $parentId,
+                        'target' => $prefixed_id,
                         'label' => 'Gateway Link'
                     ]
                 ];
             }
 
             $nodeData = [
-                'id' => (string)$id,
-                'label' => $n['alias'],
+                'id' => $prefixed_id,
+                'label' => $node_label . pretty_text($n['alias']),
                 'ip' => $n['ip'],
-                'type' => ($parentId === 0) ? 'router' : 'switch' // Parentless nodes act as Core Routers
+                'type' => ($parentId === 0) ? 'router' : 'switch'
             ];
             
             $nodeDef = ['group' => 'nodes', 'data' => $nodeData];
@@ -226,20 +263,18 @@ if ($api === 'get_topology') {
         }
     } 
     else {
-        // ENDPOINTS: Show full absolute mapping (all switches, servers, printers, and subnets).
-        // Includes both L2 physical links and parent-child gateway links to represent a complete topological blueprint.
         foreach ($nodesRaw as $n) {
             $id = (int)$n['id'];
-            $posX = isset($savedNodes[$id]) ? (float)$savedNodes[$id]['x'] : null;
-            $posY = isset($savedNodes[$id]) ? (float)$savedNodes[$id]['y'] : null;
+            $prefixed_id = $node . ':' . $id;
+            $posX = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['x'] : null;
+            $posY = isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['y'] : null;
             
-            // Draw logical parent links for edge nodes that have no physical link
             $parentId = (int)$n['id_parent'];
             if ($parentId > 0 && isset($agentsIndexed[$parentId])) {
                 $hasL2Link = false;
                 foreach ($edges as $e) {
-                    if (($e['data']['source'] == $id && $e['data']['target'] == $parentId) ||
-                        ($e['data']['source'] == $parentId && $e['data']['target'] == $id)) {
+                    if (($e['data']['source'] == $prefixed_id && $e['data']['target'] == ($node . ':' . $parentId)) ||
+                        ($e['data']['source'] == ($node . ':' . $parentId) && $e['data']['target'] == $prefixed_id)) {
                         $hasL2Link = true;
                         break;
                     }
@@ -249,9 +284,9 @@ if ($api === 'get_topology') {
                     $finalEdges[] = [
                         'group' => 'edges',
                         'data' => [
-                            'id' => "endpoint_link_{$parentId}_{$id}",
-                            'source' => (string)$parentId,
-                            'target' => (string)$id,
+                            'id' => "endpoint_link_{$node}_{$parentId}_{$id}",
+                            'source' => $node . ':' . $parentId,
+                            'target' => $prefixed_id,
                             'label' => 'Parent Link'
                         ]
                     ];
@@ -259,8 +294,8 @@ if ($api === 'get_topology') {
             }
 
             $nodeData = [
-                'id' => (string)$id,
-                'label' => $n['alias'],
+                'id' => $prefixed_id,
+                'label' => $node_label . pretty_text($n['alias']),
                 'ip' => $n['ip'],
                 'type' => ($parentId === 0) ? 'router' : 'switch'
             ];

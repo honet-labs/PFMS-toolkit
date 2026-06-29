@@ -1102,7 +1102,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             // Interaction Events
             cy.on('tap', 'node', function(evt){
                 var node = evt.target;
-                showAgentPerformance(parseInt(node.id()));
+                showAgentPerformance(node.id());
             });
 
             cy.on('tap', function(event){
@@ -1381,7 +1381,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 duration: 500
             });
             found.select();
-            showAgentPerformance(parseInt(found[0].id()));
+            showAgentPerformance(found[0].id());
         }
     }
 
@@ -1451,11 +1451,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         
         manualLinksStore.push({
             id: linkId,
-            source: parseInt(srcAgentId),
-            source_port: parseInt(srcPortId),
+            source: srcAgentId,
+            source_port: srcPortId,
             source_port_name: srcPortName,
-            target: parseInt(tgtAgentId),
-            target_port: parseInt(tgtPortId),
+            target: tgtAgentId,
+            target_port: tgtPortId,
             target_port_name: tgtPortName
         });
 
@@ -1530,7 +1530,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
             if (!allRawNodes.find(n => n.id == rawNode.id)) {
                 allRawNodes.push({
-                    id: parseInt(rawNode.id),
+                    id: rawNode.id,
                     label: rawNode.alias,
                     ip: rawNode.ip,
                     worst_status: 0
@@ -1610,8 +1610,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                                 if (!d.manual_links) d.manual_links = [];
                                 d.manual_links.push({
                                     id: id,
-                                    source: parseInt(source),
-                                    target: parseInt(target),
+                                    source: source,
+                                    target: target,
                                     source_port_name: label.split(' - ')[0] || 'port',
                                     target_port_name: label.split(' - ')[1] || 'port'
                                 });

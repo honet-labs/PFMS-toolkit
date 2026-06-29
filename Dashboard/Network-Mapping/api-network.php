@@ -193,36 +193,93 @@ try {
     }
 
     if ($api === 'groups') {
-        $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+        global $custom_pdos, $custom_connections;
+        $target_nodes = ['primary' => $pdo];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = $cpdo;
+            }
+        }
+        
+        function get_node_label($node) {
+            global $custom_connections;
+            if ($node === 'primary') return '';
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $node) { return '[' . $cc['name'] . '] '; }
+            }
+            return '[' . $node . '] ';
+        }
+
         $dropdown = [['id' => '0', 'name' => '-- All Groups --']];
-        while ($g = $stmt->fetch()) {
-            $dropdown[] = [
-                'id' => (string)$g['id'],
-                'name' => pretty_text($g['name'])
-            ];
+        foreach ($target_nodes as $node => $active_pdo) {
+            if (!$active_pdo) continue;
+            $node_label = get_node_label($node);
+            $stmt = $active_pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
+            if ($stmt) {
+                while ($g = $stmt->fetch()) {
+                    $dropdown[] = [
+                        'id' => $node . ':' . $g['id'],
+                        'name' => $node_label . pretty_text($g['name'])
+                    ];
+                }
+            }
         }
         echo json_encode($dropdown);
         exit;
     }
 
     if ($api === 'agents') {
-        $groupId = (int)($_GET['group_id'] ?? 0);
-        $params = [];
-        $sql = "SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0";
-        if ($groupId > 0) {
-            $sql .= " AND id_grupo = ?";
-            $params[] = $groupId;
+        global $custom_pdos, $custom_connections;
+        $target_nodes = ['primary' => $pdo];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = $cpdo;
+            }
         }
-        $sql .= " ORDER BY alias ASC";
         
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        function get_node_label($node) {
+            global $custom_connections;
+            if ($node === 'primary') return '';
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $node) { return '[' . $cc['name'] . '] '; }
+            }
+            return '[' . $node . '] ';
+        }
+
+        $req_group = $_GET['group_id'] ?? '0';
+        $parsed_group = parse_node_id($req_group);
+        $filter_node = $parsed_group['node'] ?: 'primary';
+        $real_group_id = $parsed_group['id'];
+        
         $agents = [['id' => '0', 'alias' => '-- All Nodes --']];
-        while ($row = $stmt->fetch()) {
-            $agents[] = [
-                'id' => (string)$row['id'],
-                'alias' => pretty_text($row['alias'])
-            ];
+        
+        if ($req_group !== '0') {
+            $active_pdo = $target_nodes[$filter_node] ?? null;
+            if ($active_pdo) {
+                $node_label = get_node_label($filter_node);
+                $stmt = $active_pdo->prepare("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 AND id_grupo = ? ORDER BY alias ASC");
+                $stmt->execute([$real_group_id]);
+                while ($row = $stmt->fetch()) {
+                    $agents[] = [
+                        'id' => $filter_node . ':' . $row['id'],
+                        'alias' => $node_label . pretty_text($row['alias'])
+                    ];
+                }
+            }
+        } else {
+            foreach ($target_nodes as $node => $active_pdo) {
+                if (!$active_pdo) continue;
+                $node_label = get_node_label($node);
+                $stmt = $active_pdo->query("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
+                if ($stmt) {
+                    while ($row = $stmt->fetch()) {
+                        $agents[] = [
+                            'id' => $node . ':' . $row['id'],
+                            'alias' => $node_label . pretty_text($row['alias'])
+                        ];
+                    }
+                }
+            }
         }
         echo json_encode($agents);
         exit;
@@ -249,19 +306,46 @@ try {
             exit;
         }
 
-        $group_id = (int)($active_dash['group_id'] ?? 0);
-        $agent_id = (int)($active_dash['agent_id'] ?? 0);
+        $parsed_group = parse_node_id($active_dash['group_id'] ?? '0');
+        $parsed_agent = parse_node_id($active_dash['agent_id'] ?? '0');
+        $node = $parsed_agent['node'] ?: ($parsed_group['node'] ?: 'primary');
+        
+        global $custom_pdos, $custom_connections;
+        $target_nodes = ['primary' => $pdo];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = $cpdo;
+            }
+        }
+        $active_pdo = $target_nodes[$node] ?? $pdo;
+        
+        function get_node_label($node) {
+            global $custom_connections;
+            if ($node === 'primary') return '';
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $node) { return '[' . $cc['name'] . '] '; }
+            }
+            return '[' . $node . '] ';
+        }
+        $node_label = get_node_label($node);
+
+        $group_id = (int)$parsed_group['id'];
+        $agent_id = (int)$parsed_agent['id'];
+        
         $mapType = $active_dash['map_type'] ?? 'auto';
         $isBlankCanvas = ($mapType === 'blank');
         $savedNodesRaw = $active_dash['nodes'] ?? [];
         $savedNodes = [];
-        foreach ($savedNodesRaw as $id => $pos) {
-            $savedNodes[(int)$id] = [
-                'id' => (int)$id,
+        foreach ($savedNodesRaw as $sid => $pos) {
+            $parsed_sid = parse_node_id($sid);
+            $sid_real = $parsed_sid['id'];
+            $sid_node = $parsed_sid['node'] ?: 'primary';
+            $savedNodes[$sid_node . ':' . $sid_real] = [
                 'x' => $pos['x'] ?? 0,
                 'y' => $pos['y'] ?? 0
             ];
         }
+        $manualLinks = $active_dash['manual_links'] ?? [];
 
         // 1. Fetch active agents with optional dynamic dashboard filtering
         $params = [];
@@ -276,9 +360,15 @@ try {
                      WHERE a.disabled = 0";
         
         if ($isBlankCanvas) {
-            if (!empty($savedNodes)) {
-                $savedIds = array_keys($savedNodes);
-                $inQuery = implode(',', array_map('intval', $savedIds));
+            $savedIdsForThisNode = [];
+            foreach ($savedNodes as $prefixed_sid => $pos) {
+                $p_sid = parse_node_id($prefixed_sid);
+                if ($p_sid['node'] === $node) {
+                    $savedIdsForThisNode[] = (int)$p_sid['id'];
+                }
+            }
+            if (!empty($savedIdsForThisNode)) {
+                $inQuery = implode(',', $savedIdsForThisNode);
                 $agentSql .= " AND a.id_agente IN ($inQuery)";
             } else {
                 $agentSql .= " AND 1 = 0";
@@ -296,32 +386,28 @@ try {
         }
         $agentSql .= " ORDER BY a.alias ASC";
         
-        $agentsStmt = $pdo->prepare($agentSql);
+        $agentsStmt = $active_pdo->prepare($agentSql);
         $agentsStmt->execute($params);
         $rawAgents = $agentsStmt->fetchAll();
 
-        // 2. Fetch worst global health of each agent (Pandora FMS default status)
+        // 2. Fetch worst global health of each agent
         $agentHealthSql = "SELECT m.id_agente, MAX(e.estado) as worst_status 
                            FROM tagente_modulo m 
                            JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo 
                            WHERE m.disabled = 0 
                            GROUP BY m.id_agente";
-        $healthStmt = $pdo->query($agentHealthSql);
+        $healthStmt = $active_pdo->query($agentHealthSql);
         $healths = [];
         while ($h = $healthStmt->fetch()) {
             $healths[$h['id_agente']] = (int)$h['worst_status'];
         }
 
-        // 3. Load layout coordinates and manual links specifically for this dashboard
-        $savedNodesRaw = $active_dash['nodes'] ?? [];
-        $manualLinks = $active_dash['manual_links'] ?? [];
-
-        // 4. Fetch active ports for SNMP status coloring (ifOperStatus or ifAdminStatus)
+        // 4. Fetch active ports for SNMP status coloring
         $portsSql = "SELECT m.id_agente_modulo, m.id_agente, m.nombre, e.estado, e.datos 
                      FROM tagente_modulo m 
                      JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo 
                      WHERE (m.nombre LIKE '%ifOperStatus%' OR m.nombre LIKE '%ifAdminStatus%') AND m.disabled = 0";
-        $portsStmt = $pdo->query($portsSql);
+        $portsStmt = $active_pdo->query($portsSql);
         $portsDb = [];
         while ($p = $portsStmt->fetch()) {
             $portsDb[$p['id_agente_modulo']] = [
@@ -335,9 +421,10 @@ try {
         $agentsIndexed = [];
         foreach ($rawAgents as $agent) {
             $id = (int)$agent['id'];
+            $prefixed_id = $node . ':' . $id;
             $agentsIndexed[$id] = $agent;
 
-            // Health Status Mapping (Green, Red, Yellow, Blue)
+            // Health Status Mapping
             $worstModule = $healths[$id] ?? 0;
             $healthLabel = 'normal'; // green
             if ($worstModule === 1) $healthLabel = 'critical'; // red
@@ -345,25 +432,25 @@ try {
             elseif ($worstModule === 4) $healthLabel = 'not_init'; // blue
 
             $nodes[] = [
-                'id' => $id,
-                'label' => pretty_text($agent['alias']),
+                'id' => $prefixed_id,
+                'label' => $node_label . pretty_text($agent['alias']),
                 'ip' => $agent['ip'] ?: '-',
                 'status' => $healthLabel,
-                'id_parent' => $agent['id_parent'] ? (int)$agent['id_parent'] : null,
-                'x' => isset($savedNodes[$id]) ? (float)$savedNodes[$id]['x'] : null,
-                'y' => isset($savedNodes[$id]) ? (float)$savedNodes[$id]['y'] : null,
-                'is_manual' => isset($savedNodes[$id])
+                'id_parent' => $agent['id_parent'] ? ($node . ':' . (int)$agent['id_parent']) : null,
+                'x' => isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['x'] : null,
+                'y' => isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['y'] : null,
+                'is_manual' => isset($savedNodes[$prefixed_id])
             ];
         }
 
-        // Process Edges (Links)
+        // Process Edges
         $edges = [];
         
         // Auto-generated parent-child relationships
         foreach ($nodes as $n) {
-            if ($n['id_parent'] !== null && isset($agentsIndexed[$n['id_parent']])) {
+            if ($n['id_parent'] !== null) {
                 $edges[] = [
-                    'id' => 'auto_' . $n['id_parent'] . '_' . $n['id'],
+                    'id' => 'auto_' . str_replace(':', '_', $n['id_parent']) . '_' . str_replace(':', '_', $n['id']),
                     'from' => $n['id_parent'],
                     'to' => $n['id'],
                     'type' => 'auto',
@@ -374,7 +461,6 @@ try {
         }
 
         // --- ADVANCED NETWORK TOPOLOGY AUTO-DISCOVERY ENGINE ---
-        // Strategy A: LLDP / CDP Module Data Matching (Reads peer device names via SNMP)
         $lldpSql = "SELECT m.id_agente, m.nombre AS module_name, e.datos AS remote_sysname
                     FROM tagente_modulo m
                     JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
@@ -382,23 +468,25 @@ try {
                       AND (m.nombre LIKE '%lldpRemSysName%' 
                            OR m.nombre LIKE '%cdpCacheDeviceId%' 
                            OR m.nombre LIKE '%lldpRemPortId%')";
-        $lldpStmt = $pdo->query($lldpSql);
+        $lldpStmt = $active_pdo->query($lldpSql);
         $lldpData = $lldpStmt->fetchAll();
 
-        // Strategy B: Interface Port Name to Agent Alias matching (Fuzzy heuristics, e.g. eth5-LANtoSW01 -> SW01)
         $allPortsSql = "SELECT m.id_agente_modulo AS port_id, m.id_agente, m.nombre AS port_name, e.estado AS port_status
                         FROM tagente_modulo m
                         JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
                         WHERE m.disabled = 0 AND m.nombre LIKE '%ifOperStatus%'";
-        $allPortsStmt = $pdo->query($allPortsSql);
+        $allPortsStmt = $active_pdo->query($allPortsSql);
         $allPorts = $allPortsStmt->fetchAll();
 
-        // Index agents by normalized alias for ultra-fast matching
+        // Index agents by normalized alias
         $agentsByNormalizedAlias = [];
         foreach ($nodes as $n) {
-            $norm = strtolower(trim($n['label']));
+            $parsed_nid = parse_node_id($n['id']);
+            $real_nid = $parsed_nid['id'];
+            $label_without_prefix = str_replace($node_label, '', $n['label']);
+            $norm = strtolower(trim($label_without_prefix));
             if (strlen($norm) >= 3) {
-                $agentsByNormalizedAlias[$norm] = $n['id'];
+                $agentsByNormalizedAlias[$norm] = $real_nid;
             }
         }
 
@@ -416,11 +504,11 @@ try {
                 if (stripos($normRemote, $alias) !== false || stripos($alias, $normRemote) !== false) {
                     $key = min($lldp['id_agente'], $targetAgentId) . '_' . max($lldp['id_agente'], $targetAgentId);
                     if (!isset($discoveredLinks[$key])) {
-                        $trafficLabel = get_port_traffic_label($pdo, $lldp['id_agente'], $lldp['module_name']);
+                        $trafficLabel = get_port_traffic_label($active_pdo, $lldp['id_agente'], $lldp['module_name']);
                         $discoveredLinks[$key] = [
-                            'id' => 'auto_lldp_' . $key,
-                            'from' => (int)$lldp['id_agente'],
-                            'to' => (int)$targetAgentId,
+                            'id' => 'auto_lldp_' . $node . '_' . $key,
+                            'from' => $node . ':' . $lldp['id_agente'],
+                            'to' => $node . ':' . $targetAgentId,
                             'type' => 'auto',
                             'status' => 'normal',
                             'label' => 'LLDP: ' . pretty_text($remoteName) . ($trafficLabel ? "\n(" . $trafficLabel . ")" : "")
@@ -440,7 +528,6 @@ try {
             foreach ($agentsByNormalizedAlias as $alias => $targetAgentId) {
                 if ($port['id_agente'] == $targetAgentId) continue;
 
-                // Match if clean interface port name contains target agent alias as a distinct term
                 if (stripos($normPort, $alias) !== false) {
                     $pStatus = (int)$port['port_status'];
                     $linkStatus = 'normal';
@@ -449,11 +536,11 @@ try {
                     
                     $key = min($port['id_agente'], $targetAgentId) . '_' . max($port['id_agente'], $targetAgentId);
                     if (!isset($discoveredLinks[$key])) {
-                        $trafficLabel = get_port_traffic_label($pdo, $port['id_agente'], $port['port_name']);
+                        $trafficLabel = get_port_traffic_label($active_pdo, $port['id_agente'], $port['port_name']);
                         $discoveredLinks[$key] = [
-                            'id' => 'auto_port_' . $key,
-                            'from' => (int)$port['id_agente'],
-                            'to' => (int)$targetAgentId,
+                            'id' => 'auto_port_' . $node . '_' . $key,
+                            'from' => $node . ':' . $port['id_agente'],
+                            'to' => $node . ':' . $targetAgentId,
                             'type' => 'auto',
                             'status' => $linkStatus,
                             'label' => $cleanPort . ($trafficLabel ? "\n(" . $trafficLabel . ")" : "")
@@ -463,21 +550,31 @@ try {
             }
         }
 
-        // Merge discovered auto-links into topology edges
         foreach ($discoveredLinks as $dl) {
             $edges[] = $dl;
         }
 
         // Manual Links mapped to SNMP operational ports
         foreach ($manualLinks as $ml) {
-            $srcPortId = (int)($ml['source_port'] ?? 0);
-            $tgtPortId = (int)($ml['target_port'] ?? 0);
+            $parsed_src = parse_node_id($ml['source']);
+            $src_node = $parsed_src['node'] ?: $node;
+            $src_id = (int)$parsed_src['id'];
 
-            $srcStatus = isset($portsDb[$srcPortId]) ? $portsDb[$srcPortId]['status'] : 4;
-            $tgtStatus = isset($portsDb[$tgtPortId]) ? $portsDb[$tgtPortId]['status'] : 4;
+            $parsed_tgt = parse_node_id($ml['target']);
+            $tgt_node = $parsed_tgt['node'] ?: $node;
+            $tgt_id = (int)$parsed_tgt['id'];
 
-            // Dynamic color: critical if either is down
-            // In Pandora FMS module state: 0 = normal (Green), 1 = warning (Yellow), 2 = critical (Red), 4 = unknown (Blue/Gray)
+            $srcStatus = 4;
+            $tgtStatus = 4;
+            if ($src_node === $node) {
+                $srcPortId = (int)($ml['source_port'] ?? 0);
+                $srcStatus = isset($portsDb[$srcPortId]) ? $portsDb[$srcPortId]['status'] : 4;
+            }
+            if ($tgt_node === $node) {
+                $tgtPortId = (int)($ml['target_port'] ?? 0);
+                $tgtStatus = isset($portsDb[$tgtPortId]) ? $portsDb[$tgtPortId]['status'] : 4;
+            }
+
             $linkStatus = 'normal';
             if ($srcStatus === 2 || $tgtStatus === 2) {
                 $linkStatus = 'critical';
@@ -487,11 +584,15 @@ try {
                 $linkStatus = 'unknown';
             }
 
-            $trafficLabel = get_port_traffic_label($pdo, (int)$ml['source'], $ml['source_port_name']);
+            $trafficLabel = '';
+            if ($src_node === $node) {
+                $trafficLabel = get_port_traffic_label($active_pdo, $src_id, $ml['source_port_name']);
+            }
+            
             $edges[] = [
                 'id' => $ml['id'],
-                'from' => (int)$ml['source'],
-                'to' => (int)$ml['target'],
+                'from' => $src_node . ':' . $src_id,
+                'to' => $tgt_node . ':' . $tgt_id,
                 'type' => 'manual',
                 'status' => $linkStatus,
                 'source_port_name' => $ml['source_port_name'] ?? '',
@@ -546,13 +647,26 @@ try {
     }
 
     if ($api === 'agent_ports') {
-        $id_agent = (int)($_GET['id_agent'] ?? 0);
+        $req_agent = $_GET['id_agent'] ?? '';
+        $parsed_agent = parse_node_id($req_agent);
+        $node = $parsed_agent['node'] ?: 'primary';
+        $id_agent = (int)$parsed_agent['id'];
+        
         if ($id_agent <= 0) {
             echo json_encode([]);
             exit;
         }
 
-        $stmt = $pdo->prepare("SELECT m.id_agente_modulo AS id, m.nombre AS name, e.estado, e.datos 
+        global $custom_pdos;
+        $target_nodes = ['primary' => $pdo];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = $cpdo;
+            }
+        }
+        $active_pdo = $target_nodes[$node] ?? $pdo;
+
+        $stmt = $active_pdo->prepare("SELECT m.id_agente_modulo AS id, m.nombre AS name, e.estado, e.datos 
                                FROM tagente_modulo m 
                                JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
                                WHERE m.id_agente = ? AND (m.nombre LIKE '%ifOperStatus%' OR m.nombre LIKE '%ifAdminStatus%') AND m.disabled = 0
@@ -561,6 +675,7 @@ try {
         $ports = $stmt->fetchAll();
 
         foreach ($ports as &$p) {
+            $p['id'] = $node . ':' . $p['id'];
             $p['name'] = pretty_text($p['name']);
             $p['clean_name'] = str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus', 'ifAdminStatus_', '_ifAdminStatus', 'ifAdminStatus'], '', $p['name']);
         }
@@ -569,14 +684,27 @@ try {
     }
 
     if ($api === 'agent_details') {
-        $id_agent = (int)($_GET['id_agent'] ?? 0);
+        $req_agent = $_GET['id_agent'] ?? '';
+        $parsed_agent = parse_node_id($req_agent);
+        $node = $parsed_agent['node'] ?: 'primary';
+        $id_agent = (int)$parsed_agent['id'];
+        
         if ($id_agent <= 0) {
             echo json_encode(['ok' => false, 'error' => 'Invalid Agent ID']);
             exit;
         }
 
-        $stmt = $pdo->prepare("SELECT m.id_agente_modulo AS id, m.nombre AS name, e.datos AS current_value, 
-                                      e.timestamp, e.estado, COALESCE(m.unit, '') as unit
+        global $custom_pdos;
+        $target_nodes = ['primary' => $pdo];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = $cpdo;
+            }
+        }
+        $active_pdo = $target_nodes[$node] ?? $pdo;
+
+        $stmt = $active_pdo->prepare("SELECT m.id_agente_modulo AS id, m.nombre AS name, e.datos AS current_value, 
+                                       e.timestamp, e.estado, COALESCE(m.unit, '') as unit
                                FROM tagente_modulo m 
                                JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
                                WHERE m.id_agente = ? AND m.disabled = 0
@@ -624,7 +752,7 @@ try {
             if (stripos($nameLower, 'ifoperstatus') !== false) {
                 $clean_val = is_numeric($mod['current_value'] ?? '') ? (int)(float)$mod['current_value'] : ($mod['current_value'] ?? '');
                 $portStatuses[] = [
-                    'id' => $mod['id'] ?? 0,
+                    'id' => $node . ':' . ($mod['id'] ?? 0),
                     'port' => str_replace(['ifOperStatus_', '_ifOperStatus', 'ifOperStatus'], '', $mod['name'] ?? ''),
                     'status' => (int)($mod['estado'] ?? 0),
                     'value' => $clean_val

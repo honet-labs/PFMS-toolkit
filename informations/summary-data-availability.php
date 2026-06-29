@@ -27,57 +27,45 @@ $dynamic_breadcrumb = implode(' / ', $formatted_array);
 // 2. CONFIG LOADING (DYNAMIC ACTIVE DB & STATIC HISTORY)
 // =====================================================================
 $PANDORA_BASE_URL = "/pandora_console";
-$config_paths = ['/var/www/html/pandora_console/include/config.php', '../../include/config.php', '../include/config.php'];
-$config_loaded = false;
-foreach ($config_paths as $path) { 
-    if (file_exists($path)) { 
-        require_once($path); 
-        $config_loaded = true; 
-        break; 
-    } 
+require_once __DIR__ . '/../includes/db-connection.php';
+
+$pdoActive = $pdo;
+$pdoHistory = $pdo_history;
+$db_status = ($pdo !== null);
+
+global $custom_pdos, $custom_connections;
+$target_nodes = ['primary' => $pdo];
+if (!empty($custom_pdos)) {
+    foreach ($custom_pdos as $cid => $cpdo) {
+        $target_nodes[$cid] = $cpdo;
+    }
 }
 
-$DB_HISTORY = [
-    'host'    => '10.252.7.239',
-    'name'    => 'pandora',
-    'user'    => 'root',
-    'pass'    => 'Pandor4!'
-];
-
-$pdoActive = null; $pdoHistory = null; $db_status = false; $errors = [];
-
-if ($config_loaded && isset($config)) {
-    try {
-        $dsn = "mysql:host=" . $config['dbhost'] . ";dbname=" . $config['dbname'] . ";charset=utf8mb4";
-        $pdoActive = new PDO($dsn, $config['dbuser'], $config['dbpass'], [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, 
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false
-        ]);
-        $db_status = true;
-
-        try {
-            $dsnHist = "mysql:host=" . $DB_HISTORY['host'] . ";dbname=" . $DB_HISTORY['name'] . ";charset=utf8mb4";
-            $pdoHistory = new PDO($dsnHist, $DB_HISTORY['user'], $DB_HISTORY['pass'], [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, 
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false
-            ]);
-        } catch(Exception $e) {} 
-
-    } catch (PDOException $e) { $errors[] = "Failed to connect to Main DB: " . $e->getMessage(); }
-} else {
-    $errors[] = "Failed to load include/config.php from Pandora FMS.";
+function get_node_label($node) {
+    global $custom_connections;
+    if ($node === 'primary') return '';
+    foreach ($custom_connections as $cc) {
+        if ($cc['id'] === $node) { return '[' . $cc['name'] . '] '; }
+    }
+    return '[' . $node . '] ';
 }
 
-// =====================================================================
-// 3. HELPERS
-// =====================================================================
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
-function pretty_text($s) {
-    if ($s === null) return '';
-    $decoded = html_entity_decode((string)$s, ENT_QUOTES, 'UTF-8');
-    return str_replace(['&#x20;', '&#x28;', '&#x29;'], [' ', '(', ')'], $decoded);
+function parse_node_from_filter($filter) {
+    global $custom_connections;
+    $filter = trim($filter);
+    if (preg_match('/^\[(.*?)\]\s*(.*)$/', $filter, $matches)) {
+        $node_name = $matches[1];
+        $search_term = $matches[2];
+        if (strcasecmp($node_name, 'primary') === 0) {
+            return ['node' => 'primary', 'search' => $search_term];
+        }
+        foreach ($custom_connections as $cc) {
+            if (strcasecmp($cc['name'], $node_name) === 0 || strcasecmp($cc['id'], $node_name) === 0) {
+                return ['node' => $cc['id'], 'search' => $search_term];
+            }
+        }
+    }
+    return ['node' => null, 'search' => $filter];
 }
 
 function ts_to_local_long($ts, $tz) {
@@ -124,19 +112,45 @@ function map_dynamic_state($raw, $arr_up, $arr_off) {
 $api = $_GET['api'] ?? '';
 if ($api === 'get_agents' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
-    $st = $pdoActive->query("SELECT alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
-    echo json_encode(array_map('pretty_text', $st->fetchAll(PDO::FETCH_COLUMN))); exit;
+    $agents = [];
+    foreach ($target_nodes as $node => $active_pdo) {
+        if (!$active_pdo) continue;
+        $node_label = get_node_label($node);
+        $st = $active_pdo->query("SELECT alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
+        if ($st) {
+            while ($alias = $st->fetchColumn()) {
+                $agents[] = $node_label . pretty_text($alias);
+            }
+        }
+    }
+    sort($agents);
+    echo json_encode($agents); exit;
 }
 if ($api === 'get_modules' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
     $agent_filter = $_GET['agent_filter'] ?? '';
+    $modules = [];
     if (!empty($agent_filter)) {
-        $ag_kw = "%" . str_replace(' ', '%', trim($agent_filter)) . "%";
-        $st = $pdoActive->prepare("SELECT DISTINCT m.nombre FROM tagente_modulo m JOIN tagente a ON m.id_agente = a.id_agente WHERE m.disabled = 0 AND a.disabled = 0 AND (a.alias LIKE ? OR a.nombre LIKE ?) ORDER BY m.nombre ASC");
-        $st->execute([$ag_kw, $ag_kw]);
-        echo json_encode(array_map('pretty_text', $st->fetchAll(PDO::FETCH_COLUMN))); exit;
+        $parsed_filter = parse_node_from_filter($agent_filter);
+        $nodes_to_search = $parsed_filter['node'] ? [$parsed_filter['node']] : array_keys($target_nodes);
+        $search_term = $parsed_filter['search'];
+        
+        $ag_kw = "%" . str_replace(' ', '%', trim($search_term)) . "%";
+        foreach ($nodes_to_search as $node) {
+            $active_pdo = $target_nodes[$node] ?? null;
+            if (!$active_pdo) continue;
+            $st = $active_pdo->prepare("SELECT DISTINCT m.nombre FROM tagente_modulo m JOIN tagente a ON m.id_agente = a.id_agente WHERE m.disabled = 0 AND a.disabled = 0 AND (a.alias LIKE ? OR a.nombre LIKE ?) ORDER BY m.nombre ASC");
+            $st->execute([$ag_kw, $ag_kw]);
+            if ($st) {
+                while ($name = $st->fetchColumn()) {
+                    $modules[] = pretty_text($name);
+                }
+            }
+        }
     }
-    echo json_encode([]); exit;
+    $modules = array_unique($modules);
+    sort($modules);
+    echo json_encode($modules); exit;
 }
 
 // =====================================================================
@@ -178,53 +192,78 @@ if ($preset === 'custom' && $from_s !== '' && $to_s !== '') {
     $to_s = $to_dt->format('Y-m-d H:i:s');
 }
 
-// =====================================================================
-// 6. CORE LOGIC
-// =====================================================================
-$results = [];
-$grand_total_sec = 0;
-$MAX_TARGETS = 100;
-
-if ($db_status && !empty($agent) && empty($errors)) {
+// if ($db_status && !empty($agent) && empty($errors)) {
     try {
-        $ag_kw  = "%" . trim($agent) . "%";
+        $parsed_agent = parse_node_from_filter($agent);
+        $nodes_to_search = $parsed_agent['node'] ? [$parsed_agent['node']] : array_keys($target_nodes);
+        $agent_search = $parsed_agent['search'];
+        
+        $ag_kw  = "%" . $agent_search . "%";
         $mod_kw = "%" . trim($module) . "%";
-        $st = $pdoActive->prepare("SELECT m.id_agente_modulo, a.alias as agent_alias, a.nombre as agent_name, m.nombre as module_name FROM tagente_modulo m JOIN tagente a ON a.id_agente = m.id_agente WHERE (a.alias LIKE ? OR a.nombre LIKE ?) AND m.nombre LIKE ? ORDER BY a.alias ASC LIMIT ?");
-        $st->bindValue(1, $ag_kw, PDO::PARAM_STR);
-        $st->bindValue(2, $ag_kw, PDO::PARAM_STR);
-        $st->bindValue(3, $mod_kw, PDO::PARAM_STR);
-        $st->bindValue(4, $MAX_TARGETS + 1, PDO::PARAM_INT);
-        $st->execute();
-        $targets = $st->fetchAll();
+        
+        $targets = [];
+        $tooMany = false;
+        foreach ($nodes_to_search as $node) {
+            $active_pdo = $target_nodes[$node] ?? null;
+            if (!$active_pdo) continue;
+            
+            $node_label = get_node_label($node);
+            
+            $st = $active_pdo->prepare("SELECT m.id_agente_modulo, a.alias as agent_alias, a.nombre as agent_name, m.nombre as module_name FROM tagente_modulo m JOIN tagente a ON a.id_agente = a.id_agente WHERE (a.alias LIKE ? OR a.nombre LIKE ?) AND m.nombre LIKE ? ORDER BY a.alias ASC LIMIT ?");
+            $st->bindValue(1, $ag_kw, PDO::PARAM_STR);
+            $st->bindValue(2, $ag_kw, PDO::PARAM_STR);
+            $st->bindValue(3, $mod_kw, PDO::PARAM_STR);
+            $st->bindValue(4, ($MAX_TARGETS - count($targets) + 1), PDO::PARAM_INT);
+            $st->execute();
+            foreach ($st->fetchAll() as $res) {
+                $res['id_agente_modulo'] = $node . ':' . $res['id_agente_modulo'];
+                $res['agent_alias'] = $node_label . $res['agent_alias'];
+                $res['node'] = $node;
+                $targets[] = $res;
+                if (count($targets) >= $MAX_TARGETS) {
+                    $tooMany = true;
+                    break 2;
+                }
+            }
+        }
 
         if (empty($targets)) {
             $errors[] = "No matching Agent/Module found in the database.";
         } else {
-            $tooMany = count($targets) > $MAX_TARGETS;
-            if ($tooMany) $targets = array_slice($targets, 0, $MAX_TARGETS);
-
             $qBeforeNum = "SELECT utimestamp, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY utimestamp DESC LIMIT 1";
             $qBeforeStr = "SELECT utimestamp, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY utimestamp DESC LIMIT 1";
             $qRangeNum = "SELECT utimestamp, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp ASC LIMIT 10000";
             $qRangeStr = "SELECT utimestamp, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp ASC LIMIT 10000";
 
-            $stBefNumA = $pdoActive->prepare($qBeforeNum); $stBefStrA = $pdoActive->prepare($qBeforeStr);
-            $stRanNumA = $pdoActive->prepare($qRangeNum);  $stRanStrA = $pdoActive->prepare($qRangeStr);
-            
-            if ($pdoHistory) {
-                $stBefNumH = $pdoHistory->prepare($qBeforeNum); $stBefStrH = $pdoHistory->prepare($qBeforeStr);
-                $stRanNumH = $pdoHistory->prepare($qRangeNum);  $stRanStrH = $pdoHistory->prepare($qRangeStr);
-            }
-
             foreach ($targets as $t) {
-                $mid = (int)$t['id_agente_modulo'];
+                $prefixed_mid = $t['id_agente_modulo'];
+                $parsed_mid = parse_node_id($prefixed_mid);
+                $node = $parsed_mid['node'];
+                $real_id = $parsed_mid['id'];
+                
+                $active_pdo = $target_nodes[$node] ?? null;
+                if (!$active_pdo) continue;
+                
+                $active_history_pdo = ($node === 'primary') ? $pdoHistory : $active_pdo;
+                
+                $stBefNumActive = $active_pdo->prepare($qBeforeNum);
+                $stBefStrActive = $active_pdo->prepare($qBeforeStr);
+                $stRanNumActive = $active_pdo->prepare($qRangeNum);
+                $stRanStrActive = $active_pdo->prepare($qRangeStr);
+                
+                if ($active_history_pdo) {
+                    $stBefNumHist = $active_history_pdo->prepare($qBeforeNum);
+                    $stBefStrHist = $active_history_pdo->prepare($qBeforeStr);
+                    $stRanNumHist = $active_history_pdo->prepare($qRangeNum);
+                    $stRanStrHist = $active_history_pdo->prepare($qRangeStr);
+                }
 
                 $befores = [];
-                $stBefNumA->execute([$mid, $from_epoch]); if ($r = $stBefNumA->fetch()) $befores[] = $r;
-                $stBefStrA->execute([$mid, $from_epoch]); if ($r = $stBefStrA->fetch()) $befores[] = $r;
-                if ($pdoHistory) {
-                    $stBefNumH->execute([$mid, $from_epoch]); if ($r = $stBefNumH->fetch()) $befores[] = $r;
-                    $stBefStrH->execute([$mid, $from_epoch]); if ($r = $stBefStrH->fetch()) $befores[] = $r;
+                $stBefNumActive->execute([$real_id, $from_epoch]); if ($r = $stBefNumActive->fetch()) $befores[] = $r;
+                $stBefStrActive->execute([$real_id, $from_epoch]); if ($r = $stBefStrActive->fetch()) $befores[] = $r;
+                if ($active_history_pdo) {
+                    $stBefNumHist->execute([$real_id, $from_epoch]); if ($r = $stBefNumHist->fetch()) $befores[] = $r;
+                    $stBefStrHist->execute([$real_id, $from_epoch]); if ($r = $stBefStrHist->fetch()) $befores[] = $r;
                 }
                 
                 $prev = null;
@@ -236,11 +275,11 @@ if ($db_status && !empty($agent) && empty($errors)) {
                 if ($initial_state === 'Other') $initial_state = 'On';
 
                 $raw_rows = [];
-                $stRanNumA->execute([$mid, $from_epoch, $to_epoch]); while ($r = $stRanNumA->fetch()) $raw_rows[] = $r;
-                $stRanStrA->execute([$mid, $from_epoch, $to_epoch]); while ($r = $stRanStrA->fetch()) $raw_rows[] = $r;
-                if ($pdoHistory) {
-                    $stRanNumH->execute([$mid, $from_epoch, $to_epoch]); while ($r = $stRanNumH->fetch()) $raw_rows[] = $r;
-                    $stRanStrH->execute([$mid, $from_epoch, $to_epoch]); while ($r = $stRanStrH->fetch()) $raw_rows[] = $r;
+                $stRanNumActive->execute([$real_id, $from_epoch, $to_epoch]); while ($r = $stRanNumActive->fetch()) $raw_rows[] = $r;
+                $stRanStrActive->execute([$real_id, $from_epoch, $to_epoch]); while ($r = $stRanStrActive->fetch()) $raw_rows[] = $r;
+                if ($active_history_pdo) {
+                    $stRanNumHist->execute([$real_id, $from_epoch, $to_epoch]); while ($r = $stRanNumHist->fetch()) $raw_rows[] = $r;
+                    $stRanStrHist->execute([$real_id, $from_epoch, $to_epoch]); while ($r = $stRanStrHist->fetch()) $raw_rows[] = $r;
                 }
 
                 usort($raw_rows, function($a, $b) { return ((int)$a['utimestamp']) <=> ((int)$b['utimestamp']); });
