@@ -24,3 +24,6 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Local configurations
+portal_config_local.json

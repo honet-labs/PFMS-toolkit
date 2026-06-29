@@ -35,7 +35,10 @@ $pandora_base = dirname(dirname($base_url));
 if ($pandora_base === '/' || $pandora_base === '\\') {
     $pandora_base = '';
 }
-$portal_config_file = $base_dir . '/portal_config.json';
+$portal_config_file = $base_dir . '/portal_config_local.json';
+if (!file_exists($portal_config_file)) {
+    $portal_config_file = $base_dir . '/portal_config.json';
+}
 $menu_cache_file = $base_dir . '/temp/menu_cache.json';
 
 // =====================================================================
@@ -137,7 +140,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'save_settings') {
             'primary_override' => isset($input['primary_override']) ? $input['primary_override'] : null,
             'history_override' => isset($input['history_override']) ? $input['history_override'] : null
         ];
-        $bytes = file_put_contents($portal_config_file, json_encode($save_data, JSON_PRETTY_PRINT));
+        $local_config_file = $base_dir . '/portal_config_local.json';
+        $bytes = file_put_contents($local_config_file, json_encode($save_data, JSON_PRETTY_PRINT));
         
         // Clear menu cache on settings save
         if (file_exists($menu_cache_file)) @unlink($menu_cache_file);
@@ -547,7 +551,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
         $patch_source = $subdirs[0];
 
         $logs[] = "Copying patch files to production...";
-        $copy_success = copy_directory_helper($patch_source, $base_dir, ['portal_config.json', 'temp', 'cache']);
+        $copy_success = copy_directory_helper($patch_source, $base_dir, ['portal_config.json', 'portal_config_local.json', 'temp', 'cache']);
 
         @unlink($zip_file);
         self_delete_dir_helper($extract_dir);

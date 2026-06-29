@@ -82,8 +82,11 @@ foreach ($config_paths as $path) {
     }
 }
 
-// 3. LOAD CONFIG OVERRIDES FROM portal_config.json
-$portal_config_path = dirname(__DIR__) . '/portal_config.json';
+// 3. LOAD CONFIG OVERRIDES FROM portal_config_local.json (falls back to portal_config.json)
+$portal_config_path = dirname(__DIR__) . '/portal_config_local.json';
+if (!file_exists($portal_config_path)) {
+    $portal_config_path = dirname(__DIR__) . '/portal_config.json';
+}
 $primary_override = null;
 $history_override = null;
 if (file_exists($portal_config_path)) {
@@ -215,8 +218,11 @@ if ($config_loaded) {
 // Backward compatibility helper mapping
 $history_pdo = $pdo_history;
 
-// 5. LOAD CUSTOM DATABASE CONNECTIONS FROM portal_config.json
-$portal_config_path = dirname(__DIR__) . '/portal_config.json';
+// 5. LOAD CUSTOM DATABASE CONNECTIONS FROM portal_config_local.json (falls back to portal_config.json)
+$portal_config_path = dirname(__DIR__) . '/portal_config_local.json';
+if (!file_exists($portal_config_path)) {
+    $portal_config_path = dirname(__DIR__) . '/portal_config.json';
+}
 $custom_connections = [];
 $custom_pdos = [];
 $custom_db_statuses = [];
