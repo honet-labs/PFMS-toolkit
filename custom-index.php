@@ -193,6 +193,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'test_db_connection') {
                 $result['warning'] = 'Connected but tagente table not found. This DB may not contain Pandora FMS agent data.';
             }
             
+            // Query server_unique_identifier
+            $server_uuid = null;
+            try {
+                $st_uuid = $test_pdo->query("SELECT value FROM tconfig WHERE token = 'server_unique_identifier'");
+                if ($st_uuid) {
+                    $server_uuid = trim($st_uuid->fetchColumn());
+                }
+            } catch (Throwable $e) {}
+            $result['server_uuid'] = $server_uuid ?: 'Not Found';
+            
             echo json_encode($result);
         } catch (PDOException $e) {
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
@@ -228,7 +238,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'test_core_connection') {
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_TIMEOUT => 2
             ]);
-            echo json_encode(['ok' => true]);
+            
+            // Query server_unique_identifier
+            $server_uuid = null;
+            try {
+                $st_uuid = $test_pdo->query("SELECT value FROM tconfig WHERE token = 'server_unique_identifier'");
+                if ($st_uuid) {
+                    $server_uuid = trim($st_uuid->fetchColumn());
+                }
+            } catch (Throwable $e) {}
+            
+            echo json_encode(['ok' => true, 'server_uuid' => $server_uuid ?: 'Not Found']);
         } catch (PDOException $e) {
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
         }
@@ -277,7 +297,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'test_core_connection') {
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_TIMEOUT => 2
             ]);
-            echo json_encode(['ok' => true]);
+            
+            // Query server_unique_identifier
+            $server_uuid = null;
+            try {
+                $st_uuid = $test_pdo->query("SELECT value FROM tconfig WHERE token = 'server_unique_identifier'");
+                if ($st_uuid) {
+                    $server_uuid = trim($st_uuid->fetchColumn());
+                }
+            } catch (Throwable $e) {}
+            
+            echo json_encode(['ok' => true, 'server_uuid' => $server_uuid ?: 'Not Found']);
         } catch (PDOException $e) {
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
         }
@@ -930,6 +960,10 @@ if (!empty($current_page)) {
                         <span style="font-family: monospace; font-size: 11px; color: #64748b;">
                             Host: <?= htmlspecialchars($config['dbhost'] ?? 'N/A') ?> | DB: <?= htmlspecialchars($config['dbname'] ?? 'N/A') ?> | User: <?= htmlspecialchars($config['dbuser'] ?? 'N/A') ?>
                         </span>
+                        <span style="font-size: 11px; color: #475569; display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                            <span class="material-symbols-outlined" style="font-size: 14px; color: #64748b;">fingerprint</span>
+                            Server UUID: <code id="primary_server_uuid" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;"><?= htmlspecialchars($node_id_to_uuid['primary'] ?? 'Not Found') ?></code>
+                        </span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <div id="primary_conn_status" style="display: flex; align-items: center; gap: 6px;">
@@ -967,6 +1001,10 @@ if (!empty($current_page)) {
                         <?php if ($history_db_host): ?>
                             <span style="font-family: monospace; font-size: 11px; color: #64748b;">
                                 Host: <?= htmlspecialchars($history_db_host) ?> | DB: <?= htmlspecialchars($history_db_name) ?> | User: <?= htmlspecialchars($history_db_user) ?>
+                            </span>
+                            <span style="font-size: 11px; color: #475569; display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                                <span class="material-symbols-outlined" style="font-size: 14px; color: #64748b;">fingerprint</span>
+                                Server UUID: <code id="history_server_uuid" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;"><?= htmlspecialchars($node_id_to_uuid['history'] ?? 'Not Found') ?></code>
                             </span>
                         <?php else: ?>
                             <span style="font-size: 11px; color: #94a3b8; font-style: italic;">No core historical DB configured.</span>
@@ -1261,6 +1299,7 @@ if (!empty($current_page)) {
     }
 
     // Modal Settings
+    const RESOLVED_UUIDS = <?= json_encode($node_id_to_uuid) ?>;
     let customConnectionsCopy = [];
     let primaryOverrideCopy = null;
     let historyOverrideCopy = null;
@@ -1311,11 +1350,16 @@ if (!empty($current_page)) {
             card.style.alignItems = 'center';
             card.style.justifyContent = 'space-between';
 
+            const uuidVal = RESOLVED_UUIDS[conn.id] || 'Not Tested / Disconnected';
             card.innerHTML = `
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <span style="font-weight: 600; color: #334155; font-size: 13px;">${escapeHtml(conn.name || 'Unnamed Connection')}</span>
                     <span style="font-family: monospace; font-size: 11px; color: #64748b;">
                         Host: ${escapeHtml(conn.host)}:${escapeHtml(conn.port || '3306')} | DB: ${escapeHtml(conn.dbname)} | User: ${escapeHtml(conn.user)}
+                    </span>
+                    <span style="font-size: 11px; color: #475569; display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                        <span class="material-symbols-outlined" style="font-size: 14px; color: #64748b;">fingerprint</span>
+                        Server UUID: <code id="uuid_val_${index}" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;">${escapeHtml(uuidVal)}</code>
                     </span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1373,6 +1417,16 @@ if (!empty($current_page)) {
                     <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
                     <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
                 `;
+                if (type === 'primary') {
+                    document.getElementById('primary_server_uuid').innerText = result.server_uuid || 'Not Found';
+                    RESOLVED_UUIDS['primary'] = result.server_uuid;
+                } else if (type === 'history') {
+                    const el = document.getElementById('history_server_uuid');
+                    if (el) {
+                        el.innerText = result.server_uuid || 'Not Found';
+                    }
+                    RESOLVED_UUIDS['history'] = result.server_uuid;
+                }
             } else {
                 statusEl.innerHTML = `
                     <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
@@ -1452,8 +1506,12 @@ if (!empty($current_page)) {
             const result = await response.json();
             resultEl.style.display = 'block';
             if (result.ok) {
+                let msg = '✓ Connection successful!';
+                if (result.server_uuid) {
+                    msg += ' Server UUID: ' + result.server_uuid;
+                }
                 resultEl.style.color = '#065f46';
-                resultEl.innerText = '✓ Connection successful!';
+                resultEl.innerText = msg;
             } else {
                 resultEl.style.color = '#b91c1c';
                 resultEl.innerText = '✗ Connection failed: ' + result.error;
@@ -1514,6 +1572,13 @@ if (!empty($current_page)) {
             });
             const result = await response.json();
             if (result.ok) {
+                if (result.server_uuid) {
+                    RESOLVED_UUIDS[conn.id] = result.server_uuid;
+                    const uuidEl = document.getElementById(`uuid_val_${index}`);
+                    if (uuidEl) {
+                        uuidEl.innerText = result.server_uuid;
+                    }
+                }
                 if (result.has_tagente) {
                     statusEl.innerHTML = `
                         <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
@@ -1530,6 +1595,10 @@ if (!empty($current_page)) {
                     <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
                     <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;" title="${escapeHtml(result.error)}">Failed</span>
                 `;
+                const uuidEl = document.getElementById(`uuid_val_${index}`);
+                if (uuidEl) {
+                    uuidEl.innerText = 'Failed to connect';
+                }
             }
         } catch (e) {
             statusEl.innerHTML = `
@@ -1614,11 +1683,19 @@ if (!empty($current_page)) {
             resultEl.style.display = 'block';
             if (result.ok) {
                 if (result.has_tagente) {
+                    let msg = '✓ Connection successful! Found ' + result.agents_count + ' agent(s) in database.';
+                    if (result.server_uuid) {
+                        msg += ' Server UUID: ' + result.server_uuid;
+                    }
                     resultEl.style.color = '#065f46';
-                    resultEl.innerText = '✓ Connection successful! Found ' + result.agents_count + ' agent(s) in database.';
+                    resultEl.innerText = msg;
                 } else {
+                    let msg = '⚠ Connected but <b>tagente table not found</b>. This database does not appear to be a full Pandora FMS database. Agents from this node will NOT appear in the dashboard.';
+                    if (result.server_uuid) {
+                        msg += '<br>Server UUID: ' + result.server_uuid;
+                    }
                     resultEl.style.color = '#b45309';
-                    resultEl.innerHTML = '⚠ Connected but <b>tagente table not found</b>. This database does not appear to be a full Pandora FMS database. Agents from this node will NOT appear in the dashboard.';
+                    resultEl.innerHTML = msg;
                 }
             } else {
                 resultEl.style.color = '#b91c1c';
