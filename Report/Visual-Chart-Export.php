@@ -1540,7 +1540,22 @@ function getEchartsOption(panel, res) {
                 backgroundColor: 'rgba(15, 23, 42, 0.95)',
                 textStyle: { color: '#cbd5e1', fontSize: 11 },
                 padding: 8,
-                borderRadius: 4
+                borderRadius: 4,
+                formatter: function (params) {
+                    if (!params || params.length === 0) return '';
+                    let html = `<div style="font-weight: bold; margin-bottom: 4px;">${params[0].axisValue}</div>`;
+                    params.forEach(p => {
+                        const meta = metaList[p.seriesIndex];
+                        const unit = (meta && meta.unit) ? ' ' + meta.unit : '';
+                        html += `
+                            <div style="display: flex; align-items: center; gap: 8px; justify-content: space-between; font-size: 10px;">
+                                <span>${p.marker} ${p.seriesName}</span>
+                                <span style="font-weight: bold; margin-left: 10px;">${p.value !== null && p.value !== undefined ? p.value : '-'}${unit}</span>
+                            </div>
+                        `;
+                    });
+                    return html;
+                }
             },
             legend: {
                 type: 'scroll',
