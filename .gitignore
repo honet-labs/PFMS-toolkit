@@ -27,3 +27,6 @@ Thumbs.db
 
 # Local configurations
 portal_config_local.json
+
+# Report Dashboard Configurations
+Report/visual-charts-reports.json
