@@ -701,6 +701,16 @@ if ($api === 'chart_data' && $db_status) {
                             <option value="12">Full Width (100%)</option>
                         </select>
                     </div>
+
+                    <div class="mb-3">
+                        <label class="form-label-custom">Data Interval / Aggregation</label>
+                        <select id="panel-interval-mode" class="form-select">
+                            <option value="actual" selected>Actual (Raw Data)</option>
+                            <option value="avg">Average (Daily)</option>
+                            <option value="min">Minimum (Daily)</option>
+                            <option value="max">Maximum (Daily)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1223,6 +1233,7 @@ function openPanelModal(panelId = false) {
             document.getElementById('panel-bg-theme').value = panel.bg_theme;
             document.getElementById('panel-color-palette').value = panel.color_palette;
             document.getElementById('panel-width').value = panel.width || "6";
+            document.getElementById('panel-interval-mode').value = panel.interval_mode || "actual";
             
             if (panel.time_range === 'custom') {
                 document.getElementById('panel-custom-start').value = panel.custom_start;
@@ -1254,6 +1265,7 @@ function openPanelModal(panelId = false) {
         document.getElementById('panel-bg-theme').value = 'grafana';
         document.getElementById('panel-color-palette').value = 'grafana';
         document.getElementById('panel-width').value = '6';
+        document.getElementById('panel-interval-mode').value = 'actual';
         document.getElementById('panel-custom-range-container').classList.add('d-none');
         
         document.getElementById('panel-agent-search').value = '';
@@ -1364,6 +1376,7 @@ function savePanel() {
     const bgTheme = document.getElementById('panel-bg-theme').value;
     const colorPalette = document.getElementById('panel-color-palette').value;
     const width = parseInt(document.getElementById('panel-width').value);
+    const intervalMode = document.getElementById('panel-interval-mode').value;
     
     const agents = Array.from(document.querySelectorAll('#panel-agent-checkbox-list .panel-agent-chk:checked')).map(cb => cb.value);
     const modules = Array.from(document.querySelectorAll('#panel-module-checkbox-list .panel-module-chk:checked')).map(cb => cb.value);
@@ -1390,7 +1403,8 @@ function savePanel() {
                 id: activePanelId,
                 title, agents, modules, chart_type: chartType, time_range: timeRange,
                 custom_start: customStart, custom_end: customEnd,
-                bg_theme: bgTheme, color_palette: colorPalette, width
+                bg_theme: bgTheme, color_palette: colorPalette, width,
+                interval_mode: intervalMode
             };
         }
     } else {
@@ -1399,7 +1413,8 @@ function savePanel() {
             id: 'panel_' + Date.now(),
             title, agents, modules, chart_type: chartType, time_range: timeRange,
             custom_start: customStart, custom_end: customEnd,
-            bg_theme: bgTheme, color_palette: colorPalette, width
+            bg_theme: bgTheme, color_palette: colorPalette, width,
+            interval_mode: intervalMode
         };
         if (!currentDash.panels) currentDash.panels = [];
         currentDash.panels.push(newPanel);
@@ -1457,8 +1472,16 @@ function getEchartsOption(panel, res) {
             const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
             let val = 0;
             if (modHist.length > 0) {
-                const sum = modHist.reduce((acc, h) => acc + h.val, 0);
-                val = parseFloat((sum / modHist.length).toFixed(2));
+                const vals = modHist.map(h => h.val);
+                if (panel.interval_mode === 'min') {
+                    val = Math.min(...vals);
+                } else if (panel.interval_mode === 'max') {
+                    val = Math.max(...vals);
+                } else {
+                    const sum = vals.reduce((acc, v) => acc + v, 0);
+                    val = sum / vals.length;
+                }
+                val = parseFloat(val.toFixed(2));
             }
             return {
                 name: `${m.agent_alias} - ${m.module_name}`,
@@ -1498,47 +1521,10 @@ function getEchartsOption(panel, res) {
             }]
         };
     } else {
-        const uniqueTimestamps = [...new Set(history.map(h => h.utimestamp))].sort((a, b) => a - b);
-        const labels = uniqueTimestamps.map(ts => {
-            const found = history.find(h => h.utimestamp === ts);
-            return found ? found.time : '';
-        });
-
-        const shortLabels = labels.map(ts => {
-            const parts = ts.split(' ');
-            if (parts.length === 2) {
-                const dateParts = parts[0].split('/');
-                const timeParts = parts[1].split(':');
-                if (dateParts.length === 3 && timeParts.length === 3) {
-                    return `${dateParts[0]}/${dateParts[1]} ${timeParts[0]}:${timeParts[1]}`;
-                }
-            }
-            return ts;
-        });
-
-        const seriesData = metaList.map((m, idx) => {
-            const color = colors[idx % colors.length];
-            const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
-            
-            let lastVal = null;
-            const dataPoints = uniqueTimestamps.map(ts => {
-                const h = modHist.find(x => x.utimestamp === ts);
-                if (h) lastVal = h.val;
-                return lastVal;
-            });
-
-            return {
-                name: `${m.agent_alias} - ${m.module_name}`,
-                type: chartType === 'bar' ? 'bar' : 'line',
-                data: dataPoints,
-                itemStyle: { color: color },
-                areaStyle: chartType === 'area' ? { opacity: 0.15, color: color } : undefined,
-                smooth: true,
-                showSymbol: false,
-                connectNulls: true,
-                lineStyle: { width: chartType === 'bar' ? 0 : 2 }
-            };
-        });
+        const dataPrepared = prepareEchartsData(panel, history, metaList, colors, chartType, theme, false);
+        const shortLabels = dataPrepared.shortLabels;
+        const seriesData = dataPrepared.seriesData;
+        const labels = dataPrepared.labels;
 
         option = {
             backgroundColor: theme.bg,
@@ -1586,6 +1572,123 @@ function getEchartsOption(panel, res) {
     return option;
 }
 
+function prepareEchartsData(panel, history, metaList, colors, chartType, theme, isHighRes = false) {
+    const intervalMode = panel.interval_mode || 'actual';
+    let processedHistory = history;
+    let uniqueTimes = [];
+    let labels = [];
+    let shortLabels = [];
+
+    if (intervalMode !== 'actual') {
+        const grouped = {};
+        const daysSet = new Set();
+
+        history.forEach(h => {
+            const day = getDayString(h.time);
+            if (!day) return;
+            daysSet.add(day);
+            
+            const key = `${day}:${h.id_mod}`;
+            if (!grouped[key]) {
+                grouped[key] = [];
+            }
+            grouped[key].push(h.val);
+        });
+
+        const sortedDays = [...daysSet].sort();
+        processedHistory = [];
+
+        sortedDays.forEach(day => {
+            metaList.forEach(m => {
+                const key = `${day}:${m.id_agente_modulo}`;
+                const vals = grouped[key] || [];
+                if (vals.length > 0) {
+                    let finalVal = 0;
+                    if (intervalMode === 'avg') {
+                        finalVal = vals.reduce((sum, v) => sum + v, 0) / vals.length;
+                    } else if (intervalMode === 'min') {
+                        finalVal = Math.min(...vals);
+                    } else if (intervalMode === 'max') {
+                        finalVal = Math.max(...vals);
+                    }
+                    processedHistory.push({
+                        id_mod: m.id_agente_modulo,
+                        time: day,
+                        val: parseFloat(finalVal.toFixed(2))
+                    });
+                }
+            });
+        });
+
+        uniqueTimes = sortedDays;
+        labels = sortedDays;
+        shortLabels = sortedDays;
+    } else {
+        uniqueTimes = [...new Set(history.map(h => h.utimestamp))].sort((a, b) => a - b);
+        labels = uniqueTimes.map(ts => {
+            const found = history.find(h => h.utimestamp === ts);
+            return found ? found.time : '';
+        });
+        shortLabels = labels.map(ts => {
+            const parts = ts.split(' ');
+            if (parts.length === 2) {
+                const dateParts = parts[0].split('/');
+                const timeParts = parts[1].split(':');
+                if (dateParts.length === 3 && timeParts.length === 3) {
+                    return `${dateParts[0]}/${dateParts[1]} ${timeParts[0]}:${timeParts[1]}`;
+                }
+            }
+            return ts;
+        });
+    }
+
+    const seriesData = metaList.map((m, idx) => {
+        const color = colors[idx % colors.length];
+        const modHist = processedHistory.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
+        
+        let lastVal = null;
+        const dataPoints = uniqueTimes.map(t => {
+            let h;
+            if (intervalMode !== 'actual') {
+                h = modHist.find(x => x.time === t);
+            } else {
+                h = modHist.find(x => x.utimestamp === t);
+            }
+            if (h) lastVal = h.val;
+            return lastVal;
+        });
+
+        return {
+            name: `${m.agent_alias} - ${m.module_name}`,
+            type: chartType === 'bar' ? 'bar' : 'line',
+            data: dataPoints,
+            itemStyle: { color: color },
+            areaStyle: chartType === 'area' ? { opacity: 0.15, color: color } : undefined,
+            smooth: true,
+            showSymbol: intervalMode !== 'actual',
+            connectNulls: true,
+            lineStyle: { width: chartType === 'bar' ? 0 : (isHighRes ? 3 : 2) }
+        };
+    });
+
+    return { shortLabels, seriesData, labels };
+}
+
+function getDayString(timeStr) {
+    if (!timeStr) return '';
+    if (timeStr.includes('-') && timeStr.split('-').length === 3 && !timeStr.includes(':')) {
+        return timeStr;
+    }
+    const parts = timeStr.split(' ');
+    if (parts.length > 0) {
+        const dateParts = parts[0].split('/');
+        if (dateParts.length === 3) {
+            return `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+        }
+    }
+    return '';
+}
+
 function exportPanelPNG(panel, data) {
     if (!data) return;
 
@@ -1616,8 +1719,16 @@ function exportPanelPNG(panel, data) {
             const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
             let val = 0;
             if (modHist.length > 0) {
-                const sum = modHist.reduce((acc, h) => acc + h.val, 0);
-                val = parseFloat((sum / modHist.length).toFixed(2));
+                const vals = modHist.map(h => h.val);
+                if (panel.interval_mode === 'min') {
+                    val = Math.min(...vals);
+                } else if (panel.interval_mode === 'max') {
+                    val = Math.max(...vals);
+                } else {
+                    const sum = vals.reduce((acc, v) => acc + v, 0);
+                    val = sum / vals.length;
+                }
+                val = parseFloat(val.toFixed(2));
             }
             return {
                 name: `${m.agent_alias} - ${m.module_name}`,
@@ -1652,47 +1763,10 @@ function exportPanelPNG(panel, data) {
             }]
         };
     } else {
-        const uniqueTimestamps = [...new Set(history.map(h => h.utimestamp))].sort((a, b) => a - b);
-        const labels = uniqueTimestamps.map(ts => {
-            const found = history.find(h => h.utimestamp === ts);
-            return found ? found.time : '';
-        });
-
-        const shortLabels = labels.map(ts => {
-            const parts = ts.split(' ');
-            if (parts.length === 2) {
-                const dateParts = parts[0].split('/');
-                const timeParts = parts[1].split(':');
-                if (dateParts.length === 3 && timeParts.length === 3) {
-                    return `${dateParts[0]}/${dateParts[1]} ${timeParts[0]}:${timeParts[1]}`;
-                }
-            }
-            return ts;
-        });
-
-        const seriesData = metaList.map((m, idx) => {
-            const color = colors[idx % colors.length];
-            const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
-            
-            let lastVal = null;
-            const dataPoints = uniqueTimestamps.map(ts => {
-                const h = modHist.find(x => x.utimestamp === ts);
-                if (h) lastVal = h.val;
-                return lastVal;
-            });
-
-            return {
-                name: `${m.agent_alias} - ${m.module_name}`,
-                type: chartType === 'bar' ? 'bar' : 'line',
-                data: dataPoints,
-                itemStyle: { color: color },
-                areaStyle: chartType === 'area' ? { opacity: 0.15, color: color } : undefined,
-                smooth: true,
-                showSymbol: false,
-                connectNulls: true,
-                lineStyle: { width: chartType === 'bar' ? 0 : 2 }
-            };
-        });
+        const dataPrepared = prepareEchartsData(panel, history, metaList, colors, chartType, theme, true);
+        const shortLabels = dataPrepared.shortLabels;
+        const seriesData = dataPrepared.seriesData;
+        const labels = dataPrepared.labels;
 
         option = {
             backgroundColor: theme.bg,
