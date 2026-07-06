@@ -2572,7 +2572,7 @@ function refreshCurrentNodeData() {
                         chartInstances[p.id] = echarts.init(dom);
                         let pieData = labels.map((lbl, i) => ({ value: values[i], name: lbl, itemStyle: { color: bgColors[i] } }));
                         chartInstances[p.id].setOption({
-                            tooltip: { trigger: 'item', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#ffffff', fontSize: 12 }, padding: 10, borderRadius: 6, formatter: '{b} <br/>Count: {c} ({d}%)' },
+                            tooltip: { trigger: 'item', confine: true, appendToBody: true, backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#ffffff', fontSize: 12 }, padding: 10, borderRadius: 6, formatter: '{b} <br/>Count: {c} ({d}%)' },
                             legend: { type: 'scroll', orient: 'vertical', right: 5, top: 'middle', itemWidth: 10, itemHeight: 10, textStyle: { fontSize: Math.max(9, chartFs - 1) } },
                             series: [{
                                 type: 'pie',
@@ -2646,6 +2646,8 @@ function refreshCurrentNodeData() {
                         chartInstances[uniqueId].setOption({
                             tooltip: { 
                                 trigger: 'axis', 
+                                confine: true,
+                                appendToBody: true,
                                 backgroundColor: 'rgba(15, 23, 42, 0.95)', 
                                 textStyle: { color: '#cbd5e1', fontSize: chartFs + 2 }, 
                                 padding: 10, 
@@ -2747,6 +2749,8 @@ function refreshCurrentNodeData() {
                             chartInstances[uniqueId].setOption({
                                 tooltip: { 
                                     trigger: 'axis', 
+                                    confine: true,
+                                    appendToBody: true,
                                     backgroundColor: 'rgba(15, 23, 42, 0.95)', 
                                     textStyle: { color: '#cbd5e1', fontSize: chartFs + 2 }, 
                                     padding: 10, 
@@ -3360,6 +3364,8 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                 nativeModuleChartInstance.setOption({
                     tooltip: { 
                         trigger: 'axis', 
+                        confine: true,
+                        appendToBody: true,
                         backgroundColor: 'rgba(15, 23, 42, 0.95)', 
                         textStyle: { color: '#cbd5e1', fontSize: 12 }, 
                         padding: 10, 

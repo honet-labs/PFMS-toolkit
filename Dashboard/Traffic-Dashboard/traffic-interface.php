@@ -2622,6 +2622,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             chartInstance.setOption({
                 tooltip: { 
                     trigger: 'axis', 
+                    confine: true,
+                    appendToBody: true,
                     backgroundColor: 'rgba(255, 255, 255, 0.95)', 
                     textStyle: { color: '#475569', fontSize: 12 }, 
                     padding: 12, borderRadius: 6, borderColor: '#e2e8f0', borderWidth: 1, 
