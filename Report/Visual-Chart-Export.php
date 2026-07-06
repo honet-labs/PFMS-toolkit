@@ -1787,9 +1787,7 @@ function exportPanelPNG(panel, data) {
             color: colors,
             title: {
                 text: customTitle || 'Metrics Trend Chart',
-                subtext: labels.length > 0 ? `Time Range: ${labels[0]} to ${labels[labels.length - 1]}` : '',
                 textStyle: { color: theme.text, fontSize: 20 },
-                subtextStyle: { color: theme.axis, fontSize: 12 },
                 left: 'center',
                 top: 25
             },
