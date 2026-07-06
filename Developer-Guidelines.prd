@@ -1,0 +1,75 @@
+# Product Requirements Document (PRD) - Developer & Architecture Guidelines
+
+## 1. Pendahuluan
+Platform **PFMS-Toolkit** dirancang dengan struktur *modular*, *extensible*, dan *plug-and-play*. Dokumen Persyaratan Produk (PRD) ini merincikan spesifikasi teknis, standar arsitektur sistem, aturan penulisan kode, serta protokol keamanan yang wajib diikuti oleh setiap pengembang untuk menjamin kontinuitas dan keandalan sistem.
+
+---
+
+## 2. Arsitektur Pemindaian Menu Dinamis (Sidebar Scanner)
+Toolkit menggunakan mekanisme penemuan otomatis (*auto-discovery*) untuk merender menu sidebar tanpa registrasi manual.
+
+### 2.1 Konvensi Direktori & File
+Setiap folder di tingkat root (seperti `Dashboard/`, `Inventory/`, `Logging/`, `Management/`, `Report/`, `Tools/`) merepresentasikan satu kategori dropdown di sidebar menu.
+*   **Nama Folder/File:** Gunakan format huruf kapital dengan pemisah tanda hubung (misal: `Visual-Chart-Export.php` atau `Date-Epoch-Converter.php`).
+*   **Penyaringan Otomatis:** Sistem sidebar secara otomatis mengganti tanda hubung (`-`) menjadi spasi untuk menghasilkan label menu yang bersih secara estetis.
+*   **Pengecualian File (`portal_config.json`):** Jika ada file pembantu atau endpoint API internal yang diletakkan di dalam folder menu, daftarkan file/folder tersebut pada file `portal_config.json` agar diabaikan oleh pemindai menu.
+
+### 2.2 Sistem Menu Caching
+Pemindaian direktori secara rekursif memakan waktu IO disk yang tinggi. Oleh karena itu:
+*   Struktur menu disimpan secara lokal dalam file cache `temp/menu_cache.json`.
+*   Jika pengembang menambahkan file PHP baru, cache harus diperbarui dengan mengakses URL parameter pembersih cache: `custom-index.php?clear_cache=1`.
+
+---
+
+## 3. Integrasi Basis Data (Database Architecture)
+Toolkit memiliki kemampuan untuk mengakses beberapa database sekaligus (Multi-node DB).
+
+### 3.1 Koneksi Database yang Tersedia
+Di dalam file `includes/db-connection.php`, terdapat tiga objek koneksi PDO utama yang diinisialisasi secara otomatis:
+1.  **`$pdo` (Primary DB):** Koneksi ke database aktif Pandora FMS untuk membaca data konfigurasi, daftar agen, grup, dan modul.
+2.  **`$history_pdo` (Historical DB):** Koneksi opsional ke database sekunder/arsip untuk query data histori jangka panjang tanpa membebani database operasional utama.
+3.  **`$custom_pdos` & `$custom_connections`:** Larik koneksi ke node database Pandora FMS eksternal lainnya yang dikonfigurasi melalui panel admin.
+
+### 3.2 Aturan Query Histori Data
+Untuk mencegah *timeout* query atau penggunaan RAM server yang berlebih:
+*   Gunakan pembatasan rentang waktu (lookback limit) yang ketat melalui parameter query SQL.
+*   Gunakan pagination berbasis server-side (`LIMIT`, `OFFSET`) untuk setiap visualisasi data tabular.
+*   Lakukan downsampling data (seperti pembatasan resolusi data historis maksimum 2000 titik data) sebelum dikirimkan ke visualisasi grafik ECharts.
+
+---
+
+## 4. Persyaratan Pengerasan Keamanan (Security Hardening)
+Setiap file PHP mandiri yang diletakkan di bawah subfolder wajib mengimplementasikan lapisan keamanan berikut secara mandiri:
+
+### 4.1 Validasi Sesi Pandora FMS
+Setiap modul wajib memverifikasi sesi administrator aktif sebelum merender HTML atau memproses data:
+```php
+if (session_status() === PHP_SESSION_NONE) session_start();
+$user_id = $_SESSION['id_usuario'] ?? 0;
+if (empty($user_id)) {
+    header("Location: /pandora_console/index.php");
+    exit;
+}
+```
+
+### 4.2 Pencegahan Injeksi SQL & XSS
+*   **Parameter SQL:** Penggunaan interpolasi variabel langsung di dalam string query SQL (`"SELECT * FROM table WHERE id = $id"`) **DILARANG KERAS**. Gunakan parameter binding PDO (`$stmt->prepare()` dan `$stmt->execute()`).
+*   **Sanitasi Output (XSS):** Semua data yang berasal dari database atau input user wajib dibungkus dengan fungsi sanitasi sebelum dirender ke DOM:
+    *   Gunakan fungsi helper penyingkat `h($value)` yang memetakan ke `htmlspecialchars($value, ENT_QUOTES, 'UTF-8')`.
+
+### 4.3 Proteksi CSRF (Cross-Site Request Forgery)
+Semua aksi penulisan data (`POST`, `PUT`, `DELETE` ke file JSON atau Database) wajib memverifikasi kecocokan token CSRF yang tersimpan di dalam sesi (`$_SESSION['pfms_csrf_token']`) melalui Header HTTP `X-CSRF-Token`.
+
+---
+
+## 5. Pengembangan Modul Baru (Developer Checklist)
+Saat membuat halaman dasbor atau utilitas baru:
+1.  Buat file PHP di folder kategori yang sesuai (misal: `Dashboard/My-New-Dashboard.php`).
+2.  Import file koneksi database secara dinamis di baris teratas:
+    ```php
+    require_once __DIR__ . '/../includes/db-connection.php';
+    ```
+3.  Terapkan proteksi sesi Pandora FMS di baris berikutnya.
+4.  Gunakan stylesheet standar Inter Font, Bootstrap 5, dan Material Symbols Outlined.
+5.  Uji kinerjanya pada database dengan volume data besar.
+6.  Hapus cache menu (`?clear_cache=1`) agar modul baru terdeteksi di sidebar.

@@ -982,9 +982,6 @@ function showDashboardDetail(dashId) {
             <button class="btn-pfms btn-outline-pfms" onclick="openDashboardModal(true)">
                 <span class="material-symbols-outlined">edit</span> Rename Report
             </button>
-            <button class="btn-pfms btn-outline-pfms" onclick="window.print()">
-                <span class="material-symbols-outlined">print</span> Print / PDF
-            </button>
             <button class="btn-pfms btn-outline-pfms text-danger border-danger" onclick="deleteActiveDashboard()">
                 <span class="material-symbols-outlined">delete</span> Delete Report
             </button>
