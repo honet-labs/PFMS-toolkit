@@ -4,12 +4,12 @@
  * Version: 7.0 (EXCLUDE FIELDS SUPPORT)
  */
 
-require_once __DIR__ . '/../../includes/db-connection.php';
+require_once __DIR__ . '/../includes/db-connection.php';
 
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
-$full_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / INFORMATIONS / INVENTORY AGENT";
+$full_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / INVENTORY / INVENTORY AGENT";
 
 // =====================================================================
 // 2. CONFIG & SETTINGS

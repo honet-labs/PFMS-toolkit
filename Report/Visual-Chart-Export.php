@@ -487,6 +487,24 @@ if ($api === 'chart_data' && $db_status) {
             color: #ef4444;
         }
 
+        .header-section {
+            padding: 15px 30px;
+            background: #ffffff;
+            border-bottom: 1px solid #e0e4e8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .page-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #0b1a26;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         /* Print styles */
         @media print {
             body, html {
@@ -495,7 +513,7 @@ if ($api === 'chart_data' && $db_status) {
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            .no-print, .modal-overlay, #dashboard-list-view, .btn-pfms, .btn-action-panel {
+            .no-print, .header-section, .modal-overlay, #dashboard-list-view, .btn-pfms, .btn-action-panel {
                 display: none !important;
             }
             #dashboard-detail-view {
@@ -519,28 +537,21 @@ if ($api === 'chart_data' && $db_status) {
 </head>
 <body>
 
-<div class="main-container">
-    <!-- Premium custom header banner to differentiate from standard menu headers -->
-    <div class="no-print mb-4 p-4 rounded-3 text-white" style="background: linear-gradient(135deg, #0b1a26, #1e293b); box-shadow: 0 4px 15px rgba(11, 26, 38, 0.15);">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-            <div class="d-flex align-items-center gap-3">
-                <button id="banner-back-btn" class="btn-pfms btn-outline-pfms text-white border-secondary d-none" style="background:transparent;" onclick="showDashboardList()">
-                    <span class="material-symbols-outlined">arrow_back</span> Back
-                </button>
-                <div>
-                    <h1 class="h4 font-weight-bold m-0 d-flex align-items-center gap-2" id="banner-title" style="font-size: 18px;">
-                        <span class="material-symbols-outlined text-success" style="font-size: 26px;">analytics</span> 
-                        Visual Report Builder
-                    </h1>
-                    <p class="m-0 small mt-1" id="banner-subtitle" style="color: #94a3b8 !important;">Design and configure custom high-resolution visual charts and reports</p>
-                </div>
-            </div>
-            <div id="banner-actions">
-                <!-- Action buttons rendered dynamically -->
-            </div>
+<div class="header-section no-print">
+    <div class="d-flex align-items-center gap-3">
+        <button id="header-back-btn" class="btn-pfms btn-outline-pfms d-none" onclick="showDashboardList()">
+            <span class="material-symbols-outlined">arrow_back</span> Back
+        </button>
+        <div>
+            <h1 class="page-title" id="page-nav-header">Visual Chart Reports</h1>
         </div>
     </div>
+    <div id="header-actions">
+        <!-- Action buttons rendered dynamically -->
+    </div>
+</div>
 
+<div class="main-container">
     <!-- 1. DASHBOARD LIST VIEW -->
     <div id="dashboard-list-view">
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -778,6 +789,23 @@ function loadDashboards() {
         .then(data => {
             dashboards = Array.isArray(data) ? data : [];
             renderDashboardsList();
+            
+            // Populate header actions based on state
+            if (activeDashboardId) {
+                const currentDash = dashboards.find(d => d.id === activeDashboardId);
+                if (currentDash) {
+                    document.getElementById('page-nav-header').textContent = currentDash.name;
+                    document.getElementById('header-back-btn').classList.remove('d-none');
+                }
+            } else {
+                document.getElementById('page-nav-header').textContent = 'Visual Chart Reports';
+                document.getElementById('header-back-btn').classList.add('d-none');
+                document.getElementById('header-actions').innerHTML = `
+                    <button class="btn-pfms btn-primary-pfms" onclick="openDashboardModal(false)">
+                        <span class="material-symbols-outlined">add</span> Create Report Visual
+                    </button>
+                `;
+            }
         })
         .catch(err => {
             console.error('Error loading reports:', err);
@@ -830,12 +858,11 @@ function showDashboardList() {
     document.getElementById('dashboard-list-view').classList.remove('d-none');
     document.getElementById('dashboard-detail-view').classList.add('d-none');
     
-    // Set Header Banner for List View
-    document.getElementById('banner-title').innerHTML = `<span class="material-symbols-outlined text-success" style="font-size: 26px;">analytics</span> Visual Report Builder`;
-    document.getElementById('banner-subtitle').textContent = 'Design and configure custom high-resolution visual charts and reports';
-    document.getElementById('banner-back-btn').classList.add('d-none');
+    // Set Header for List View
+    document.getElementById('page-nav-header').textContent = 'Visual Chart Reports';
+    document.getElementById('header-back-btn').classList.add('d-none');
     
-    document.getElementById('banner-actions').innerHTML = `
+    document.getElementById('header-actions').innerHTML = `
         <button class="btn-pfms btn-primary-pfms" onclick="openDashboardModal(false)">
             <span class="material-symbols-outlined">add</span> Create Report Visual
         </button>
@@ -933,23 +960,22 @@ function showDashboardDetail(dashId) {
     document.getElementById('dashboard-list-view').classList.add('d-none');
     document.getElementById('dashboard-detail-view').classList.remove('d-none');
     
-    // Set Header Banner for Detail View
-    document.getElementById('banner-title').innerHTML = `<span class="material-symbols-outlined text-success" style="font-size: 26px;">insights</span> ${escapeHtml(currentDash.name)}`;
-    document.getElementById('banner-subtitle').textContent = 'Created: ' + new Date(currentDash.created_at * 1000).toLocaleDateString();
-    document.getElementById('banner-back-btn').classList.remove('d-none');
+    // Set Header for Detail View
+    document.getElementById('page-nav-header').textContent = currentDash.name;
+    document.getElementById('header-back-btn').classList.remove('d-none');
     
-    document.getElementById('banner-actions').innerHTML = `
+    document.getElementById('header-actions').innerHTML = `
         <div class="d-flex gap-2">
             <button class="btn-pfms btn-primary-pfms" onclick="openPanelModal(false)">
                 <span class="material-symbols-outlined">add_chart</span> Add Panel
             </button>
-            <button class="btn-pfms btn-outline-pfms text-white border-secondary" style="background:transparent;" onclick="openDashboardModal(true)">
+            <button class="btn-pfms btn-outline-pfms" onclick="openDashboardModal(true)">
                 <span class="material-symbols-outlined">edit</span> Rename Report
             </button>
-            <button class="btn-pfms btn-outline-pfms text-white border-secondary" style="background:transparent;" onclick="window.print()">
+            <button class="btn-pfms btn-outline-pfms" onclick="window.print()">
                 <span class="material-symbols-outlined">print</span> Print / PDF
             </button>
-            <button class="btn-pfms btn-outline-pfms text-danger border-danger" style="background:transparent;" onclick="deleteActiveDashboard()">
+            <button class="btn-pfms btn-outline-pfms text-danger border-danger" onclick="deleteActiveDashboard()">
                 <span class="material-symbols-outlined">delete</span> Delete Report
             </button>
         </div>
