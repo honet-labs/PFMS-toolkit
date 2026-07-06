@@ -1749,6 +1749,7 @@ function exportPanelPNG(panel, data) {
         });
 
         option = {
+            animation: false,
             backgroundColor: theme.bg,
             color: colors,
             title: {
@@ -1781,6 +1782,7 @@ function exportPanelPNG(panel, data) {
         const labels = dataPrepared.labels;
 
         option = {
+            animation: false,
             backgroundColor: theme.bg,
             color: colors,
             title: {
