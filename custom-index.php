@@ -892,11 +892,13 @@ if (!empty($current_page)) {
                             $url = '?page=' . urlencode($node['path']);
                             $icon = 'article';
                             
-                            if (stripos($node['name'], 'dashboard') !== false) $icon = 'dashboard';
-                            elseif (stripos($node['name'], 'query') !== false) $icon = 'database';
-                            elseif (stripos($node['name'], 'converter') !== false) $icon = 'transform';
-                            elseif (stripos($node['name'], 'alert') !== false) $icon = 'notifications_active';
-                            elseif (stripos($node['name'], 'netflow') !== false) $icon = 'account_tree';
+                             if (stripos($node['name'], 'dashboard') !== false) $icon = 'dashboard';
+                             elseif (stripos($node['name'], 'query') !== false) $icon = 'database';
+                             elseif (stripos($node['name'], 'converter') !== false) $icon = 'transform';
+                             elseif (stripos($node['name'], 'alert') !== false) $icon = 'notifications_active';
+                             elseif (stripos($node['name'], 'netflow') !== false) $icon = 'account_tree';
+                             elseif (stripos($node['name'], 'chart') !== false || stripos($node['name'], 'export') !== false) $icon = 'bar_chart';
+                             elseif (stripos($node['name'], 'raw data') !== false || stripos($node['name'], 'availability') !== false || stripos($node['name'], 'report') !== false) $icon = 'analytics';
 
                             $html .= '<li class="nav-item file-item">';
                             $html .= '<a href="' . $url . '" class="nav-link menu-link ' . $isActive . '">
