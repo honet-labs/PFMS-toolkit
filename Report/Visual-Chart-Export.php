@@ -35,7 +35,7 @@ if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
 } else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
     $panelDirName = $matches[1];
 }
-$DASHBOARD_FILE = __DIR__ . '/visual-charts-dashboards.json';
+$DASHBOARD_FILE = __DIR__ . '/visual-charts-reports.json';
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 
 $api = $_GET['api'] ?? '';
@@ -235,20 +235,6 @@ if ($api === 'chart_data' && $db_status) {
             margin: 0;
             padding: 0;
             font-size: 13px;
-        }
-        .header-section {
-            padding: 15px 30px;
-            background: #ffffff;
-            border-bottom: 1px solid #e2e8f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .page-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #0f172a;
-            margin: 0;
         }
         .main-container {
             padding: 25px 30px;
@@ -509,7 +495,7 @@ if ($api === 'chart_data' && $db_status) {
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            .no-print, .header-section, .modal-overlay, #dashboard-list-view, .btn-pfms, .btn-action-panel {
+            .no-print, .modal-overlay, #dashboard-list-view, .btn-pfms, .btn-action-panel {
                 display: none !important;
             }
             #dashboard-detail-view {
@@ -533,23 +519,35 @@ if ($api === 'chart_data' && $db_status) {
 </head>
 <body>
 
-<div class="header-section no-print">
-    <div>
-        <h1 class="page-title" id="page-nav-header">Visual Chart Reports</h1>
-    </div>
-</div>
-
 <div class="main-container">
+    <!-- Premium custom header banner to differentiate from standard menu headers -->
+    <div class="no-print mb-4 p-4 rounded-3 text-white" style="background: linear-gradient(135deg, #0b1a26, #1e293b); box-shadow: 0 4px 15px rgba(11, 26, 38, 0.15);">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <button id="banner-back-btn" class="btn-pfms btn-outline-pfms text-white border-secondary d-none" style="background:transparent;" onclick="showDashboardList()">
+                    <span class="material-symbols-outlined">arrow_back</span> Back
+                </button>
+                <div>
+                    <h1 class="h4 font-weight-bold m-0 d-flex align-items-center gap-2" id="banner-title" style="font-size: 18px;">
+                        <span class="material-symbols-outlined text-success" style="font-size: 26px;">analytics</span> 
+                        Visual Report Builder
+                    </h1>
+                    <p class="m-0 small mt-1" id="banner-subtitle" style="color: #94a3b8 !important;">Design and configure custom high-resolution visual charts and reports</p>
+                </div>
+            </div>
+            <div id="banner-actions">
+                <!-- Action buttons rendered dynamically -->
+            </div>
+        </div>
+    </div>
+
     <!-- 1. DASHBOARD LIST VIEW -->
     <div id="dashboard-list-view">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <h4 class="font-weight-bold m-0 text-dark" style="font-size:18px;">My Report Dashboards</h4>
-                <p class="text-muted small m-0">Create multiple dashboards with custom reporting widgets and charts.</p>
+                <h4 class="font-weight-bold m-0 text-dark" style="font-size:16px;">My Visual Reports</h4>
+                <p class="text-muted small m-0">Create and manage your custom reporting views.</p>
             </div>
-            <button class="btn-pfms btn-primary-pfms" onclick="openDashboardModal(false)">
-                <span class="material-symbols-outlined">add</span> Create Dashboard
-            </button>
         </div>
 
         <div class="row g-4" id="dashboards-grid-container">
@@ -560,28 +558,9 @@ if ($api === 'chart_data' && $db_status) {
     <!-- 2. DASHBOARD DETAIL VIEW -->
     <div id="dashboard-detail-view" class="d-none">
         <div class="d-flex justify-content-between align-items-center mb-4 no-print">
-            <div class="d-flex align-items-center gap-3">
-                <button class="btn-pfms btn-outline-pfms" onclick="showDashboardList()">
-                    <span class="material-symbols-outlined">arrow_back</span> Back to list
-                </button>
-                <div>
-                    <h2 class="h4 font-weight-bold text-dark m-0" id="detail-dashboard-title">Dashboard Title</h2>
-                    <p class="text-muted small m-0" id="detail-dashboard-subtitle">Created on ...</p>
-                </div>
-            </div>
-            <div class="d-flex gap-2">
-                <button class="btn-pfms btn-primary-pfms" onclick="openPanelModal(false)">
-                    <span class="material-symbols-outlined">add_chart</span> Add Panel
-                </button>
-                <button class="btn-pfms btn-outline-pfms" onclick="openDashboardModal(true)">
-                    <span class="material-symbols-outlined">edit</span> Rename Dashboard
-                </button>
-                <button class="btn-pfms btn-outline-pfms" onclick="window.print()">
-                    <span class="material-symbols-outlined">print</span> Print / PDF
-                </button>
-                <button class="btn-pfms btn-outline-pfms text-danger border-danger" onclick="deleteActiveDashboard()">
-                    <span class="material-symbols-outlined">delete</span> Delete Dashboard
-                </button>
+            <div>
+                <h2 class="h5 font-weight-bold text-dark m-0" id="detail-dashboard-title">Report Title</h2>
+                <p class="text-muted small m-0" id="detail-dashboard-subtitle">Created on ...</p>
             </div>
         </div>
 
@@ -592,16 +571,16 @@ if ($api === 'chart_data' && $db_status) {
     </div>
 </div>
 
-<!-- DASHBOARD MODAL (Create/Rename) -->
+<!-- REPORT MODAL (Create/Rename) -->
 <div class="modal-overlay" id="dashboard-modal">
     <div class="modal-box" style="width: 500px; max-width: 90vw;">
         <div class="modal-header-custom d-flex justify-content-between align-items-center">
-            <h5 class="m-0 font-weight-bold text-dark" id="dashboard-modal-title">Create Dashboard</h5>
+            <h5 class="m-0 font-weight-bold text-dark" id="dashboard-modal-title">Create Report Visual</h5>
             <span class="material-symbols-outlined" style="cursor:pointer;" onclick="closeDashboardModal()">close</span>
         </div>
         <div class="modal-body p-4">
             <div class="mb-3">
-                <label class="form-label-custom">Dashboard Name</label>
+                <label class="form-label-custom">Report Visual Name</label>
                 <input type="text" id="dashboard-name-input" class="form-control" placeholder="e.g. Server Performance Monthly">
             </div>
         </div>
@@ -801,7 +780,7 @@ function loadDashboards() {
             renderDashboardsList();
         })
         .catch(err => {
-            console.error('Error loading dashboards:', err);
+            console.error('Error loading reports:', err);
         });
 }
 
@@ -813,9 +792,9 @@ function renderDashboardsList() {
     if (dashboards.length === 0) {
         container.innerHTML = `
             <div class="col-12 text-center py-5">
-                <span class="material-symbols-outlined" style="font-size:56px; color:#cbd5e1; display:block; margin-bottom:15px;">dashboard</span>
-                <h5 class="text-secondary font-weight-bold">No dashboards created yet</h5>
-                <p class="text-muted">Click "Create Dashboard" above to start configuring reports.</p>
+                <span class="material-symbols-outlined" style="font-size:56px; color:#cbd5e1; display:block; margin-bottom:15px;">analytics</span>
+                <h5 class="text-secondary font-weight-bold">No reports created yet</h5>
+                <p class="text-muted">Click "Create Report Visual" in the header to start designing reports.</p>
             </div>
         `;
         return;
@@ -831,11 +810,11 @@ function renderDashboardsList() {
             <div class="dashboard-card" onclick="showDashboardDetail('${dash.id}')">
                 <div>
                     <div class="d-flex justify-content-between align-items-start mb-3">
-                        <span class="material-symbols-outlined text-success" style="font-size:32px; background: #e0f2f1; padding: 8px; border-radius: 8px;">analytics</span>
+                        <span class="material-symbols-outlined text-success" style="font-size:32px; background: #e0f2f1; padding: 8px; border-radius: 8px;">insights</span>
                         <span class="badge bg-success" style="font-size:10px;">${panelsCount} Widget(s)</span>
                     </div>
                     <h5 class="font-weight-bold text-dark mb-2" style="font-size:15px;">${escapeHtml(dash.name)}</h5>
-                    <p class="text-muted small m-0">Dynamic reporting dashboard for system metrics.</p>
+                    <p class="text-muted small m-0">Custom visual reporting setup.</p>
                 </div>
                 <div class="mt-4 pt-3 border-top d-flex justify-content-between align-items-center">
                     <span class="text-muted small" style="font-size:11px;">Created: ${dateStr}</span>
@@ -850,7 +829,18 @@ function renderDashboardsList() {
 function showDashboardList() {
     document.getElementById('dashboard-list-view').classList.remove('d-none');
     document.getElementById('dashboard-detail-view').classList.add('d-none');
-    document.getElementById('page-nav-header').textContent = 'Visual Chart Reports';
+    
+    // Set Header Banner for List View
+    document.getElementById('banner-title').innerHTML = `<span class="material-symbols-outlined text-success" style="font-size: 26px;">analytics</span> Visual Report Builder`;
+    document.getElementById('banner-subtitle').textContent = 'Design and configure custom high-resolution visual charts and reports';
+    document.getElementById('banner-back-btn').classList.add('d-none');
+    
+    document.getElementById('banner-actions').innerHTML = `
+        <button class="btn-pfms btn-primary-pfms" onclick="openDashboardModal(false)">
+            <span class="material-symbols-outlined">add</span> Create Report Visual
+        </button>
+    `;
+
     activeDashboardId = null;
     loadDashboards();
 }
@@ -863,10 +853,10 @@ function openDashboardModal(isEdit = false) {
 
     if (isEdit) {
         const currentDash = dashboards.find(d => d.id === activeDashboardId);
-        title.textContent = 'Rename Dashboard';
+        title.textContent = 'Rename Report Visual';
         input.value = currentDash ? currentDash.name : '';
     } else {
-        title.textContent = 'Create Dashboard';
+        title.textContent = 'Create Report Visual';
         input.value = '';
     }
 
@@ -879,11 +869,11 @@ function closeDashboardModal() {
 
 function saveDashboard() {
     const input = document.getElementById('dashboard-name-input').value.trim();
-    if (!input) return alert('Please input dashboard name');
+    if (!input) return alert('Please input report visual name');
 
     const modalTitle = document.getElementById('dashboard-modal-title').textContent;
 
-    if (modalTitle === 'Rename Dashboard') {
+    if (modalTitle === 'Rename Report Visual') {
         const currentDash = dashboards.find(d => d.id === activeDashboardId);
         if (currentDash) {
             currentDash.name = input;
@@ -901,16 +891,12 @@ function saveDashboard() {
 
     saveDashboardsToServer().then(() => {
         closeDashboardModal();
-        if (modalTitle === 'Rename Dashboard') {
-            showDashboardDetail(activeDashboardId);
-        } else {
-            showDashboardDetail(activeDashboardId);
-        }
+        showDashboardDetail(activeDashboardId);
     });
 }
 
 function deleteActiveDashboard() {
-    if (!confirm('Are you sure you want to delete this dashboard? This cannot be undone.')) return;
+    if (!confirm('Are you sure you want to delete this report visual? This cannot be undone.')) return;
     
     dashboards = dashboards.filter(d => d.id !== activeDashboardId);
     saveDashboardsToServer().then(() => {
@@ -947,7 +933,28 @@ function showDashboardDetail(dashId) {
     document.getElementById('dashboard-list-view').classList.add('d-none');
     document.getElementById('dashboard-detail-view').classList.remove('d-none');
     
-    document.getElementById('page-nav-header').textContent = 'Visual Chart Reports / ' + currentDash.name;
+    // Set Header Banner for Detail View
+    document.getElementById('banner-title').innerHTML = `<span class="material-symbols-outlined text-success" style="font-size: 26px;">insights</span> ${escapeHtml(currentDash.name)}`;
+    document.getElementById('banner-subtitle').textContent = 'Created: ' + new Date(currentDash.created_at * 1000).toLocaleDateString();
+    document.getElementById('banner-back-btn').classList.remove('d-none');
+    
+    document.getElementById('banner-actions').innerHTML = `
+        <div class="d-flex gap-2">
+            <button class="btn-pfms btn-primary-pfms" onclick="openPanelModal(false)">
+                <span class="material-symbols-outlined">add_chart</span> Add Panel
+            </button>
+            <button class="btn-pfms btn-outline-pfms text-white border-secondary" style="background:transparent;" onclick="openDashboardModal(true)">
+                <span class="material-symbols-outlined">edit</span> Rename Report
+            </button>
+            <button class="btn-pfms btn-outline-pfms text-white border-secondary" style="background:transparent;" onclick="window.print()">
+                <span class="material-symbols-outlined">print</span> Print / PDF
+            </button>
+            <button class="btn-pfms btn-outline-pfms text-danger border-danger" style="background:transparent;" onclick="deleteActiveDashboard()">
+                <span class="material-symbols-outlined">delete</span> Delete Report
+            </button>
+        </div>
+    `;
+
     document.getElementById('detail-dashboard-title').textContent = currentDash.name;
     document.getElementById('detail-dashboard-subtitle').textContent = 'Created: ' + new Date(currentDash.created_at * 1000).toLocaleDateString();
 
@@ -971,7 +978,7 @@ function renderDashboardPanels() {
         container.innerHTML = `
             <div class="col-12 text-center py-5">
                 <span class="material-symbols-outlined" style="font-size:48px; color:#cbd5e1; display:block; margin-bottom:12px;">insights</span>
-                <h5 class="text-secondary font-weight-bold">No widgets on this dashboard</h5>
+                <h5 class="text-secondary font-weight-bold">No widgets on this report visual</h5>
                 <p class="text-muted">Click "Add Panel" to add your first reporting chart widget.</p>
             </div>
         `;
