@@ -1,0 +1,96 @@
+# Product Requirements Document (PRD) - UI/UX Styling & Design Standards
+
+## 1. Pendahuluan & Filosofi Desain
+Dokumen Persyaratan Produk (PRD) ini mendefinisikan standar antarmuka pengguna (UI) dan pengalaman pengguna (UX) yang diterapkan di dalam platform **PFMS-Toolkit**. 
+
+Filosofi desain utama platform ini adalah **"Clean, Minimalist, and Integrated"**. Seluruh modul custom yang dikembangkan wajib menyatu secara visual dan fungsional dengan panel bawaan **Pandora FMS Console** tanpa membebani memori, performa, atau menciptakan distorsi desain (seperti warna gradien berlebih atau efek shadow yang mencolok).
+
+---
+
+## 2. Token Visual & Spesifikasi Desain (Design Tokens)
+
+### 2.1 Tipografi & Skala Font
+*   **Font Utama:** `Inter`, system-ui, -apple-system, `Segoe UI`, Roboto, sans-serif.
+    *   Warna Teks Utama: `#334155` (Slate-700)
+    *   Ukuran Font Tubuh (*Body Text*): `13px` atau `14px`
+*   **Font Monospace:** `Courier New`, Courier, monospace.
+    *   Digunakan khusus untuk data tabular mentah, log sistem, konsol, dan ID.
+    *   Ukuran Font default: `12px`
+*   **Ikon Sistem:** `Material Symbols Outlined` (Google Fonts).
+    *   Ukuran default: `18px`
+    *   Penyelarasan vertikal: Tengah (`vertical-align: middle`)
+
+### 2.2 Skema Warna (Color Palette)
+
+| Klasifikasi | Kode Warna | Penggunaan Utama |
+| :--- | :--- | :--- |
+| **Primary Theme** | `#004d40` (Teal Tua) | Tombol aksi utama, menu aktif, dan status sukses. |
+| **Primary Hover** | `#00695c` | Efek hover pada tombol utama. |
+| **Title Text** | `#0b1a26` (Midnight Navy) | Judul halaman besar, judul modal, dan teks tebal. |
+| **Secondary Text** | `#94a3b8` (Slate-400) | Teks keterangan, breadcrumb, dan placeholder. |
+| **Background Body** | `#f4f6f8` (Soft Gray) | Latar belakang halaman dan iframe. |
+| **Card background** | `#ffffff` (Pure White) | Latar belakang widget panel dan pembungkus konten utama. |
+| **Borders & Dividers**| `#e0e4e8` / `#f0f3f5` | Batas kolom, garis horizontal, dan grid tabel. |
+
+### 2.3 Status Aksen & Umpan Balik (Feedback Accents)
+*   **OK / Success:** Teks `#166534`, Latar Belakang `#dcfce7` (Pill hijau halus).
+*   **Warning:** Teks `#854d0e`, Latar Belakang `#fef9c3` (Pill kuning/oranye halus).
+*   **Critical / Danger:** Teks `#b91c1c`, Latar Belakang `#fee2e2` (Pill merah halus).
+*   **Unknown:** Teks `#374151`, Latar Belakang `#e5e7eb` (Pill abu-abu).
+
+---
+
+## 3. Tata Letak & Struktur Komponen (Component Layout & Structure)
+
+### 3.1 Header Terstandardisasi (`.header-section` atau `.header-box`)
+Setiap halaman modul wajib menggunakan struktur header minimalis yang bersih dengan layout kiri-kanan (*flex-row*):
+```html
+<div class="header-box">
+    <div>
+        <div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">[BREADCRUMB]</div>
+        <h1 class="page-title">[Judul Halaman]</h1>
+    </div>
+    <!-- Elemen aksi dinamis di kanan -->
+    <div id="header-actions">
+        <!-- Tombol aksi / setelan -->
+    </div>
+</div>
+```
+*   **Tinggi & Padding:** Padding atas-bawah `15px`, kiri-kanan `30px`.
+*   **Garis Pembatas Bawah:** `1px solid #e0e4e8`.
+
+### 3.2 Kartu Konten (`.dashboard-card`)
+Wadah utama visualisasi atau tabel data menggunakan elemen box modern:
+*   `background: #ffffff`
+*   `border: 1px solid #f0f3f5`
+*   `border-radius: 8px`
+*   `box-shadow: 0 2px 8px rgba(0,0,0,0.04)`
+*   `padding: 20px`
+
+### 3.3 Formulir Penyaringan (Filter Form)
+Form pencarian atau filter data diposisikan di atas tabel dalam wadah `.filter-box`:
+*   `background: #ffffff`
+*   `border: 1px solid #f0f3f5`
+*   `border-radius: 8px`
+*   `padding: 20px`
+*   Kontrol input memiliki tinggi `34px`, border `1px solid #dce1e5`, dan border-radius `4px`.
+*   Tombol filter utama menggunakan `.btn-apply` (Warna `#004d40`), sedangkan tombol reset menggunakan `.btn-reset` (Garis tepi abu-abu/putih).
+
+---
+
+## 4. Pola Interaksi & UX (Interaction Patterns)
+
+### 4.1 Transisi View (List & Detail View)
+Pada modul kompleks seperti *Visual Report Builder*, antarmuka menggunakan sistem navigasi satu halaman (*Single Page Application*):
+*   Tampilan daftar laporan (*List View*) dan rincian laporan (*Detail View*) bergantian menggunakan kelas `.d-none` secara instan tanpa memuat ulang seluruh halaman (iframe).
+*   Judul navigasi atas (`page-nav-header`) dan tombol kembali (`header-back-btn`) diperbarui secara dinamis menggunakan JavaScript.
+
+### 4.2 Modal Kontrol (`.modal-overlay` & `.modal-box`)
+Pemuatan modal untuk formulir konfigurasi atau setelan wajib menggunakan overlay gelap semi-transparan (`rgba(0,0,0,0.5)`) yang memblokir interaksi di bawahnya:
+*   Tata letak berada tepat di tengah layar secara horizontal dan vertikal.
+*   Header modal berisi tombol silang (`close`) di kanan atas yang berfungsi menutup dialog.
+*   Tombol simpan/konfirmasi diletakkan di kanan bawah dalam footer modal.
+
+### 4.3 Responsivitas & Cetak (Print/PDF)
+*   **Grid System:** Menggunakan Bootstrap 5 Flex Grid (`.col-lg-*`, `.col-md-12`) untuk memastikan dashboard menyesuaikan ukuran monitor.
+*   **Media Print:** Halaman dilengkapi aturan `@media print` khusus yang secara otomatis menyembunyikan header navigasi (`.no-print`, `.header-section`), sidebar portal utama, serta tombol-tombol edit, menyisakan grafik visual bersih untuk dicetak menjadi dokumen PDF beresolusi tinggi.
