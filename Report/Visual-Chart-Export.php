@@ -1172,8 +1172,14 @@ function populatePanelStatsTable(panelId, res) {
     const tbody = document.getElementById(`stats-tbody-${panelId}`);
     tbody.innerHTML = '';
     
+    const currentDash = dashboards.find(d => d.id === activeDashboardId);
+    if (!currentDash) return;
+    const panel = currentDash.panels.find(p => p.id === panelId);
+    if (!panel) return;
+
     const history = res.history || [];
     const metaList = res.meta || [];
+    const intervalMode = panel.interval_mode || 'actual';
     
     metaList.forEach(m => {
         const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
@@ -1184,12 +1190,44 @@ function populatePanelStatsTable(panelId, res) {
         let last = 'N/A';
         
         if (modHist.length > 0) {
-            const vals = modHist.map(h => h.val);
-            min = Math.min(...vals).toFixed(2);
-            max = Math.max(...vals).toFixed(2);
-            const sum = vals.reduce((a, b) => a + b, 0);
-            avg = (sum / vals.length).toFixed(2);
-            last = vals[vals.length - 1].toFixed(2);
+            let vals = [];
+            if (intervalMode !== 'actual') {
+                const grouped = {};
+                modHist.forEach(h => {
+                    const day = getDayString(h.time);
+                    if (!day) return;
+                    if (!grouped[day]) {
+                        grouped[day] = [];
+                    }
+                    grouped[day].push(h.val);
+                });
+                
+                const days = Object.keys(grouped).sort();
+                days.forEach(day => {
+                    const dayVals = grouped[day];
+                    if (dayVals.length > 0) {
+                        let val = 0;
+                        if (intervalMode === 'avg') {
+                            val = dayVals.reduce((sum, v) => sum + v, 0) / dayVals.length;
+                        } else if (intervalMode === 'min') {
+                            val = Math.min(...dayVals);
+                        } else if (intervalMode === 'max') {
+                            val = Math.max(...dayVals);
+                        }
+                        vals.push(val);
+                    }
+                });
+            } else {
+                vals = modHist.map(h => h.val);
+            }
+            
+            if (vals.length > 0) {
+                min = Math.min(...vals).toFixed(2);
+                max = Math.max(...vals).toFixed(2);
+                const sum = vals.reduce((a, b) => a + b, 0);
+                avg = (sum / vals.length).toFixed(2);
+                last = vals[vals.length - 1].toFixed(2);
+            }
         }
         
         const tr = document.createElement('tr');
