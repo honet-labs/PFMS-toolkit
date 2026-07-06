@@ -899,6 +899,7 @@ if (!empty($current_page)) {
                              elseif (stripos($node['name'], 'netflow') !== false) $icon = 'account_tree';
                              elseif (stripos($node['name'], 'chart') !== false || stripos($node['name'], 'export') !== false) $icon = 'bar_chart';
                              elseif (stripos($node['name'], 'raw data') !== false || stripos($node['name'], 'availability') !== false || stripos($node['name'], 'report') !== false) $icon = 'analytics';
+                             elseif (stripos($node['name'], 'log') !== false) $icon = 'terminal';
 
                             $html .= '<li class="nav-item file-item">';
                             $html .= '<a href="' . $url . '" class="nav-link menu-link ' . $isActive . '">

@@ -4,7 +4,7 @@
  * Efficiently view and monitor system logs from WebUI.
  */
 
-require_once __DIR__ . '/../../includes/db-connection.php';
+require_once __DIR__ . '/../includes/db-connection.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
@@ -17,7 +17,7 @@ $common_logs = [
     ['name' => 'System Log (syslog)', 'path' => '/var/log/syslog'],
 ];
 
-$netflow_access_dir = realpath(__DIR__ . '/../../Dashboard/Netflow-Explorer');
+$netflow_access_dir = realpath(__DIR__ . '/../Dashboard/Netflow-Explorer');
 if ($netflow_access_dir) {
     $netflow_access_file = $netflow_access_dir . DIRECTORY_SEPARATOR . 'nfx_access.log';
     if (file_exists($netflow_access_file) || @touch($netflow_access_file)) {
