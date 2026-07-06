@@ -74,31 +74,44 @@ if ($api === 'agents_list' && $db_status) {
 
 if ($api === 'module_list' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
-    $agentIdRaw = $_GET['agent_id'] ?? '';
-    if (empty($agentIdRaw)) {
-        echo json_encode([]); exit;
-    }
-    $parsed = parse_node_id($agentIdRaw);
-    $node = $parsed['node'];
-    $agent_id = $parsed['id'];
-
-    global $custom_pdos;
-    $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
-    if ($active_pdo === null) {
+    $agentIdsRaw = $_GET['agent_ids'] ?? $_GET['agent_id'] ?? '';
+    if (empty($agentIdsRaw)) {
         echo json_encode([]); exit;
     }
 
+    $agentIds = array_unique(array_filter(explode(',', $agentIdsRaw)));
     $list = [];
-    try {
-        $stmt = $active_pdo->prepare("SELECT id_agente_modulo AS id, nombre FROM tagente_modulo WHERE id_agente = ? AND disabled = 0 ORDER BY nombre ASC");
-        $stmt->execute([$agent_id]);
-        while($m = $stmt->fetch()) {
-            $list[] = [
-                'id' => $node . ':' . $m['id'],
-                'name' => pretty_text($m['nombre'])
-            ];
-        }
-    } catch (Throwable $e) {}
+    global $custom_pdos;
+
+    foreach ($agentIds as $agentIdRaw) {
+        $parsed = parse_node_id($agentIdRaw);
+        $node = $parsed['node'];
+        $agent_id = $parsed['id'];
+
+        $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+        if ($active_pdo === null) continue;
+
+        try {
+            $stmt_agent = $active_pdo->prepare("SELECT alias FROM tagente WHERE id_agente = ?");
+            $stmt_agent->execute([$agent_id]);
+            $agent_row = $stmt_agent->fetch();
+            $agent_alias = $agent_row ? pretty_text($agent_row['alias']) : 'Unknown Agent';
+
+            $stmt = $active_pdo->prepare("SELECT id_agente_modulo AS id, nombre FROM tagente_modulo WHERE id_agente = ? AND disabled = 0 ORDER BY nombre ASC");
+            $stmt->execute([$agent_id]);
+            while($m = $stmt->fetch()) {
+                $list[] = [
+                    'id' => $node . ':' . $m['id'],
+                    'name' => '[' . $agent_alias . '] ' . pretty_text($m['nombre'])
+                ];
+            }
+        } catch (Throwable $e) {}
+    }
+
+    usort($list, function($a, $b) {
+        return strcasecmp($a['name'], $b['name']);
+    });
+
     echo json_encode($list); exit;
 }
 
@@ -409,11 +422,10 @@ if ($api === 'chart_data' && $db_status) {
                 <div class="card-body-custom">
                     <!-- Target Selection -->
                     <div class="mb-3">
-                        <label class="form-label-custom">Select Agent</label>
-                        <div class="search-select-box">
-                            <select id="agent-select" class="form-select" onchange="loadModulesForAgent()">
-                                <option value="">-- Choose Agent --</option>
-                            </select>
+                        <label class="form-label-custom">Select Agents</label>
+                        <input type="text" id="agent-search" class="form-control form-control-sm mb-2" placeholder="Search agents..." oninput="filterAgentCheckboxList()">
+                        <div class="checkbox-list-container" id="agent-checkbox-list" style="max-height: 180px;">
+                            <div class="text-muted p-2" style="font-size: 12px;"><span class="material-symbols-outlined spinner-icon">sync</span> Loading agents...</div>
                         </div>
                     </div>
                     
@@ -597,43 +609,66 @@ document.addEventListener('DOMContentLoaded', () => {
     fetch('?api=agents_list')
         .then(res => res.json())
         .then(data => {
-            const select = document.getElementById('agent-select');
-            data.forEach(agent => {
-                const opt = document.createElement('option');
-                opt.value = agent.id;
-                opt.textContent = agent.alias;
-                select.appendChild(opt);
-            });
+            const container = document.getElementById('agent-checkbox-list');
+            if (data.length === 0) {
+                container.innerHTML = '<div class="text-muted p-2" style="font-size: 12px;">No active agents found.</div>';
+                return;
+            }
+
+            container.innerHTML = data.map(agent => `
+                <div class="checkbox-item agent-item" data-name="${agent.alias.toLowerCase()}">
+                    <input type="checkbox" class="agent-chk" value="${agent.id}" id="chk-agent-${agent.id.replace(/:/g, '-')}" onchange="loadModulesForSelectedAgents()">
+                    <label for="chk-agent-${agent.id.replace(/:/g, '-')}">${agent.alias}</label>
+                </div>
+            `).join('');
         })
         .catch(err => {
             console.error('Error loading agents:', err);
+            const container = document.getElementById('agent-checkbox-list');
+            container.innerHTML = '<div class="text-danger p-2" style="font-size: 12px;">Failed to load agents.</div>';
         });
 });
 
-// 2. Load Modules list for selected Agent
-function loadModulesForAgent() {
-    const agentId = document.getElementById('agent-select').value;
+function filterAgentCheckboxList() {
+    const q = document.getElementById('agent-search').value.toLowerCase().trim();
+    const items = document.querySelectorAll('#agent-checkbox-list .agent-item');
+    items.forEach(item => {
+        const name = item.getAttribute('data-name');
+        if (name.includes(q)) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+// 2. Load Modules list for selected Agents
+function loadModulesForSelectedAgents() {
+    const selectedAgentChks = Array.from(document.querySelectorAll('.agent-chk:checked'));
     const checkboxList = document.getElementById('module-checkbox-list');
     const searchInput = document.getElementById('module-search');
-    
-    if (!agentId) {
+
+    if (selectedAgentChks.length === 0) {
         checkboxList.innerHTML = '<div class="text-muted p-2" style="font-size: 12px;">Select an agent first...</div>';
         searchInput.disabled = true;
+        searchInput.value = '';
         return;
     }
-    
+
     checkboxList.innerHTML = '<div class="text-muted p-2" style="font-size: 12px;"><span class="material-symbols-outlined spinner-icon">sync</span> Loading modules...</div>';
     searchInput.disabled = false;
     searchInput.value = '';
-    
-    fetch(`?api=module_list&agent_id=${encodeURIComponent(agentId)}`)
+
+    const agentIds = selectedAgentChks.map(cb => cb.value).join(',');
+
+    fetch(`?api=module_list&agent_ids=${encodeURIComponent(agentIds)}`)
         .then(res => res.json())
         .then(data => {
             if (data.length === 0) {
-                checkboxList.innerHTML = '<div class="text-muted p-2" style="font-size: 12px;">No active modules found for this agent.</div>';
+                checkboxList.innerHTML = '<div class="text-muted p-2" style="font-size: 12px;">No active modules found for selected agents.</div>';
                 return;
             }
-            
+
             checkboxList.innerHTML = data.map(m => `
                 <div class="checkbox-item" data-name="${m.name.toLowerCase()}">
                     <input type="checkbox" class="module-chk" value="${m.id}" id="chk-${m.id.replace(/:/g, '-')}" onchange="validateCheckboxes()">
