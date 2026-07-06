@@ -1169,9 +1169,6 @@ function initPanelChart(panel) {
 }
 
 function populatePanelStatsTable(panelId, res) {
-    const tbody = document.getElementById(`stats-tbody-${panelId}`);
-    tbody.innerHTML = '';
-    
     const currentDash = dashboards.find(d => d.id === activeDashboardId);
     if (!currentDash) return;
     const panel = currentDash.panels.find(p => p.id === panelId);
@@ -1180,66 +1177,71 @@ function populatePanelStatsTable(panelId, res) {
     const history = res.history || [];
     const metaList = res.meta || [];
     const intervalMode = panel.interval_mode || 'actual';
-    
-    metaList.forEach(m => {
-        const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
-        
-        let min = 'N/A';
-        let max = 'N/A';
-        let avg = 'N/A';
-        let last = 'N/A';
-        
-        if (modHist.length > 0) {
-            let vals = [];
-            if (intervalMode !== 'actual') {
-                const grouped = {};
-                modHist.forEach(h => {
-                    const day = getDayString(h.time);
-                    if (!day) return;
-                    if (!grouped[day]) {
-                        grouped[day] = [];
-                    }
-                    grouped[day].push(h.val);
-                });
-                
-                const days = Object.keys(grouped).sort();
-                days.forEach(day => {
-                    const dayVals = grouped[day];
-                    if (dayVals.length > 0) {
-                        let val = 0;
-                        if (intervalMode === 'avg') {
-                            val = dayVals.reduce((sum, v) => sum + v, 0) / dayVals.length;
-                        } else if (intervalMode === 'min') {
-                            val = Math.min(...dayVals);
-                        } else if (intervalMode === 'max') {
-                            val = Math.max(...dayVals);
-                        }
-                        vals.push(val);
-                    }
-                });
-            } else {
-                vals = modHist.map(h => h.val);
-            }
-            
-            if (vals.length > 0) {
-                min = Math.min(...vals).toFixed(2);
-                max = Math.max(...vals).toFixed(2);
-                const sum = vals.reduce((a, b) => a + b, 0);
-                avg = (sum / vals.length).toFixed(2);
-                last = vals[vals.length - 1].toFixed(2);
-            }
-        }
-        
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><b>${escapeHtml(m.agent_alias)}</b><br><span class="text-muted" style="font-size: 10px;">${escapeHtml(m.module_name)}</span></td>
-            <td>${min} ${escapeHtml(m.unit)}</td>
-            <td>${max} ${escapeHtml(m.unit)}</td>
-            <td>${avg} ${escapeHtml(m.unit)}</td>
-            <td><span class="badge bg-light text-dark border">${last} ${escapeHtml(m.unit)}</span></td>
-        `;
-        tbody.appendChild(tr);
+    const chartType = panel.chart_type;
+
+    // Utilize prepareEchartsData to extract the aggregated dates/timestamps and values
+    const dummyColors = ['#4caf50', '#2196f3', '#ffeb3b', '#9c27b0', '#ff9800'];
+    const dummyTheme = { bg: '#fff', text: '#000', axis: '#000', split: '#ccc' };
+    const dataPrepared = prepareEchartsData(panel, history, metaList, dummyColors, chartType, dummyTheme, false);
+
+    const labels = dataPrepared.labels;
+    const seriesData = dataPrepared.seriesData;
+
+    const container = document.getElementById(`stats-container-${panelId}`);
+    if (!container) return;
+
+    // Build the dynamic data table with timestamp and values
+    let tableHtml = `
+        <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+            <table class="stats-table">
+                <thead>
+                    <tr>
+                        <th style="min-width: 150px;">Timestamp</th>
+    `;
+
+    seriesData.forEach(s => {
+        tableHtml += `<th>${escapeHtml(s.name)}</th>`;
     });
+
+    tableHtml += `
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    if (labels.length === 0) {
+        tableHtml += `<tr><td colspan="${seriesData.length + 1}" class="text-center text-muted">No data available</td></tr>`;
+    } else {
+        // Render newest data points first
+        for (let i = labels.length - 1; i >= 0; i--) {
+            tableHtml += `<tr>`;
+            tableHtml += `<td><b>${escapeHtml(labels[i])}</b></td>`;
+            seriesData.forEach((s, idx) => {
+                const val = s.data[i];
+                const meta = metaList[idx];
+                const unit = (meta && meta.unit) ? ' ' + meta.unit : '';
+                
+                let displayVal = '-';
+                if (val !== null && val !== undefined) {
+                    if (typeof val === 'number') {
+                        displayVal = `${val.toFixed(2)}${unit}`;
+                    } else {
+                        displayVal = `${val}${unit}`;
+                    }
+                }
+                tableHtml += `<td>${displayVal}</td>`;
+            });
+            tableHtml += `</tr>`;
+        }
+    }
+
+    tableHtml += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    container.innerHTML = tableHtml;
 }
 
 // 7. Modals: Configure Panels (Add/Edit)
