@@ -70,7 +70,8 @@ $config_data = [
     'exclude_files' => ['nfx_local_config.php', 'pdb_local_config.php', 'config.php', 'utils.php', 'check_cols.php,', 'check_schema.php', 'check_schema_v2.php', 'temp_query.php', 'pfms_latency_map.php', 'api_network.php', 'cron.php', 'pfms_latency_map.php', 'pfms_lib.php', ],
     'custom_connections' => [],
     'primary_override' => null,
-    'history_override' => null
+    'history_override' => null,
+    'github_token' => ''
 ];
 
 // Load Configuration if exists
@@ -82,6 +83,7 @@ if (file_exists($portal_config_file)) {
         $config_data['custom_connections'] = $loaded_config['custom_connections'] ?? $config_data['custom_connections'];
         $config_data['primary_override'] = $loaded_config['primary_override'] ?? null;
         $config_data['history_override'] = $loaded_config['history_override'] ?? null;
+        $config_data['github_token'] = $loaded_config['github_token'] ?? '';
     }
 }
 
@@ -138,7 +140,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'save_settings') {
             'exclude_files' => array_values(array_filter(array_map('trim', $input['exclude_files']))),
             'custom_connections' => isset($input['custom_connections']) && is_array($input['custom_connections']) ? $input['custom_connections'] : [],
             'primary_override' => isset($input['primary_override']) ? $input['primary_override'] : null,
-            'history_override' => isset($input['history_override']) ? $input['history_override'] : null
+            'history_override' => isset($input['history_override']) ? $input['history_override'] : null,
+            'github_token' => isset($input['github_token']) ? trim($input['github_token']) : ''
         ];
         $local_config_file = $base_dir . '/portal_config_local.json';
         $bytes = file_put_contents($local_config_file, json_encode($save_data, JSON_PRETTY_PRINT));
@@ -321,6 +324,145 @@ if (isset($_GET['api']) && $_GET['api'] === 'test_core_connection') {
     exit;
 }
 
+function get_git_repository_name($base_dir) {
+    $config_file = $base_dir . '/.git/config';
+    if (file_exists($config_file)) {
+        $content = @file_get_contents($config_file);
+        if ($content && preg_match('/url\s*=\s*(https:\/\/github\.com\/|git@github\.com:)([^\s]+)\.git/i', $content, $matches)) {
+            return trim($matches[2]);
+        }
+    }
+    return 'aannddrrii294/PFMS-Toolkit'; // fallback
+}
+
+function github_api_request($url, $github_token = null) {
+    $headers = [
+        'User-Agent: PFMS-Toolkit-Updater',
+        'Accept: application/vnd.github.v3+json'
+    ];
+    if (!empty($github_token)) {
+        $headers[] = 'Authorization: token ' . trim($github_token);
+    }
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        
+        $output = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($output !== false) {
+            return [
+                'success' => ($http_code >= 200 && $http_code < 300),
+                'code' => $http_code,
+                'body' => $output,
+                'error' => $http_code >= 400 ? "HTTP Error Code: $http_code. Response: " . substr($output, 0, 150) : null
+            ];
+        } else {
+            return [
+                'success' => false,
+                'code' => 0,
+                'body' => null,
+                'error' => "cURL Error: $error"
+            ];
+        }
+    }
+
+    $opts = [
+        'http' => [
+            'method' => 'GET',
+            'header' => implode("\r\n", $headers),
+            'timeout' => 10,
+            'ignore_errors' => true
+        ],
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false
+        ]
+    ];
+    
+    $context = stream_context_create($opts);
+    $output = @file_get_contents($url, false, $context);
+    
+    if ($output !== false) {
+        $http_code = 200;
+        if (isset($http_response_header) && is_array($http_response_header)) {
+            if (preg_match('/HTTP\/\d\.\d\s+(\d+)/i', $http_response_header[0], $matches)) {
+                $http_code = (int)$matches[1];
+            }
+        }
+        return [
+            'success' => ($http_code >= 200 && $http_code < 300),
+            'code' => $http_code,
+            'body' => $output,
+            'error' => $http_code >= 400 ? "HTTP Error Code: $http_code. Response: " . substr($output, 0, 150) : null
+        ];
+    }
+
+    return [
+        'success' => false,
+        'code' => 0,
+        'body' => null,
+        'error' => 'Connection failed: Web server cannot reach api.github.com.'
+    ];
+}
+
+function github_download_file($url, $zip_path, $github_token = null) {
+    $headers = [
+        'User-Agent: PFMS-Toolkit-Updater'
+    ];
+    if (!empty($github_token)) {
+        $headers[] = 'Authorization: token ' . trim($github_token);
+    }
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        
+        $output = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($output !== false && $http_code >= 200 && $http_code < 300) {
+            return @file_put_contents($zip_path, $output) !== false;
+        }
+        return false;
+    }
+
+    $opts = [
+        'http' => [
+            'method' => 'GET',
+            'header' => implode("\r\n", $headers),
+            'timeout' => 60,
+            'follow_location' => 1
+        ],
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false
+        ]
+    ];
+    $context = stream_context_create($opts);
+    $zip_data = @file_get_contents($url, false, $context);
+    if ($zip_data !== false) {
+        return @file_put_contents($zip_path, $zip_data) !== false;
+    }
+    return false;
+}
+
 if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
     ob_clean();
     header('Content-Type: application/json');
@@ -380,25 +522,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
     }
 
     if (!$git_available) {
-        $repo = 'aannddrrii294/PFMS-Toolkit';
+        $repo = get_git_repository_name($base_dir);
         $url = "https://api.github.com/repos/{$repo}/commits/main";
+        $github_token = $config_data['github_token'] ?? '';
         
-        $opts = [
-            'http' => [
-                'method' => 'GET',
-                'header' => [
-                    'User-Agent: PFMS-Toolkit-Updater',
-                    'Accept: application/vnd.github.v3+json'
-                ],
-                'timeout' => 5
-            ]
-        ];
+        $res = github_api_request($url, $github_token);
         
-        $context = stream_context_create($opts);
-        $result = @file_get_contents($url, false, $context);
-        
-        if ($result !== false) {
-            $data = json_decode($result, true);
+        if ($res['success']) {
+            $data = json_decode($res['body'], true);
             if (is_array($data) && isset($data['sha'])) {
                 $remote_sha = $data['sha'];
                 $commit_msg = $data['commit']['message'] ?? '';
@@ -423,7 +554,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
             }
         } else {
             $response['ok'] = false;
-            $response['error'] = 'Web server cannot connect to api.github.com. Internet access is restricted or blocked on this server.';
+            $response['error'] = 'Web server cannot connect to api.github.com. Error: ' . ($res['error'] ?? 'Unknown network failure.');
         }
     }
 
@@ -491,22 +622,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
     } else {
         $logs[] = "[2/4] Downloading update ZIP from GitHub...";
         
-        $zip_url = "https://github.com/aannddrrii294/PFMS-Toolkit/archive/refs/heads/main.zip";
+        $repo = get_git_repository_name($base_dir);
+        $zip_url = "https://github.com/{$repo}/archive/refs/heads/main.zip";
         $zip_file = $base_dir . '/temp/update.zip';
         $extract_dir = $base_dir . '/temp/patch/';
+        $github_token = $config_data['github_token'] ?? '';
 
-        $opts = [
-            'http' => [
-                'method' => 'GET',
-                'header' => ['User-Agent: PandoraFMS-Custom-Portal-Updater'],
-                'timeout' => 30
-            ]
-        ];
-        $context = stream_context_create($opts);
-        $zip_data = @file_get_contents($zip_url, false, $context);
+        $download_ok = github_download_file($zip_url, $zip_file, $github_token);
 
-        if ($zip_data === false) {
-            $logs[] = "ERROR: Failed to download update ZIP from GitHub.";
+        if (!$download_ok) {
+            $logs[] = "ERROR: Failed to download update ZIP from GitHub (check credentials or token settings).";
             echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
             exit;
         }
@@ -514,8 +639,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
         if (!is_dir(dirname($zip_file))) {
             @mkdir(dirname($zip_file), 0777, true);
         }
-        @file_put_contents($zip_file, $zip_data);
-        $logs[] = "Downloaded ZIP (" . number_format(strlen($zip_data)) . " bytes).";
+        $logs[] = "Downloaded ZIP successfully.";
 
         if (!class_exists('ZipArchive')) {
             $logs[] = "ERROR: PHP ZipArchive extension is not enabled.";
@@ -949,6 +1073,12 @@ if (!empty($current_page)) {
                 <div class="form-hint">Separate file names with commas (,). 'custom-index.php' file will always be excluded automatically.</div>
             </div>
 
+            <div class="form-group" style="margin-top: 15px;">
+                <label class="form-label">GitHub Personal Access Token (PAT)</label>
+                <input type="password" class="form-control" id="cfg_github_token" style="min-height: auto; height: 38px; font-family: inherit !important; font-size: 13px !important;" placeholder="Optional (ghp_xxxxxxxxxxxxxxxxx)">
+                <div class="form-hint">Optional. Input a GitHub Personal Access Token if the toolkit repository is private or to avoid rate-limiting and connection errors with api.github.com.</div>
+            </div>
+
             <div class="form-group" style="margin-top: 25px; border-top: 1px solid #e0e4e8; padding-top: 20px;">
                 <label class="form-label" style="display: flex; align-items: center; gap: 5px; margin-bottom: 12px; color: #0b1a26; font-weight: 600;">
                     <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">database</span>
@@ -1315,6 +1445,7 @@ if (!empty($current_page)) {
         
         document.getElementById('cfg_dirs').value = dirs;
         document.getElementById('cfg_files').value = files;
+        document.getElementById('cfg_github_token').value = currentConfig.github_token || '';
 
         // Deep copy custom connections
         customConnectionsCopy = JSON.parse(JSON.stringify(currentConfig.custom_connections || []));
@@ -1762,7 +1893,8 @@ if (!empty($current_page)) {
             exclude_files: filesInput.split(','),
             custom_connections: customConnectionsCopy,
             primary_override: primaryOverrideCopy,
-            history_override: historyOverrideCopy
+            history_override: historyOverrideCopy,
+            github_token: document.getElementById('cfg_github_token').value.trim()
         };
 
         try {
