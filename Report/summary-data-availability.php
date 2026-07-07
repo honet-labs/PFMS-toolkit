@@ -111,7 +111,8 @@ function map_dynamic_state($raw, $arr_up, $arr_off) {
 // =====================================================================
 $api = $_GET['api'] ?? '';
 if ($api === 'get_agents' && $db_status) {
-    ob_clean(); header('Content-Type: application/json');
+    if (ob_get_level() > 0) ob_clean();
+    header('Content-Type: application/json');
     $agents = [];
     foreach ($target_nodes as $node => $active_pdo) {
         if (!$active_pdo) continue;
@@ -127,7 +128,8 @@ if ($api === 'get_agents' && $db_status) {
     echo json_encode($agents); exit;
 }
 if ($api === 'get_modules' && $db_status) {
-    ob_clean(); header('Content-Type: application/json');
+    if (ob_get_level() > 0) ob_clean();
+    header('Content-Type: application/json');
     $agent_filter = $_GET['agent_filter'] ?? '';
     $modules = [];
     if (!empty($agent_filter)) {
@@ -192,7 +194,12 @@ if ($preset === 'custom' && $from_s !== '' && $to_s !== '') {
     $to_s = $to_dt->format('Y-m-d H:i:s');
 }
 
-// if ($db_status && !empty($agent) && empty($errors)) {
+$MAX_TARGETS = 50;
+$errors = [];
+$results = [];
+$grand_total_sec = 0;
+
+if ($db_status && !empty($agent) && empty($errors)) {
     try {
         $parsed_agent = parse_node_from_filter($agent);
         $nodes_to_search = $parsed_agent['node'] ? [$parsed_agent['node']] : array_keys($target_nodes);
@@ -209,7 +216,7 @@ if ($preset === 'custom' && $from_s !== '' && $to_s !== '') {
             
             $node_label = get_node_label($node);
             
-            $st = $active_pdo->prepare("SELECT m.id_agente_modulo, a.alias as agent_alias, a.nombre as agent_name, m.nombre as module_name FROM tagente_modulo m JOIN tagente a ON a.id_agente = a.id_agente WHERE (a.alias LIKE ? OR a.nombre LIKE ?) AND m.nombre LIKE ? ORDER BY a.alias ASC LIMIT ?");
+            $st = $active_pdo->prepare("SELECT m.id_agente_modulo, a.alias as agent_alias, a.nombre as agent_name, m.nombre as module_name FROM tagente_modulo m JOIN tagente a ON m.id_agente = a.id_agente WHERE (a.alias LIKE ? OR a.nombre LIKE ?) AND m.nombre LIKE ? ORDER BY a.alias ASC LIMIT ?");
             $st->bindValue(1, $ag_kw, PDO::PARAM_STR);
             $st->bindValue(2, $ag_kw, PDO::PARAM_STR);
             $st->bindValue(3, $mod_kw, PDO::PARAM_STR);
@@ -333,7 +340,7 @@ if ($preset === 'custom' && $from_s !== '' && $to_s !== '') {
 // 7. EXPORT LOGIC (TXT SINGLE / TXT ZIP / CSV)
 // =====================================================================
 if (!empty($export) && !empty($results)) {
-    ob_clean();
+    if (ob_get_level() > 0) ob_clean();
     $safe = preg_replace('/[^A-Za-z0-9_\-]/','_', $agent ?: 'agent');
     $base_fn = "PowerOFF_Summary_{$safe}_".date('Ymd_His');
 

@@ -487,22 +487,80 @@ if ($api === 'chart_data' && $db_status) {
             color: #ef4444;
         }
 
-        .header-section {
-            padding: 15px 30px;
-            background: #ffffff;
+        .pandora-header-top {
+            background-color: #ffffff;
             border-bottom: 1px solid #e0e4e8;
+            height: 60px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            justify-content: space-between;
+            padding: 0 25px;
+            z-index: 10;
+        }
+        .header-logo {
+            height: 24px;
+            width: auto;
+        }
+        .header-divider {
+            width: 1px;
+            height: 28px;
+            background-color: #dce1e5;
+            margin: 0 20px;
+        }
+        .header-title-box {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+            margin-right: 40px;
+        }
+        .header-title-box .main-title {
+            font-size: 14px !important;
+            font-weight: normal !important;
+            color: #0b1a26 !important;
+        }
+        .header-title-box .sub-title {
+            font-size: 12px !important;
+            font-weight: normal !important;
+            color: #7f8c8d !important;
+        }
+        .nav-icon-btn {
+            color: #4a5568 !important;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 36px;
+            width: 36px;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+        
+        .pandora-header-bottom {
+            background-color: #f4f6f8;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .breadcrumb-box {
+            display: flex;
+            flex-direction: column;
+        }
+        .page-breadcrumb {
+            font-size: 11px !important;
+            color: #64748b !important;
+            margin-bottom: 4px;
+            font-weight: normal !important;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .page-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #0b1a26;
+            font-size: 18px !important;
+            color: #0b1a26 !important;
             margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-weight: 600 !important;
+            line-height: 1.2;
         }
 
         /* Print styles */
@@ -513,7 +571,7 @@ if ($api === 'chart_data' && $db_status) {
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            .no-print, .header-section, .modal-overlay, #dashboard-list-view, .btn-pfms, .btn-action-panel {
+            .no-print, .pandora-header-bottom, .modal-overlay, #dashboard-list-view, .btn-pfms, .btn-action-panel {
                 display: none !important;
             }
             #dashboard-detail-view {
@@ -537,12 +595,22 @@ if ($api === 'chart_data' && $db_status) {
 </head>
 <body>
 
-<div class="header-section no-print">
+<div class="pandora-header-top no-print">
+    <div class="header-left">
+        <img src="/pandora_console/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
+        <div class="header-divider"></div>
+        <div class="header-title-box"><span class="main-title">Pandora FMS</span><span class="sub-title">PFMS-Toolkit</span></div>
+    </div>
+    <div class="header-right"><a href="/pandora_console/index.php" class="nav-icon-btn"><span class="material-symbols-outlined">home</span></a></div>
+</div>
+
+<div class="pandora-header-bottom no-print">
     <div class="d-flex align-items-center gap-3">
         <button id="header-back-btn" class="btn-pfms btn-outline-pfms d-none" onclick="showDashboardList()">
             <span class="material-symbols-outlined">arrow_back</span> Back
         </button>
-        <div>
+        <div class="breadcrumb-box">
+            <span class="page-breadcrumb">PANDORA CONSOLE / CUSTOM / PANEL / REPORT / VISUAL CHART EXPORT</span>
             <h1 class="page-title" id="page-nav-header">Visual Chart Reports</h1>
         </div>
     </div>

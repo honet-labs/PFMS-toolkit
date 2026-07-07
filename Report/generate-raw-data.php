@@ -141,8 +141,15 @@ if ($preset === 'custom') {
         $from_s = date('Y-m-d 00:00:00');
         $to_s   = date('Y-m-d 23:59:59');
     }
-    $from_epoch = strtotime($from_s);
-    $to_epoch   = strtotime($to_s);
+    try {
+        $from_dt = new DateTime($from_s, new DateTimeZone($tz));
+        $to_dt   = new DateTime($to_s, new DateTimeZone($tz));
+        $from_epoch = $from_dt->getTimestamp();
+        $to_epoch   = $to_dt->getTimestamp();
+    } catch (Exception $e) {
+        $from_epoch = strtotime($from_s);
+        $to_epoch   = strtotime($to_s);
+    }
 } else {
     $from_dt = new DateTime('now', new DateTimeZone($tz));
     $to_dt = clone $from_dt;
@@ -234,41 +241,15 @@ if ($db_status && (!empty($agent) || !empty($pairs_raw)) && empty($errors)) {
         if (!empty($modIds)) {
             $df_norm = strtolower($data_filter);
             
-            $queries = [
-                'num' => "SELECT FROM_UNIXTIME(utimestamp) as dt, datos, utimestamp FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT 2000",
-                'str' => "SELECT FROM_UNIXTIME(utimestamp) as dt, datos, utimestamp FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT 2000"
-            ];
-
             foreach ($modIds as $prefixed_mid) {
                 if ($total_fetched >= $global_limit) { $limit_hit = true; break; }
                 
-                $parsed_mid = parse_node_id($prefixed_mid);
-                $node = $parsed_mid['node'];
-                $real_id = $parsed_mid['id'];
-                
-                $active_pdo = $target_nodes[$node] ?? null;
-                if (!$active_pdo) continue;
-                
-                $active_history_pdo = ($node === 'primary') ? $pdoHist : $active_pdo;
-                
                 $mInfo = $moduleMap[$prefixed_mid];
-                $data_chunks = [];
-
-                $stNum = $active_pdo->prepare($queries['num']);
-                $stStr = $active_pdo->prepare($queries['str']);
                 
-                $stNum->execute([$real_id, $from_epoch, $to_epoch]); while($d = $stNum->fetch()) $data_chunks[] = $d;
-                $stStr->execute([$real_id, $from_epoch, $to_epoch]); while($d = $stStr->fetch()) $data_chunks[] = $d;
-                
-                if ($active_history_pdo) {
-                    $stNumHist = $active_history_pdo->prepare($queries['num']);
-                    $stStrHist = $active_history_pdo->prepare($queries['str']);
-                    
-                    $stNumHist->execute([$real_id, $from_epoch, $to_epoch]); while($d = $stNumHist->fetch()) $data_chunks[] = $d;
-                    $stStrHist->execute([$real_id, $from_epoch, $to_epoch]); while($d = $stStrHist->fetch()) $data_chunks[] = $d;
-                }
+                // Fetch using our central helper which handles active/history, missing tables, fallbacks
+                $modHist = get_module_history_data($pdo, $pdoHist, $prefixed_mid, $from_epoch, $to_epoch, $global_limit, 'DESC');
 
-                foreach ($data_chunks as $d) {
+                foreach ($modHist as $d) {
                     if ($total_fetched >= $global_limit) { $limit_hit = true; break 2; }
                     
                     $val = (string)$d['datos'];
@@ -283,15 +264,24 @@ if ($db_status && (!empty($agent) || !empty($pairs_raw)) && empty($errors)) {
                     if ($val === '1') $statusStr = "UP/ON";
                     elseif ($val === '0') $statusStr = "CRITICAL/OFF";
 
+                    // Format the timestamp using the user-selected timezone $tz
+                    try {
+                        $dtObj = new DateTime('@' . $d['ts']);
+                        $dtObj->setTimezone(new DateTimeZone($tz));
+                        $formatted_dt = $dtObj->format('Y-m-d H:i:s');
+                    } catch (Exception $e) {
+                        $formatted_dt = date('Y-m-d H:i:s', $d['ts']);
+                    }
+
                     $rows[] = [
-                        'ts' => $d['dt'], 
+                        'ts' => $formatted_dt, 
                         'agent' => pretty_text($mInfo['agent']), 
                         'group' => pretty_text($mInfo['group_name'] ?: '-'),
                         'ip' => $mInfo['ip'] ?: '-', 
                         'module' => pretty_text($mInfo['module']), 
                         'unit' => pretty_text($mInfo['module_unit'] ?: ''),
                         'data' => pretty_text($statusStr), 
-                        'uts' => $d['utimestamp']
+                        'uts' => $d['ts']
                     ];
                     $total_fetched++;
                 }
@@ -687,7 +677,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
         input.addEventListener('focus', function() { renderList(this.value); });
         input.addEventListener('input', function() { renderList(this.value); });
-        input.addEventListener('blur', function() { dropdown.style.display = 'none'; });
+        input.addEventListener('blur', function() { 
+            setTimeout(() => { dropdown.style.display = 'none'; }, 250); 
+        });
     }
 
     setupDropdown(agentInput, agentDropdown, () => agentsList, true);
