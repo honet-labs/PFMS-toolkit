@@ -747,11 +747,21 @@ if ($api === 'db_nodes_status') {
     }
     
     // History node
+    $history_tokens = [];
+    if ($db_status) {
+        try {
+            $st = $pdo->query("SELECT token, value FROM tconfig WHERE token LIKE '%history%'");
+            if ($st) {
+                $history_tokens = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+            }
+        } catch (Throwable $e) {}
+    }
     $nodes[] = [
         'id' => 'history',
         'name' => 'Default Historical DB',
         'status' => $history_db_status ? 'connected' : ($history_db_host ? 'failed' : 'not_configured'),
-        'type' => 'history_only'
+        'type' => 'history_only',
+        'tconfig_history_tokens' => $history_tokens
     ];
     
     // Custom nodes

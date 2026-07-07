@@ -173,8 +173,17 @@ $arr_off = array_filter(array_map('trim', explode(',', strtolower($val_off))));
 
 $from_epoch = null; $to_epoch = null;
 if ($preset === 'custom' && $from_s !== '' && $to_s !== '') {
-    $from_epoch = strtotime($from_s);
-    $to_epoch   = strtotime($to_s);
+    try {
+        $from_dt = new DateTime($from_s, new DateTimeZone($tz));
+        $to_dt   = new DateTime($to_s, new DateTimeZone($tz));
+        $from_epoch = $from_dt->getTimestamp();
+        $to_epoch   = $to_dt->getTimestamp();
+        $from_s = $from_dt->format('Y-m-d H:i:s');
+        $to_s = $to_dt->format('Y-m-d H:i:s');
+    } catch (Exception $e) {
+        $from_epoch = strtotime($from_s);
+        $to_epoch   = strtotime($to_s);
+    }
 } else {
     $from_dt = new DateTime('now', new DateTimeZone($tz));
     $to_dt = clone $from_dt;
@@ -768,8 +777,12 @@ document.addEventListener("DOMContentLoaded", function() {
             overlay.style.display = 'none';
         });
 
+    let lastFetchedAgent = '';
     function fetchModulesForAgent(agentKw) {
         if(!agentKw || agentKw.trim() === '') return;
+        agentKw = agentKw.trim();
+        if (agentKw === lastFetchedAgent) return;
+        lastFetchedAgent = agentKw;
         
         moduleSpinner.style.display = 'block';
         fetch(apiPrefix + 'get_modules&agent_filter=' + encodeURIComponent(agentKw))
@@ -791,6 +804,10 @@ document.addEventListener("DOMContentLoaded", function() {
     agentInput.addEventListener('blur', function() {
         setTimeout(() => fetchModulesForAgent(this.value), 200); 
     });
+
+    if (agentInput.value && agentInput.value.trim() !== '') {
+        fetchModulesForAgent(agentInput.value);
+    }
 
     function setupDropdown(input, dropdown, getListFn, isAgentField) {
         function renderList(val) {
@@ -823,7 +840,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
         input.addEventListener('focus', function() { renderList(this.value); });
         input.addEventListener('input', function() { renderList(this.value); });
-        input.addEventListener('blur', function() { dropdown.style.display = 'none'; });
+        input.addEventListener('blur', function() { 
+            setTimeout(() => { dropdown.style.display = 'none'; }, 250); 
+        });
     }
 
     setupDropdown(agentInput, agentDropdown, () => agentsList, true);

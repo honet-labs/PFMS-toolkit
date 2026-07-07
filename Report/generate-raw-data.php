@@ -246,6 +246,57 @@ if ($db_status && (!empty($agent) || !empty($pairs_raw)) && empty($errors)) {
                 
                 $mInfo = $moduleMap[$prefixed_mid];
                 
+                if (isset($_GET['debug'])) {
+                    $parsed_mid = parse_node_id($prefixed_mid);
+                    $node = $parsed_mid['node'];
+                    $real_id = $parsed_mid['id'];
+                    $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+                    
+                    $debug_info = "DEBUG for ID $prefixed_mid (real $real_id, node $node): ";
+                    $debug_info .= "Active PDO: " . ($active_pdo ? 'Connected' : 'NULL') . ". ";
+                    $debug_info .= "History PDO: " . ($pdoHist ? 'Connected' : 'NULL') . ". ";
+                    $debug_info .= "Time Range: $from_s ($from_epoch) to $to_s ($to_epoch) in $tz. ";
+                    
+                    if ($active_pdo) {
+                        try {
+                            $stD = $active_pdo->prepare("SELECT MIN(utimestamp) as min_t, MAX(utimestamp) as max_t, COUNT(*) as cnt FROM tagente_datos WHERE id_agente_modulo = ?");
+                            $stD->execute([$real_id]);
+                            $resD = $stD->fetch();
+                            $debug_info .= "Active tagente_datos: [cnt: {$resD['cnt']}, min: " . ($resD['min_t'] ? date('Y-m-d H:i:s', $resD['min_t']) : 'N/A') . ", max: " . ($resD['max_t'] ? date('Y-m-d H:i:s', $resD['max_t']) : 'N/A') . "]. ";
+                        } catch (Throwable $e) {
+                            $debug_info .= "Active tagente_datos query failed: " . $e->getMessage() . ". ";
+                        }
+                        try {
+                            $stS = $active_pdo->prepare("SELECT MIN(utimestamp) as min_t, MAX(utimestamp) as max_t, COUNT(*) as cnt FROM tagente_datos_string WHERE id_agente_modulo = ?");
+                            $stS->execute([$real_id]);
+                            $resS = $stS->fetch();
+                            $debug_info .= "Active tagente_datos_string: [cnt: {$resS['cnt']}, min: " . ($resS['min_t'] ? date('Y-m-d H:i:s', $resS['min_t']) : 'N/A') . ", max: " . ($resS['max_t'] ? date('Y-m-d H:i:s', $resS['max_t']) : 'N/A') . "]. ";
+                        } catch (Throwable $e) {
+                            $debug_info .= "Active tagente_datos_string query failed: " . $e->getMessage() . ". ";
+                        }
+                    }
+                    
+                    if ($pdoHist && $node === 'primary') {
+                        try {
+                            $stH = $pdoHist->prepare("SELECT MIN(utimestamp) as min_t, MAX(utimestamp) as max_t, COUNT(*) as cnt FROM tagente_datos WHERE id_agente_modulo = ?");
+                            $stH->execute([$real_id]);
+                            $resH = $stH->fetch();
+                            $debug_info .= "History tagente_datos: [cnt: {$resH['cnt']}, min: " . ($resH['min_t'] ? date('Y-m-d H:i:s', $resH['min_t']) : 'N/A') . ", max: " . ($resH['max_t'] ? date('Y-m-d H:i:s', $resH['max_t']) : 'N/A') . "]. ";
+                        } catch (Throwable $e) {
+                            $debug_info .= "History tagente_datos query failed: " . $e->getMessage() . ". ";
+                        }
+                        try {
+                            $stHS = $pdoHist->prepare("SELECT MIN(utimestamp) as min_t, MAX(utimestamp) as max_t, COUNT(*) as cnt FROM tagente_datos_string WHERE id_agente_modulo = ?");
+                            $stHS->execute([$real_id]);
+                            $resHS = $stHS->fetch();
+                            $debug_info .= "History tagente_datos_string: [cnt: {$resHS['cnt']}, min: " . ($resHS['min_t'] ? date('Y-m-d H:i:s', $resHS['min_t']) : 'N/A') . ", max: " . ($resHS['max_t'] ? date('Y-m-d H:i:s', $resHS['max_t']) : 'N/A') . "]. ";
+                        } catch (Throwable $e) {
+                            $debug_info .= "History tagente_datos_string query failed: " . $e->getMessage() . ". ";
+                        }
+                    }
+                    $errors[] = $debug_info;
+                }
+
                 // Fetch using our central helper which handles active/history, missing tables, fallbacks
                 $modHist = get_module_history_data($pdo, $pdoHist, $prefixed_mid, $from_epoch, $to_epoch, $global_limit, 'DESC');
 
@@ -622,8 +673,12 @@ document.addEventListener("DOMContentLoaded", function() {
             overlay.style.display = 'none';
         });
 
+    let lastFetchedAgent = '';
     function fetchModulesForAgent(agentKw) {
         if(!agentKw || agentKw.trim() === '') return;
+        agentKw = agentKw.trim();
+        if (agentKw === lastFetchedAgent) return;
+        lastFetchedAgent = agentKw;
         
         moduleSpinner.style.display = 'block';
         fetch(apiPrefix + 'get_modules&agent_filter=' + encodeURIComponent(agentKw))
@@ -645,6 +700,10 @@ document.addEventListener("DOMContentLoaded", function() {
     agentInput.addEventListener('blur', function() {
         setTimeout(() => fetchModulesForAgent(this.value), 200); 
     });
+
+    if (agentInput.value && agentInput.value.trim() !== '') {
+        fetchModulesForAgent(agentInput.value);
+    }
 
     function setupDropdown(input, dropdown, getListFn, isAgentField) {
         function renderList(val) {
