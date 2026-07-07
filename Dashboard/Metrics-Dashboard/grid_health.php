@@ -15,6 +15,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / RACK HEATM
 $PANDORA_BASE_URL = "/pandora_console";
 $v = time(); 
 
+$isPure = isset($_GET['pure']);
+$isStandalone = isset($_GET['standalone']) || isset($_GET['pure']) || (isset($_GET['s']) && $_GET['s'] === '1');
+
 // 1. CONFIG LOADING & DB INITIALIZATION
 require_once __DIR__ . '/../../includes/db-connection.php';
 $CONFIG_FILE = __DIR__ . '/grid-health-master.json';
@@ -55,22 +58,50 @@ $current_config = $current_dashboard ?: [ 'id' => 'default', 'title' => 'Main Da
 $show_list = (!$dash_id && !$isPure && !$panel_id);
 $agentAliasMap = [];
 if ($db_status) {
-    try {
-        $resA = $pdo->query("SELECT id_agente, alias FROM tagente WHERE disabled = 0");
-        while ($rA = $resA->fetch(PDO::FETCH_ASSOC)) { 
-            $agentAliasMap[strtolower(trim($rA['alias']))] = 'primary:' . $rA['id_agente']; 
-        }
-    } catch (Exception $e) {}
-
-    global $custom_pdos;
-    if (!empty($custom_pdos)) {
-        foreach ($custom_pdos as $cid => $cpdo) {
-            try {
-                $resA = $cpdo->query("SELECT id_agente, alias FROM tagente WHERE disabled = 0");
-                while ($rA = $resA->fetch(PDO::FETCH_ASSOC)) { 
-                    $agentAliasMap[strtolower(trim($rA['alias']))] = $cid . ':' . $rA['id_agente']; 
+    // Collect only configured keys from panels to lookup
+    $keysToLookup = [];
+    if (isset($current_config['panels']) && is_array($current_config['panels'])) {
+        foreach ($current_config['panels'] as $p) {
+            $gm = trim($p['global_module'] ?? '');
+            $ovs = $p['overrides'] ?? [];
+            if ($gm !== '') {
+                $rows = isset($p['rows']) && is_array($p['rows']) ? $p['rows'] : [];
+                $cols = isset($p['cols']) && is_array($p['cols']) ? $p['cols'] : [];
+                $pattern = $p['mapping_pattern'] ?? '{row}-{col}';
+                foreach ($rows as $r) {
+                    foreach ($cols as $c) {
+                        $key = str_replace(['{row}', '{col}'], [$r, $c], $pattern);
+                        if (!isset($ovs[$key])) {
+                            $keysToLookup[] = strtolower(trim($key));
+                        }
+                    }
                 }
-            } catch (Exception $e) {}
+            }
+        }
+    }
+
+    if (!empty($keysToLookup)) {
+        $keysToLookup = array_unique($keysToLookup);
+        $placeholders = implode(',', array_fill(0, count($keysToLookup), '?'));
+        try {
+            $stmt = $pdo->prepare("SELECT id_agente, alias FROM tagente WHERE disabled = 0 AND LOWER(TRIM(alias)) IN ($placeholders)");
+            $stmt->execute($keysToLookup);
+            while ($rA = $stmt->fetch(PDO::FETCH_ASSOC)) { 
+                $agentAliasMap[strtolower(trim($rA['alias']))] = 'primary:' . $rA['id_agente']; 
+            }
+        } catch (Exception $e) {}
+
+        global $custom_pdos;
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                try {
+                    $stmt = $cpdo->prepare("SELECT id_agente, alias FROM tagente WHERE disabled = 0 AND LOWER(TRIM(alias)) IN ($placeholders)");
+                    $stmt->execute($keysToLookup);
+                    while ($rA = $stmt->fetch(PDO::FETCH_ASSOC)) { 
+                        $agentAliasMap[strtolower(trim($rA['alias']))] = $cid . ':' . $rA['id_agente']; 
+                    }
+                } catch (Exception $e) {}
+            }
         }
     }
 }
@@ -89,29 +120,70 @@ if ($api === 'get_master') {
     ob_clean(); header('Content-Type: application/json');
     echo json_encode($master_config); exit;
 }
+if ($api === 'search_agents' && $db_status) {
+    ob_clean(); header('Content-Type: application/json');
+    $q = trim($_GET['q'] ?? '');
+    
+    $agents = [];
+    $limit = 100;
+    
+    // Primary DB agents
+    try {
+        $where = "WHERE disabled = 0";
+        $params = [];
+        if ($q !== '') {
+            $where .= " AND alias LIKE ?";
+            $params[] = "%$q%";
+        }
+        $sql = "SELECT id_agente AS id, alias FROM tagente $where ORDER BY alias ASC LIMIT $limit";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        while($a = $stmt->fetch()) {
+            $agents[] = ['id' => 'primary:' . $a['id'], 'alias' => pretty_text($a['alias'])];
+        }
+    } catch (Throwable $e) {}
+    
+    // Custom DB agents
+    global $custom_pdos, $custom_connections;
+    if (!empty($custom_pdos) && count($agents) < $limit) {
+        foreach ($custom_pdos as $cid => $cpdo) {
+            $cname = '';
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
+            }
+            if (empty($cname)) $cname = $cid;
+            try {
+                $where = "WHERE disabled = 0";
+                $params = [];
+                if ($q !== '') {
+                    $where .= " AND alias LIKE ?";
+                    $params[] = "%$q%";
+                }
+                $sql = "SELECT id_agente AS id, alias FROM tagente $where ORDER BY alias ASC LIMIT " . ($limit - count($agents));
+                $stmt = $cpdo->prepare($sql);
+                $stmt->execute($params);
+                while($a = $stmt->fetch()) {
+                    $agents[] = ['id' => $cid . ':' . $a['id'], 'alias' => '[' . $cname . '] ' . pretty_text($a['alias'])];
+                }
+            } catch (Throwable $e) {}
+        }
+    }
+    
+    echo json_encode(['agents' => $agents]); exit;
+}
 if ($api === 'get_resources' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
     $groups = [];
-    $agents = [];
     
-    // Primary DB groups and agents
+    // Primary DB groups
     try {
         $primary_groups = $pdo->query("SELECT id_grupo as id, nombre as name FROM tgrupo ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($primary_groups as $g) {
             $groups[] = ['id' => 'primary:' . $g['id'], 'name' => '[Primary] ' . pretty_text($g['name'])];
         }
-        $primary_agents = $pdo->query("SELECT id_agente as id, alias, nombre, id_grupo FROM tagente WHERE disabled = 0 ORDER BY alias ASC")->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($primary_agents as $a) {
-            $agents[] = [
-                'id' => 'primary:' . $a['id'],
-                'alias' => pretty_text($a['alias']),
-                'nombre' => $a['nombre'],
-                'id_grupo' => 'primary:' . $a['id_grupo']
-            ];
-        }
     } catch (Exception $e) {}
     
-    // Custom DB groups and agents
+    // Custom DB groups
     global $custom_pdos, $custom_connections;
     if (!empty($custom_pdos)) {
         foreach ($custom_pdos as $cid => $cpdo) {
@@ -126,21 +198,11 @@ if ($api === 'get_resources' && $db_status) {
                 foreach ($custom_groups as $g) {
                     $groups[] = ['id' => $cid . ':' . $g['id'], 'name' => '[' . $cname . '] ' . pretty_text($g['name'])];
                 }
-                
-                $custom_agents = $cpdo->query("SELECT id_agente as id, alias, nombre, id_grupo FROM tagente WHERE disabled = 0 ORDER BY alias ASC")->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($custom_agents as $a) {
-                    $agents[] = [
-                        'id' => $cid . ':' . $a['id'],
-                        'alias' => pretty_text($a['alias']),
-                        'nombre' => $a['nombre'],
-                        'id_grupo' => $cid . ':' . $a['id_grupo']
-                    ];
-                }
             } catch (Exception $e) {}
         }
     }
     
-    echo json_encode(['groups' => $groups, 'agents' => $agents]); exit;
+    echo json_encode(['groups' => $groups, 'agents' => []]); exit;
 }
 if ($api === 'get_agent_modules' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
@@ -162,52 +224,166 @@ $allModuleStatus = [];
 if ($db_status) {
     try {
         global $custom_pdos;
+        
+        // 1. Gather all (agent_id, module_name) tuples to fetch
+        $toFetch = [];
         foreach ($current_config['panels'] as $p) {
-            $gm = trim($p['global_module'] ?? ''); $ovs = $p['overrides'] ?? [];
-            $toFetch = [];
-            foreach($ovs as $ov){ if($ov['agent_id']&&$ov['module_name']) $toFetch[]=['aid'=>$ov['agent_id'],'mname'=>$ov['module_name']]; }
-            if($gm !== ''){
-                foreach($p['rows'] as $r){ foreach($p['cols'] as $c){
-                    $key = str_replace(['{row}','{col}'],[$r,$c],$p['mapping_pattern']);
-                    if(!isset($ovs[$key])){ $aid=$agentAliasMap[strtolower(trim($key))]??null; if($aid) $toFetch[]=['aid'=>$aid,'mname'=>$gm]; }
-                }}
+            $gm = trim($p['global_module'] ?? '');
+            $ovs = $p['overrides'] ?? [];
+            foreach ($ovs as $ov) {
+                if ($ov['agent_id'] && $ov['module_name']) {
+                    $toFetch[] = ['aid' => $ov['agent_id'], 'mname' => $ov['module_name']];
+                }
             }
-            foreach ($toFetch as $mtf) {
-                $aidRaw = (string)$mtf['aid']; $mname = trim((string)$mtf['mname']);
-                $ck = $aidRaw.'|'.strtolower(trim($mname)); if (isset($allModuleStatus[$ck])) continue;
-                
-                $parsed = parse_node_id($aidRaw);
-                $active_pdo = ($parsed['node'] === 'primary') ? $pdo : ($custom_pdos[$parsed['node']] ?? null);
-                
-                $v_status = 4; $last_upd = 'N/A';
-                if ($active_pdo && $parsed['id'] > 0) {
-                    if ($mname === '[ALL MODULES]') {
-                        $sqlM = "SELECT te.estado, te.utimestamp FROM tagente_modulo m JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo WHERE m.disabled = 0 AND m.id_agente = ? ORDER BY CASE te.estado WHEN 1 THEN 0 WHEN 2 THEN 1 WHEN 3 THEN 2 WHEN 0 THEN 3 ELSE 4 END ASC";
-                        $stmtM = $active_pdo->prepare($sqlM); $stmtM->execute([$parsed['id']]);
-                        $rowsM = $stmtM->fetchAll(PDO::FETCH_ASSOC);
-                        if ($rowsM) {
-                            $v_status = $rowsM[0]['estado'];
-                            $maxTs = 0; foreach($rowsM as $rm){ if($rm['utimestamp'] > $maxTs) $maxTs = $rm['utimestamp']; }
-                            $last_upd = ($maxTs > 0) ? date("Y-m-d H:i:s", $maxTs) : 'N/A';
-                        }
-                    } else {
-                        $sqlM = "SELECT te.datos, COALESCE(te.estado, 4) as estado, te.utimestamp FROM tagente_modulo m JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo WHERE m.disabled = 0 AND m.id_agente = ? AND (m.nombre = ? OR m.nombre LIKE ?)";
-                        $stmtM = $active_pdo->prepare($sqlM); $stmtM->execute([$parsed['id'], $mname, '%' . str_replace(' ', '%', $mname) . '%']);
-                        $rowM = $stmtM->fetch(PDO::FETCH_ASSOC);
-                        if ($rowM) {
-                            $rawVal = strtoupper(trim((string)$rowM['datos'])); $v_status = (int)$rowM['estado'];
-                            if (preg_match('/^[01](\.0+)?$/', $rawVal)) { $numCheck = (float)$rawVal; $v_status = ($numCheck >= 1) ? 0 : 1; }
-                            if (strpos($rawVal,'RUNNING')!==false||strpos($rawVal,'OK')!==false||strpos($rawVal,'UP')!==false) $v_status=0;
-                            elseif (strpos($rawVal,'STOPPED')!==false||strpos($rawVal,'DOWN')!==false||strpos($rawVal,'CRIT')!==false) $v_status=1;
-                            elseif (strpos($rawVal,'WARN')!==false) $v_status=2;
-                            $last_upd = ($rowM['utimestamp'] > 0) ? date("Y-m-d H:i:s", $rowM['utimestamp']) : 'N/A';
+            if ($gm !== '') {
+                foreach ($p['rows'] as $r) {
+                    foreach ($p['cols'] as $c) {
+                        $key = str_replace(['{row}', '{col}'], [$r, $c], $p['mapping_pattern']);
+                        if (!isset($ovs[$key])) {
+                            $aid = $agentAliasMap[strtolower(trim($key))] ?? null;
+                            if ($aid) {
+                                $toFetch[] = ['aid' => $aid, 'mname' => $gm];
+                            }
                         }
                     }
                 }
-                $allModuleStatus[$ck] = ['status' => $v_status, 'last_update' => $last_upd];
             }
         }
-    } catch (Exception $e) {}
+
+        // 2. Group agents by node to query in batches
+        $node_agents = []; // [node => [agent_id => true]]
+        foreach ($toFetch as $mtf) {
+            $parsed = parse_node_id($mtf['aid']);
+            $node = $parsed['node'];
+            $agent_id = (int)$parsed['id'];
+            if ($agent_id > 0) {
+                $node_agents[$node][$agent_id] = true;
+            }
+        }
+
+        // 3. Execute batch query per node
+        $fetched_data = []; // [node => [agent_id => [module_name_lower => ['status' => ..., 'utimestamp' => ...]]]]
+        $agent_all_modules = []; // [node => [agent_id => [['status' => ..., 'utimestamp' => ...]]]]
+
+        foreach ($node_agents as $node => $agentsMap) {
+            $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+            if (!$active_pdo) continue;
+
+            $agent_ids = array_keys($agentsMap);
+            if (empty($agent_ids)) continue;
+
+            // Chunk agent IDs if there are too many to prevent SQL query limits
+            $chunks = array_chunk($agent_ids, 500);
+            foreach ($chunks as $chunk) {
+                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                $sql = "SELECT m.id_agente, m.nombre AS module_name, te.datos, COALESCE(te.estado, 4) as estado, te.utimestamp
+                        FROM tagente_modulo m
+                        JOIN tagente_estado te ON m.id_agente_modulo = te.id_agente_modulo
+                        WHERE m.disabled = 0 AND m.id_agente IN ($placeholders)";
+                
+                $stmt = $active_pdo->prepare($sql);
+                $stmt->execute($chunk);
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($rows as $row) {
+                    $aid = (int)$row['id_agente'];
+                    $mName = trim($row['module_name']);
+                    $mNameLower = strtolower($mName);
+                    
+                    $rawVal = strtoupper(trim((string)$row['datos']));
+                    $v_status = (int)$row['estado'];
+
+                    // Replicate original custom status evaluation
+                    if (preg_match('/^[01](\.0+)?$/', $rawVal)) {
+                        $numCheck = (float)$rawVal;
+                        $v_status = ($numCheck >= 1) ? 0 : 1;
+                    }
+                    if (strpos($rawVal, 'RUNNING') !== false || strpos($rawVal, 'OK') !== false || strpos($rawVal, 'UP') !== false) {
+                        $v_status = 0;
+                    } elseif (strpos($rawVal, 'STOPPED') !== false || strpos($rawVal, 'DOWN') !== false || strpos($rawVal, 'CRIT') !== false) {
+                        $v_status = 1;
+                    } elseif (strpos($rawVal, 'WARN') !== false) {
+                        $v_status = 2;
+                    }
+
+                    $utimestamp = (int)$row['utimestamp'];
+
+                    $fetched_data[$node][$aid][$mNameLower] = [
+                        'status' => $v_status,
+                        'utimestamp' => $utimestamp
+                    ];
+                    $agent_all_modules[$node][$aid][] = [
+                        'status' => $v_status,
+                        'utimestamp' => $utimestamp
+                    ];
+                }
+            }
+        }
+
+        // 4. Map the fetched statuses back to $allModuleStatus
+        foreach ($toFetch as $mtf) {
+            $aidRaw = (string)$mtf['aid'];
+            $mname = trim((string)$mtf['mname']);
+            $ck = $aidRaw . '|' . strtolower($mname);
+            if (isset($allModuleStatus[$ck])) continue;
+
+            $parsed = parse_node_id($aidRaw);
+            $node = $parsed['node'];
+            $agent_id = (int)$parsed['id'];
+
+            $v_status = 4;
+            $last_upd = 'N/A';
+
+            if ($agent_id > 0) {
+                if ($mname === '[ALL MODULES]') {
+                    $mods = $agent_all_modules[$node][$agent_id] ?? [];
+                    if (!empty($mods)) {
+                        // Sort by status priority: 1 (DOWN) > 2 (WARN) > 3 (UNKNOWN) > 0 (UP) > 4 (NOT_INIT)
+                        usort($mods, function($a, $b) {
+                            $pMap = [1 => 0, 2 => 1, 3 => 2, 0 => 3, 4 => 4];
+                            $stA = $pMap[$a['status']] ?? 5;
+                            $stB = $pMap[$b['status']] ?? 5;
+                            return $stA <=> $stB;
+                        });
+                        $v_status = $mods[0]['status'];
+                        $maxTs = 0;
+                        foreach ($mods as $m) {
+                            if ($m['utimestamp'] > $maxTs) $maxTs = $m['utimestamp'];
+                        }
+                        $last_upd = ($maxTs > 0) ? date("Y-m-d H:i:s", $maxTs) : 'N/A';
+                    }
+                } else {
+                    $mnameLower = strtolower($mname);
+                    $match = null;
+
+                    if (isset($fetched_data[$node][$agent_id][$mnameLower])) {
+                        $match = $fetched_data[$node][$agent_id][$mnameLower];
+                    } else {
+                        // Try pattern match like original %mname%
+                        $pattern = str_replace(' ', '.*', preg_quote($mnameLower, '/'));
+                        foreach ($fetched_data[$node][$agent_id] ?? [] as $fetchedName => $info) {
+                            if (preg_match('/' . $pattern . '/', $fetchedName)) {
+                                $match = $info;
+                                break;
+                            }
+                        }
+                    }
+
+                    if ($match) {
+                        $v_status = $match['status'];
+                        $last_upd = ($match['utimestamp'] > 0) ? date("Y-m-d H:i:s", $match['utimestamp']) : 'N/A';
+                    }
+                }
+            }
+
+            $allModuleStatus[$ck] = [
+                'status' => $v_status,
+                'last_update' => $last_upd
+            ];
+        }
+    } catch (Exception $e) {
+        error_log("Error in batch fetching grid health data: " . $e->getMessage());
+    }
 }
 
 function getStatusStyle($status) {
@@ -1002,20 +1178,36 @@ if ($isPure && $target_panel_id) {
             <td><button class="btn btn-sm text-danger border-0 p-0" onclick="$('#${rid}').remove()">×</button></td>
         </tr>`);
     }
-    function filterLocalList(inp, listId, data, rowId, type, page=1) {
+    let localSearchCache = {};
+    async function filterLocalList(inp, listId, data, rowId, type, page=1) {
         const kw = inp.value.toLowerCase(); const list = $(`#${listId}`);
-        const allMatches = data.filter(item => item.alias.toLowerCase().includes(kw));
-        const pageSize = 12; const totalPages = Math.ceil(allMatches.length / pageSize);
-        const start = (page - 1) * pageSize; const matches = allMatches.slice(start, start + pageSize);
+        
+        let agentsList = [];
+        if (localSearchCache[kw]) {
+            agentsList = localSearchCache[kw];
+        } else {
+            list.html('<div class="p-1">Searching...</div>').show();
+            try {
+                const res = await fetch('?api=search_agents&q=' + encodeURIComponent(kw));
+                const json = await res.json();
+                agentsList = json.agents || [];
+                localSearchCache[kw] = agentsList;
+            } catch(e) {
+                agentsList = [];
+            }
+        }
+        
+        const pageSize = 12; const totalPages = Math.ceil(agentsList.length / pageSize);
+        const start = (page - 1) * pageSize; const matches = agentsList.slice(start, start + pageSize);
         let content = `<div class="search-results-area">`;
         if (matches.length === 0) content += '<div class="p-1 text-muted">No results</div>';
         else content += matches.map(m => `<div class="search-item" onmousedown="selectItem('${rowId}', '${m.alias.replace(/'/g,"\\'")}', '${m.id}', 'agent')">${m.alias}</div>`).join('');
         content += `</div>`;
         if (totalPages > 1) {
             content += `<div class="search-pagination-area" onmousedown="event.stopPropagation()">
-                <button class="btn-page-nav" onmousedown="event.preventDefault(); event.stopPropagation(); filterLocalList(document.querySelector('#${rowId} .ov-agent'), '${listId}', allAgents, '${rowId}', 'agent', ${page-1})" ${page<=1?'disabled':''}>Prev</button>
+                <button class="btn-page-nav" onmousedown="event.preventDefault(); event.stopPropagation(); filterLocalList(document.querySelector('#${rowId} .ov-agent') || document.getElementById('am_agent'), '${listId}', null, '${rowId}', 'agent', ${page-1})" ${page<=1?'disabled':''}>Prev</button>
                 <span class="pg-indicator">Pg ${page}/${totalPages}</span>
-                <button class="btn-page-nav" onmousedown="event.preventDefault(); event.stopPropagation(); filterLocalList(document.querySelector('#${rowId} .ov-agent'), '${listId}', allAgents, '${rowId}', 'agent', ${page+1})" ${page>=totalPages?'disabled':''}>Next</button>
+                <button class="btn-page-nav" onmousedown="event.preventDefault(); event.stopPropagation(); filterLocalList(document.querySelector('#${rowId} .ov-agent') || document.getElementById('am_agent'), '${listId}', null, '${rowId}', 'agent', ${page+1})" ${page>=totalPages?'disabled':''}>Next</button>
             </div>`;
         }
         list.html(content).show();

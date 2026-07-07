@@ -566,6 +566,90 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
     echo json_encode($response);
     exit;
 }
+if (isset($_GET['api']) && $_GET['api'] === 'upload_update_zip') {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if ($client_token !== $csrf_token) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh page.']);
+        exit;
+    }
+
+    if (!isset($_FILES['update_zip']) || $_FILES['update_zip']['error'] !== UPLOAD_ERR_OK) {
+        echo json_encode(['ok' => false, 'error' => 'No file uploaded or upload error.']);
+        exit;
+    }
+
+    $uploaded_file = $_FILES['update_zip']['tmp_name'];
+    $zip_file = $base_dir . '/temp/update.zip';
+    $extract_dir = $base_dir . '/temp/patch/';
+
+    if (!is_dir(dirname($zip_file))) {
+        @mkdir(dirname($zip_file), 0777, true);
+    }
+
+    $logs = [];
+    $logs[] = "[1/4] Processing uploaded ZIP file...";
+
+    if (!move_uploaded_file($uploaded_file, $zip_file)) {
+        $logs[] = "ERROR: Failed to save uploaded file to temp directory.";
+        echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+        exit;
+    }
+    $logs[] = "ZIP uploaded successfully.";
+
+    if (!class_exists('ZipArchive')) {
+        $logs[] = "ERROR: PHP ZipArchive extension is not enabled.";
+        @unlink($zip_file);
+        echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+        exit;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($zip_file) === TRUE) {
+        if (is_dir($extract_dir)) {
+            self_delete_dir_helper($extract_dir);
+        }
+        @mkdir($extract_dir, 0777, true);
+        $zip->extractTo($extract_dir);
+        $zip->close();
+        $logs[] = "ZIP extracted to temp/patch/.";
+    } else {
+        $logs[] = "ERROR: Failed to open ZIP file.";
+        @unlink($zip_file);
+        echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+        exit;
+    }
+
+    $subdirs = glob($extract_dir . '*', GLOB_ONLYDIR);
+    if (empty($subdirs)) {
+        $patch_source = $extract_dir;
+    } else {
+        $patch_source = $subdirs[0];
+    }
+
+    $logs[] = "[2/4] Copying patch files to production...";
+    $copy_success = copy_directory_helper($patch_source, $base_dir, ['portal_config.json', 'portal_config_local.json', 'temp', 'cache']);
+
+    @unlink($zip_file);
+    self_delete_dir_helper($extract_dir);
+
+    if ($copy_success) {
+        $logs[] = "[3/4] Clearing cache files...";
+        $menu_cache_file = $base_dir . '/temp/menu_cache.json';
+        $update_cache_file = $base_dir . '/temp/update_cache.json';
+        if (file_exists($menu_cache_file)) @unlink($menu_cache_file);
+        if (file_exists($update_cache_file)) @unlink($update_cache_file);
+
+        $logs[] = "[4/4] UPDATE COMPLETED SUCCESSFULLY!";
+        echo json_encode(['ok' => true, 'logs' => implode("\n", $logs)]);
+    } else {
+        $logs[] = "ERROR: Failed to copy files. Check directory permissions.";
+        echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
+    }
+    exit;
+}
 
 if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
     ob_clean();
@@ -1344,6 +1428,17 @@ if (!empty($current_page)) {
                 </div>
             </div>
             
+            <div style="margin-top: 15px; border-top: 1px dashed #e2e8f0; padding-top: 15px; margin-bottom: 20px;">
+                <label class="form-label" style="margin-bottom: 8px; font-weight: 600;">Offline / Local Update</label>
+                <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">If your server cannot connect to api.github.com, manually upload the update ZIP file:</div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="file" id="offlineZipInput" accept=".zip" class="form-control" style="font-size: 12px; height: auto; padding: 5px 10px; flex-grow: 1;">
+                    <button class="btn-apply" onclick="runOfflineUpdate()" style="white-space: nowrap; height: 32px; font-size: 12px; padding: 0 15px; background: #004d40; display: flex; align-items: center; gap: 5px;">
+                        <span class="material-symbols-outlined" style="font-size:16px!important;">upload</span> Upload & Update
+                    </button>
+                </div>
+            </div>
+            
             <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e0e4e8; padding-top: 20px;">
                 <button class="btn-outline" onclick="closeUpdater()">Cancel</button>
                 <button class="btn-apply" id="updateExecuteBtn" onclick="runUpdate()">
@@ -2086,6 +2181,58 @@ if (!empty($current_page)) {
             }
         } catch (e) {
             consoleArea.innerText += '\nERROR: Network request failed during update. Check server logs.\n';
+            document.getElementById('closeUpdaterBtn').disabled = false;
+        }
+    }
+
+    async function runOfflineUpdate() {
+        const fileInput = document.getElementById('offlineZipInput');
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert('Please select a valid update ZIP file first.');
+            return;
+        }
+
+        if (!confirm('Are you sure you want to update the portal using the uploaded ZIP? Your local modifications (except configuration files) will be overwritten.')) {
+            return;
+        }
+
+        document.getElementById('updaterViewState').style.display = 'none';
+        document.getElementById('updaterProgressState').style.display = 'block';
+        document.getElementById('closeUpdaterBtn').disabled = true;
+
+        const consoleArea = document.getElementById('updaterConsole');
+        consoleArea.innerText = 'Uploading ZIP file...\n';
+
+        try {
+            const formData = new FormData();
+            formData.append('update_zip', fileInput.files[0]);
+
+            const response = await fetch('?api=upload_update_zip', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '<?= $csrf_token ?>'
+                },
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result.logs) {
+                consoleArea.innerText += '\nExecution log:\n' + result.logs + '\n';
+            } else if (result.error) {
+                consoleArea.innerText += '\nERROR: ' + result.error + '\n';
+            }
+
+            if (result.ok) {
+                consoleArea.innerText += '\nSUCCESS! Reloading in 3 seconds...\n';
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
+            } else {
+                consoleArea.innerText += '\nERROR: Offline update execution failed.\n';
+                document.getElementById('closeUpdaterBtn').disabled = false;
+            }
+        } catch (e) {
+            consoleArea.innerText += '\nERROR: Network request failed during offline update.\n';
             document.getElementById('closeUpdaterBtn').disabled = false;
         }
     }

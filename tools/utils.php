@@ -7,14 +7,18 @@
 if (!defined('PFMS_UTILS_LOADED')) {
     define('PFMS_UTILS_LOADED', true);
 
-    function h($s) {
-        return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    if (!function_exists('h')) {
+        function h($s) {
+            return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+        }
     }
 
-    function pretty_text($s) {
-        if ($s === null) return '';
-        $decoded = html_entity_decode((string)$s, ENT_QUOTES, 'UTF-8');
-        return str_replace('&#x20;', ' ', $decoded);
+    if (!function_exists('pretty_text')) {
+        function pretty_text($s) {
+            if ($s === null) return '';
+            $decoded = html_entity_decode((string)$s, ENT_QUOTES, 'UTF-8');
+            return str_replace('&#x20;', ' ', $decoded);
+        }
     }
 
     function map_pandora_status($estado) {

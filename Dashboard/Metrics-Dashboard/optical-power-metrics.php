@@ -12,6 +12,9 @@ $DEFAULT_TZ = "Asia/Jakarta";
 date_default_timezone_set($DEFAULT_TZ);
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 
+$isPure = isset($_GET['pure']);
+$isStandalone = isset($_GET['standalone']) || isset($_GET['pure']) || (isset($_GET['s']) && $_GET['s'] === '1');
+
 // 1. DYNAMIC BREADCRUMB
 $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 
@@ -85,19 +88,61 @@ if ($api === 'groups' && $db_status) {
     
     echo json_encode($dropdown); exit;
 }
-if ($api === 'agents_list' && $db_status) {
+if ($api === 'search_agents' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
-    $list = [];
+    $q = trim($_GET['q'] ?? '');
+    $selected_ids_str = trim($_GET['selected_ids'] ?? '');
+    $selected_ids = $selected_ids_str !== '' ? explode(',', $selected_ids_str) : [];
     
-    // 1. Primary DB agents
+    $agents = [];
+    $limit = 100;
+    
+    $primary_sel_ids = [];
+    $custom_sel_ids = [];
+    foreach ($selected_ids as $sid) {
+        $parts = explode(':', $sid, 2);
+        if (count($parts) === 2) {
+            $cid = $parts[0];
+            $rid = $parts[1];
+            if ($cid === 'primary') {
+                $primary_sel_ids[] = (int)$rid;
+            } else {
+                $custom_sel_ids[$cid][] = (int)$rid;
+            }
+        }
+    }
+    
+    // 1. Fetch Primary DB agents
     try {
-        $stmt = $pdo->query("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
+        $where_clauses = ["disabled = 0"];
+        $params = [];
+        
+        $term_conds = [];
+        if ($q !== '') {
+            $term_conds[] = "alias LIKE ?";
+            $params[] = "%$q%";
+        }
+        if (!empty($primary_sel_ids)) {
+            $placeholders = implode(',', array_fill(0, count($primary_sel_ids), '?'));
+            $term_conds[] = "id_agente IN ($placeholders)";
+            foreach ($primary_sel_ids as $pid) $params[] = $pid;
+        }
+        
+        if (!empty($term_conds)) {
+            $where_clauses[] = "(" . implode(" OR ", $term_conds) . ")";
+        }
+        
+        $where = "WHERE " . implode(" AND ", $where_clauses);
+        
+        $sql = "SELECT id_agente AS id, alias FROM tagente $where ORDER BY alias ASC LIMIT $limit";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
         while($a = $stmt->fetch()) {
-            $list[] = ['id' => 'primary:' . $a['id'], 'alias' => pretty_text($a['alias'])];
+            $agents[] = ['id' => 'primary:' . $a['id'], 'alias' => pretty_text($a['alias'])];
         }
     } catch (Throwable $e) {}
     
-    // 2. Custom DB agents
+    // 2. Fetch Custom DB agents
     global $custom_pdos, $custom_connections;
     if (!empty($custom_pdos)) {
         foreach ($custom_pdos as $cid => $cpdo) {
@@ -107,15 +152,47 @@ if ($api === 'agents_list' && $db_status) {
             }
             if (empty($cname)) $cname = $cid;
             try {
-                $stmt = $cpdo->query("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
+                $where_clauses = ["disabled = 0"];
+                $params = [];
+                
+                $term_conds = [];
+                if ($q !== '') {
+                    $term_conds[] = "alias LIKE ?";
+                    $params[] = "%$q%";
+                }
+                $c_sel = $custom_sel_ids[$cid] ?? [];
+                if (!empty($c_sel)) {
+                    $placeholders = implode(',', array_fill(0, count($c_sel), '?'));
+                    $term_conds[] = "id_agente IN ($placeholders)";
+                    foreach ($c_sel as $csid) $params[] = $csid;
+                }
+                
+                if (!empty($term_conds)) {
+                    $where_clauses[] = "(" . implode(" OR ", $term_conds) . ")";
+                }
+                
+                $where = "WHERE " . implode(" AND ", $where_clauses);
+                
+                $sql = "SELECT id_agente AS id, alias FROM tagente $where ORDER BY alias ASC LIMIT $limit";
+                $stmt = $cpdo->prepare($sql);
+                $stmt->execute($params);
                 while($a = $stmt->fetch()) {
-                    $list[] = ['id' => $cid . ':' . $a['id'], 'alias' => pretty_text($a['alias'])];
+                    $agents[] = ['id' => $cid . ':' . $a['id'], 'alias' => '[' . $cname . '] ' . pretty_text($a['alias'])];
                 }
             } catch (Throwable $e) {}
         }
     }
     
-    echo json_encode($list); exit;
+    $unique_agents = [];
+    $seen = [];
+    foreach ($agents as $ag) {
+        if (!isset($seen[$ag['id']])) {
+            $seen[$ag['id']] = true;
+            $unique_agents[] = $ag;
+        }
+    }
+    
+    echo json_encode($unique_agents); exit;
 }
 
 // API: FETCH DATA WITH DUAL SEARCH & PAGINATION & AUTO-SORT
@@ -181,6 +258,18 @@ if ($api === 'card_data' && $db_status) {
                 $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
                 $where .= " AND a.id_grupo IN (" . implode(',', array_fill(0, count($targetGroups), '?')) . ")";
                 foreach ($targetGroups as $tg) { $params[] = $tg; }
+            } else {
+                try {
+                    $recent_stmt = $active_pdo->query("SELECT id_agente FROM tagente WHERE disabled = 0 ORDER BY id_agente DESC LIMIT 50");
+                    $recent_ids = $recent_stmt->fetchAll(PDO::FETCH_COLUMN);
+                    if (!empty($recent_ids)) {
+                        $where .= " AND a.id_agente IN (" . implode(',', $recent_ids) . ")";
+                    } else {
+                        $where .= " AND 1=0";
+                    }
+                } catch (Throwable $e) {
+                    $where .= " AND 1=0";
+                }
             }
             
             if ($search !== '') { 
@@ -197,6 +286,10 @@ if ($api === 'card_data' && $db_status) {
                         LEFT JOIN tagente_estado te ON am.id_agente_modulo = te.id_agente_modulo
                         LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo
                         $where";
+            
+            if ($fetchAll !== 1) {
+                $sqlData .= " ORDER BY te.utimestamp DESC LIMIT 2000";
+            }
             
             try {
                 $stmtData = $active_pdo->prepare($sqlData);
@@ -536,7 +629,6 @@ let drillAllData = [], drillFilteredData = [], drillPage = 1, drillLimit = 20;
 async function init() {
     try { const res = await fetch('?api=load_config'); const data = await res.json(); if(Array.isArray(data)) dashboardCards = data; } catch(e){}
     fetch('?api=groups').then(r=>r.json()).then(data => { const sel = document.getElementById('b_group'); if(sel) { sel.innerHTML = ''; data.forEach(g => sel.add(new Option(g.name, g.id))); } });
-    fetch('?api=agents_list').then(r=>r.json()).then(data => { fullAgentsList = data; renderAgentDropdown(); });
     renderGrid();
     
     const urlParams = new URLSearchParams(window.location.search);
@@ -793,18 +885,48 @@ function renderPagination(id, total, limit) {
 }
 function movePage(id, p) { cardStates[id].page = p; fetchCardData(id); }
 
+async function loadAgentsForBuilder(query) {
+    const list = document.getElementById('agent_checkbox_list'); if(!list) return;
+    list.innerHTML = '<div style="padding:15px; text-align:center; color:#7f8c8d;">Searching agents...</div>';
+    try {
+        const res = await fetch('?api=search_agents&q=' + encodeURIComponent(query) + '&selected_ids=' + encodeURIComponent(selectedIds.join(',')));
+        fullAgentsList = await res.json();
+        renderAgentDropdown();
+    } catch(e) {
+        list.innerHTML = '<div style="padding:15px; text-align:center; color:#e74c3c;">Failed to load agents.</div>';
+    }
+}
+
 function renderAgentDropdown() {
     const list = document.getElementById('agent_checkbox_list'); if(!list) return;
-    list.innerHTML = fullAgentsList.map(a => `<div class="agent-item" data-name="${a.alias.toLowerCase()}"><input type="checkbox" id="chk_${a.id}" value="${a.id}" onchange="handleCheck(this)"><label for="chk_${a.id}">${a.alias}</label></div>`).join('');
+    list.innerHTML = fullAgentsList.map(a => {
+        const isChecked = selectedIds.includes(String(a.id));
+        return `<div class="agent-item" data-name="${a.alias.toLowerCase()}">
+            <input type="checkbox" id="chk_${a.id}" value="${a.id}" onchange="handleCheck(this)" ${isChecked ? 'checked' : ''}>
+            <label for="chk_${a.id}">${a.alias}</label>
+        </div>`;
+    }).join('');
 }
+
+let filterTimeout = null;
 function filterAgentsInList() {
-    const kw = document.getElementById('inner_search').value.toLowerCase();
-    document.querySelectorAll('.agent-item').forEach(item => { item.style.display = item.dataset.name.includes(kw) ? 'flex' : 'none'; });
+    if (filterTimeout) clearTimeout(filterTimeout);
+    filterTimeout = setTimeout(async () => {
+        const kw = document.getElementById('inner_search').value;
+        await loadAgentsForBuilder(kw);
+    }, 300);
 }
+
 function handleCheck(chk) {
-    const val = chk.value; if(chk.checked) { if(!selectedIds.includes(val)) selectedIds.push(val); } else { selectedIds = selectedIds.filter(id => id !== val); }
+    const val = String(chk.value);
+    if (chk.checked) {
+        if (!selectedIds.includes(val)) selectedIds.push(val);
+    } else {
+        selectedIds = selectedIds.filter(id => id !== val);
+    }
     document.getElementById('sel_count').innerText = `${selectedIds.length} Selected`;
 }
+
 function toggleManualSelector() { const box = document.getElementById('manual_selector_box'); if(box) box.style.display = (document.getElementById('b_group').value === '0') ? 'block' : 'none'; }
 let tSearch = null;
 function onSearch(id) { if(tSearch) clearTimeout(tSearch); tSearch = setTimeout(() => { cardStates[id].search = document.getElementById('s_query_'+id).value; cardStates[id].page = 1; fetchCardData(id); }, 500); }
@@ -819,18 +941,19 @@ function heartbeat() {
         } 
     }); 
 }
-function openBuilder() { 
+async function openBuilder() { 
     editingCardId = null; selectedIds = [];
     document.getElementById('b_title').value = ''; 
     document.getElementById('b_def_agent').value = '';
     document.getElementById('b_def_mod').value = '';
     document.getElementById('b_show_stats').checked = true;
     document.getElementById('b_show_search').checked = true;
-    document.querySelectorAll('#agent_checkbox_list input').forEach(i => i.checked = false);
+    document.getElementById('inner_search').value = '';
     document.getElementById('builderModal').style.display = 'flex'; 
     toggleManualSelector();
+    await loadAgentsForBuilder('');
 }
-function openEdit(id) { 
+async function openEdit(id) { 
     editingCardId = id; const c = dashboardCards.find(x=>x.id===id); 
     document.getElementById('b_title').value = c.title; 
     document.getElementById('b_group').value = c.group_id; 
@@ -840,11 +963,12 @@ function openEdit(id) {
     document.getElementById('b_refresh').value = c.refresh_sec; 
     document.getElementById('b_show_stats').checked = (c.show_stats !== false);
     document.getElementById('b_show_search').checked = (c.show_search !== false);
+    document.getElementById('inner_search').value = '';
     selectedIds = (c.manual_ids || '').split(',').filter(x => x);
-    document.querySelectorAll('#agent_checkbox_list input').forEach(i => i.checked = selectedIds.includes(i.value));
     document.getElementById('sel_count').innerText = `${selectedIds.length} Selected`;
     document.getElementById('builderModal').style.display = 'flex'; 
     toggleManualSelector();
+    await loadAgentsForBuilder('');
 }
 function closeBuilder() { document.getElementById('builderModal').style.display = 'none'; }
 function saveWidget() {

@@ -312,20 +312,25 @@ function get_node_uuid($node) {
 /**
  * Common Helper Functions
  */
-
-function h($s) {
-    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+if (!function_exists('h')) {
+    function h($s) {
+        return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    }
 }
 
-function pretty_text($s) {
-    if ($s === null || $s === '') return '';
-    $text = html_entity_decode((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    return str_replace(['&#x20;', '&nbsp;'], ' ', $text);
+if (!function_exists('pretty_text')) {
+    function pretty_text($s) {
+        if ($s === null || $s === '') return '';
+        $text = html_entity_decode((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return str_replace(['&#x20;', '&nbsp;'], ' ', $text);
+    }
 }
 
-function cleanPandoraText($s) {
-    return pretty_text($s);
+if (!function_exists('cleanPandoraText')) {
+    function cleanPandoraText($s) {
+        return pretty_text($s);
+    }
 }
 
 function formatInterval($seconds) {

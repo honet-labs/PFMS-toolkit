@@ -605,16 +605,11 @@ if ($api === 'chart_data' && $db_status) {
 </div>
 
 <div class="pandora-header-bottom no-print">
-    <div class="d-flex align-items-center gap-3">
-        <button id="header-back-btn" class="btn-pfms btn-outline-pfms d-none" onclick="showDashboardList()">
-            <span class="material-symbols-outlined">arrow_back</span> Back
-        </button>
-        <div class="breadcrumb-box">
-            <span class="page-breadcrumb">PANDORA CONSOLE / CUSTOM / PANEL / REPORT / VISUAL CHART EXPORT</span>
-            <h1 class="page-title" id="page-nav-header">Visual Chart Reports</h1>
-        </div>
+    <div class="breadcrumb-box">
+        <span class="page-breadcrumb">PANDORA CONSOLE / CUSTOM / PANEL / REPORT / VISUAL CHART EXPORT</span>
+        <h1 class="page-title" id="page-nav-header">Visual Chart Reports</h1>
     </div>
-    <div id="header-actions">
+    <div id="header-actions" class="d-flex align-items-center gap-2">
         <!-- Action buttons rendered dynamically -->
     </div>
 </div>
@@ -873,11 +868,23 @@ function loadDashboards() {
                 const currentDash = dashboards.find(d => d.id === activeDashboardId);
                 if (currentDash) {
                     document.getElementById('page-nav-header').textContent = currentDash.name;
-                    document.getElementById('header-back-btn').classList.remove('d-none');
+                    document.getElementById('header-actions').innerHTML = `
+                        <button class="btn-pfms btn-outline-pfms" onclick="showDashboardList()" title="Back to List">
+                            <span class="material-symbols-outlined">arrow_back</span> Back
+                        </button>
+                        <button class="btn-pfms btn-primary-pfms" onclick="openPanelModal(false)">
+                            <span class="material-symbols-outlined">add_chart</span> Add Panel
+                        </button>
+                        <button class="btn-pfms btn-outline-pfms" onclick="openDashboardModal(true)">
+                            <span class="material-symbols-outlined">edit</span> Rename Report
+                        </button>
+                        <button class="btn-pfms btn-outline-pfms text-danger border-danger" onclick="deleteActiveDashboard()">
+                            <span class="material-symbols-outlined">delete</span> Delete Report
+                        </button>
+                    `;
                 }
             } else {
                 document.getElementById('page-nav-header').textContent = 'Visual Chart Reports';
-                document.getElementById('header-back-btn').classList.add('d-none');
                 document.getElementById('header-actions').innerHTML = `
                     <button class="btn-pfms btn-primary-pfms" onclick="openDashboardModal(false)">
                         <span class="material-symbols-outlined">add</span> Create Report Visual
@@ -938,7 +945,6 @@ function showDashboardList() {
     
     // Set Header for List View
     document.getElementById('page-nav-header').textContent = 'Visual Chart Reports';
-    document.getElementById('header-back-btn').classList.add('d-none');
     
     document.getElementById('header-actions').innerHTML = `
         <button class="btn-pfms btn-primary-pfms" onclick="openDashboardModal(false)">
@@ -1040,20 +1046,20 @@ function showDashboardDetail(dashId) {
     
     // Set Header for Detail View
     document.getElementById('page-nav-header').textContent = currentDash.name;
-    document.getElementById('header-back-btn').classList.remove('d-none');
     
     document.getElementById('header-actions').innerHTML = `
-        <div class="d-flex gap-2">
-            <button class="btn-pfms btn-primary-pfms" onclick="openPanelModal(false)">
-                <span class="material-symbols-outlined">add_chart</span> Add Panel
-            </button>
-            <button class="btn-pfms btn-outline-pfms" onclick="openDashboardModal(true)">
-                <span class="material-symbols-outlined">edit</span> Rename Report
-            </button>
-            <button class="btn-pfms btn-outline-pfms text-danger border-danger" onclick="deleteActiveDashboard()">
-                <span class="material-symbols-outlined">delete</span> Delete Report
-            </button>
-        </div>
+        <button class="btn-pfms btn-outline-pfms" onclick="showDashboardList()" title="Back to List">
+            <span class="material-symbols-outlined">arrow_back</span> Back
+        </button>
+        <button class="btn-pfms btn-primary-pfms" onclick="openPanelModal(false)">
+            <span class="material-symbols-outlined">add_chart</span> Add Panel
+        </button>
+        <button class="btn-pfms btn-outline-pfms" onclick="openDashboardModal(true)">
+            <span class="material-symbols-outlined">edit</span> Rename Report
+        </button>
+        <button class="btn-pfms btn-outline-pfms text-danger border-danger" onclick="deleteActiveDashboard()">
+            <span class="material-symbols-outlined">delete</span> Delete Report
+        </button>
     `;
 
     document.getElementById('detail-dashboard-title').textContent = currentDash.name;

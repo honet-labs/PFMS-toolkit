@@ -68,6 +68,25 @@ function parse_node_from_filter($filter) {
     return ['node' => null, 'search' => $filter];
 }
 
+function get_search_wildcard($term) {
+    $term = trim($term);
+    if ($term === '') return '%';
+    $cleaned = preg_replace('/[^\w]/u', '%', $term);
+    $cleaned = preg_replace('/%+/', '%', $cleaned);
+    return '%' . $cleaned . '%';
+}
+
+function ts_to_local_input($ts, $tz) {
+    if (!$ts) return "";
+    try {
+        $dt = new DateTime('@'.(int)$ts);
+        $dt->setTimezone(new DateTimeZone($tz));
+        return $dt->format('Y-m-d\TH:i');
+    } catch (Exception $e) {
+        return date('Y-m-d\TH:i', $ts);
+    }
+}
+
 // =====================================================================
 // 4. AJAX API ENDPOINTS FOR DROPDOWNS
 // =====================================================================
@@ -189,8 +208,8 @@ if ($db_status && (!empty($agent) || !empty($pairs_raw)) && empty($errors)) {
                 $nodes_to_search = $parsed_agent['node'] ? [$parsed_agent['node']] : array_keys($target_nodes);
                 $agent_search = $parsed_agent['search'];
                 
-                $ag_kw  = "%" . $agent_search . "%";
-                $mod_kw = "%" . $raw_mod_kw . "%";
+                $ag_kw  = get_search_wildcard($agent_search);
+                $mod_kw = get_search_wildcard($raw_mod_kw);
                 
                 foreach ($nodes_to_search as $node) {
                     $active_pdo = $target_nodes[$node] ?? null;
@@ -214,8 +233,8 @@ if ($db_status && (!empty($agent) || !empty($pairs_raw)) && empty($errors)) {
             $nodes_to_search = $parsed_agent['node'] ? [$parsed_agent['node']] : array_keys($target_nodes);
             $agent_search = $parsed_agent['search'];
             
-            $ag_kw  = "%" . $agent_search . "%";
-            $mod_kw = "%" . trim($module) . "%";
+            $ag_kw  = get_search_wildcard($agent_search);
+            $mod_kw = get_search_wildcard($module);
             
             foreach ($nodes_to_search as $node) {
                 $active_pdo = $target_nodes[$node] ?? null;
@@ -487,8 +506,8 @@ if (!empty($export) && !empty($rows)) {
                         <textarea name="pairs" class="form-control-fix" placeholder="CORE|Host Alive&#10;Agent02|CPU"><?= h($pairs_raw) ?></textarea>
                     </div>
                     
-                    <div class="col-md-3"><label class="form-label">Start Date</label><input type="datetime-local" name="from" class="form-control-fix" value="<?= h(date('Y-m-d\TH:i', $from_epoch)) ?>"></div>
-                    <div class="col-md-3"><label class="form-label">End Date</label><input type="datetime-local" name="to" class="form-control-fix" value="<?= h(date('Y-m-d\TH:i', $to_epoch)) ?>"></div>
+                    <div class="col-md-3"><label class="form-label">Start Date</label><input type="datetime-local" name="from" class="form-control-fix" value="<?= h(ts_to_local_input($from_epoch, $tz)) ?>"></div>
+                    <div class="col-md-3"><label class="form-label">End Date</label><input type="datetime-local" name="to" class="form-control-fix" value="<?= h(ts_to_local_input($to_epoch, $tz)) ?>"></div>
                     <div class="col-md-3"><label class="form-label">Timelapse Preset</label>
                         <select name="preset" class="form-control-fix">
                             <option value="custom" <?= $preset=='custom'?'selected':'' ?>>Custom</option><option value="5m" <?= $preset=='5m'?'selected':'' ?>>5 minutes</option><option value="1h" <?= $preset=='1h'?'selected':'' ?>>1 hour</option><option value="1d" <?= $preset=='1d'?'selected':'' ?>>1 day</option>
