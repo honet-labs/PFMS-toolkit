@@ -590,7 +590,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
         foreach ($all_history_pdos as $h_pdo) {
             foreach ($tables as $tbl) {
                 try {
-                    $stmtLookbackHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY ts DESC LIMIT 1");
+                    $stmtLookbackHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY utimestamp DESC LIMIT 1");
                     $stmtLookbackHist->execute([$id_mod, $start]);
                     $row = $stmtLookbackHist->fetch(PDO::FETCH_ASSOC);
                     if ($row && (int)$row['ts'] > $best_ts) {
@@ -643,5 +643,104 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     }
 
     return $result;
+}
+
+/**
+ * Batch retrieves historical data points for a list of module IDs.
+ * Eliminates N+1 query problem by batch-querying each node's databases.
+ */
+function get_modules_history_data_batch($pdo, $pdo_history, $modIds, $start, $end, $limit_per_module = 2000) {
+    if (empty($modIds)) return [];
+
+    // Group modIds by node
+    $node_mods = [];
+    foreach ($modIds as $modId) {
+        $parsed = parse_node_id($modId);
+        $node_mods[$parsed['node']][] = $parsed['id'];
+    }
+
+    global $custom_pdos;
+    $results = [];
+
+    foreach ($node_mods as $node => $ids) {
+        $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
+        if ($active_pdo === null) continue;
+
+        // Determine which database to query for history
+        $h_pdos = [];
+        if ($node === 'primary') {
+            if ($pdo_history !== null) {
+                $h_pdos[] = $pdo_history;
+            } else {
+                $h_pdos[] = $active_pdo;
+            }
+        } else {
+            $h_pdos[] = $active_pdo;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        
+        $queries = [];
+        $params = [];
+        
+        $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
+        foreach ($tables as $tbl) {
+            $queries[] = "SELECT id_agente_modulo, utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo IN ($placeholders) AND utimestamp BETWEEN ? AND ?";
+            foreach ($ids as $id) {
+                $params[] = $id;
+            }
+            $params[] = $start;
+            $params[] = $end;
+        }
+
+        $union_sql = implode(" UNION ALL ", $queries) . " ORDER BY ts DESC";
+        // Safe limit to prevent query memory blowout
+        $union_sql .= " LIMIT " . (count($ids) * 500);
+
+        $node_data = [];
+        foreach ($h_pdos as $h_pdo) {
+            try {
+                $stmt = $h_pdo->prepare($union_sql);
+                $stmt->execute($params);
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                if (!empty($rows)) {
+                    foreach ($rows as $row) {
+                        $prefixed_mod_id = $node . ':' . $row['id_agente_modulo'];
+                        $node_data[] = [
+                            'id_mod' => $prefixed_mod_id,
+                            'ts' => (int)$row['ts'],
+                            'datos' => $row['datos']
+                        ];
+                    }
+                    break; // Use the first successful history source
+                }
+            } catch (Throwable $e) {
+                error_log("Batch history query failed for node $node: " . $e->getMessage());
+            }
+        }
+        
+        // If empty, try the active_pdo as fallback if it wasn't already tried
+        if (empty($node_data) && $node === 'primary' && $pdo_history !== null) {
+            try {
+                $stmt = $active_pdo->prepare($union_sql);
+                $stmt->execute($params);
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($rows as $row) {
+                    $prefixed_mod_id = $node . ':' . $row['id_agente_modulo'];
+                    $node_data[] = [
+                        'id_mod' => $prefixed_mod_id,
+                        'ts' => (int)$row['ts'],
+                        'datos' => $row['datos']
+                    ];
+                }
+            } catch (Throwable $e) {
+                error_log("Batch history fallback query failed for primary node: " . $e->getMessage());
+            }
+        }
+
+        $results = array_merge($results, $node_data);
+    }
+
+    return $results;
 }
 

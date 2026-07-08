@@ -324,6 +324,7 @@ if ($api === 'module_list' && $db_status) {
 
 if ($api === 'detail_graph' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
+    global $pdo, $pdo_history;
     $id_mod = $_GET['id_mod'];
     $range = $_GET['range'] ?? '21600';
 
@@ -341,7 +342,7 @@ if ($api === 'detail_graph' && $db_status) {
 
     global $custom_pdos;
     $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
-    $active_history_pdo = ($node === 'primary') ? $history_pdo : $active_pdo;
+    $active_history_pdo = ($node === 'primary') ? $pdo_history : $active_pdo;
 
     try {
         $unit = '';
@@ -413,6 +414,9 @@ if ($api === 'sparklines' && $db_status) {
 
 if ($api === 'card_data' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
+    // Prevent execution timeouts on large historical queries
+    set_time_limit(120);
+    global $pdo, $pdo_history, $custom_pdos;
     $groupIdRaw = $_GET['group_id'] ?? '0';
     $keyword = $_GET['keyword'] ?? '%';
     $manual_ids = $_GET['manual_ids'] ?? '';
@@ -420,8 +424,6 @@ if ($api === 'card_data' && $db_status) {
 
     $groupParsed = parse_node_id($groupIdRaw);
     $manualIdsParsed = parse_node_ids($manual_ids);
-
-    global $custom_pdos;
     $target_nodes = [];
     if ($groupParsed['id'] > 0) {
         $target_nodes[$groupParsed['node']] = [
@@ -584,16 +586,14 @@ if ($api === 'card_data' && $db_status) {
                     $startTime = $endTime - (int)$range;
                 }
                 
-                foreach ($modIds as $modId) {
-                    $modHist = get_module_history_data($pdo, $history_pdo, $modId, $startTime, $endTime, 2000, 'ASC');
-                    foreach ($modHist as $h) {
-                        $historyData[] = [
-                            'id_mod' => $modId,
-                            'utimestamp' => (int)$h['ts'],
-                            'time' => date('d/m/Y H:i:s', $h['ts']),
-                            'val' => (float)$h['datos']
-                        ];
-                    }
+                $batchHist = get_modules_history_data_batch($pdo, $pdo_history, $modIds, $startTime, $endTime, 2000);
+                foreach ($batchHist as $h) {
+                    $historyData[] = [
+                        'id_mod' => $h['id_mod'],
+                        'utimestamp' => $h['ts'],
+                        'time' => date('d/m/Y H:i:s', $h['ts']),
+                        'val' => is_numeric($h['datos']) ? (float)$h['datos'] : $h['datos']
+                    ];
                 }
             }
         }
