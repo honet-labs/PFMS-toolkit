@@ -2219,7 +2219,7 @@ function renderGrid() {
                 ` : ''}
             </div>`;
 
-        const showStatsStyle = (c.show_stats === 0 || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer'].includes(c.view_type)) ? 'display: none !important;' : '';
+        const showStatsStyle = (c.view_type !== 'cards' && (c.show_stats === 0 || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer'].includes(c.view_type))) ? 'display: none !important;' : '';
         div.innerHTML = `<div class="dashboard-card-header"><div><h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="color:#004d40;">analytics</span> ${c.title}</h5><div style="font-size:10px; color:#7f8c8d; font-weight: normal;"><span id="meta_up_${c.id}">Awaiting...</span> <span id="meta_timer_${c.id}"></span></div></div>${acts}</div>
         <div class="dashboard-card-body">
             <div class="mini-stats-row" style="${showStatsStyle}">
@@ -2955,7 +2955,7 @@ function toggleViewTypeOptions() {
         if (wrapSingleValue) wrapSingleValue.style.display = 'none';
     }
 
-    if (vt === 'line' || vt === 'area' || vt === 'bar' || vt === 'history_table' || vt === 'single_value') {
+    if (vt === 'line' || vt === 'area' || vt === 'bar' || vt === 'history_table' || vt === 'single_value' || vt === 'cards') {
         if (wrapShowStats) wrapShowStats.style.display = 'none';
     } else {
         if (wrapShowStats) wrapShowStats.style.display = 'block';
