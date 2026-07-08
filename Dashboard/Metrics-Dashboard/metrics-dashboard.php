@@ -968,9 +968,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .st-border-blue { border-bottom-color: #3498db; } .text-blue { color: #3498db !important; }
 
         .table-wrap { overflow-x: auto; flex-grow: 1; border: 1px solid #f0f3f5; border-radius: 6px; }
-        table.table-pfms { border-collapse: collapse !important; width: 100% !important; margin: 0 !important;}
-        table.table-pfms thead th { background-color: #ffffff !important; border-bottom: 2px solid #e0e4e8 !important; text-transform: uppercase; padding: 10px 15px !important; font-weight: normal !important; color: #7f8c8d !important; font-size: 10px !important; position: sticky; top: 0; z-index: 1;}
-        table.table-pfms tbody td { font-weight: normal !important; border-bottom: 1px solid #f0f3f5; padding: 12px 15px !important; color: #0b1a26 !important; white-space: normal; word-break: break-word; min-width: 100px; max-width: 300px; vertical-align: middle;}
+        table.table-pfms { border-collapse: collapse !important; width: 100% !important; margin: 0 !important; font-family: 'Inter', system-ui, -apple-system, sans-serif !important; }
+        table.table-pfms thead th { background-color: #ffffff !important; border-bottom: 2px solid #e0e4e8 !important; text-transform: uppercase; padding: 10px 15px !important; font-weight: 600 !important; color: #64748b !important; font-size: 10px !important; position: sticky; top: 0; z-index: 1; font-family: 'Inter', system-ui, -apple-system, sans-serif !important; letter-spacing: 0.5px; }
+        table.table-pfms tbody td { font-family: 'Inter', system-ui, -apple-system, sans-serif !important; font-weight: normal !important; border-bottom: 1px solid #f1f5f9; padding: 12px 15px !important; color: #334155 !important; vertical-align: middle; line-height: 1.5; }
 
         .node-wrap { display: inline-flex; align-items: center; gap: 8px; line-height: 1; vertical-align: middle; }
         .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; position: relative; top: -1px; }
@@ -981,7 +981,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .bg-gray { background: linear-gradient(135deg, #95a5a6, #7f8c8d) !important; color: #fff !important; }
         .bg-blue { background: linear-gradient(135deg, #3498db, #2980b9) !important; color: #fff !important; }
 
-        .agent-link { color: #1976d2 !important; text-decoration: none; font-weight: normal !important; font-size: 14px !important; }
+        .agent-link { color: #1976d2 !important; text-decoration: none; font-weight: normal !important; }
         .ip-text { color: #d63384 !important; font-size: 11px !important; font-weight: normal; background:#fff0f6; padding:2px 6px; border-radius:4px;}
         .status-pill { padding: 6px 12px; border-radius: 4px; font-weight: normal !important; font-size: 11px !important; display: inline-block; text-align: center; border:none; }
 
@@ -989,7 +989,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .heat-box { width: 100%; height: 32px; border-radius: 4px; display: block; line-height: 32px; text-align: center; font-weight: normal !important; font-size: 11px !important; cursor: pointer; text-decoration: none !important; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffffff !important; transition: 0.2s opacity; box-sizing: border-box; }
         .heat-box:hover { opacity: 0.8; }
         canvas.mini-chart { width: 120px !important; height: 30px !important; cursor: pointer; }
-        .limit-text { font-size: 10px !important; color: #7f8c8d; line-height:1.2;}
+        .limit-text { font-size: 10px !important; color: #7f8c8d; line-height:1.2; white-space: nowrap; }
 
         .pagination-container { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #fafafa; border-top: 1px solid #e0e4e8; border-radius: 0 0 6px 6px; }
         .pagination-btn { background: #fff; border: 1px solid #dce1e5; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: normal; color: #4a5568; transition: 0.2s;}
@@ -2367,20 +2367,20 @@ function renderTablePage(cardId) {
         h += '</div>';
     } 
     else {
-        const tableFs = card.font_size || 14;
+        const tableFs = parseInt(card.font_size) || 14;
         const iconSz = card.icon_size || 18;
         const visibleCols = card.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
         
         let headerRow = '';
-        if (visibleCols.includes('agent')) headerRow += '<th>Agent</th>';
-        if (visibleCols.includes('group')) headerRow += '<th>Group</th>';
-        if (visibleCols.includes('ip')) headerRow += '<th>IP Address</th>';
+        if (visibleCols.includes('agent')) headerRow += '<th style="white-space: nowrap;">Agent</th>';
+        if (visibleCols.includes('group')) headerRow += '<th style="white-space: nowrap;">Group</th>';
+        if (visibleCols.includes('ip')) headerRow += '<th style="white-space: nowrap;">IP Address</th>';
         if (visibleCols.includes('module')) headerRow += '<th>Sensor Module</th>';
-        if (visibleCols.includes('status')) headerRow += '<th style="text-align:center;">Status</th>';
-        if (visibleCols.includes('history')) headerRow += '<th style="text-align:center;">Metrics History</th>';
-        if (visibleCols.includes('threshold')) headerRow += '<th>Threshold</th>';
+        if (visibleCols.includes('status')) headerRow += '<th style="text-align:center; white-space: nowrap;">Status</th>';
+        if (visibleCols.includes('history')) headerRow += '<th style="text-align:center; white-space: nowrap;">Metrics History</th>';
+        if (visibleCols.includes('threshold')) headerRow += '<th style="white-space: nowrap;">Threshold</th>';
         
-        h += `<div class="table-wrap"><table class="table-pfms" style="font-size:${tableFs}px;"><thead><tr>${headerRow}</tr></thead><tbody>`;
+        h += `<div class="table-wrap"><table class="table-pfms" style="font-size:${tableFs}px; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;"><thead><tr>${headerRow}</tr></thead><tbody>`;
         
         pageData.forEach(r => {
             const sObj = getStatusObj(r.estado);
@@ -2392,47 +2392,47 @@ function renderTablePage(cardId) {
                 let agentLinkHtml = '';
                 if (isPrimaryAgent) {
                     const rawAgentId = String(r.id_agente).split(':')[1] || r.id_agente;
-                    agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="font-size:${tableFs}px!important;">${r.agent_alias}</a>`;
+                    agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="font-size:${tableFs}px!important; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${r.agent_alias}</a>`;
                 } else {
-                    agentLinkHtml = `<span style="font-size:${tableFs}px!important; font-weight:500; color:#334155;">${r.agent_alias}</span>`;
+                    agentLinkHtml = `<span style="font-size:${tableFs}px!important; font-weight:500; color:#334155; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${r.agent_alias}</span>`;
                 }
                 rowHtml += `<td>
-                    <div class="node-wrap"><div class="dot ${sObj.color}"></div>${agentLinkHtml}</div>
+                    <div class="node-wrap" style="white-space: nowrap;"><div class="dot ${sObj.color}"></div>${agentLinkHtml}</div>
                 </td>`;
             }
             if (visibleCols.includes('group')) {
-                rowHtml += `<td style="color:#7f8c8d">${r.group_name}</td>`;
+                rowHtml += `<td style="color:#64748b; white-space: nowrap; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${r.group_name}</td>`;
             }
             if (visibleCols.includes('ip')) {
-                rowHtml += `<td><code class="ip-text">${r.ip_address||'-'}</code></td>`;
+                rowHtml += `<td style="white-space: nowrap;"><code class="ip-text" style="font-family: 'Courier New', monospace !important;">${r.ip_address||'-'}</code></td>`;
             }
             if (visibleCols.includes('module')) {
                 rowHtml += `<td>
-                    <div style="font-weight: normal; color:#0b1a26; margin-bottom:4px;">${r.module_name}</div>
-                    <div style="font-size:10px!important; color:#7f8c8d;">Update: ${r.time_ago}</div>
+                    <div style="font-weight: normal; color:#334155; margin-bottom:4px; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${r.module_name}</div>
+                    <div style="font-size:10px!important; color:#94a3b8; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">Update: ${r.time_ago}</div>
                 </td>`;
             }
             if (visibleCols.includes('status')) {
                 const rawValStr = String(r.current_value || '');
                 const cleanValStr = String(formatValue(r.current_value, r.unit, card.use_raw) ?? '');
                 if (cleanValStr.length > 45 || cleanValStr.includes('|') || cleanValStr.includes('\n')) {
-                    rowHtml += `<td style="text-align:center;">
-                        <button class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important; cursor:pointer; font-weight:600; display:inline-block; border-radius:4px; transition: opacity 0.2s;" 
+                    rowHtml += `<td style="text-align:center; white-space: nowrap;">
+                        <button class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important; cursor:pointer; font-weight:600; display:inline-block; border-radius:4px; transition: opacity 0.2s; white-space: nowrap; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;" 
                             onclick="showLongValuePopup('${r.module_name.replace(/'/g, "\\'")}', '${r.agent_alias.replace(/'/g, "\\'")}', \`${rawValStr.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`)"
                             onmouseenter="this.style.opacity=0.8" onmouseleave="this.style.opacity=1">
                             View Value
                         </button>
                     </td>`;
                 } else {
-                    rowHtml += `<td style="text-align:center;">
-                        <div class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important;">
+                    rowHtml += `<td style="text-align:center; white-space: nowrap;">
+                        <div class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important; white-space: nowrap; display: inline-block; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">
                             ${cleanValStr}${unitStr}
                         </div>
                     </td>`;
                 }
             }
             if (visibleCols.includes('history')) {
-                rowHtml += `<td style="text-align:center;">
+                rowHtml += `<td style="text-align:center; white-space: nowrap;">
                     <div style="display:inline-flex; gap:8px; align-items:center; justify-content:center; width:100%;">
                         <button class="icon-btn-card" style="padding:0; margin:0;" onclick="openNativeChart('${r.id_agente_modulo}', '${r.agent_alias.replace(/'/g, "\\'")} - ${r.module_name.replace(/'/g, "\\'")}', '${r.id_agente}')" title="View Chart">
                             <span class="material-symbols-outlined" style="font-size:${iconSz}px!important; color:#1976d2;">monitoring</span>
@@ -2444,9 +2444,9 @@ function renderTablePage(cardId) {
                 </td>`;
             }
             if (visibleCols.includes('threshold')) {
-                rowHtml += `<td>
-                    <div class="limit-text">Min: <strong style="color:#333;">${r.low_limit}${unitStr}</strong></div>
-                    <div class="limit-text">Max: <strong style="color:#e74c3c;">${r.high_limit}${unitStr}</strong></div>
+                rowHtml += `<td style="white-space: nowrap;">
+                    <div class="limit-text">Min: <strong style="color:#475569;">${r.low_limit}${unitStr}</strong></div>
+                    <div class="limit-text">Max: <strong style="color:#ef4444;">${r.high_limit}${unitStr}</strong></div>
                 </td>`;
             }
             rowHtml += '</tr>';
