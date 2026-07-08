@@ -2414,7 +2414,7 @@ function renderTablePage(cardId) {
             }
             if (visibleCols.includes('status')) {
                 const rawValStr = String(r.current_value || '');
-                const cleanValStr = formatValue(r.current_value, r.unit, card.use_raw);
+                const cleanValStr = String(formatValue(r.current_value, r.unit, card.use_raw) ?? '');
                 if (cleanValStr.length > 45 || cleanValStr.includes('|') || cleanValStr.includes('\n')) {
                     rowHtml += `<td style="text-align:center;">
                         <button class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important; cursor:pointer; font-weight:600; display:inline-block; border-radius:4px; transition: opacity 0.2s;" 
