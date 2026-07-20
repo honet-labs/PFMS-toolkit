@@ -1634,13 +1634,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     ];
 
     function updateUnitDropdown(enabledValues) {
+        if (typeof enabledValues === 'string') enabledValues = enabledValues.split(',').map(s => s.trim()).filter(Boolean);
         const select = document.getElementById('f_unit');
         if (!select) return;
         
         const currentValue = select.value;
         select.innerHTML = '';
         
-        const activeUnits = ALL_UNITS.filter(u => !enabledValues || enabledValues.length === 0 || enabledValues.includes(u.value));
+        const activeUnits = ALL_UNITS.filter(u => !enabledValues || !Array.isArray(enabledValues) || enabledValues.length === 0 || enabledValues.includes(u.value));
         
         activeUnits.forEach(u => {
             const opt = new Option(u.label, u.value);
@@ -1673,18 +1674,20 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     }
 
     function syncEnabledCategoriesUI(list) {
+        if (typeof list === 'string') list = list.split(',').map(s => s.trim()).filter(Boolean);
         availableCategories.forEach(c => {
             const cb = document.getElementById('cat_opt_' + c.id);
-            if (cb) cb.checked = (list === null) || list.includes(c.name);
+            if (cb) cb.checked = (!list || !Array.isArray(list) || list.length === 0) || list.includes(c.name);
         });
         const cbNA = document.getElementById('cat_opt_na');
-        if (cbNA) cbNA.checked = (list === null) || list.includes('N/A');
+        if (cbNA) cbNA.checked = (!list || !Array.isArray(list) || list.length === 0) || list.includes('N/A');
     }
 
     function syncEnabledUnitsUI(list) {
+        if (typeof list === 'string') list = list.split(',').map(s => s.trim()).filter(Boolean);
         ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
             const cb = document.getElementById('unit_opt_' + u);
-            if (cb) cb.checked = !list || list.length === 0 || list.includes(u);
+            if (cb) cb.checked = !list || !Array.isArray(list) || list.length === 0 || list.includes(u);
         });
     }
 
@@ -1732,17 +1735,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
         const params = new URLSearchParams(window.location.search);
         
-        // Load from LocalStorage first (User Defaults)
-        const savedSettings = IS_STANDALONE ? {} : JSON.parse(localStorage.getItem('pfms_dashboard_settings') || '{}');
-        if (savedSettings.warn) document.getElementById('f_warn').value = savedSettings.warn;
-        if (savedSettings.crit) document.getElementById('f_crit').value = savedSettings.crit;
-        if (savedSettings.fs) document.getElementById('f_fontsize').value = savedSettings.fs;
-        if (savedSettings.show_units !== undefined) document.getElementById('f_showunits').checked = savedSettings.show_units;
-        if (savedSettings.per_page) document.getElementById('f_perpage').value = savedSettings.per_page;
-
-        let activeUnitsList = savedSettings.enabled_units || null;
-
-        // URL Params override saved settings
+        // URL Params override UI filter defaults
         if(params.has('unit')) document.getElementById('f_unit').value = params.get('unit');
         if(params.has('sort')) document.getElementById('f_sort').value = params.get('sort');
         if(params.has('speed_filter')) document.getElementById('f_speed_filter').value = params.get('speed_filter');
@@ -1756,9 +1749,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if(params.has('fs')) document.getElementById('f_fontsize').value = params.get('fs');
         if(params.has('show_units')) document.getElementById('f_showunits').checked = params.get('show_units') !== '0';
         if(params.has('per_page')) document.getElementById('f_perpage').value = params.get('per_page');
-        let activeCategoriesList = savedSettings.enabled_categories || null;
-        if(params.has('enabled_units')) activeUnitsList = params.get('enabled_units').split(',');
-        if(params.has('enabled_categories')) activeCategoriesList = params.get('enabled_categories').split(',');
+        
+        let activeUnitsList = null;
+        let activeCategoriesList = null;
+        if(params.has('enabled_units')) activeUnitsList = params.get('enabled_units').split(',').map(s => s.trim()).filter(Boolean);
+        if(params.has('enabled_categories')) activeCategoriesList = params.get('enabled_categories').split(',').map(s => s.trim()).filter(Boolean);
         
         syncEnabledUnitsUI(activeUnitsList);
         updateUnitDropdown(activeUnitsList);
@@ -1869,28 +1864,43 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / TRAFFIC DASHBOARD / " + d.name.toUpperCase();
         }
         
-        // Load per-dashboard settings
-        const saved = IS_STANDALONE ? {} : JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
+        // Load per-dashboard settings: Priority (1) URL Params -> (2) Server saved config -> (3) LocalStorage -> (4) Defaults
+        const dSettings = d.settings || {};
+        const saved = JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
         const params = new URLSearchParams(window.location.search);
 
-        const warn = (isInitial && params.has('warn')) ? params.get('warn') : (saved.warn || 70);
-        const crit = (isInitial && params.has('crit')) ? params.get('crit') : (saved.crit || 80);
-        const fs = (isInitial && params.has('fs')) ? params.get('fs') : (saved.fs || 12);
-        const unit = (isInitial && params.has('unit')) ? params.get('unit') : (saved.unit || 'Auto');
-        const sort = (isInitial && params.has('sort')) ? params.get('sort') : (saved.sort || 'default');
-        const speed_filter = (isInitial && params.has('speed_filter')) ? params.get('speed_filter') : (saved.speed_filter || 'all');
-        const search = (isInitial && params.has('search')) ? params.get('search') : (saved.search || '');
-        const showUnits = (isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (saved.show_units !== false);
-        const perPage = (isInitial && params.has('per_page')) ? params.get('per_page') : (saved.per_page || 20);
-        const refresh = (isInitial && params.has('refresh')) ? params.get('refresh') : (saved.refresh || '60');
+        const warn = (isInitial && params.has('warn')) ? params.get('warn') : (dSettings.warn ?? (saved.warn ?? 70));
+        const crit = (isInitial && params.has('crit')) ? params.get('crit') : (dSettings.crit ?? (saved.crit ?? 80));
+        const fs = (isInitial && params.has('fs')) ? params.get('fs') : (dSettings.fs ?? (saved.fs ?? 12));
+        const unit = (isInitial && params.has('unit')) ? params.get('unit') : (dSettings.unit ?? (saved.unit ?? 'Auto'));
+        const sort = (isInitial && params.has('sort')) ? params.get('sort') : (dSettings.sort ?? (saved.sort ?? 'default'));
+        const speed_filter = (isInitial && params.has('speed_filter')) ? params.get('speed_filter') : (dSettings.speed_filter ?? (saved.speed_filter ?? 'all'));
+        const search = (isInitial && params.has('search')) ? params.get('search') : (dSettings.search ?? (saved.search ?? ''));
+        const showUnits = (isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (dSettings.show_units ?? (saved.show_units ?? true));
+        const perPage = (isInitial && params.has('per_page')) ? params.get('per_page') : (dSettings.per_page ?? (saved.per_page ?? 20));
+        const refresh = (isInitial && params.has('refresh')) ? params.get('refresh') : (dSettings.refresh ?? (saved.refresh ?? '60'));
 
-        const enabledUnits = (isInitial && params.has('enabled_units')) ? params.get('enabled_units').split(',') : (saved.enabled_units || null);
-        const enabledCategories = (isInitial && params.has('enabled_categories')) ? params.get('enabled_categories').split(',') : (saved.enabled_categories || null);
+        let enabledUnits = null;
+        if (isInitial && params.has('enabled_units')) {
+            enabledUnits = params.get('enabled_units').split(',').map(s=>s.trim()).filter(Boolean);
+        } else if (dSettings.enabled_units && Array.isArray(dSettings.enabled_units)) {
+            enabledUnits = dSettings.enabled_units;
+        } else if (saved.enabled_units && Array.isArray(saved.enabled_units)) {
+            enabledUnits = saved.enabled_units;
+        }
+
+        let enabledCategories = null;
+        if (isInitial && params.has('enabled_categories')) {
+            enabledCategories = params.get('enabled_categories').split(',').map(s=>s.trim()).filter(Boolean);
+        } else if (dSettings.enabled_categories && Array.isArray(dSettings.enabled_categories)) {
+            enabledCategories = dSettings.enabled_categories;
+        } else if (saved.enabled_categories && Array.isArray(saved.enabled_categories)) {
+            enabledCategories = saved.enabled_categories;
+        }
 
         document.getElementById('f_warn').value = warn;
         document.getElementById('f_crit').value = crit;
         document.getElementById('f_fontsize').value = fs;
-        document.getElementById('f_unit').value = unit;
         document.getElementById('f_sort').value = sort;
         document.getElementById('f_speed_filter').value = speed_filter;
         document.getElementById('f_showunits').checked = showUnits;
@@ -1899,6 +1909,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
         syncEnabledUnitsUI(enabledUnits);
         updateUnitDropdown(enabledUnits);
+        if (unit) document.getElementById('f_unit').value = unit;
         syncEnabledCategoriesUI(enabledCategories);
 
         const searchEl = document.getElementById('f_search');
@@ -2234,6 +2245,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const search = document.getElementById('f_search').value;
         const show_units = document.getElementById('f_showunits').checked;
         const per_page = document.getElementById('f_perpage').value || 20;
+        const refresh = document.getElementById('f_refresh').value;
 
         const enabled_units = [];
         ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
@@ -2249,10 +2261,22 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const cbNA = document.getElementById('cat_opt_na');
         if (cbNA && cbNA.checked) enabled_categories.push('N/A');
 
+        const settingsObj = { warn, crit, fs, unit, sort, speed_filter, search, show_units, enabled_units, enabled_categories, per_page, refresh };
+
         // Save to LocalStorage with Dashboard ID as Key
-        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify({ warn, crit, fs, unit, sort, speed_filter, search, show_units, enabled_units, enabled_categories, per_page }));
-        
+        localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify(settingsObj));
+
+        // Save to in-memory dashboard object and persist to server JSON file
+        const dash = masterDashboards.find(x => x.id === currentDashId);
+        if (dash) {
+            dash.settings = settingsObj;
+            saveConfigToServer();
+        }
+
         updateUnitDropdown(enabled_units);
+        if (enabled_units.includes(unit)) {
+            document.getElementById('f_unit').value = unit;
+        }
         applyFontSize();
         fetchData();
         closeSettingsModal();
@@ -2380,7 +2404,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             }
         } else {
             const id = 'dash_'+Math.random().toString(36).substr(2,9);
-            masterDashboards.push({ id, name, group_id: gsel.value, group_name: gsel.options[gsel.selectedIndex].text, agent_id: asel.value, agent_name: asel.options[asel.selectedIndex].text, hidden_interfaces: [] });
+            masterDashboards.push({ id, name, group_id: gsel.value, group_name: gsel.options[gsel.selectedIndex].text, agent_id: asel.value, agent_name: asel.options[asel.selectedIndex].text, hidden_interfaces: [], settings: {} });
         }
         
         saveConfigToServer(() => {
@@ -2482,7 +2506,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             group_name: d.group_name,
             agent_id: d.agent_id,
             agent_name: d.agent_name,
-            hidden_interfaces: d.hidden_interfaces || []
+            hidden_interfaces: d.hidden_interfaces || [],
+            settings: d.settings || {}
         };
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
         const dlAnchorElem = document.createElement('a');
@@ -2513,6 +2538,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                             d.agent_id = loaded.agent_id || '0';
                             d.agent_name = loaded.agent_name || '';
                             d.hidden_interfaces = loaded.hidden_interfaces || [];
+                            d.settings = loaded.settings || d.settings || {};
                         }
                         return d;
                     });
