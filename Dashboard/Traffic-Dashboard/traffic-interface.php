@@ -2293,6 +2293,46 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         updateURLState();
     }
 
+    function onFilterChange() {
+        const unit = document.getElementById('f_unit').value;
+        const sort = document.getElementById('f_sort').value;
+        const speedFilter = document.getElementById('f_speed_filter').value;
+        const refresh = document.getElementById('f_refresh').value;
+        const perPage = document.getElementById('f_perpage').value || 20;
+
+        const enabled_units = [];
+        ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
+            const cb = document.getElementById('unit_opt_' + u);
+            if (cb && cb.checked) enabled_units.push(u);
+        });
+
+        const enabled_categories = [];
+        if (typeof availableCategories !== 'undefined' && Array.isArray(availableCategories)) {
+            availableCategories.forEach(c => {
+                const cb = document.getElementById('cat_opt_' + c.id);
+                if (cb && cb.checked) enabled_categories.push(c.name);
+            });
+        }
+        const cbNA = document.getElementById('cat_opt_na');
+        if (cbNA && cbNA.checked) enabled_categories.push('N/A');
+
+        if (currentDashId) {
+            const dash = masterDashboards.find(x => x.id === currentDashId);
+            if (dash) {
+                if (!dash.settings) dash.settings = {};
+                dash.settings.unit = unit;
+                dash.settings.sort = sort;
+                dash.settings.speed_filter = speedFilter;
+                dash.settings.refresh = refresh;
+                dash.settings.per_page = perPage;
+                dash.settings.enabled_units = enabled_units;
+                dash.settings.enabled_categories = enabled_categories;
+                saveConfigToServer();
+            }
+        }
+        fetchData();
+    }
+
     function updateURLState() {
         const unit = document.getElementById('f_unit').value;
         const sort = document.getElementById('f_sort').value;
@@ -2311,28 +2351,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         });
 
         const refresh = document.getElementById('f_refresh').value;
-
-    function onFilterChange() {
-        const unit = document.getElementById('f_unit').value;
-        const sort = document.getElementById('f_sort').value;
-        const speedFilter = document.getElementById('f_speed_filter').value;
-        const refresh = document.getElementById('f_refresh').value;
-        const perPage = document.getElementById('f_perpage').value || 20;
-
-        if (currentDashId) {
-            const dash = masterDashboards.find(x => x.id === currentDashId);
-            if (dash) {
-                if (!dash.settings) dash.settings = {};
-                dash.settings.unit = unit;
-                dash.settings.sort = sort;
-                dash.settings.speed_filter = speedFilter;
-                dash.settings.refresh = refresh;
-                dash.settings.per_page = perPage;
-                saveConfigToServer();
-            }
-        }
-        fetchData();
-    }
 
         const newUrl = new URL(window.location);
         newUrl.searchParams.set('unit', unit);
