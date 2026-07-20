@@ -1437,14 +1437,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         <div class="toolbar-collapse" id="toolbarCollapse">
             <div class="toolbar-collapse-content">
                 <div class="toolbar-left">
-                    <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="fetchData()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
-                    <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="fetchData()"><option value="default">Default</option><option value="rx_desc">Largest RX (Max)</option><option value="rx_asc">Smallest RX (Min)</option><option value="tx_desc">Largest TX (Max)</option><option value="tx_asc">Smallest TX (Min)</option><option value="rx_pct_desc">Largest RX % (Max)</option><option value="rx_pct_asc">Smallest RX % (Min)</option><option value="tx_pct_desc">Largest TX % (Max)</option><option value="tx_pct_asc">Smallest TX % (Min)</option><option value="top_10_rx_pct">Top 10 RX (%)</option><option value="top_10_tx_pct">Top 10 TX (%)</option></select></div>
-                    <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="fetchData()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
+                    <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="onFilterChange()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
+                    <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="onFilterChange()"><option value="default">Default</option><option value="rx_desc">Largest RX (Max)</option><option value="rx_asc">Smallest RX (Min)</option><option value="tx_desc">Largest TX (Max)</option><option value="tx_asc">Smallest TX (Min)</option><option value="rx_pct_desc">Largest RX % (Max)</option><option value="rx_pct_asc">Smallest RX % (Min)</option><option value="tx_pct_desc">Largest TX % (Max)</option><option value="tx_pct_asc">Smallest TX % (Min)</option><option value="top_10_rx_pct">Top 10 RX (%)</option><option value="top_10_tx_pct">Top 10 TX (%)</option></select></div>
+                    <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="onFilterChange()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
                     <div class="toolbar-item" id="search_wrapper" style="display:flex; align-items:center;">
                         <button class="btn-neutral" style="width:32px; padding:0; height:32px;" onclick="toggleSearch()" title="Search">
                             <span class="material-symbols-outlined">search</span>
                         </button>
-                        <input type="text" id="f_search" class="toolbar-select" placeholder="Filter..." onkeyup="if(event.key==='Enter') fetchData()">
+                        <input type="text" id="f_search" class="toolbar-select" placeholder="Filter..." onkeyup="if(event.key==='Enter') onFilterChange()">
                     </div>
                 </div>
                 <div class="toolbar-right">
@@ -2311,6 +2311,28 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         });
 
         const refresh = document.getElementById('f_refresh').value;
+
+    function onFilterChange() {
+        const unit = document.getElementById('f_unit').value;
+        const sort = document.getElementById('f_sort').value;
+        const speedFilter = document.getElementById('f_speed_filter').value;
+        const refresh = document.getElementById('f_refresh').value;
+        const perPage = document.getElementById('f_perpage').value || 20;
+
+        if (currentDashId) {
+            const dash = masterDashboards.find(x => x.id === currentDashId);
+            if (dash) {
+                if (!dash.settings) dash.settings = {};
+                dash.settings.unit = unit;
+                dash.settings.sort = sort;
+                dash.settings.speed_filter = speedFilter;
+                dash.settings.refresh = refresh;
+                dash.settings.per_page = perPage;
+                saveConfigToServer();
+            }
+        }
+        fetchData();
+    }
 
         const newUrl = new URL(window.location);
         newUrl.searchParams.set('unit', unit);
