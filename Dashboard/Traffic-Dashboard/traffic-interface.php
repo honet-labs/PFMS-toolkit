@@ -1095,7 +1095,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .traffic-bar { height: calc(var(--table-font-size, 12px) / 3); min-height: 4px; max-height: 10px; background: #f1f5f9; border-radius: 10px; margin-top: 5px; overflow: hidden; width: calc(var(--table-font-size, 12px) * 5.5); }
         .table-icon { font-size: calc(var(--table-font-size, 12px) + 4px) !important; }
 
-        .toolbar { display: flex; flex-direction: column; background: #fff; border-bottom: 1px solid #e0e4e8; padding: 0 !important; }
+        .toolbar { display: flex; flex-direction: column; background: #fff; border-bottom: 1px solid #e0e4e8; padding: 0 !important; position: relative; z-index: 100; }
         .toolbar-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 25px; gap: 12px; box-sizing: border-box; width: 100%; min-height: 52px; }
         .toolbar-header-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         .toolbar-header-right { display: flex; align-items: center; }
@@ -1108,7 +1108,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             box-sizing: border-box;
         }
         .toolbar-collapse.show { 
-            max-height: 300px; 
+            max-height: 500px; 
+            overflow: visible;
         }
         .toolbar-collapse-content { 
             padding: 15px 25px; 
