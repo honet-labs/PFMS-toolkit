@@ -1634,6 +1634,18 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         { value: 'GBps', label: 'GB/s' }
     ];
 
+    function normalizeUnit(s) {
+        if (!s) return '';
+        const str = String(s).trim();
+        if (str === 'MBps' || str === 'MB/s' || str === 'MBPS_BYTES') return 'MBps';
+        if (str === 'GBps' || str === 'GB/s' || str === 'GBPS_BYTES') return 'GBps';
+        if (str === 'Mbps' || str === 'mbps') return 'Mbps';
+        if (str === 'Gbps' || str === 'gbps') return 'Gbps';
+        if (str === 'Bps' || str === 'B/s' || str === 'b/s') return 'Bps';
+        if (str.toLowerCase() === 'auto') return 'Auto';
+        return str;
+    }
+
     function updateUnitDropdown(enabledValues) {
         if (typeof enabledValues === 'string') enabledValues = enabledValues.split(',').map(s => s.trim()).filter(Boolean);
         const select = document.getElementById('f_unit');
@@ -1644,16 +1656,16 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         
         const activeUnits = ALL_UNITS.filter(u => {
             if (!enabledValues || !Array.isArray(enabledValues) || enabledValues.length === 0) return true;
-            return enabledValues.some(x => String(x).toLowerCase() === u.value.toLowerCase());
+            return enabledValues.some(x => normalizeUnit(x) === normalizeUnit(u.value));
         });
         
         activeUnits.forEach(u => {
             const opt = new Option(u.label, u.value);
-            if (u.value.toLowerCase() === currentValue.toLowerCase()) opt.selected = true;
+            if (normalizeUnit(u.value) === normalizeUnit(currentValue)) opt.selected = true;
             select.add(opt);
         });
         
-        if (!activeUnits.some(u => u.value.toLowerCase() === currentValue.toLowerCase()) && activeUnits.length > 0) {
+        if (!activeUnits.some(u => normalizeUnit(u.value) === normalizeUnit(currentValue)) && activeUnits.length > 0) {
             select.value = activeUnits[0].value;
         }
     }
@@ -1691,7 +1703,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (typeof list === 'string') list = list.split(',').map(s => s.trim()).filter(Boolean);
         ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
             const cb = document.getElementById('unit_opt_' + u);
-            if (cb) cb.checked = !list || !Array.isArray(list) || list.length === 0 || list.some(x => String(x).toLowerCase() === u.toLowerCase());
+            if (cb) cb.checked = !list || !Array.isArray(list) || list.length === 0 || list.some(x => normalizeUnit(x) === normalizeUnit(u));
         });
     }
 
