@@ -1642,15 +1642,18 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const currentValue = select.value;
         select.innerHTML = '';
         
-        const activeUnits = ALL_UNITS.filter(u => !enabledValues || !Array.isArray(enabledValues) || enabledValues.length === 0 || enabledValues.includes(u.value));
+        const activeUnits = ALL_UNITS.filter(u => {
+            if (!enabledValues || !Array.isArray(enabledValues) || enabledValues.length === 0) return true;
+            return enabledValues.some(x => String(x).toLowerCase() === u.value.toLowerCase());
+        });
         
         activeUnits.forEach(u => {
             const opt = new Option(u.label, u.value);
-            if (u.value === currentValue) opt.selected = true;
+            if (u.value.toLowerCase() === currentValue.toLowerCase()) opt.selected = true;
             select.add(opt);
         });
         
-        if (!activeUnits.some(u => u.value === currentValue) && activeUnits.length > 0) {
+        if (!activeUnits.some(u => u.value.toLowerCase() === currentValue.toLowerCase()) && activeUnits.length > 0) {
             select.value = activeUnits[0].value;
         }
     }
@@ -1678,17 +1681,17 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (typeof list === 'string') list = list.split(',').map(s => s.trim()).filter(Boolean);
         availableCategories.forEach(c => {
             const cb = document.getElementById('cat_opt_' + c.id);
-            if (cb) cb.checked = (!list || !Array.isArray(list) || list.length === 0) || list.includes(c.name);
+            if (cb) cb.checked = (!list || !Array.isArray(list) || list.length === 0) || list.some(x => String(x).toLowerCase() === c.name.toLowerCase());
         });
         const cbNA = document.getElementById('cat_opt_na');
-        if (cbNA) cbNA.checked = (!list || !Array.isArray(list) || list.length === 0) || list.includes('N/A');
+        if (cbNA) cbNA.checked = (!list || !Array.isArray(list) || list.length === 0) || list.some(x => String(x).toLowerCase() === 'n/a');
     }
 
     function syncEnabledUnitsUI(list) {
         if (typeof list === 'string') list = list.split(',').map(s => s.trim()).filter(Boolean);
         ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
             const cb = document.getElementById('unit_opt_' + u);
-            if (cb) cb.checked = !list || !Array.isArray(list) || list.length === 0 || list.includes(u);
+            if (cb) cb.checked = !list || !Array.isArray(list) || list.length === 0 || list.some(x => String(x).toLowerCase() === u.toLowerCase());
         });
     }
 
@@ -1865,36 +1868,36 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / TRAFFIC DASHBOARD / " + d.name.toUpperCase();
         }
         
-        // Load per-dashboard settings: Priority (1) URL Params -> (2) Server saved config -> (3) LocalStorage -> (4) Defaults
+        // Load per-dashboard settings: Priority (1) Server saved config (dSettings) -> (2) URL Params -> (3) LocalStorage -> (4) Defaults
         const dSettings = d.settings || {};
         const saved = JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
         const params = new URLSearchParams(window.location.search);
 
-        const warn = (isInitial && params.has('warn')) ? params.get('warn') : (dSettings.warn ?? (saved.warn ?? 70));
-        const crit = (isInitial && params.has('crit')) ? params.get('crit') : (dSettings.crit ?? (saved.crit ?? 80));
-        const fs = (isInitial && params.has('fs')) ? params.get('fs') : (dSettings.fs ?? (saved.fs ?? 12));
-        const unit = (isInitial && params.has('unit')) ? params.get('unit') : (dSettings.unit ?? (saved.unit ?? 'Auto'));
-        const sort = (isInitial && params.has('sort')) ? params.get('sort') : (dSettings.sort ?? (saved.sort ?? 'default'));
-        const speed_filter = (isInitial && params.has('speed_filter')) ? params.get('speed_filter') : (dSettings.speed_filter ?? (saved.speed_filter ?? 'all'));
-        const search = (isInitial && params.has('search')) ? params.get('search') : (dSettings.search ?? (saved.search ?? ''));
-        const showUnits = (isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (dSettings.show_units ?? (saved.show_units ?? true));
-        const perPage = (isInitial && params.has('per_page')) ? params.get('per_page') : (dSettings.per_page ?? (saved.per_page ?? 20));
-        const refresh = (isInitial && params.has('refresh')) ? params.get('refresh') : (dSettings.refresh ?? (saved.refresh ?? '60'));
+        const warn = dSettings.warn ?? ((isInitial && params.has('warn')) ? params.get('warn') : (saved.warn ?? 70));
+        const crit = dSettings.crit ?? ((isInitial && params.has('crit')) ? params.get('crit') : (saved.crit ?? 80));
+        const fs = dSettings.fs ?? ((isInitial && params.has('fs')) ? params.get('fs') : (saved.fs ?? 12));
+        const unit = dSettings.unit ?? ((isInitial && params.has('unit')) ? params.get('unit') : (saved.unit ?? 'Auto'));
+        const sort = dSettings.sort ?? ((isInitial && params.has('sort')) ? params.get('sort') : (saved.sort ?? 'default'));
+        const speed_filter = dSettings.speed_filter ?? ((isInitial && params.has('speed_filter')) ? params.get('speed_filter') : (saved.speed_filter ?? 'all'));
+        const search = dSettings.search ?? ((isInitial && params.has('search')) ? params.get('search') : (saved.search ?? ''));
+        const showUnits = dSettings.show_units ?? ((isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (saved.show_units ?? true));
+        const perPage = dSettings.per_page ?? ((isInitial && params.has('per_page')) ? params.get('per_page') : (saved.per_page ?? 20));
+        const refresh = dSettings.refresh ?? ((isInitial && params.has('refresh')) ? params.get('refresh') : (saved.refresh ?? '60'));
 
         let enabledUnits = null;
-        if (isInitial && params.has('enabled_units')) {
-            enabledUnits = params.get('enabled_units').split(',').map(s=>s.trim()).filter(Boolean);
-        } else if (dSettings.enabled_units && Array.isArray(dSettings.enabled_units)) {
+        if (dSettings.enabled_units && Array.isArray(dSettings.enabled_units) && dSettings.enabled_units.length > 0) {
             enabledUnits = dSettings.enabled_units;
+        } else if (isInitial && params.has('enabled_units')) {
+            enabledUnits = params.get('enabled_units').split(',').map(s=>s.trim()).filter(Boolean);
         } else if (saved.enabled_units && Array.isArray(saved.enabled_units)) {
             enabledUnits = saved.enabled_units;
         }
 
         let enabledCategories = null;
-        if (isInitial && params.has('enabled_categories')) {
-            enabledCategories = params.get('enabled_categories').split(',').map(s=>s.trim()).filter(Boolean);
-        } else if (dSettings.enabled_categories && Array.isArray(dSettings.enabled_categories)) {
+        if (dSettings.enabled_categories && Array.isArray(dSettings.enabled_categories) && dSettings.enabled_categories.length > 0) {
             enabledCategories = dSettings.enabled_categories;
+        } else if (isInitial && params.has('enabled_categories')) {
+            enabledCategories = params.get('enabled_categories').split(',').map(s=>s.trim()).filter(Boolean);
         } else if (saved.enabled_categories && Array.isArray(saved.enabled_categories)) {
             enabledCategories = saved.enabled_categories;
         }
