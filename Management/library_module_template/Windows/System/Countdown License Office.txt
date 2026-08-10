@@ -1,0 +1,8 @@
+# Group: Windows
+# Sub Group: System
+module_begin
+module_name License Office Countdown (Days)
+module_type generic_data
+module_unit Days
+module_exec powershell.exe -NoProfile -Command "$lic = Get-WmiObject -Query 'SELECT GracePeriodRemaining FROM SoftwareLicensingProduct WHERE LicenseStatus=1 AND Name LIKE ''%Office%''' | Select-Object -First 1; if ($lic) { [math]::Round($lic.GracePeriodRemaining / 1440) } else { 0 }"
+module_end
