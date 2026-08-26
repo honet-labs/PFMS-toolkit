@@ -139,6 +139,14 @@ foreach ($agents as $ag) {
             continue;
         }
 
+        // If agent has a specific IP different from Pandora server, replace server root hop with Agent IP
+        if (!empty($source_ip) && $source_ip !== '172.17.8.189') {
+            $xml_output = preg_replace('/RouteStep_172\.17\.8\.189/', 'RouteStep_' . $source_ip, $xml_output);
+            try {
+                $pdo->prepare("UPDATE tagente_modulo SET nombre = ? WHERE id_agente = ? AND nombre = 'RouteStep_172.17.8.189'")->execute(['RouteStep_' . $source_ip, $agent_id]);
+            } catch (Throwable $e) {}
+        }
+
         // Write to Pandora Spooler
         $ts = date('Y-m-d H:i:s');
         $agent_xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<agent_data agent_name=\"" . htmlspecialchars($agent_name, ENT_QUOTES) . "\" timestamp=\"$ts\" version=\"1.0\" os=\"Other\" interval=\"300\">\n" . $xml_output . "\n</agent_data>";

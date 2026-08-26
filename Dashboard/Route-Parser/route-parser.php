@@ -348,10 +348,19 @@ if ($api === 'add_route_path') {
     // 4. Direct DB sync to ensure instant visibility
     $parsed_modules_count = 0;
     if (isset($pdo) && $pdo instanceof PDO) {
+        $src_ip_clean = trim((string)($agent_info['direccion'] ?: ''));
+        
+        // If agent has a distinct IP from the Pandora Server, replace server root hop with Agent IP
+        if (!empty($src_ip_clean) && $src_ip_clean !== '172.17.8.189') {
+            $xml_output = preg_replace('/RouteStep_172\.17\.8\.189/', 'RouteStep_' . $src_ip_clean, $xml_output);
+            try {
+                $pdo->prepare("UPDATE tagente_modulo SET nombre = ? WHERE id_agente = ? AND nombre = 'RouteStep_172.17.8.189'")->execute(['RouteStep_' . $src_ip_clean, $agent_id]);
+            } catch (Throwable $e) {}
+        }
+
         // Preload all existing modules for this agent to resolve cross-run parent linkages
         $name_to_id = [];
         $root_mod_id = 0;
-        $src_ip_clean = $agent_info['direccion'] ?: '';
         
         $stExisting = $pdo->prepare("SELECT id_agente_modulo, nombre, parent_module_id FROM tagente_modulo WHERE id_agente = ? AND disabled = 0 AND (nombre LIKE 'RouteStep%' OR nombre LIKE 'RouteTarget%') ORDER BY id_agente_modulo ASC");
         $stExisting->execute([$agent_id]);
@@ -1859,6 +1868,15 @@ if ($use_demo_data) {
     if ($main_root_key && isset($graph_nodes[$main_root_key])) {
         $graph_nodes[$main_root_key]['type'] = 'src';
         $graph_nodes[$main_root_key]['parent'] = null;
+        if (!empty($clean_src_ip) && $clean_src_ip !== '172.17.8.189') {
+            $graph_nodes[$main_root_key]['ip'] = $clean_src_ip;
+            $graph_nodes[$main_root_key]['name'] = 'RouteStep_' . $clean_src_ip;
+            if (isset($pdo) && $pdo instanceof PDO) {
+                try {
+                    $pdo->prepare("UPDATE tagente_modulo SET nombre = ? WHERE id_agente_modulo = ?")->execute(['RouteStep_' . $clean_src_ip, $graph_nodes[$main_root_key]['id']]);
+                } catch (Throwable $e) {}
+            }
+        }
     }
 
     // Step 3: Sequential Branch Chaining & Auto-Healing
