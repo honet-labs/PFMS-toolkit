@@ -2,12 +2,17 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
-## [2.4] - 2026-08-26 (Route Parser Dashboard Hub & Share URL)
+## [2.4] - 2026-08-26 (Route Parser Dashboard Hub, Add Route Path & Standalone Clean View)
 ### Added
+- **Route Path Discovery & Module Provisioning:**
+  - Fitur **Add Route Path** untuk mengeksekusi pelacakan rute baru (*hop discovery*) ke IP target menggunakan binary `/usr/share/pandora_server/util/plugin/route_parser`.
+  - Otomatis melakukan pendaftaran modul `RouteStep_<hop_ip>` dan `RouteStepTarget_<target_ip>` pada Agen Pandora FMS yang dipilih via Data Spooler (`/var/spool/pandora/data_in/`) serta sinkronisasi langsung ke tabel `tagente_modulo`, `tagente_estado`, dan `tagente_datos`.
+  - Modal Add Route Path dengan pilihan Agent, IP target, custom hop, dan live execution log.
+- **Standalone Clean View & Collapsible Controls:**
+  - Mode Standalone (`&standalone=1`) terfokus 100% pada visualisasi topologi penuh tanpa header atau sidebar yang memotong layar.
+  - Header kontrol dan Inspector Sidebar dapat di-expand/collapse dengan tombol mengambang (*floating toggle*) dan tab samping.
 - **Multi-Dashboard Hub & Management:**
-  - Halaman Dashboard Hub untuk membuat, mengedit, memfilter, dan mengelola banyak Route Parser Dashboard sekaligus.
-  - Ringkasan metrik statistik (Total Dashboards, Route Agents Detected, RouteStep Modules, Engine Status).
-  - Modal pembuatan & pengaturan dashboard (pilihan Agent Pandora, Source IP, Threshold Warning & Critical, Default Range, Auto-Refresh).
+  - Halaman Dashboard Hub dengan format tabel vertikal bersih (*clean vertical table list*) konsisten dengan Dynamic Dashboard.
 - **Share URL & Embed Engine:**
   - Fitur **Share URL** untuk setiap dashboard dengan tiga opsi:
     1. *Direct Portal Link:* Membuka dashboard langsung di dalam antarmuka PFMS-Toolkit.
