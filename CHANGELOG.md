@@ -2,6 +2,20 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.4] - 2026-08-26 (Route Parser Dashboard Visualization)
+### Added
+- **Route Parser Dashboard:** Modul visualisasi topologi jaringan baru (`Dashboard/Route-Parser/route-parser.php`) berbasis hasil pelacakan rute plugin `route_parser` Pandora FMS (modul `RouteStep` dan `RouteTarget`).
+- **Interactive SVG Topology Engine:**
+  - Visualisasi aliran data animasi (*animated dashed flow lines*) dengan indikator latensi per *hop*.
+  - Hierarchical Tree Layout otomatis dari Source IP menuju ke seluruh Target.
+  - Ikon status (Source/Agent, Intermediate Hop/Router, Target/Bullseye) dengan pewarnaan dinamis (`OK`, `WARN`, `CRITICAL`).
+  - Fitur Drag-and-Drop node dengan perutean ulang garis koneksi dinamis (*dynamic edge re-routing*).
+  - Kontrol Pan & Zoom (Mouse wheel, Zoom In/Out, Reset View).
+  - Inspector / Details Sidebar untuk inspeksi mendalam metrik Min/Max/Avg latensi, nama modul, status, dan threshold.
+  - Dukungan filter rentang waktu (1h, 6h, 1d, 7d, 30d) dan Auto-Refresh (30s, 1m, 5m).
+  - Fallback / Demo Mode interaktif.
+
+
 ## [2.3] - 2024-04-29 (Native Integration & Reliability Fixes)
 ### Added
 - **Native Chart Integration:** Mengganti custom sparklines di Metrics Dashboard dengan native Pandora FMS history chart (`stat_win.php`) untuk stabilitas 100% dan performa tinggi.
