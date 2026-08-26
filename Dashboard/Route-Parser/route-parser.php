@@ -135,7 +135,26 @@ if (isset($pdo) && $pdo instanceof PDO) {
 }
 
 // Load existing dashboards or initialize defaults
-$dashboards = load_route_dashboards($CONFIG_FILE);
+$raw_dashboards = load_route_dashboards($CONFIG_FILE);
+$dashboards = [];
+$seen_agent_dash = [];
+
+foreach ($raw_dashboards as $d) {
+    if (!empty($d['is_demo'])) {
+        $dashboards[] = $d;
+        continue;
+    }
+    $aid = (int)($d['agent_id'] ?? 0);
+    if (!isset($seen_agent_dash[$aid])) {
+        // Clean unified dashboard title
+        $d['name'] = preg_replace('/\s+to\s+[0-9\.\:]+$/i', '', $d['name']);
+        $seen_agent_dash[$aid] = true;
+        $dashboards[] = $d;
+    }
+}
+if (!empty($raw_dashboards) && count($dashboards) !== count($raw_dashboards)) {
+    save_route_dashboards($CONFIG_FILE, $dashboards);
+}
 
 if (empty($dashboards)) {
     $seeded = [];
@@ -401,29 +420,44 @@ if ($api === 'add_route_path') {
         }
     }
 
-    // 5. Create Dashboard record if not exists
-    $dash_name = 'Route Path - ' . $agent_alias . ' to ' . $target_ip;
-    $dash_id = 'rp_' . bin2hex(random_bytes(6));
-    $dash_record = [
-        'id' => $dash_id,
-        'name' => $dash_name,
-        'description' => 'Route path from agent ' . $agent_alias . ' (' . ($agent_info['direccion'] ?: 'N/A') . ') to ' . $target_ip,
-        'agent_id' => $agent_id,
-        'source_ip' => $agent_info['direccion'] ?: '172.17.8.96',
-        'warn_threshold' => $warn_th,
-        'crit_threshold' => $crit_th,
-        'default_range' => '1d',
-        'auto_refresh' => '5m',
-        'created_at' => time(),
-        'updated_at' => time()
-    ];
-    $dashboards[] = $dash_record;
+    // 5. Update or Create Single Unified Dashboard for this Agent
+    $dash_name = 'Route Path - ' . $agent_alias;
+    $target_dash_id = null;
+
+    foreach ($dashboards as &$d) {
+        if ((int)($d['agent_id'] ?? 0) === $agent_id && empty($d['is_demo'])) {
+            $target_dash_id = $d['id'];
+            $d['name'] = $dash_name;
+            $d['updated_at'] = time();
+            break;
+        }
+    }
+    unset($d);
+
+    if (!$target_dash_id) {
+        $target_dash_id = 'rp_' . bin2hex(random_bytes(6));
+        $dash_record = [
+            'id' => $target_dash_id,
+            'name' => $dash_name,
+            'description' => 'Route parser topology monitoring for agent ' . $agent_alias . ' (' . ($agent_info['direccion'] ?: 'N/A') . ')',
+            'agent_id' => $agent_id,
+            'source_ip' => $agent_info['direccion'] ?: '172.17.8.96',
+            'warn_threshold' => $warn_th,
+            'crit_threshold' => $crit_th,
+            'default_range' => '1d',
+            'auto_refresh' => '5m',
+            'created_at' => time(),
+            'updated_at' => time()
+        ];
+        $dashboards[] = $dash_record;
+    }
+
     save_route_dashboards($CONFIG_FILE, $dashboards);
 
     echo json_encode([
         'ok' => true,
         'message' => "Route discovery successful! $parsed_modules_count modules registered on agent $agent_alias.",
-        'dashboard_id' => $dash_id,
+        'dashboard_id' => $target_dash_id,
         'modules_count' => $parsed_modules_count,
         'raw_output' => $xml_output
     ]);
@@ -1590,26 +1624,51 @@ if ($use_demo_data) {
     $targets_count = 2;
 } else {
     $id_to_key = [];
-    foreach ($modules_raw as $m) {
-        $mid = (int)$m['id_agente_modulo'];
-        $id_to_key[$mid] = 'mod_' . $mid;
-    }
-
     $main_root_key = null;
     $clean_src_ip = trim((string)$source_ip);
 
     foreach ($modules_raw as $m) {
         $mid = (int)$m['id_agente_modulo'];
+        $id_to_key[$mid] = 'mod_' . $mid;
+    }
+
+    // Step 1: Identify the main source / root module
+    foreach ($modules_raw as $m) {
+        $mid = (int)$m['id_agente_modulo'];
+        $ip = clean_hop_label($m['nombre']);
+        $is_target = (strpos($m['nombre'], 'Target') !== false || strpos($m['nombre'], 'RouteTarget') !== false);
+        if (!$is_target && !empty($clean_src_ip) && ($ip === $clean_src_ip || strpos($m['nombre'], $clean_src_ip) !== false)) {
+            $main_root_key = $id_to_key[$mid];
+            break;
+        }
+    }
+    if ($main_root_key === null && !empty($modules_raw)) {
+        foreach ($modules_raw as $m) {
+            $is_target = (strpos($m['nombre'], 'Target') !== false || strpos($m['nombre'], 'RouteTarget') !== false);
+            if (!$is_target) {
+                $main_root_key = $id_to_key[(int)$m['id_agente_modulo']];
+                break;
+            }
+        }
+        if ($main_root_key === null) {
+            $main_root_key = $id_to_key[(int)$modules_raw[0]['id_agente_modulo']];
+        }
+    }
+
+    // Step 2: Build raw nodes
+    foreach ($modules_raw as $m) {
+        $mid = (int)$m['id_agente_modulo'];
         $key = $id_to_key[$mid];
         $ip = clean_hop_label($m['nombre']);
         $is_target = (strpos($m['nombre'], 'Target') !== false || strpos($m['nombre'], 'RouteTarget') !== false);
+        $is_src = ($key === $main_root_key);
         $last_val = (float)($m['last_val'] ?? 0.0);
         $p_id = (int)$m['parent_module_id'];
-        
+
         $stats = $stats_by_module[$mid] ?? null;
         $min_ms = $stats ? $stats['min'] : $last_val;
         $max_ms = $stats ? $stats['max'] : $last_val;
-        
+
         $status = match ((int)($m['estado'] ?? 0)) { 0 => 'ok', 1 => 'crit', 2 => 'warn', default => 'ok' };
         if ($status === 'ok') {
             if ($last_val >= $crit_threshold) $status = 'crit';
@@ -1617,12 +1676,6 @@ if ($use_demo_data) {
         }
 
         if ($is_target) $targets_count++;
-
-        // Determine if this is the source / root node
-        $is_src = false;
-        if (!empty($clean_src_ip) && ($ip === $clean_src_ip || strpos($m['nombre'], $clean_src_ip) !== false)) {
-            $is_src = true;
-        }
 
         $graph_nodes[$key] = [
             'id' => $mid,
@@ -1634,25 +1687,8 @@ if ($use_demo_data) {
             'last_ms' => $last_val,
             'min_ms' => $min_ms,
             'max_ms' => $max_ms,
-            'parent' => ($p_id > 0 && isset($id_to_key[$p_id])) ? $id_to_key[$p_id] : null
+            'parent' => ($p_id > 0 && isset($id_to_key[$p_id]) && $id_to_key[$p_id] !== $key) ? $id_to_key[$p_id] : null
         ];
-
-        if ($is_src && $main_root_key === null) {
-            $main_root_key = $key;
-        }
-    }
-
-    // If no explicit source node was found by IP, pick the first module with no parent (or first module)
-    if ($main_root_key === null && !empty($graph_nodes)) {
-        foreach ($graph_nodes as $k => $n) {
-            if (empty($n['parent'])) {
-                $main_root_key = $k;
-                break;
-            }
-        }
-        if ($main_root_key === null) {
-            $main_root_key = array_key_first($graph_nodes);
-        }
     }
 
     if ($main_root_key && isset($graph_nodes[$main_root_key])) {
@@ -1660,19 +1696,49 @@ if ($use_demo_data) {
         $graph_nodes[$main_root_key]['parent'] = null;
     }
 
-    // Auto-heal / Link any orphan nodes so branches are never disconnected
-    $prev_key = $main_root_key;
-    foreach ($graph_nodes as $key => &$n) {
-        if ($key === $main_root_key) continue;
-        if (empty($n['parent']) || !isset($graph_nodes[$n['parent']]) || $n['parent'] === $key) {
-            // Link to previous hop or main root
-            $n['parent'] = $main_root_key;
-        }
-        $prev_key = $key;
-    }
-    unset($n);
+    // Step 3: Sequential Branch Chaining & Auto-Healing
+    // Walk through all non-root nodes in order of discovery
+    $curr_chain_parent = $main_root_key;
+    $db_updates = [];
 
-    // Build Graph Edges
+    foreach ($modules_raw as $m) {
+        $mid = (int)$m['id_agente_modulo'];
+        $key = $id_to_key[$mid];
+        if ($key === $main_root_key) {
+            $curr_chain_parent = $main_root_key;
+            continue;
+        }
+
+        $node = &$graph_nodes[$key];
+        $is_target = ($node['type'] === 'target');
+
+        // If parent is missing or invalid, link in sequence
+        if (empty($node['parent']) || !isset($graph_nodes[$node['parent']]) || $node['parent'] === $key) {
+            $node['parent'] = $curr_chain_parent;
+            if (isset($graph_nodes[$curr_chain_parent])) {
+                $db_updates[$mid] = (int)$graph_nodes[$curr_chain_parent]['id'];
+            }
+        }
+
+        if ($is_target) {
+            // Target completes a route branch -> next branch starts back from source root
+            $curr_chain_parent = $main_root_key;
+        } else {
+            // Intermediate hop -> next hop connects to this one
+            $curr_chain_parent = $key;
+        }
+    }
+    unset($node);
+
+    // Persist healed parent links to database so MySQL is permanently accurate
+    if (!empty($db_updates) && isset($pdo) && $pdo instanceof PDO) {
+        $stFix = $pdo->prepare("UPDATE tagente_modulo SET parent_module_id = ? WHERE id_agente_modulo = ?");
+        foreach ($db_updates as $f_mid => $f_pid) {
+            try { $stFix->execute([$f_pid, $f_mid]); } catch (Throwable $e) {}
+        }
+    }
+
+    // Step 4: Build Graph Edges
     foreach ($graph_nodes as $key => $n) {
         if (!empty($n['parent']) && isset($graph_nodes[$n['parent']])) {
             $graph_edges[] = [
