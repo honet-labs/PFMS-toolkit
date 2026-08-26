@@ -493,36 +493,34 @@ if (!$current_dashboard):
             color: #92400e;
         }
 
-        .btn-action {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            padding: 0;
+        .btn-action-text {
+            display: inline-block;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #4a5568;
             background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            color: #64748b;
-            cursor: pointer;
-            transition: all 0.2s;
+            border: 1px solid #dce1e5;
+            border-radius: 4px;
             text-decoration: none;
+            cursor: pointer;
+            transition: all 0.15s;
             margin-left: 4px;
             box-sizing: border-box;
         }
-        .btn-action:hover {
-            background: #f1f5f9;
+        .btn-action-text:hover {
+            background: #f8fafc;
             border-color: #cbd5e1;
-            color: #0f172a;
+            color: #0b1a26;
         }
-        .btn-action.btn-delete {
-            color: #ef4444;
+        .btn-action-text.btn-delete-text {
+            color: #dc2626;
             border-color: #fee2e2;
         }
-        .btn-action.btn-delete:hover {
+        .btn-action-text.btn-delete-text:hover {
             background: #fef2f2;
             border-color: #fca5a5;
-            color: #dc2626;
+            color: #b91c1c;
         }
 
         /* Modal Styles */
@@ -655,10 +653,7 @@ if (!$current_dashboard):
     <div class="pandora-header-bottom">
         <div class="breadcrumb-box">
             <span class="page-breadcrumb"><?= h($dynamic_breadcrumb) ?></span>
-            <h1 class="page-title">
-                <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:22px;">route</span>
-                Route Parser Dashboards
-            </h1>
+            <h1 class="page-title">Route Parser Dashboards</h1>
         </div>
 
         <div class="top-controls">
@@ -702,7 +697,6 @@ if (!$current_dashboard):
                                 <td>
                                     <div style="display:flex; align-items:center; gap:8px;">
                                         <a href="<?= $dash_url ?>" class="dash-name-link">
-                                            <span class="material-symbols-outlined" style="font-size:18px; color:var(--brand-green);">hub</span>
                                             <?= h($dash_name) ?>
                                         </a>
                                         <?php if ($is_demo): ?>
@@ -717,7 +711,6 @@ if (!$current_dashboard):
                                 <td>
                                     <div style="font-weight:600; color:#1e293b;">Agent ID: <?= (int)($d['agent_id'] ?? 1) ?></div>
                                     <div style="font-size:12px; color:#64748b; margin-top:2px;">
-                                        <span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; color:#94a3b8;">lan</span>
                                         <?= h($d['source_ip'] ?: '172.17.8.96') ?>
                                     </div>
                                 </td>
@@ -738,21 +731,10 @@ if (!$current_dashboard):
                                 </td>
 
                                 <td style="text-align:right; white-space:nowrap;">
-                                    <a href="<?= $dash_url ?>" class="btn-action" title="View Topology">
-                                        <span class="material-symbols-outlined">visibility</span>
-                                    </a>
-                                    
-                                    <button class="btn-action" title="Share URL" onclick="openShareModal('<?= h($d['id']) ?>', '<?= h(addslashes($dash_name)) ?>', '<?= h($standalone_url) ?>', '<?= h($dash_url) ?>')">
-                                        <span class="material-symbols-outlined">share</span>
-                                    </button>
-
-                                    <button class="btn-action" title="Edit Settings" onclick="openEditModal(<?= htmlspecialchars(json_encode($d), ENT_QUOTES, 'UTF-8') ?>)">
-                                        <span class="material-symbols-outlined">settings</span>
-                                    </button>
-
-                                    <button class="btn-action btn-delete" title="Delete Dashboard" onclick="deleteDashboard('<?= h($d['id']) ?>', '<?= h(addslashes($dash_name)) ?>')">
-                                        <span class="material-symbols-outlined">delete</span>
-                                    </button>
+                                    <a href="<?= $dash_url ?>" class="btn-action-text" title="View Topology">View</a>
+                                    <button class="btn-action-text" title="Share URL" onclick="openShareModal('<?= h($d['id']) ?>', '<?= h(addslashes($dash_name)) ?>', '<?= h($standalone_url) ?>', '<?= h($dash_url) ?>')">Share</button>
+                                    <button class="btn-action-text" title="Edit Settings" onclick="openEditModal(<?= htmlspecialchars(json_encode($d), ENT_QUOTES, 'UTF-8') ?>)">Edit</button>
+                                    <button class="btn-action-text btn-delete-text" title="Delete Dashboard" onclick="deleteDashboard('<?= h($d['id']) ?>', '<?= h(addslashes($dash_name)) ?>')">Delete</button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
