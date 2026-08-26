@@ -329,8 +329,22 @@ if ($api === 'add_route_path') {
     // 4. Direct DB sync to ensure instant visibility
     $parsed_modules_count = 0;
     if (isset($pdo) && $pdo instanceof PDO) {
-        preg_match_all('/<module>(.*?)<\/module>/s', $xml_output, $mod_matches);
+        // Preload all existing modules for this agent to resolve cross-run parent linkages
         $name_to_id = [];
+        $root_mod_id = 0;
+        $src_ip_clean = $agent_info['direccion'] ?: '';
+        
+        $stExisting = $pdo->prepare("SELECT id_agente_modulo, nombre, parent_module_id FROM tagente_modulo WHERE id_agente = ? AND disabled = 0 AND (nombre LIKE 'RouteStep%' OR nombre LIKE 'RouteTarget%') ORDER BY id_agente_modulo ASC");
+        $stExisting->execute([$agent_id]);
+        while ($er = $stExisting->fetch(PDO::FETCH_ASSOC)) {
+            $name_to_id[$er['nombre']] = (int)$er['id_agente_modulo'];
+            if ($er['parent_module_id'] == 0 || (!empty($src_ip_clean) && strpos($er['nombre'], $src_ip_clean) !== false)) {
+                if ($root_mod_id === 0) $root_mod_id = (int)$er['id_agente_modulo'];
+            }
+        }
+
+        preg_match_all('/<module>(.*?)<\/module>/s', $xml_output, $mod_matches);
+        $prev_mod_id = $root_mod_id;
 
         foreach ($mod_matches[1] as $mblock) {
             $m_name = ''; $m_data = 0.0; $m_parent = '';
@@ -340,7 +354,16 @@ if ($api === 'add_route_path') {
 
             if (empty($m_name)) continue;
 
-            $parent_mid = (!empty($m_parent) && isset($name_to_id[$m_parent])) ? $name_to_id[$m_parent] : 0;
+            $parent_mid = 0;
+            if (!empty($m_parent) && isset($name_to_id[$m_parent])) {
+                $parent_mid = $name_to_id[$m_parent];
+            } elseif (!empty($custom_from) && isset($name_to_id['RouteStep_' . $custom_from])) {
+                $parent_mid = $name_to_id['RouteStep_' . $custom_from];
+            } elseif ($prev_mod_id > 0 && (empty($src_ip_clean) || strpos($m_name, $src_ip_clean) === false)) {
+                $parent_mid = $prev_mod_id;
+            } elseif ($root_mod_id > 0 && (empty($src_ip_clean) || strpos($m_name, $src_ip_clean) === false)) {
+                $parent_mid = $root_mod_id;
+            }
 
             // Check if module exists in tagente_modulo
             $stCheck = $pdo->prepare("SELECT id_agente_modulo FROM tagente_modulo WHERE id_agente = ? AND nombre = ?");
@@ -360,6 +383,10 @@ if ($api === 'add_route_path') {
 
             if ($mod_id > 0) {
                 $name_to_id[$m_name] = $mod_id;
+                if ($parent_mid === 0 && (strpos($m_name, $src_ip_clean) !== false || $root_mod_id === 0)) {
+                    $root_mod_id = $mod_id;
+                }
+                $prev_mod_id = $mod_id;
                 $parsed_modules_count++;
 
                 // Upsert tagente_estado
@@ -1568,6 +1595,9 @@ if ($use_demo_data) {
         $id_to_key[$mid] = 'mod_' . $mid;
     }
 
+    $main_root_key = null;
+    $clean_src_ip = trim((string)$source_ip);
+
     foreach ($modules_raw as $m) {
         $mid = (int)$m['id_agente_modulo'];
         $key = $id_to_key[$mid];
@@ -1588,11 +1618,17 @@ if ($use_demo_data) {
 
         if ($is_target) $targets_count++;
 
+        // Determine if this is the source / root node
+        $is_src = false;
+        if (!empty($clean_src_ip) && ($ip === $clean_src_ip || strpos($m['nombre'], $clean_src_ip) !== false)) {
+            $is_src = true;
+        }
+
         $graph_nodes[$key] = [
             'id' => $mid,
             'name' => $m['nombre'],
             'ip' => $ip,
-            'type' => $is_target ? 'target' : 'hop',
+            'type' => $is_target ? 'target' : ($is_src ? 'src' : 'hop'),
             'role' => $is_target ? 'TARGET' : 'HOP',
             'status' => $status,
             'last_ms' => $last_val,
@@ -1600,8 +1636,43 @@ if ($use_demo_data) {
             'max_ms' => $max_ms,
             'parent' => ($p_id > 0 && isset($id_to_key[$p_id])) ? $id_to_key[$p_id] : null
         ];
+
+        if ($is_src && $main_root_key === null) {
+            $main_root_key = $key;
+        }
     }
 
+    // If no explicit source node was found by IP, pick the first module with no parent (or first module)
+    if ($main_root_key === null && !empty($graph_nodes)) {
+        foreach ($graph_nodes as $k => $n) {
+            if (empty($n['parent'])) {
+                $main_root_key = $k;
+                break;
+            }
+        }
+        if ($main_root_key === null) {
+            $main_root_key = array_key_first($graph_nodes);
+        }
+    }
+
+    if ($main_root_key && isset($graph_nodes[$main_root_key])) {
+        $graph_nodes[$main_root_key]['type'] = 'src';
+        $graph_nodes[$main_root_key]['parent'] = null;
+    }
+
+    // Auto-heal / Link any orphan nodes so branches are never disconnected
+    $prev_key = $main_root_key;
+    foreach ($graph_nodes as $key => &$n) {
+        if ($key === $main_root_key) continue;
+        if (empty($n['parent']) || !isset($graph_nodes[$n['parent']]) || $n['parent'] === $key) {
+            // Link to previous hop or main root
+            $n['parent'] = $main_root_key;
+        }
+        $prev_key = $key;
+    }
+    unset($n);
+
+    // Build Graph Edges
     foreach ($graph_nodes as $key => $n) {
         if (!empty($n['parent']) && isset($graph_nodes[$n['parent']])) {
             $graph_edges[] = [
@@ -1612,14 +1683,6 @@ if ($use_demo_data) {
                 'status' => $n['status']
             ];
         }
-    }
-
-    $roots = [];
-    foreach ($graph_nodes as $k => $n) {
-        if (empty($n['parent'])) $roots[] = $k;
-    }
-    if (!empty($roots)) {
-        $graph_nodes[$roots[0]]['type'] = 'src';
     }
 }
 
@@ -1664,8 +1727,8 @@ function calculate_tree_layout_v3(array $nodes, array $edges): array {
 
     $y_pos = [];
     $visited = [];
-    $curr_y = 150.0;
-    $y_gap = 130.0;
+    $curr_y = 140.0;
+    $y_gap = 140.0;
 
     $assign_y = function($u) use (&$assign_y, &$children, &$y_pos, &$visited, &$curr_y, $y_gap) {
         if (isset($visited[$u])) return;
@@ -1698,7 +1761,7 @@ function calculate_tree_layout_v3(array $nodes, array $edges): array {
     }
 
     $x_start = 140.0;
-    $x_spacing = 220.0;
+    $x_spacing = 240.0;
     $positions = [];
     $min_y = 9999.0;
     $max_y = -9999.0;
@@ -1717,8 +1780,8 @@ function calculate_tree_layout_v3(array $nodes, array $edges): array {
         $positions[$k]['y'] = $p['y'] + $center_shift_y;
     }
 
-    $svg_w = (int)max(900, $x_start + (($max_depth + 1) * $x_spacing) + 150);
-    $svg_h = (int)max(560, ($max_y - $min_y) + 160.0);
+    $svg_w = (int)max(960, $x_start + (($max_depth + 1) * $x_spacing) + 180);
+    $svg_h = (int)max(580, ($max_y - $min_y) + 200.0);
 
     return ['positions' => $positions, 'svg_w' => $svg_w, 'svg_h' => $svg_h];
 }
