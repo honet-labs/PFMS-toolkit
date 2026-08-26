@@ -37,8 +37,8 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
 
 // 2. Binary Locator
 $possible_bins = [
-    '/usr/share/pandora_server/util/plugin/route_parser',
     '/etc/pandora/plugins/route_parser',
+    '/usr/share/pandora_server/util/plugin/route_parser',
     '/usr/lib/pandora/plugins/route_parser',
     '/var/www/html/pandora_console/attachment/plugin/route_parser',
     __DIR__ . '/route_parser',
