@@ -1829,7 +1829,9 @@ if ($use_demo_data) {
         }
     }
 
-    // Step 2: Build raw nodes
+    // Step 2: Build raw nodes (filtering out duplicate source hops)
+    $seen_hop_ips = [$clean_src_ip => $main_root_key];
+
     foreach ($modules_raw as $m) {
         $mid = (int)$m['id_agente_modulo'];
         $key = $id_to_key[$mid];
@@ -1838,6 +1840,11 @@ if ($use_demo_data) {
         $is_src = ($key === $main_root_key);
         $last_val = (float)($m['last_val'] ?? 0.0);
         $p_id = (int)$m['parent_module_id'];
+
+        // Filter out duplicate redundant source hops that match the root IP
+        if (!$is_src && !$is_target && !empty($clean_src_ip) && $ip === $clean_src_ip) {
+            continue;
+        }
 
         $stats = $stats_by_module[$mid] ?? null;
         $min_ms = $stats ? $stats['min'] : $last_val;
@@ -1848,8 +1855,6 @@ if ($use_demo_data) {
             if ($last_val >= $crit_threshold) $status = 'crit';
             elseif ($last_val >= $warn_threshold) $status = 'warn';
         }
-
-        if ($is_target) $targets_count++;
 
         $graph_nodes[$key] = [
             'id' => $mid,
@@ -1894,7 +1899,7 @@ if ($use_demo_data) {
     $curr_chain_parent = $main_root_key;
     $db_updates = [];
 
-    // Separate hops and targets
+    // Separate intermediate hops
     $hop_keys = [];
     foreach ($graph_nodes as $k => $n) {
         if ($k !== $main_root_key && $n['type'] === 'hop') {
@@ -1902,44 +1907,38 @@ if ($use_demo_data) {
         }
     }
 
-    foreach ($modules_raw as $m) {
-        $mid = (int)$m['id_agente_modulo'];
-        $key = $id_to_key[$mid];
-        if ($key === $main_root_key) {
-            $curr_chain_parent = $main_root_key;
-            continue;
-        }
-
-        $node = &$graph_nodes[$key];
+    foreach ($graph_nodes as $key => &$node) {
+        if ($key === $main_root_key) continue;
+        $mid = (int)$node['id'];
         $is_target = ($node['type'] === 'target');
 
-        // Check if node already has a valid parent (not pointing to self or invalid)
+        // Check if there is a closer intermediate hop sharing the same IP subnet (/24 or /16)
+        $best_parent_key = null;
+        $best_score = 0;
+
+        foreach ($hop_keys as $hk) {
+            if ($hk === $key) continue;
+            $score = $ip_score($node['ip'], $graph_nodes[$hk]['ip']);
+            if ($score > $best_score) {
+                $best_score = $score;
+                $best_parent_key = $hk;
+            }
+        }
+
+        // Check if current parent is valid
         $has_valid_parent = (!empty($node['parent']) && isset($graph_nodes[$node['parent']]) && $node['parent'] !== $key);
 
-        if (!$has_valid_parent) {
-            $best_parent_key = null;
-            $best_score = 0;
-
-            // 1. Try to find the closest intermediate hop sharing the same IP subnet
-            foreach ($hop_keys as $hk) {
-                if ($hk === $key) continue;
-                $score = $ip_score($node['ip'], $graph_nodes[$hk]['ip']);
-                if ($score > $best_score) {
-                    $best_score = $score;
-                    $best_parent_key = $hk;
-                }
-            }
-
-            // 2. If matching subnet hop found with score >= 2 (e.g. 172.17.8.x), attach to that hop
-            if ($best_parent_key !== null && $best_score >= 2) {
+        // If target/hop is currently linked to root (or invalid), but a subnet hop (score >= 2) exists:
+        if ($best_parent_key !== null && $best_score >= 2) {
+            if (!$has_valid_parent || $node['parent'] === $main_root_key) {
                 $node['parent'] = $best_parent_key;
-            } elseif ($best_parent_key !== null && $best_score >= 1 && $is_target) {
-                $node['parent'] = $best_parent_key;
-            } else {
-                // 3. Otherwise, use sequential chain parent or root
-                $node['parent'] = $curr_chain_parent ?: $main_root_key;
+                $db_updates[$mid] = (int)$graph_nodes[$best_parent_key]['id'];
             }
-
+        } elseif ($best_parent_key !== null && $best_score >= 1 && $is_target && (!$has_valid_parent || $node['parent'] === $main_root_key)) {
+            $node['parent'] = $best_parent_key;
+            $db_updates[$mid] = (int)$graph_nodes[$best_parent_key]['id'];
+        } elseif (!$has_valid_parent) {
+            $node['parent'] = $curr_chain_parent ?: $main_root_key;
             if (isset($graph_nodes[$node['parent']])) {
                 $db_updates[$mid] = (int)$graph_nodes[$node['parent']]['id'];
             }
