@@ -6,7 +6,7 @@ declare(strict_types=1);
  * PFMS-Toolkit - Enterprise Edition
  * 
  * Features:
- * - Multi-Dashboard List / Hub with Search & Quick Filters
+ * - Clean Vertical Table List View (Styled consistently with Dynamic Dashboard)
  * - Per-Dashboard Direct URL, Standalone / Fullscreen Mode, and Iframe Embed Code Sharing
  * - Interactive SVG Topology Visualizer with Animated Flows & Drag-and-Drop
  * - Real-time Pandora FMS DB Module Query (RouteStep% / RouteTarget%) with Time-Range Stats
@@ -57,6 +57,9 @@ if (empty($user_id) && !$is_standalone && !$is_demo_param) {
     exit;
 }
 
+// Dynamic Breadcrumb
+$dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
+
 // File Storage for Dashboards
 $CONFIG_FILE = __DIR__ . '/route_dashboards.json';
 $temp_dir = __DIR__ . '/../../temp';
@@ -67,6 +70,15 @@ if (!is_writable(__DIR__) && is_dir($temp_dir) && is_writable($temp_dir)) {
 if (!function_exists('h')) {
     function h(?string $s): string {
         return htmlspecialchars((string)($s ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+}
+
+if (!function_exists('pretty_text')) {
+    function pretty_text(?string $s): string {
+        if ($s === null || $s === '') return '';
+        $text = html_entity_decode((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return str_replace(['&#x20;', '&nbsp;'], ' ', $text);
     }
 }
 
@@ -126,11 +138,10 @@ if (isset($pdo) && $pdo instanceof PDO) {
 $dashboards = load_route_dashboards($CONFIG_FILE);
 
 if (empty($dashboards)) {
-    // Seed initial dashboards
     $seeded = [];
     if (!empty($available_agents)) {
         foreach ($available_agents as $ag) {
-            $ag_name = $ag['alias'] ?: $ag['nombre'];
+            $ag_name = pretty_text($ag['alias'] ?: $ag['nombre']);
             $seeded[] = [
                 'id' => 'rp_' . bin2hex(random_bytes(6)),
                 'name' => 'Route Path - ' . $ag_name,
@@ -189,7 +200,6 @@ if ($api === 'save_dashboard') {
     $d_id = !empty($input['id']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$input['id']) : ('rp_' . bin2hex(random_bytes(6)));
     $agent_id = (int)($input['agent_id'] ?? 0);
     
-    // Resolve source IP
     $source_ip = trim((string)($input['source_ip'] ?? ''));
     if (empty($source_ip) && !empty($all_pandora_agents)) {
         foreach ($all_pandora_agents as $ag) {
@@ -210,8 +220,8 @@ if ($api === 'save_dashboard') {
 
     $dash_record = [
         'id' => $d_id,
-        'name' => trim($input['name']),
-        'description' => trim($input['description'] ?? ''),
+        'name' => pretty_text(trim($input['name'])),
+        'description' => pretty_text(trim($input['description'] ?? '')),
         'agent_id' => $agent_id,
         'source_ip' => $source_ip ?: '172.17.8.96',
         'warn_threshold' => !empty($input['warn_threshold']) ? (float)$input['warn_threshold'] : 10.0,
@@ -251,7 +261,7 @@ if ($api === 'delete_dashboard') {
     exit;
 }
 
-// Determine active view mode
+// Active dashboard resolution
 $active_dashboard_id = $_GET['dashboard_id'] ?? ($_GET['path_id'] ?? null);
 $current_dashboard = null;
 if (!empty($active_dashboard_id)) {
@@ -263,7 +273,7 @@ if (!empty($active_dashboard_id)) {
     }
 }
 
-// Relative & Full Base URLs for Share Links
+// URL helpers
 $script_url = $_SERVER['REQUEST_URI'] ?? '';
 $url_parts = parse_url($script_url);
 $clean_script_path = $url_parts['path'] ?? 'route-parser.php';
@@ -273,7 +283,7 @@ $current_proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'h
 $full_origin = $current_proto . $current_host;
 
 // =========================================================================
-// VIEW 1: DASHBOARD LIST / HUB VIEW (When no specific dashboard is opened)
+// VIEW 1: CLEAN VERTICAL TABLE LIST VIEW (Exact Style of Dynamic Dashboard)
 // =========================================================================
 if (!$current_dashboard):
 ?>
@@ -291,12 +301,13 @@ if (!$current_dashboard):
     <style>
         :root {
             --brand-green: #004d40;
-            --brand-green-hover: #00695c;
+            --brand-green-hover: #00332a;
             --primary-navy: #0b1a26;
             --bg-page: #f4f6f8;
             --card-bg: #ffffff;
             --border-color: #e0e4e8;
-            --text-dark: #1e293b;
+            --border-light: #f0f3f5;
+            --text-dark: #334155;
             --text-muted: #64748b;
             --accent-green: #10b981;
             --accent-orange: #f59e0b;
@@ -310,256 +321,208 @@ if (!$current_dashboard):
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background-color: var(--bg-page);
             color: var(--text-dark);
+            font-size: 14px;
             -webkit-font-smoothing: antialiased;
         }
 
-        .hub-header {
-            background: #ffffff;
-            border-bottom: 1px solid var(--border-color);
-            padding: 20px 32px;
+        /* Top Header Bar matching Dynamic Dashboard */
+        .pandora-header-bottom {
+            background-color: #f4f6f8;
+            padding: 15px 30px;
             display: flex;
+            align-items: center;
             justify-content: space-between;
-            align-items: center;
             flex-wrap: wrap;
-            gap: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+            gap: 15px;
         }
 
-        .hub-title-area h1 {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--primary-navy);
+        .breadcrumb-box {
+            display: flex;
+            flex-direction: column;
+        }
+        .page-breadcrumb {
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 4px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .page-title {
+            font-size: 18px;
+            color: #0b1a26;
             margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .hub-title-area p {
-            margin: 4px 0 0 0;
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-
-        .hub-actions {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .btn-primary-custom {
-            background: var(--brand-green);
-            color: #ffffff !important;
-            border: none;
-            padding: 8px 18px;
-            border-radius: 6px;
-            font-size: 13px;
             font-weight: 600;
-            cursor: pointer;
-            display: inline-flex;
+            line-height: 1.1;
+            display: flex;
             align-items: center;
-            gap: 6px;
-            text-decoration: none;
-            transition: all 0.2s;
-        }
-        .btn-primary-custom:hover {
-            background: var(--brand-green-hover);
-            box-shadow: 0 2px 8px rgba(0,77,64,0.25);
+            gap: 8px;
         }
 
-        .btn-secondary-custom {
-            background: #ffffff;
-            color: #334155 !important;
+        .top-controls {
+            display: flex;
+            flex-direction: row;
+            gap: 10px;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .list-search-box {
+            padding: 0 15px 0 35px;
+            height: 36px;
+            margin: 0;
+            box-sizing: border-box;
+            width: 280px;
             border: 1px solid #dce1e5;
-            padding: 8px 14px;
-            border-radius: 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: normal;
+            outline: none;
+            background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%237f8c8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 10px center;
+            transition: 0.2s;
+        }
+        .list-search-box:focus {
+            border-color: #004d40;
+            box-shadow: 0 0 0 2px rgba(0,77,64,0.1);
+        }
+
+        .btn-apply {
+            height: 36px;
+            margin: 0;
+            box-sizing: border-box;
+            background: var(--brand-green);
+            color: #fff !important;
+            border: none;
+            padding: 0 18px;
+            border-radius: 4px;
             font-size: 13px;
             font-weight: 500;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            text-decoration: none;
-            transition: all 0.2s;
-        }
-        .btn-secondary-custom:hover {
-            background: #f8fafc;
-            border-color: #cbd5e1;
-        }
-
-        /* Metrics Bar */
-        .hub-summary-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            padding: 24px 32px 10px 32px;
-        }
-
-        .summary-card {
-            background: #ffffff;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 16px 20px;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-        }
-        .summary-icon-box {
-            width: 44px;
-            height: 44px;
-            border-radius: 8px;
-            background: #e6f4ea;
-            color: var(--brand-green);
-            display: flex;
-            align-items: center;
             justify-content: center;
-        }
-        .summary-info .num {
-            font-size: 22px;
-            font-weight: 700;
-            color: var(--primary-navy);
-            line-height: 1.1;
-        }
-        .summary-info .label {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-top: 2px;
-        }
-
-        /* Filter Toolbar */
-        .hub-filter-bar {
-            padding: 14px 32px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-
-        .search-input-box {
-            position: relative;
-            flex: 1;
-            max-width: 380px;
-        }
-        .search-input-box span {
-            position: absolute;
-            left: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #94a3b8;
-            font-size: 18px;
-        }
-        .search-input {
-            width: 100%;
-            height: 38px;
-            padding: 0 12px 0 38px;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            background: #ffffff;
-            font-size: 13px;
-            outline: none;
-            transition: all 0.2s;
-        }
-        .search-input:focus {
-            border-color: var(--brand-green);
-            box-shadow: 0 0 0 2px rgba(0,77,64,0.1);
-        }
-
-        /* Cards Grid */
-        .dashboards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-            gap: 20px;
-            padding: 10px 32px 40px 32px;
-        }
-
-        .dashboard-card {
-            background: #ffffff;
-            border-radius: 10px;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .dashboard-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-            border-color: #cbd5e1;
-        }
-
-        .card-header-box {
-            padding: 18px 20px 14px 20px;
-            border-bottom: 1px solid #f1f5f9;
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 12px;
-        }
-
-        .card-title {
-            font-size: 15px;
-            font-weight: 700;
-            color: var(--primary-navy);
-            margin: 0;
-            line-height: 1.3;
-        }
-        .card-badge {
-            font-size: 10px;
-            font-weight: 700;
-            padding: 3px 8px;
-            border-radius: 12px;
-            background: #f1f5f9;
-            color: #475569;
+            gap: 6px;
+            transition: 0.2s;
             white-space: nowrap;
+            text-decoration: none;
         }
-        .card-badge.demo {
-            background: #fef3c7;
-            color: #92400e;
-            border: 1px solid #fde68a;
-        }
-
-        .card-body-box {
-            padding: 16px 20px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            font-size: 12px;
+        .btn-apply:hover {
+            background: var(--brand-green-hover);
+            box-shadow: 0 2px 6px rgba(0,77,64,0.25);
         }
 
-        .card-desc {
-            color: var(--text-muted);
-            font-size: 12px;
-            line-height: 1.5;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
+        /* Main Content & Table View */
+        .main-content {
+            padding: 10px 30px 40px 30px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .list-table-wrap {
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
             overflow: hidden;
-            min-height: 36px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
 
-        .card-meta-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 6px 0;
-            border-top: 1px dashed #f1f5f9;
-            color: #475569;
+        table.list-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 0;
         }
-        .card-meta-row b { color: var(--primary-navy); }
-
-        .card-footer-box {
+        table.list-table thead th {
+            background-color: #fafbfc;
+            border-bottom: 1px solid var(--border-color);
+            text-transform: uppercase;
             padding: 14px 20px;
-            background: #fafbfc;
-            border-top: 1px solid #f1f5f9;
-            display: flex;
+            font-weight: 600;
+            color: #7f8c8d;
+            font-size: 11px;
+            text-align: left;
+            letter-spacing: 0.5px;
+        }
+        table.list-table tbody td {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border-light);
+            color: #0b1a26;
+            vertical-align: middle;
+            transition: 0.15s;
+        }
+        table.list-table tbody tr:hover td {
+            background-color: #f8f9fa;
+        }
+        table.list-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .dash-name-link {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1976d2;
+            text-decoration: none;
+            display: inline-flex;
             align-items: center;
             gap: 8px;
+            cursor: pointer;
+        }
+        .dash-name-link:hover {
+            text-decoration: underline;
+            color: #0d47a1;
+        }
+
+        .dash-desc-sub {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 3px;
+            line-height: 1.4;
+        }
+
+        .dash-badge {
+            background: #e0f2f1;
+            color: #004d40;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .dash-badge.demo {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            margin-left: 4px;
+            box-sizing: border-box;
+        }
+        .btn-action:hover {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #0f172a;
+        }
+        .btn-action.btn-delete {
+            color: #ef4444;
+            border-color: #fee2e2;
+        }
+        .btn-action.btn-delete:hover {
+            background: #fef2f2;
+            border-color: #fca5a5;
+            color: #dc2626;
         }
 
         /* Modal Styles */
@@ -577,7 +540,7 @@ if (!$current_dashboard):
             background: #ffffff;
             width: 520px;
             max-width: 90vw;
-            border-radius: 10px;
+            border-radius: 8px;
             box-shadow: 0 15px 40px rgba(0,0,0,0.2);
             overflow: hidden;
             animation: modalPop 0.2s ease-out;
@@ -588,28 +551,28 @@ if (!$current_dashboard):
         }
 
         .modal-head {
-            padding: 18px 24px;
+            padding: 16px 24px;
             border-bottom: 1px solid var(--border-color);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: #f8fafc;
+            background: #fafbfc;
         }
         .modal-head h3 {
             margin: 0;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 700;
             color: var(--primary-navy);
         }
         .modal-body {
-            padding: 24px;
+            padding: 22px 24px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 14px;
         }
         .modal-foot {
             padding: 14px 24px;
-            background: #f8fafc;
+            background: #fafbfc;
             border-top: 1px solid var(--border-color);
             display: flex;
             justify-content: flex-end;
@@ -626,9 +589,9 @@ if (!$current_dashboard):
         }
         .form-control-custom {
             width: 100%;
-            height: 38px;
+            height: 36px;
             padding: 0 12px;
-            border-radius: 6px;
+            border-radius: 4px;
             border: 1px solid var(--border-color);
             font-size: 13px;
             outline: none;
@@ -638,6 +601,26 @@ if (!$current_dashboard):
         }
         .form-control-custom:focus {
             border-color: var(--brand-green);
+        }
+
+        .btn-secondary-custom {
+            height: 36px;
+            background: #fff;
+            color: #4a5568 !important;
+            border: 1px solid #dce1e5;
+            padding: 0 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.2s;
+            text-decoration: none;
+        }
+        .btn-secondary-custom:hover {
+            background: #f4f6f8;
+            color: #0b1a26 !important;
         }
 
         /* Toast */
@@ -668,144 +651,122 @@ if (!$current_dashboard):
 </head>
 <body>
 
-    <!-- 1. HUB HEADER -->
-    <div class="hub-header">
-        <div class="hub-title-area">
-            <h1>
-                <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:26px;">hub</span>
+    <!-- 1. TOP HEADER & CONTROLS (Identical to Dynamic Dashboard layout) -->
+    <div class="pandora-header-bottom">
+        <div class="breadcrumb-box">
+            <span class="page-breadcrumb"><?= h($dynamic_breadcrumb) ?></span>
+            <h1 class="page-title">
+                <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:22px;">route</span>
                 Route Parser Dashboards
             </h1>
-            <p>Interactive multi-hop network path monitoring powered by Pandora FMS route_parser modules.</p>
         </div>
 
-        <div class="hub-actions">
-            <button class="btn-primary-custom" onclick="openCreateModal()">
+        <div class="top-controls">
+            <input type="text" id="listSearch" class="list-search-box" placeholder="Search dashboards..." onkeyup="filterTable()">
+            <button class="btn-apply" onclick="openCreateModal()">
                 <span class="material-symbols-outlined" style="font-size:18px;">add</span>
-                New Dashboard
+                Create Dashboard
             </button>
         </div>
     </div>
 
-    <!-- 2. SUMMARY METRICS -->
-    <div class="hub-summary-grid">
-        <div class="summary-card">
-            <div class="summary-icon-box">
-                <span class="material-symbols-outlined">dashboard</span>
-            </div>
-            <div class="summary-info">
-                <div class="num"><?= count($dashboards) ?></div>
-                <div class="label">Total Dashboards</div>
-            </div>
+    <!-- 2. MAIN VERTICAL TABLE CONTENT -->
+    <div class="main-content">
+        <div class="list-table-wrap">
+            <table class="list-table" id="dashListTable">
+                <thead>
+                    <tr>
+                        <th style="width: 38%;">Dashboard Name</th>
+                        <th style="width: 22%;">Target Agent / Source IP</th>
+                        <th style="width: 15%;">Thresholds</th>
+                        <th style="width: 13%;">Auto Refresh</th>
+                        <th style="width: 12%; text-align:right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($dashboards)): ?>
+                        <tr>
+                            <td colspan="5" style="text-align:center; padding:30px; color:#94a3b8;">
+                                No route dashboards configured. Click "+ Create Dashboard" above to start.
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($dashboards as $d): 
+                            $is_demo = !empty($d['is_demo']);
+                            $dash_name = pretty_text($d['name']);
+                            $dash_desc = pretty_text($d['description'] ?? '');
+                            $dash_url = "?page=" . urlencode($portal_page_param) . "&dashboard_id=" . urlencode($d['id']);
+                            $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlencode($d['id']) . "&standalone=1";
+                        ?>
+                            <tr class="dash-table-row" data-search="<?= strtolower(h($dash_name . ' ' . $dash_desc . ' ' . ($d['source_ip'] ?? ''))) ?>">
+                                <td>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <a href="<?= $dash_url ?>" class="dash-name-link">
+                                            <span class="material-symbols-outlined" style="font-size:18px; color:var(--brand-green);">hub</span>
+                                            <?= h($dash_name) ?>
+                                        </a>
+                                        <?php if ($is_demo): ?>
+                                            <span class="dash-badge demo">Demo Reference</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if (!empty($dash_desc)): ?>
+                                        <div class="dash-desc-sub"><?= h($dash_desc) ?></div>
+                                    <?php endif; ?>
+                                </td>
+
+                                <td>
+                                    <div style="font-weight:600; color:#1e293b;">Agent ID: <?= (int)($d['agent_id'] ?? 1) ?></div>
+                                    <div style="font-size:12px; color:#64748b; margin-top:2px;">
+                                        <span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; color:#94a3b8;">lan</span>
+                                        <?= h($d['source_ip'] ?: '172.17.8.96') ?>
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <div style="font-size:12px;">
+                                        <span style="color:#d97706; font-weight:600;"><?= $d['warn_threshold'] ?? 10 ?>ms</span> / 
+                                        <span style="color:#dc2626; font-weight:600;"><?= $d['crit_threshold'] ?? 50 ?>ms</span>
+                                    </div>
+                                    <div style="font-size:10px; color:#94a3b8; text-transform:uppercase; margin-top:2px;">Warn / Crit</div>
+                                </td>
+
+                                <td>
+                                    <div style="font-size:12px; font-weight:500; color:#334155;">
+                                        <span class="dash-badge"><?= h($d['auto_refresh'] ?? '5m') ?></span>
+                                    </div>
+                                    <div style="font-size:11px; color:#94a3b8; margin-top:2px;"><?= h($d['default_range'] ?? '1d') ?> window</div>
+                                </td>
+
+                                <td style="text-align:right; white-space:nowrap;">
+                                    <a href="<?= $dash_url ?>" class="btn-action" title="View Topology">
+                                        <span class="material-symbols-outlined">visibility</span>
+                                    </a>
+                                    
+                                    <button class="btn-action" title="Share URL" onclick="openShareModal('<?= h($d['id']) ?>', '<?= h(addslashes($dash_name)) ?>', '<?= h($standalone_url) ?>', '<?= h($dash_url) ?>')">
+                                        <span class="material-symbols-outlined">share</span>
+                                    </button>
+
+                                    <button class="btn-action" title="Edit Settings" onclick="openEditModal(<?= htmlspecialchars(json_encode($d), ENT_QUOTES, 'UTF-8') ?>)">
+                                        <span class="material-symbols-outlined">settings</span>
+                                    </button>
+
+                                    <button class="btn-action btn-delete" title="Delete Dashboard" onclick="deleteDashboard('<?= h($d['id']) ?>', '<?= h(addslashes($dash_name)) ?>')">
+                                        <span class="material-symbols-outlined">delete</span>
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
         </div>
-
-        <div class="summary-card">
-            <div class="summary-icon-box" style="background:#e0f2fe; color:#0284c7;">
-                <span class="material-symbols-outlined">dns</span>
-            </div>
-            <div class="summary-info">
-                <div class="num"><?= count($available_agents) ?></div>
-                <div class="label">Route Agents Detected</div>
-            </div>
-        </div>
-
-        <div class="summary-card">
-            <div class="summary-icon-box" style="background:#fef3c7; color:#d97706;">
-                <span class="material-symbols-outlined">share_location</span>
-            </div>
-            <div class="summary-info">
-                <div class="num"><?= array_sum(array_column($available_agents, 'route_modules_count')) ?></div>
-                <div class="label">RouteStep Modules</div>
-            </div>
-        </div>
-
-        <div class="summary-card">
-            <div class="summary-icon-box" style="background:#dcfce7; color:#16a34a;">
-                <span class="material-symbols-outlined">check_circle</span>
-            </div>
-            <div class="summary-info">
-                <div class="num">Active</div>
-                <div class="label">Topology Engine</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 3. FILTER BAR -->
-    <div class="hub-filter-bar">
-        <div class="search-input-box">
-            <span class="material-symbols-outlined">search</span>
-            <input type="text" id="searchInput" class="search-input" placeholder="Search dashboards by name, IP, or agent..." oninput="filterCards()">
-        </div>
-        <div style="font-size:12px; color:var(--text-muted);">
-            Showing <b id="cardCount"><?= count($dashboards) ?></b> route topologies
-        </div>
-    </div>
-
-    <!-- 4. DASHBOARDS GRID -->
-    <div class="dashboards-grid" id="dashboardsGrid">
-        <?php foreach ($dashboards as $d): 
-            $is_demo = !empty($d['is_demo']);
-            $dash_url = "?page=" . urlencode($portal_page_param) . "&dashboard_id=" . urlencode($d['id']);
-            $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlencode($d['id']) . "&standalone=1";
-        ?>
-            <div class="dashboard-card" data-search="<?= strtolower(h($d['name'] . ' ' . ($d['description'] ?? '') . ' ' . ($d['source_ip'] ?? ''))) ?>">
-                <div class="card-header-box">
-                    <div>
-                        <h4 class="card-title"><?= h($d['name']) ?></h4>
-                        <?php if ($is_demo): ?>
-                            <span class="card-badge demo" style="margin-top:6px; display:inline-block;">Demo Topology</span>
-                        <?php endif; ?>
-                    </div>
-                    <span class="card-badge"><?= h($d['id']) ?></span>
-                </div>
-
-                <div class="card-body-box">
-                    <div class="card-desc"><?= h($d['description'] ?: 'Network route path topology monitoring.') ?></div>
-                    
-                    <div class="card-meta-row">
-                        <span>Source IP</span>
-                        <b><?= h($d['source_ip'] ?: '172.17.8.96') ?></b>
-                    </div>
-                    <div class="card-meta-row">
-                        <span>Agent ID</span>
-                        <b><?= (int)($d['agent_id'] ?? 1) ?></b>
-                    </div>
-                    <div class="card-meta-row">
-                        <span>Thresholds</span>
-                        <span><b><?= $d['warn_threshold'] ?? 10 ?>ms</b> / <b><?= $d['crit_threshold'] ?? 50 ?>ms</b></span>
-                    </div>
-                    <div class="card-meta-row">
-                        <span>Auto Refresh</span>
-                        <b><?= h($d['auto_refresh'] ?? '5m') ?></b>
-                    </div>
-                </div>
-
-                <div class="card-footer-box">
-                    <a href="<?= $dash_url ?>" class="btn-primary-custom" style="flex:1; justify-content:center;">
-                        <span class="material-symbols-outlined" style="font-size:16px;">visibility</span>
-                        View Topology
-                    </a>
-                    
-                    <button class="btn-secondary-custom" title="Share URL / Direct Link" onclick="openShareModal('<?= h($d['id']) ?>', '<?= h(addslashes($d['name'])) ?>', '<?= h($standalone_url) ?>', '<?= h($dash_url) ?>')">
-                        <span class="material-symbols-outlined" style="font-size:16px;">share</span>
-                    </button>
-
-                    <button class="btn-secondary-custom" title="Edit Settings" onclick="openEditModal(<?= htmlspecialchars(json_encode($d), ENT_QUOTES, 'UTF-8') ?>)">
-                        <span class="material-symbols-outlined" style="font-size:16px;">settings</span>
-                    </button>
-
-                    <button class="btn-secondary-custom" style="color:#ef4444!important;" title="Delete Dashboard" onclick="deleteDashboard('<?= h($d['id']) ?>', '<?= h(addslashes($d['name'])) ?>')">
-                        <span class="material-symbols-outlined" style="font-size:16px;">delete</span>
-                    </button>
-                </div>
-            </div>
-        <?php endforeach; ?>
     </div>
 
     <!-- MODAL 1: CREATE / EDIT DASHBOARD -->
     <div class="modal-overlay" id="dashboardModal">
         <div class="modal-card">
             <div class="modal-head">
-                <h3 id="modalTitle">Setup New Route Dashboard</h3>
+                <h3 id="modalTitle">Setup Route Dashboard</h3>
                 <button style="border:none; background:none; cursor:pointer;" onclick="closeModal('dashboardModal')">
                     <span class="material-symbols-outlined">close</span>
                 </button>
@@ -815,7 +776,7 @@ if (!$current_dashboard):
                 <div class="modal-body">
                     <div>
                         <label class="form-label">Dashboard Name</label>
-                        <input type="text" id="formName" name="name" class="form-control-custom" placeholder="e.g. Core to DataCenter Route" required>
+                        <input type="text" id="formName" name="name" class="form-control-custom" placeholder="e.g. Core Gateway to Branch Routes" required>
                     </div>
 
                     <div>
@@ -831,13 +792,13 @@ if (!$current_dashboard):
                                 <?php if (!empty($available_agents)): ?>
                                     <optgroup label="Agents with RouteStep Modules">
                                         <?php foreach ($available_agents as $ag): ?>
-                                            <option value="<?= (int)$ag['id_agente'] ?>"><?= h($ag['alias'] ?: $ag['nombre']) ?> (<?= (int)$ag['id_agente'] ?>)</option>
+                                            <option value="<?= (int)$ag['id_agente'] ?>"><?= h(pretty_text($ag['alias'] ?: $ag['nombre'])) ?> (ID: <?= (int)$ag['id_agente'] ?>)</option>
                                         <?php endforeach; ?>
                                     </optgroup>
                                 <?php endif; ?>
                                 <optgroup label="All Pandora Agents">
                                     <?php foreach ($all_pandora_agents as $ag): ?>
-                                        <option value="<?= (int)$ag['id_agente'] ?>"><?= h($ag['alias'] ?: $ag['nombre']) ?> (<?= (int)$ag['id_agente'] ?>)</option>
+                                        <option value="<?= (int)$ag['id_agente'] ?>"><?= h(pretty_text($ag['alias'] ?: $ag['nombre'])) ?> (ID: <?= (int)$ag['id_agente'] ?>)</option>
                                     <?php endforeach; ?>
                                 </optgroup>
                             </select>
@@ -884,7 +845,7 @@ if (!$current_dashboard):
 
                 <div class="modal-foot">
                     <button type="button" class="btn-secondary-custom" onclick="closeModal('dashboardModal')">Cancel</button>
-                    <button type="submit" class="btn-primary-custom">Save Dashboard</button>
+                    <button type="submit" class="btn-apply">Save Dashboard</button>
                 </div>
             </form>
         </div>
@@ -892,7 +853,7 @@ if (!$current_dashboard):
 
     <!-- MODAL 2: SHARE URL MODAL -->
     <div class="modal-overlay" id="shareModal">
-        <div class="modal-card" style="width:580px;">
+        <div class="modal-card" style="width:560px;">
             <div class="modal-head">
                 <h3 id="shareModalTitle">Share Dashboard URL</h3>
                 <button style="border:none; background:none; cursor:pointer;" onclick="closeModal('shareModal')">
@@ -901,10 +862,10 @@ if (!$current_dashboard):
             </div>
             <div class="modal-body">
                 <div>
-                    <label class="form-label">1. Portal Direct URL (Inside PFMS-Toolkit)</label>
+                    <label class="form-label">1. Direct Portal URL (Inside PFMS-Toolkit)</label>
                     <div style="display:flex; gap:8px;">
                         <input type="text" id="sharePortalUrl" class="form-control-custom" readonly>
-                        <button class="btn-primary-custom" onclick="copyInput('sharePortalUrl')">Copy</button>
+                        <button class="btn-apply" onclick="copyInput('sharePortalUrl')">Copy</button>
                     </div>
                 </div>
 
@@ -912,7 +873,7 @@ if (!$current_dashboard):
                     <label class="form-label">2. Standalone Fullscreen URL (NOC / TV Wall)</label>
                     <div style="display:flex; gap:8px;">
                         <input type="text" id="shareStandaloneUrl" class="form-control-custom" readonly>
-                        <button class="btn-primary-custom" onclick="copyInput('shareStandaloneUrl')">Copy</button>
+                        <button class="btn-apply" onclick="copyInput('shareStandaloneUrl')">Copy</button>
                     </div>
                 </div>
 
@@ -920,7 +881,7 @@ if (!$current_dashboard):
                     <label class="form-label">3. Iframe Embed Code</label>
                     <div style="display:flex; gap:8px;">
                         <input type="text" id="shareEmbedCode" class="form-control-custom" readonly>
-                        <button class="btn-primary-custom" onclick="copyInput('shareEmbedCode')">Copy</button>
+                        <button class="btn-apply" onclick="copyInput('shareEmbedCode')">Copy</button>
                     </div>
                 </div>
             </div>
@@ -958,20 +919,13 @@ if (!$current_dashboard):
             });
         }
 
-        function filterCards() {
-            const q = document.getElementById('searchInput').value.toLowerCase().trim();
-            const cards = document.querySelectorAll('.dashboard-card');
-            let cnt = 0;
-            cards.forEach(c => {
-                const s = c.getAttribute('data-search') || '';
-                if (!q || s.includes(q)) {
-                    c.style.display = 'flex';
-                    cnt++;
-                } else {
-                    c.style.display = 'none';
-                }
+        function filterTable() {
+            const q = document.getElementById('listSearch').value.toLowerCase().trim();
+            const rows = document.querySelectorAll('.dash-table-row');
+            rows.forEach(r => {
+                const s = r.getAttribute('data-search') || '';
+                r.style.display = (!q || s.includes(q)) ? '' : 'none';
             });
-            document.getElementById('cardCount').textContent = cnt;
         }
 
         function openModal(id) {
@@ -982,7 +936,7 @@ if (!$current_dashboard):
         }
 
         function openCreateModal() {
-            document.getElementById('modalTitle').textContent = 'Setup New Route Dashboard';
+            document.getElementById('modalTitle').textContent = 'Setup Route Dashboard';
             document.getElementById('formId').value = '';
             document.getElementById('formName').value = '';
             document.getElementById('formDesc').value = '';
@@ -1320,7 +1274,7 @@ if ($use_demo_data) {
 }
 
 // Tree Layout Helper
-function calculate_tree_layout_v2(array $nodes, array $edges): array {
+function calculate_tree_layout_v3(array $nodes, array $edges): array {
     if (empty($nodes)) return ['positions' => [], 'svg_w' => 900, 'svg_h' => 600];
 
     $children = [];
@@ -1419,7 +1373,7 @@ function calculate_tree_layout_v2(array $nodes, array $edges): array {
     return ['positions' => $positions, 'svg_w' => $svg_w, 'svg_h' => $svg_h];
 }
 
-$layout = calculate_tree_layout_v2($graph_nodes, $graph_edges);
+$layout = calculate_tree_layout_v3($graph_nodes, $graph_edges);
 $node_positions = $layout['positions'];
 $total_nodes_count = count($graph_nodes);
 $back_to_hub_url = "?page=" . urlencode($portal_page_param);
@@ -1829,23 +1783,23 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
             background: #ffffff;
             width: 540px;
             max-width: 90vw;
-            border-radius: 10px;
+            border-radius: 8px;
             box-shadow: 0 15px 40px rgba(0,0,0,0.2);
             overflow: hidden;
         }
         .modal-head {
-            padding: 18px 24px;
+            padding: 16px 24px;
             border-bottom: 1px solid var(--border-color);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: #f8fafc;
+            background: #fafbfc;
         }
-        .modal-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--primary-navy); }
+        .modal-head h3 { margin: 0; font-size: 15px; font-weight: 700; color: var(--primary-navy); }
         .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
-        .modal-foot { padding: 14px 24px; background: #f8fafc; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; }
+        .modal-foot { padding: 14px 24px; background: #fafbfc; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; }
         .form-label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; }
-        .form-control-custom { width: 100%; height: 38px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; outline: none; box-sizing: border-box; }
+        .form-control-custom { width: 100%; height: 36px; padding: 0 12px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 13px; outline: none; box-sizing: border-box; }
         
         .toast-popup {
             position: fixed;
