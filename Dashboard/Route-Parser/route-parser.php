@@ -2,11 +2,15 @@
 declare(strict_types=1);
 
 /**
- * Route Parser Dashboard (Network Path Visualization)
+ * Route Parser Dashboard (Network Path Visualization & Multi-Dashboard Manager)
  * PFMS-Toolkit - Enterprise Edition
  * 
- * Visualizes network routes traced by the Pandora FMS route_parser plugin
- * based on RouteStep and RouteTarget modules.
+ * Features:
+ * - Multi-Dashboard List / Hub with Search & Quick Filters
+ * - Per-Dashboard Direct URL, Standalone / Fullscreen Mode, and Iframe Embed Code Sharing
+ * - Interactive SVG Topology Visualizer with Animated Flows & Drag-and-Drop
+ * - Real-time Pandora FMS DB Module Query (RouteStep% / RouteTarget%) with Time-Range Stats
+ * - Auto-Discovery & Demo Fallback
  */
 
 $DEFAULT_TZ = "Asia/Jakarta";
@@ -37,22 +41,29 @@ if (file_exists($db_connection_file)) {
     }
 }
 
-// --- 2. AUTHENTICATION (PANDORA FMS SESSION) ---
+// --- 2. AUTHENTICATION & CONFIG PATHS ---
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 $user_id = $_SESSION['id_usuario'] ?? 0;
-// If embedded within portal or standalone console session
-$is_authenticated = !empty($user_id);
-if (!$is_authenticated && !isset($_GET['debug']) && !isset($_GET['demo'])) {
-    // Check if running directly inside console
+$csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
+$is_standalone = isset($_GET['standalone']) || isset($_GET['embed']);
+$is_demo_param = isset($_GET['demo']) || isset($_GET['debug']);
+
+if (empty($user_id) && !$is_standalone && !$is_demo_param) {
     $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
     $pandora_base = preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $m) ? rtrim($m[1], '/') : '/pandora_console';
     header("Location: " . $pandora_base . "/index.php");
     exit;
 }
 
-// Helpers
+// File Storage for Dashboards
+$CONFIG_FILE = __DIR__ . '/route_dashboards.json';
+$temp_dir = __DIR__ . '/../../temp';
+if (!is_writable(__DIR__) && is_dir($temp_dir) && is_writable($temp_dir)) {
+    $CONFIG_FILE = $temp_dir . '/route_dashboards.json';
+}
+
 if (!function_exists('h')) {
     function h(?string $s): string {
         return htmlspecialchars((string)($s ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -69,23 +80,1020 @@ function clean_hop_label(string $module_name): string {
     return $module_name;
 }
 
-function get_status_key(?int $estado): string {
-    return match ((int)$estado) {
-        0 => 'ok',
-        1 => 'crit',
-        2 => 'warn',
-        default => 'na'
-    };
+function load_route_dashboards(string $file): array {
+    if (!file_exists($file)) return [];
+    $raw = @file_get_contents($file);
+    if (!$raw) return [];
+    $data = json_decode($raw, true);
+    return is_array($data) ? $data : [];
 }
 
-// --- 3. INPUT PARAMETERS ---
-$selected_node = $_GET['node'] ?? 'primary';
-$selected_agent_id = isset($_GET['agent_id']) ? (int)$_GET['agent_id'] : 0;
-$time_range = $_GET['range'] ?? '1d';
-$auto_refresh = $_GET['refresh'] ?? '5m';
-$is_demo = isset($_GET['demo']) || isset($_GET['debug']);
+function save_route_dashboards(string $file, array $dashboards): bool {
+    $json = json_encode(array_values($dashboards), JSON_PRETTY_PRINT);
+    return @file_put_contents($file, $json) !== false;
+}
 
-// Calculate time window timestamps
+// --- 3. DISCOVER AGENTS WITH ROUTEPARSER MODULES ---
+$available_agents = [];
+if (isset($pdo) && $pdo instanceof PDO) {
+    try {
+        $sql = "SELECT DISTINCT a.id_agente, a.nombre, a.alias, a.direccion, COUNT(tm.id_agente_modulo) as route_modules_count
+                FROM tagente a
+                JOIN tagente_modulo tm ON tm.id_agente = a.id_agente
+                WHERE a.disabled = 0 
+                  AND (tm.nombre LIKE 'RouteStep%' OR tm.nombre LIKE 'RouteTarget%')
+                GROUP BY a.id_agente, a.nombre, a.alias, a.direccion
+                ORDER BY a.alias ASC";
+        $stmt = $pdo->query($sql);
+        if ($stmt) {
+            $available_agents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Throwable $e) {
+        error_log("Route Parser agent discovery error: " . $e->getMessage());
+    }
+}
+
+// All agents fallback for creation modal
+$all_pandora_agents = [];
+if (isset($pdo) && $pdo instanceof PDO) {
+    try {
+        $stAll = $pdo->query("SELECT id_agente, nombre, alias, direccion FROM tagente WHERE disabled = 0 ORDER BY alias ASC LIMIT 300");
+        if ($stAll) $all_pandora_agents = $stAll->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {}
+}
+
+// Load existing dashboards or initialize defaults
+$dashboards = load_route_dashboards($CONFIG_FILE);
+
+if (empty($dashboards)) {
+    // Seed initial dashboards
+    $seeded = [];
+    if (!empty($available_agents)) {
+        foreach ($available_agents as $ag) {
+            $ag_name = $ag['alias'] ?: $ag['nombre'];
+            $seeded[] = [
+                'id' => 'rp_' . bin2hex(random_bytes(6)),
+                'name' => 'Route Path - ' . $ag_name,
+                'description' => 'Route parser topology monitoring for agent ' . $ag_name . ' (' . ($ag['direccion'] ?: 'N/A') . ')',
+                'agent_id' => (int)$ag['id_agente'],
+                'source_ip' => $ag['direccion'] ?: '172.17.8.96',
+                'warn_threshold' => 10.0,
+                'crit_threshold' => 50.0,
+                'default_range' => '1d',
+                'auto_refresh' => '5m',
+                'created_at' => time(),
+                'updated_at' => time()
+            ];
+        }
+    }
+    
+    // Always include a high-fidelity Demo / Reference Dashboard
+    $seeded[] = [
+        'id' => 'rp_demo_core_gateway',
+        'name' => 'Core Gateway Path (Demo Reference)',
+        'description' => 'Reference network path topology demonstrating multi-hop branching to targets 10.10.5.81 and 10.10.6.220',
+        'agent_id' => 1,
+        'source_ip' => '172.17.8.96',
+        'warn_threshold' => 10.0,
+        'crit_threshold' => 50.0,
+        'default_range' => '1d',
+        'auto_refresh' => '5m',
+        'is_demo' => true,
+        'created_at' => time(),
+        'updated_at' => time()
+    ];
+
+    save_route_dashboards($CONFIG_FILE, $seeded);
+    $dashboards = $seeded;
+}
+
+// --- 4. AJAX API ENDPOINTS ---
+$api = $_GET['api'] ?? '';
+
+if ($api === 'save_dashboard') {
+    if (ob_get_level() > 0) ob_clean();
+    header('Content-Type: application/json');
+
+    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!empty($csrf_token) && $client_token !== $csrf_token) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Please refresh page.']);
+        exit;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($input) || empty($input['name'])) {
+        echo json_encode(['ok' => false, 'error' => 'Dashboard name is required.']);
+        exit;
+    }
+
+    $d_id = !empty($input['id']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$input['id']) : ('rp_' . bin2hex(random_bytes(6)));
+    $agent_id = (int)($input['agent_id'] ?? 0);
+    
+    // Resolve source IP
+    $source_ip = trim((string)($input['source_ip'] ?? ''));
+    if (empty($source_ip) && !empty($all_pandora_agents)) {
+        foreach ($all_pandora_agents as $ag) {
+            if ((int)$ag['id_agente'] === $agent_id) {
+                $source_ip = $ag['direccion'] ?: '';
+                break;
+            }
+        }
+    }
+
+    $existing_idx = -1;
+    foreach ($dashboards as $idx => $d) {
+        if ($d['id'] === $d_id) {
+            $existing_idx = $idx;
+            break;
+        }
+    }
+
+    $dash_record = [
+        'id' => $d_id,
+        'name' => trim($input['name']),
+        'description' => trim($input['description'] ?? ''),
+        'agent_id' => $agent_id,
+        'source_ip' => $source_ip ?: '172.17.8.96',
+        'warn_threshold' => !empty($input['warn_threshold']) ? (float)$input['warn_threshold'] : 10.0,
+        'crit_threshold' => !empty($input['crit_threshold']) ? (float)$input['crit_threshold'] : 50.0,
+        'default_range' => in_array($input['default_range'] ?? '', ['1h', '6h', '1d', '7d', '30d'], true) ? $input['default_range'] : '1d',
+        'auto_refresh' => in_array($input['auto_refresh'] ?? '', ['0', '30s', '1m', '5m'], true) ? $input['auto_refresh'] : '5m',
+        'created_at' => ($existing_idx >= 0) ? ($dashboards[$existing_idx]['created_at'] ?? time()) : time(),
+        'updated_at' => time()
+    ];
+
+    if ($existing_idx >= 0) {
+        $dashboards[$existing_idx] = $dash_record;
+    } else {
+        $dashboards[] = $dash_record;
+    }
+
+    $ok = save_route_dashboards($CONFIG_FILE, $dashboards);
+    echo json_encode(['ok' => $ok, 'dashboard' => $dash_record]);
+    exit;
+}
+
+if ($api === 'delete_dashboard') {
+    if (ob_get_level() > 0) ob_clean();
+    header('Content-Type: application/json');
+
+    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!empty($csrf_token) && $client_token !== $csrf_token) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
+        exit;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $d_id = $input['id'] ?? '';
+    $dashboards = array_filter($dashboards, fn($d) => $d['id'] !== $d_id);
+    $ok = save_route_dashboards($CONFIG_FILE, array_values($dashboards));
+    echo json_encode(['ok' => $ok]);
+    exit;
+}
+
+// Determine active view mode
+$active_dashboard_id = $_GET['dashboard_id'] ?? ($_GET['path_id'] ?? null);
+$current_dashboard = null;
+if (!empty($active_dashboard_id)) {
+    foreach ($dashboards as $d) {
+        if ($d['id'] === $active_dashboard_id) {
+            $current_dashboard = $d;
+            break;
+        }
+    }
+}
+
+// Relative & Full Base URLs for Share Links
+$script_url = $_SERVER['REQUEST_URI'] ?? '';
+$url_parts = parse_url($script_url);
+$clean_script_path = $url_parts['path'] ?? 'route-parser.php';
+$portal_page_param = $_GET['page'] ?? 'Dashboard/Route-Parser/route-parser.php';
+$current_host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$current_proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+$full_origin = $current_proto . $current_host;
+
+// =========================================================================
+// VIEW 1: DASHBOARD LIST / HUB VIEW (When no specific dashboard is opened)
+// =========================================================================
+if (!$current_dashboard):
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Route Parser Dashboards | PFMS-Toolkit</title>
+    
+    <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    
+    <style>
+        :root {
+            --brand-green: #004d40;
+            --brand-green-hover: #00695c;
+            --primary-navy: #0b1a26;
+            --bg-page: #f4f6f8;
+            --card-bg: #ffffff;
+            --border-color: #e0e4e8;
+            --text-dark: #1e293b;
+            --text-muted: #64748b;
+            --accent-green: #10b981;
+            --accent-orange: #f59e0b;
+            --accent-red: #ef4444;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-dark);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .hub-header {
+            background: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            padding: 20px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        }
+
+        .hub-title-area h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary-navy);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .hub-title-area p {
+            margin: 4px 0 0 0;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .hub-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-primary-custom {
+            background: var(--brand-green);
+            color: #ffffff !important;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .btn-primary-custom:hover {
+            background: var(--brand-green-hover);
+            box-shadow: 0 2px 8px rgba(0,77,64,0.25);
+        }
+
+        .btn-secondary-custom {
+            background: #ffffff;
+            color: #334155 !important;
+            border: 1px solid #dce1e5;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .btn-secondary-custom:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+        }
+
+        /* Metrics Bar */
+        .hub-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            padding: 24px 32px 10px 32px;
+        }
+
+        .summary-card {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+        .summary-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            background: #e6f4ea;
+            color: var(--brand-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .summary-info .num {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--primary-navy);
+            line-height: 1.1;
+        }
+        .summary-info .label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+
+        /* Filter Toolbar */
+        .hub-filter-bar {
+            padding: 14px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .search-input-box {
+            position: relative;
+            flex: 1;
+            max-width: 380px;
+        }
+        .search-input-box span {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            font-size: 18px;
+        }
+        .search-input {
+            width: 100%;
+            height: 38px;
+            padding: 0 12px 0 38px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #ffffff;
+            font-size: 13px;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .search-input:focus {
+            border-color: var(--brand-green);
+            box-shadow: 0 0 0 2px rgba(0,77,64,0.1);
+        }
+
+        /* Cards Grid */
+        .dashboards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+            gap: 20px;
+            padding: 10px 32px 40px 32px;
+        }
+
+        .dashboard-card {
+            background: #ffffff;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            border-color: #cbd5e1;
+        }
+
+        .card-header-box {
+            padding: 18px 20px 14px 20px;
+            border-bottom: 1px solid #f1f5f9;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--primary-navy);
+            margin: 0;
+            line-height: 1.3;
+        }
+        .card-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 12px;
+            background: #f1f5f9;
+            color: #475569;
+            white-space: nowrap;
+        }
+        .card-badge.demo {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+
+        .card-body-box {
+            padding: 16px 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 12px;
+        }
+
+        .card-desc {
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            min-height: 36px;
+        }
+
+        .card-meta-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-top: 1px dashed #f1f5f9;
+            color: #475569;
+        }
+        .card-meta-row b { color: var(--primary-navy); }
+
+        .card-footer-box {
+            padding: 14px 20px;
+            background: #fafbfc;
+            border-top: 1px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(11, 26, 38, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(2px);
+        }
+        .modal-card {
+            background: #ffffff;
+            width: 520px;
+            max-width: 90vw;
+            border-radius: 10px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+            animation: modalPop 0.2s ease-out;
+        }
+        @keyframes modalPop {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-head {
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8fafc;
+        }
+        .modal-head h3 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--primary-navy);
+        }
+        .modal-body {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .modal-foot {
+            padding: 14px 24px;
+            background: #f8fafc;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        .form-control-custom {
+            width: 100%;
+            height: 38px;
+            padding: 0 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            font-size: 13px;
+            outline: none;
+            box-sizing: border-box;
+            background: #ffffff;
+            transition: border-color 0.2s;
+        }
+        .form-control-custom:focus {
+            border-color: var(--brand-green);
+        }
+
+        /* Toast */
+        .toast-popup {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #0b1a26;
+            color: #ffffff;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 9999;
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .toast-popup.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. HUB HEADER -->
+    <div class="hub-header">
+        <div class="hub-title-area">
+            <h1>
+                <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:26px;">hub</span>
+                Route Parser Dashboards
+            </h1>
+            <p>Interactive multi-hop network path monitoring powered by Pandora FMS route_parser modules.</p>
+        </div>
+
+        <div class="hub-actions">
+            <button class="btn-primary-custom" onclick="openCreateModal()">
+                <span class="material-symbols-outlined" style="font-size:18px;">add</span>
+                New Dashboard
+            </button>
+        </div>
+    </div>
+
+    <!-- 2. SUMMARY METRICS -->
+    <div class="hub-summary-grid">
+        <div class="summary-card">
+            <div class="summary-icon-box">
+                <span class="material-symbols-outlined">dashboard</span>
+            </div>
+            <div class="summary-info">
+                <div class="num"><?= count($dashboards) ?></div>
+                <div class="label">Total Dashboards</div>
+            </div>
+        </div>
+
+        <div class="summary-card">
+            <div class="summary-icon-box" style="background:#e0f2fe; color:#0284c7;">
+                <span class="material-symbols-outlined">dns</span>
+            </div>
+            <div class="summary-info">
+                <div class="num"><?= count($available_agents) ?></div>
+                <div class="label">Route Agents Detected</div>
+            </div>
+        </div>
+
+        <div class="summary-card">
+            <div class="summary-icon-box" style="background:#fef3c7; color:#d97706;">
+                <span class="material-symbols-outlined">share_location</span>
+            </div>
+            <div class="summary-info">
+                <div class="num"><?= array_sum(array_column($available_agents, 'route_modules_count')) ?></div>
+                <div class="label">RouteStep Modules</div>
+            </div>
+        </div>
+
+        <div class="summary-card">
+            <div class="summary-icon-box" style="background:#dcfce7; color:#16a34a;">
+                <span class="material-symbols-outlined">check_circle</span>
+            </div>
+            <div class="summary-info">
+                <div class="num">Active</div>
+                <div class="label">Topology Engine</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. FILTER BAR -->
+    <div class="hub-filter-bar">
+        <div class="search-input-box">
+            <span class="material-symbols-outlined">search</span>
+            <input type="text" id="searchInput" class="search-input" placeholder="Search dashboards by name, IP, or agent..." oninput="filterCards()">
+        </div>
+        <div style="font-size:12px; color:var(--text-muted);">
+            Showing <b id="cardCount"><?= count($dashboards) ?></b> route topologies
+        </div>
+    </div>
+
+    <!-- 4. DASHBOARDS GRID -->
+    <div class="dashboards-grid" id="dashboardsGrid">
+        <?php foreach ($dashboards as $d): 
+            $is_demo = !empty($d['is_demo']);
+            $dash_url = "?page=" . urlencode($portal_page_param) . "&dashboard_id=" . urlencode($d['id']);
+            $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlencode($d['id']) . "&standalone=1";
+        ?>
+            <div class="dashboard-card" data-search="<?= strtolower(h($d['name'] . ' ' . ($d['description'] ?? '') . ' ' . ($d['source_ip'] ?? ''))) ?>">
+                <div class="card-header-box">
+                    <div>
+                        <h4 class="card-title"><?= h($d['name']) ?></h4>
+                        <?php if ($is_demo): ?>
+                            <span class="card-badge demo" style="margin-top:6px; display:inline-block;">Demo Topology</span>
+                        <?php endif; ?>
+                    </div>
+                    <span class="card-badge"><?= h($d['id']) ?></span>
+                </div>
+
+                <div class="card-body-box">
+                    <div class="card-desc"><?= h($d['description'] ?: 'Network route path topology monitoring.') ?></div>
+                    
+                    <div class="card-meta-row">
+                        <span>Source IP</span>
+                        <b><?= h($d['source_ip'] ?: '172.17.8.96') ?></b>
+                    </div>
+                    <div class="card-meta-row">
+                        <span>Agent ID</span>
+                        <b><?= (int)($d['agent_id'] ?? 1) ?></b>
+                    </div>
+                    <div class="card-meta-row">
+                        <span>Thresholds</span>
+                        <span><b><?= $d['warn_threshold'] ?? 10 ?>ms</b> / <b><?= $d['crit_threshold'] ?? 50 ?>ms</b></span>
+                    </div>
+                    <div class="card-meta-row">
+                        <span>Auto Refresh</span>
+                        <b><?= h($d['auto_refresh'] ?? '5m') ?></b>
+                    </div>
+                </div>
+
+                <div class="card-footer-box">
+                    <a href="<?= $dash_url ?>" class="btn-primary-custom" style="flex:1; justify-content:center;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">visibility</span>
+                        View Topology
+                    </a>
+                    
+                    <button class="btn-secondary-custom" title="Share URL / Direct Link" onclick="openShareModal('<?= h($d['id']) ?>', '<?= h(addslashes($d['name'])) ?>', '<?= h($standalone_url) ?>', '<?= h($dash_url) ?>')">
+                        <span class="material-symbols-outlined" style="font-size:16px;">share</span>
+                    </button>
+
+                    <button class="btn-secondary-custom" title="Edit Settings" onclick="openEditModal(<?= htmlspecialchars(json_encode($d), ENT_QUOTES, 'UTF-8') ?>)">
+                        <span class="material-symbols-outlined" style="font-size:16px;">settings</span>
+                    </button>
+
+                    <button class="btn-secondary-custom" style="color:#ef4444!important;" title="Delete Dashboard" onclick="deleteDashboard('<?= h($d['id']) ?>', '<?= h(addslashes($d['name'])) ?>')">
+                        <span class="material-symbols-outlined" style="font-size:16px;">delete</span>
+                    </button>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    </div>
+
+    <!-- MODAL 1: CREATE / EDIT DASHBOARD -->
+    <div class="modal-overlay" id="dashboardModal">
+        <div class="modal-card">
+            <div class="modal-head">
+                <h3 id="modalTitle">Setup New Route Dashboard</h3>
+                <button style="border:none; background:none; cursor:pointer;" onclick="closeModal('dashboardModal')">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <form id="dashForm" onsubmit="saveDashboard(event)">
+                <input type="hidden" id="formId" name="id" value="">
+                <div class="modal-body">
+                    <div>
+                        <label class="form-label">Dashboard Name</label>
+                        <input type="text" id="formName" name="name" class="form-control-custom" placeholder="e.g. Core to DataCenter Route" required>
+                    </div>
+
+                    <div>
+                        <label class="form-label">Description (Optional)</label>
+                        <input type="text" id="formDesc" name="description" class="form-control-custom" placeholder="Brief description of this route path">
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                        <div>
+                            <label class="form-label">Pandora Agent</label>
+                            <select id="formAgent" name="agent_id" class="form-control-custom" required>
+                                <option value="">-- Select Agent --</option>
+                                <?php if (!empty($available_agents)): ?>
+                                    <optgroup label="Agents with RouteStep Modules">
+                                        <?php foreach ($available_agents as $ag): ?>
+                                            <option value="<?= (int)$ag['id_agente'] ?>"><?= h($ag['alias'] ?: $ag['nombre']) ?> (<?= (int)$ag['id_agente'] ?>)</option>
+                                        <?php endforeach; ?>
+                                    </optgroup>
+                                <?php endif; ?>
+                                <optgroup label="All Pandora Agents">
+                                    <?php foreach ($all_pandora_agents as $ag): ?>
+                                        <option value="<?= (int)$ag['id_agente'] ?>"><?= h($ag['alias'] ?: $ag['nombre']) ?> (<?= (int)$ag['id_agente'] ?>)</option>
+                                    <?php endforeach; ?>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Source IP</label>
+                            <input type="text" id="formSourceIp" name="source_ip" class="form-control-custom" placeholder="e.g. 172.17.8.96">
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                        <div>
+                            <label class="form-label">Warning Threshold (ms)</label>
+                            <input type="number" step="0.1" id="formWarn" name="warn_threshold" class="form-control-custom" value="10.0">
+                        </div>
+                        <div>
+                            <label class="form-label">Critical Threshold (ms)</label>
+                            <input type="number" step="0.1" id="formCrit" name="crit_threshold" class="form-control-custom" value="50.0">
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                        <div>
+                            <label class="form-label">Default Range</label>
+                            <select id="formRange" name="default_range" class="form-control-custom">
+                                <option value="1h">Last 1 hour</option>
+                                <option value="6h">Last 6 hours</option>
+                                <option value="1d" selected>Last 1 day</option>
+                                <option value="7d">Last 7 days</option>
+                                <option value="30d">Last 30 days</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Auto Refresh</label>
+                            <select id="formRefresh" name="auto_refresh" class="form-control-custom">
+                                <option value="0">Off</option>
+                                <option value="30s">30 seconds</option>
+                                <option value="1m">1 minute</option>
+                                <option value="5m" selected>5 minutes</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-foot">
+                    <button type="button" class="btn-secondary-custom" onclick="closeModal('dashboardModal')">Cancel</button>
+                    <button type="submit" class="btn-primary-custom">Save Dashboard</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: SHARE URL MODAL -->
+    <div class="modal-overlay" id="shareModal">
+        <div class="modal-card" style="width:580px;">
+            <div class="modal-head">
+                <h3 id="shareModalTitle">Share Dashboard URL</h3>
+                <button style="border:none; background:none; cursor:pointer;" onclick="closeModal('shareModal')">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div>
+                    <label class="form-label">1. Portal Direct URL (Inside PFMS-Toolkit)</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="sharePortalUrl" class="form-control-custom" readonly>
+                        <button class="btn-primary-custom" onclick="copyInput('sharePortalUrl')">Copy</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label">2. Standalone Fullscreen URL (NOC / TV Wall)</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="shareStandaloneUrl" class="form-control-custom" readonly>
+                        <button class="btn-primary-custom" onclick="copyInput('shareStandaloneUrl')">Copy</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label">3. Iframe Embed Code</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="shareEmbedCode" class="form-control-custom" readonly>
+                        <button class="btn-primary-custom" onclick="copyInput('shareEmbedCode')">Copy</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary-custom" onclick="closeModal('shareModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST POPUP -->
+    <div class="toast-popup" id="toastPopup">
+        <span class="material-symbols-outlined" style="font-size:18px; color:#10b981;">check_circle</span>
+        <span id="toastMsg">Copied to clipboard!</span>
+    </div>
+
+    <script>
+        const CSRF_TOKEN = <?= json_encode($csrf_token) ?>;
+
+        function showToast(msg) {
+            const t = document.getElementById('toastPopup');
+            document.getElementById('toastMsg').textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2200);
+        }
+
+        function copyInput(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.select();
+            navigator.clipboard.writeText(el.value).then(() => {
+                showToast('Link copied to clipboard!');
+            }).catch(() => {
+                document.execCommand('copy');
+                showToast('Link copied!');
+            });
+        }
+
+        function filterCards() {
+            const q = document.getElementById('searchInput').value.toLowerCase().trim();
+            const cards = document.querySelectorAll('.dashboard-card');
+            let cnt = 0;
+            cards.forEach(c => {
+                const s = c.getAttribute('data-search') || '';
+                if (!q || s.includes(q)) {
+                    c.style.display = 'flex';
+                    cnt++;
+                } else {
+                    c.style.display = 'none';
+                }
+            });
+            document.getElementById('cardCount').textContent = cnt;
+        }
+
+        function openModal(id) {
+            document.getElementById(id).style.display = 'flex';
+        }
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        function openCreateModal() {
+            document.getElementById('modalTitle').textContent = 'Setup New Route Dashboard';
+            document.getElementById('formId').value = '';
+            document.getElementById('formName').value = '';
+            document.getElementById('formDesc').value = '';
+            document.getElementById('formAgent').value = '';
+            document.getElementById('formSourceIp').value = '';
+            document.getElementById('formWarn').value = '10.0';
+            document.getElementById('formCrit').value = '50.0';
+            document.getElementById('formRange').value = '1d';
+            document.getElementById('formRefresh').value = '5m';
+            openModal('dashboardModal');
+        }
+
+        function openEditModal(d) {
+            document.getElementById('modalTitle').textContent = 'Edit Route Dashboard';
+            document.getElementById('formId').value = d.id || '';
+            document.getElementById('formName').value = d.name || '';
+            document.getElementById('formDesc').value = d.description || '';
+            document.getElementById('formAgent').value = d.agent_id || '';
+            document.getElementById('formSourceIp').value = d.source_ip || '';
+            document.getElementById('formWarn').value = d.warn_threshold || '10.0';
+            document.getElementById('formCrit').value = d.crit_threshold || '50.0';
+            document.getElementById('formRange').value = d.default_range || '1d';
+            document.getElementById('formRefresh').value = d.auto_refresh || '5m';
+            openModal('dashboardModal');
+        }
+
+        function openShareModal(id, name, standaloneUrl, portalUrl) {
+            document.getElementById('shareModalTitle').textContent = 'Share: ' + name;
+            
+            const origin = window.location.origin;
+            const fullPortalUrl = window.location.href.split('?')[0] + portalUrl;
+            
+            document.getElementById('sharePortalUrl').value = fullPortalUrl;
+            document.getElementById('shareStandaloneUrl').value = standaloneUrl;
+            document.getElementById('shareEmbedCode').value = `<iframe src="${standaloneUrl}" width="100%" height="700" frameborder="0"></iframe>`;
+            
+            openModal('shareModal');
+        }
+
+        async function saveDashboard(e) {
+            e.preventDefault();
+            const data = {
+                id: document.getElementById('formId').value,
+                name: document.getElementById('formName').value,
+                description: document.getElementById('formDesc').value,
+                agent_id: parseInt(document.getElementById('formAgent').value, 10),
+                source_ip: document.getElementById('formSourceIp').value,
+                warn_threshold: parseFloat(document.getElementById('formWarn').value),
+                crit_threshold: parseFloat(document.getElementById('formCrit').value),
+                default_range: document.getElementById('formRange').value,
+                auto_refresh: document.getElementById('formRefresh').value
+            };
+
+            try {
+                const res = await fetch('?api=save_dashboard', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF_TOKEN
+                    },
+                    body: JSON.stringify(data)
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    location.reload();
+                } else {
+                    alert('Error saving dashboard: ' + (json.error || 'Unknown failure.'));
+                }
+            } catch (err) {
+                alert('Network error saving dashboard: ' + err.message);
+            }
+        }
+
+        async function deleteDashboard(id, name) {
+            if (!confirm(`Are you sure you want to delete dashboard "${name}"?`)) return;
+            try {
+                const res = await fetch('?api=delete_dashboard', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({ id: id })
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    location.reload();
+                } else {
+                    alert('Error deleting dashboard: ' + (json.error || 'Unknown failure.'));
+                }
+            } catch (err) {
+                alert('Network error deleting dashboard: ' + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
+<?php
+exit;
+endif;
+
+// =========================================================================
+// VIEW 2: DASHBOARD DETAIL / VISUALIZATION VIEW (Matching Screenshot)
+// =========================================================================
+$selected_agent_id = (int)($current_dashboard['agent_id'] ?? 1);
+$time_range = $_GET['range'] ?? ($current_dashboard['default_range'] ?? '1d');
+$auto_refresh = $_GET['refresh'] ?? ($current_dashboard['auto_refresh'] ?? '5m');
+$warn_threshold = (float)($current_dashboard['warn_threshold'] ?? 10.0);
+$crit_threshold = (float)($current_dashboard['crit_threshold'] ?? 50.0);
+$is_demo = !empty($current_dashboard['is_demo']) || isset($_GET['demo']) || isset($_GET['debug']);
+
 $now = time();
 $range_seconds = match ($time_range) {
     '1h' => 3600,
@@ -105,51 +1113,17 @@ $range_label = match ($time_range) {
     default => 'Last 1 day'
 };
 
-// Threshold defaults
-$warn_threshold = 10.0;
-$crit_threshold = 50.0;
-
-// --- 4. DATA DISCOVERY & PARSING ---
-$active_pdo = ($selected_node === 'primary' || !isset($custom_pdos[$selected_node])) ? $pdo : ($custom_pdos[$selected_node] ?? $pdo);
-
-// Find all agents with RouteStep/RouteTarget modules
-$available_agents = [];
-if ($active_pdo) {
-    try {
-        $sql = "SELECT DISTINCT a.id_agente, a.nombre, a.alias, a.direccion, COUNT(tm.id_agente_modulo) as route_modules_count
-                FROM tagente a
-                JOIN tagente_modulo tm ON tm.id_agente = a.id_agente
-                WHERE a.disabled = 0 
-                  AND (tm.nombre LIKE 'RouteStep%' OR tm.nombre LIKE 'RouteTarget%')
-                GROUP BY a.id_agente, a.nombre, a.alias, a.direccion
-                ORDER BY a.alias ASC";
-        $stmt = $active_pdo->query($sql);
-        if ($stmt) {
-            $available_agents = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        }
-    } catch (Throwable $e) {
-        error_log("Route Parser agent discovery failed: " . $e->getMessage());
-    }
-}
-
-// If no specific agent selected, choose the first available one
-if ($selected_agent_id === 0 && !empty($available_agents)) {
-    $selected_agent_id = (int)$available_agents[0]['id_agente'];
-}
-
 $agent_info = null;
 $modules_raw = [];
 $stats_by_module = [];
 
-if ($selected_agent_id > 0 && $active_pdo) {
+if ($selected_agent_id > 0 && isset($pdo) && $pdo instanceof PDO) {
     try {
-        // Fetch agent info
-        $stAgent = $active_pdo->prepare("SELECT id_agente, nombre, alias, direccion FROM tagente WHERE id_agente = ?");
+        $stAgent = $pdo->prepare("SELECT id_agente, nombre, alias, direccion FROM tagente WHERE id_agente = ?");
         $stAgent->execute([$selected_agent_id]);
         $agent_info = $stAgent->fetch(PDO::FETCH_ASSOC);
 
-        // Fetch RouteStep / RouteTarget modules
-        $stMod = $active_pdo->prepare("
+        $stMod = $pdo->prepare("
             SELECT tm.id_agente_modulo, tm.nombre, tm.parent_module_id, tm.descripcion,
                    te.datos as last_val, te.estado, te.utimestamp as last_ts
             FROM tagente_modulo tm
@@ -162,13 +1136,12 @@ if ($selected_agent_id > 0 && $active_pdo) {
         $stMod->execute([$selected_agent_id]);
         $modules_raw = $stMod->fetchAll(PDO::FETCH_ASSOC);
 
-        // Fetch min/max stats within time range for each module
         if (!empty($modules_raw)) {
             $mod_ids = array_column($modules_raw, 'id_agente_modulo');
             $placeholders = implode(',', array_fill(0, count($mod_ids), '?'));
             $params = array_merge($mod_ids, [$range_start, $now]);
             
-            $stStats = $active_pdo->prepare("
+            $stStats = $pdo->prepare("
                 SELECT id_agente_modulo, MIN(datos) as min_val, MAX(datos) as max_val, AVG(datos) as avg_val
                 FROM tagente_datos
                 WHERE id_agente_modulo IN ($placeholders)
@@ -185,15 +1158,13 @@ if ($selected_agent_id > 0 && $active_pdo) {
             }
         }
     } catch (Throwable $e) {
-        error_log("Route Parser module query failed: " . $e->getMessage());
+        error_log("Route Parser error: " . $e->getMessage());
     }
 }
 
-// Fallback to Rich Demo Data if no active modules in database or demo flag set
 $use_demo_data = $is_demo || empty($modules_raw);
-$source_ip = $agent_info['direccion'] ?? '172.17.8.96';
-$agent_display_name = $agent_info['alias'] ?? ($agent_info['nombre'] ?? 'Core-Gateway-01');
-$topology_hash = hash('sha256', ($selected_agent_id ?: 'demo') . '_route_parser_' . $source_ip);
+$source_ip = $current_dashboard['source_ip'] ?? ($agent_info['direccion'] ?? '172.17.8.96');
+$topology_hash = hash('sha256', ($current_dashboard['id'] ?? 'demo') . '_route_parser_' . $source_ip);
 
 $graph_nodes = [];
 $graph_edges = [];
@@ -201,11 +1172,9 @@ $targets_count = 0;
 
 if ($use_demo_data) {
     $source_ip = '172.17.8.96';
-    $selected_agent_id = $selected_agent_id ?: 1;
     $topology_hash = '844903017dd2d731527ade67a75139b83edab5efb03a55e63f097648bdb7095e';
     
-    // Construct Demo Topology matching the screenshot
-    $demo_nodes = [
+    $graph_nodes = [
         'hop_src' => [
             'id' => 101,
             'name' => 'RouteStep_172.17.8.96',
@@ -280,7 +1249,6 @@ if ($use_demo_data) {
         ]
     ];
 
-    $graph_nodes = $demo_nodes;
     $graph_edges = [
         ['from' => 'hop_src', 'to' => 'hop_gw', 'label' => '0.92 ms', 'ms' => 0.92, 'status' => 'ok'],
         ['from' => 'hop_gw', 'to' => 'hop_branch1', 'label' => '0.316 ms', 'ms' => 0.316, 'status' => 'ok'],
@@ -290,14 +1258,10 @@ if ($use_demo_data) {
     ];
     $targets_count = 2;
 } else {
-    // Build Graph from real Pandora FMS modules
     $id_to_key = [];
-    $raw_by_id = [];
     foreach ($modules_raw as $m) {
         $mid = (int)$m['id_agente_modulo'];
-        $key = 'mod_' . $mid;
-        $id_to_key[$mid] = $key;
-        $raw_by_id[$mid] = $m;
+        $id_to_key[$mid] = 'mod_' . $mid;
     }
 
     foreach ($modules_raw as $m) {
@@ -312,11 +1276,10 @@ if ($use_demo_data) {
         $min_ms = $stats ? $stats['min'] : $last_val;
         $max_ms = $stats ? $stats['max'] : $last_val;
         
-        $status = get_status_key($m['estado']);
-        if ($status === 'na' || $status === 'ok') {
+        $status = match ((int)($m['estado'] ?? 0)) { 0 => 'ok', 1 => 'crit', 2 => 'warn', default => 'ok' };
+        if ($status === 'ok') {
             if ($last_val >= $crit_threshold) $status = 'crit';
             elseif ($last_val >= $warn_threshold) $status = 'warn';
-            else $status = 'ok';
         }
 
         if ($is_target) $targets_count++;
@@ -335,7 +1298,6 @@ if ($use_demo_data) {
         ];
     }
 
-    // Connect edges
     foreach ($graph_nodes as $key => $n) {
         if (!empty($n['parent']) && isset($graph_nodes[$n['parent']])) {
             $graph_edges[] = [
@@ -348,28 +1310,24 @@ if ($use_demo_data) {
         }
     }
 
-    // If there's an isolated root hop or source node without parent, assign source
     $roots = [];
     foreach ($graph_nodes as $k => $n) {
         if (empty($n['parent'])) $roots[] = $k;
     }
     if (!empty($roots)) {
-        $source_key = $roots[0];
-        $graph_nodes[$source_key]['type'] = 'src';
+        $graph_nodes[$roots[0]]['type'] = 'src';
     }
 }
 
-// Layout Calculation (Tree Depth & Y Spacing)
-function calculate_tree_layout(array $nodes, array $edges): array {
+// Tree Layout Helper
+function calculate_tree_layout_v2(array $nodes, array $edges): array {
     if (empty($nodes)) return ['positions' => [], 'svg_w' => 900, 'svg_h' => 600];
 
     $children = [];
     $parents = [];
     foreach ($edges as $e) {
-        $p = $e['from'];
-        $c = $e['to'];
-        $children[$p][] = $c;
-        $parents[$c][] = $p;
+        $children[$e['from']][] = $e['to'];
+        $parents[$e['to']][] = $e['from'];
     }
 
     $roots = [];
@@ -378,7 +1336,6 @@ function calculate_tree_layout(array $nodes, array $edges): array {
     }
     if (empty($roots)) $roots = [array_key_first($nodes)];
 
-    // BFS Depth
     $depth = [];
     $queue = [];
     foreach ($roots as $r) {
@@ -401,7 +1358,6 @@ function calculate_tree_layout(array $nodes, array $edges): array {
         if (!isset($depth[$k])) $depth[$k] = 0;
     }
 
-    // DFS Y assignment
     $y_pos = [];
     $visited = [];
     $curr_y = 150.0;
@@ -416,9 +1372,7 @@ function calculate_tree_layout(array $nodes, array $edges): array {
             $curr_y += $y_gap;
             return;
         }
-        foreach ($chs as $v) {
-            $assign_y($v);
-        }
+        foreach ($chs as $v) $assign_y($v);
         $sum = 0.0;
         $cnt = 0;
         foreach ($chs as $v) {
@@ -439,7 +1393,6 @@ function calculate_tree_layout(array $nodes, array $edges): array {
         if (!isset($y_pos[$k])) $assign_y($k);
     }
 
-    // Coordinates with normalization
     $x_start = 140.0;
     $x_spacing = 220.0;
     $positions = [];
@@ -455,31 +1408,30 @@ function calculate_tree_layout(array $nodes, array $edges): array {
         $positions[$k] = ['x' => $x, 'y' => $y];
     }
 
-    $target_h = max(450.0, ($max_y - $min_y) + 160.0);
     $center_shift_y = 260.0 - (($min_y + $max_y) / 2);
-
     foreach ($positions as $k => $p) {
         $positions[$k]['y'] = $p['y'] + $center_shift_y;
     }
 
     $svg_w = (int)max(900, $x_start + (($max_depth + 1) * $x_spacing) + 150);
-    $svg_h = (int)max(560, $target_h);
+    $svg_h = (int)max(560, ($max_y - $min_y) + 160.0);
 
     return ['positions' => $positions, 'svg_w' => $svg_w, 'svg_h' => $svg_h];
 }
 
-$layout = calculate_tree_layout($graph_nodes, $graph_edges);
+$layout = calculate_tree_layout_v2($graph_nodes, $graph_edges);
 $node_positions = $layout['positions'];
 $total_nodes_count = count($graph_nodes);
+$back_to_hub_url = "?page=" . urlencode($portal_page_param);
+$standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlencode($current_dashboard['id']) . "&standalone=1";
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Network Path Monitoring | PFMS-Toolkit</title>
+    <title><?= h($current_dashboard['name']) ?> | Route Parser</title>
     
-    <!-- Vendor Fonts & Styles -->
     <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
@@ -513,16 +1465,16 @@ $total_nodes_count = count($graph_nodes);
             flex-direction: column;
         }
 
-        /* --- TOP HEADER & CONTROLS --- */
+        /* TOP HEADER TOOLBAR */
         .rp-header {
             background: #ffffff;
             border-bottom: 1px solid var(--border-color);
-            padding: 12px 24px;
+            padding: 10px 24px;
             display: flex;
             flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
-            gap: 16px;
+            gap: 14px;
             z-index: 10;
         }
 
@@ -531,6 +1483,23 @@ $total_nodes_count = count($graph_nodes);
             align-items: center;
             gap: 12px;
             flex-wrap: wrap;
+        }
+
+        .rp-back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            color: #475569;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+        .rp-back-btn:hover {
+            background: #f1f5f9;
+            color: var(--primary-navy);
         }
 
         .rp-main-title {
@@ -552,7 +1521,7 @@ $total_nodes_count = count($graph_nodes);
             padding: 3px 8px;
             border-radius: 4px;
             border: 1px solid #e2e8f0;
-            max-width: 320px;
+            max-width: 280px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -578,15 +1547,9 @@ $total_nodes_count = count($graph_nodes);
             border: 1px solid #e2e8f0;
         }
 
-        .rp-badge.primary {
-            background: #e6f4ea;
-            color: #137333;
-            border-color: #ceead6;
-        }
-
         .rp-badge.circle-counter {
-            width: 42px;
-            height: 42px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             display: flex;
             flex-direction: column;
@@ -617,13 +1580,29 @@ $total_nodes_count = count($graph_nodes);
             color: var(--text-dark);
             outline: none;
             cursor: pointer;
-            transition: all 0.2s;
-        }
-        .rp-select:hover, .rp-select:focus {
-            border-color: var(--brand-green);
         }
 
-        /* --- SUB HEADER INFO --- */
+        .btn-action-icon {
+            height: 32px;
+            padding: 0 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #ffffff;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-action-icon:hover {
+            background: #f1f5f9;
+            color: var(--primary-navy);
+        }
+
+        /* SUB HEADER */
         .rp-subheader {
             background: #f8fafc;
             border-bottom: 1px solid var(--border-color);
@@ -653,7 +1632,7 @@ $total_nodes_count = count($graph_nodes);
             font-size: 11px;
         }
 
-        /* --- MAIN WORKSPACE --- */
+        /* WORKSPACE & CANVAS */
         .rp-workspace {
             display: flex;
             flex: 1;
@@ -661,7 +1640,6 @@ $total_nodes_count = count($graph_nodes);
             position: relative;
         }
 
-        /* --- CANVAS AREA --- */
         .rp-canvas-wrapper {
             flex: 1;
             background: var(--bg-canvas);
@@ -672,7 +1650,6 @@ $total_nodes_count = count($graph_nodes);
         }
         .rp-canvas-wrapper:active { cursor: grabbing; }
 
-        /* Canvas Floating Controls */
         .rp-canvas-tools {
             position: absolute;
             top: 20px;
@@ -704,7 +1681,6 @@ $total_nodes_count = count($graph_nodes);
         }
         .rp-tool-btn span { font-size: 18px; }
 
-        /* SVG Graph Elements */
         @keyframes flowAnim {
             from { stroke-dashoffset: 24; }
             to { stroke-dashoffset: 0; }
@@ -715,7 +1691,6 @@ $total_nodes_count = count($graph_nodes);
             animation: flowAnim 2.5s linear infinite;
             transition: stroke 0.3s;
         }
-
         .flow-path:hover {
             stroke-width: 4.5px !important;
             cursor: pointer;
@@ -737,7 +1712,6 @@ $total_nodes_count = count($graph_nodes);
         }
         .edge-label-box:hover {
             border-color: var(--brand-green);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             transform: scale(1.05);
         }
 
@@ -753,7 +1727,7 @@ $total_nodes_count = count($graph_nodes);
             stroke-width: 4px !important;
         }
 
-        /* --- RIGHT INSPECTOR SIDEBAR --- */
+        /* SIDEBAR INSPECTOR */
         .rp-sidebar {
             width: 320px;
             background: #ffffff;
@@ -768,7 +1742,6 @@ $total_nodes_count = count($graph_nodes);
             padding: 20px 24px;
             border-bottom: 1px solid var(--border-color);
         }
-
         .rp-sidebar-title {
             font-size: 15px;
             font-weight: 800;
@@ -777,7 +1750,6 @@ $total_nodes_count = count($graph_nodes);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-
         .rp-sidebar-sub {
             font-size: 13px;
             color: var(--text-muted);
@@ -802,12 +1774,10 @@ $total_nodes_count = count($graph_nodes);
             border-bottom: 1px dashed #f1f5f9;
             font-size: 12px;
         }
-
         .rp-prop-label {
             color: var(--text-muted);
             font-weight: 500;
         }
-
         .rp-prop-val {
             font-weight: 600;
             color: var(--text-dark);
@@ -832,7 +1802,6 @@ $total_nodes_count = count($graph_nodes);
         .status-dot.ok { background-color: var(--accent-green); }
         .status-dot.warn { background-color: var(--accent-orange); }
         .status-dot.crit { background-color: var(--accent-red); }
-        .status-dot.na { background-color: var(--accent-gray); }
 
         .rp-info-card {
             background: #f8fafc;
@@ -844,46 +1813,97 @@ $total_nodes_count = count($graph_nodes);
             line-height: 1.5;
             margin-top: 10px;
         }
+
+        /* Modal & Toast */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(11, 26, 38, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(2px);
+        }
+        .modal-card {
+            background: #ffffff;
+            width: 540px;
+            max-width: 90vw;
+            border-radius: 10px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .modal-head {
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8fafc;
+        }
+        .modal-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--primary-navy); }
+        .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+        .modal-foot { padding: 14px 24px; background: #f8fafc; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; }
+        .form-label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; }
+        .form-control-custom { width: 100%; height: 38px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; outline: none; box-sizing: border-box; }
+        
+        .toast-popup {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #0b1a26;
+            color: #ffffff;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 9999;
+            opacity: 0;
+            transition: all 0.3s;
+        }
+        .toast-popup.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
 
-    <!-- 1. TOP HEADER TOOLBAR -->
+    <!-- 1. HEADER TOOLBAR -->
     <div class="rp-header">
         <div class="rp-title-area">
+            <?php if (!$is_standalone): ?>
+                <a href="<?= $back_to_hub_url ?>" class="rp-back-btn" title="Back to Dashboard List">
+                    <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+                    Dashboards
+                </a>
+                <span style="color:#cbd5e1;">·</span>
+            <?php endif; ?>
+
             <h1 class="rp-main-title">
                 <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:22px;">route</span>
-                Network Path
+                <?= h($current_dashboard['name']) ?>
             </h1>
             <span style="color:#cbd5e1;">·</span>
             <div class="rp-hash-badge" title="<?= h($topology_hash) ?>"><?= h($topology_hash) ?></div>
         </div>
 
         <div class="rp-controls-area">
-            <!-- Agent Selection Form -->
-            <form method="GET" id="filterForm" style="display:flex; align-items:center; gap:8px; margin:0;">
+            <div class="rp-badge">Agent ID: <?= (int)$selected_agent_id ?></div>
+
+            <form method="GET" id="rangeForm" style="display:flex; align-items:center; gap:6px; margin:0;">
                 <input type="hidden" name="page" value="<?= h($_GET['page'] ?? '') ?>">
-                <?php if ($is_demo): ?><input type="hidden" name="demo" value="1"><?php endif; ?>
+                <input type="hidden" name="dashboard_id" value="<?= h($current_dashboard['id']) ?>">
+                <?php if ($is_standalone): ?><input type="hidden" name="standalone" value="1"><?php endif; ?>
 
-                <?php if (!empty($available_agents)): ?>
-                <div style="display:flex; align-items:center; gap:5px;">
-                    <label style="font-size:11px; font-weight:600; color:var(--text-muted);">Agent:</label>
-                    <select name="agent_id" class="rp-select" onchange="document.getElementById('filterForm').submit();">
-                        <?php foreach ($available_agents as $ag): ?>
-                            <option value="<?= (int)$ag['id_agente'] ?>" <?= ($selected_agent_id === (int)$ag['id_agente']) ? 'selected' : '' ?>>
-                                <?= h($ag['alias'] ?: $ag['nombre']) ?> (ID: <?= (int)$ag['id_agente'] ?>)
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <?php else: ?>
-                <div class="rp-badge">Agent ID: <?= (int)$selected_agent_id ?></div>
-                <?php endif; ?>
-
-                <!-- Range Selector -->
-                <div style="display:flex; align-items:center; gap:5px;">
+                <div style="display:flex; align-items:center; gap:4px;">
                     <label style="font-size:11px; font-weight:600; color:var(--text-muted);">Range:</label>
-                    <select name="range" class="rp-select" onchange="document.getElementById('filterForm').submit();">
+                    <select name="range" class="rp-select" onchange="document.getElementById('rangeForm').submit();">
                         <option value="1h" <?= $time_range === '1h' ? 'selected' : '' ?>>Last 1 hour</option>
                         <option value="6h" <?= $time_range === '6h' ? 'selected' : '' ?>>Last 6 hours</option>
                         <option value="1d" <?= $time_range === '1d' ? 'selected' : '' ?>>Last 1 day</option>
@@ -891,18 +1911,23 @@ $total_nodes_count = count($graph_nodes);
                         <option value="30d" <?= $time_range === '30d' ? 'selected' : '' ?>>Last 30 days</option>
                     </select>
                 </div>
-
-                <div class="rp-badge">Targets: <?= (int)$targets_count ?></div>
             </form>
+
+            <div class="rp-badge">Targets: <?= (int)$targets_count ?></div>
 
             <div class="rp-badge circle-counter" title="Total Nodes in Path">
                 <?= $total_nodes_count ?>
                 <span>nodes</span>
             </div>
+
+            <button class="btn-action-icon" title="Share Direct URL & Embed Code" onclick="openShareModal()">
+                <span class="material-symbols-outlined" style="font-size:16px;">share</span>
+                Share
+            </button>
         </div>
     </div>
 
-    <!-- 2. SUB-HEADER METRICS & TOPOLOGY PILLS -->
+    <!-- 2. SUB HEADER -->
     <div class="rp-subheader">
         <div class="rp-sub-pills">
             <span class="rp-pill">Topology: route_parser</span>
@@ -915,22 +1940,17 @@ $total_nodes_count = count($graph_nodes);
 
     <!-- 3. MAIN WORKSPACE -->
     <div class="rp-workspace">
-        
-        <!-- Canvas Area -->
         <div class="rp-canvas-wrapper" id="canvasWrapper">
             
-            <!-- Zoom & View Tools -->
             <div class="rp-canvas-tools">
                 <button class="rp-tool-btn" id="btnZoomIn" title="Zoom In"><span class="material-symbols-outlined">add</span></button>
                 <button class="rp-tool-btn" id="btnZoomOut" title="Zoom Out"><span class="material-symbols-outlined">remove</span></button>
                 <button class="rp-tool-btn" id="btnResetView" title="Reset View"><span class="material-symbols-outlined">restart_alt</span></button>
             </div>
 
-            <!-- SVG Graph -->
             <svg id="mainSvg" style="width:100%; height:100%;">
                 <g id="viewportGroup">
                     
-                    <!-- Edges / Path connections -->
                     <g id="edgesLayer">
                         <?php foreach ($graph_edges as $edge): 
                             $p_from = $node_positions[$edge['from']] ?? null;
@@ -946,7 +1966,6 @@ $total_nodes_count = count($graph_nodes);
                                 default => '#22c55e'
                             };
                         ?>
-                            <!-- Curved Animated Path -->
                             <path id="path-<?= h($edge['from']) ?>-<?= h($edge['to']) ?>"
                                   class="flow-path"
                                   data-from="<?= h($edge['from']) ?>"
@@ -960,7 +1979,6 @@ $total_nodes_count = count($graph_nodes);
                                   fill="none"
                                   stroke-linecap="round" />
 
-                            <!-- Edge Latency Badge -->
                             <foreignObject id="label-<?= h($edge['from']) ?>-<?= h($edge['to']) ?>"
                                            class="edge-label-container"
                                            data-from="<?= h($edge['from']) ?>"
@@ -976,7 +1994,6 @@ $total_nodes_count = count($graph_nodes);
                         <?php endforeach; ?>
                     </g>
 
-                    <!-- Nodes Layer -->
                     <g id="nodesLayer">
                         <?php foreach ($graph_nodes as $key => $node): 
                             $pos = $node_positions[$key] ?? ['x' => 150, 'y' => 200];
@@ -987,7 +2004,7 @@ $total_nodes_count = count($graph_nodes);
                                 default => '#22c55e'
                             };
 
-                            $node_type = $node['type']; // 'src', 'hop', 'target'
+                            $node_type = $node['type'];
                         ?>
                             <g id="node-<?= h($key) ?>" 
                                class="graph-node" 
@@ -1001,25 +2018,20 @@ $total_nodes_count = count($graph_nodes);
                                data-max="<?= h((string)$node['max_ms']) ?>"
                                transform="translate(<?= $pos['x'] ?>, <?= $pos['y'] ?>)">
                                 
-                                <!-- Outer Halo / Base Circle -->
                                 <circle class="node-base" r="22" fill="<?= $node_color ?>" stroke="#ffffff" stroke-width="3.5" />
 
-                                <!-- Inner Icon -->
                                 <?php if ($node_type === 'src'): ?>
-                                    <!-- Globe / Source Agent Icon -->
                                     <g transform="translate(-10, -10) scale(0.83)" stroke="#ffffff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                                         <circle cx="12" cy="12" r="9"/>
                                         <path d="M3.6 12h16.8M12 3.6c2.5 3 2.5 13.8 0 16.8M12 3.6c-2.5 3-2.5 13.8 0 16.8"/>
                                     </g>
                                 <?php elseif ($node_type === 'target'): ?>
-                                    <!-- Target / Bullseye Icon -->
                                     <g transform="translate(-10, -10) scale(0.83)" stroke="#ffffff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                                         <circle cx="12" cy="12" r="8"/>
                                         <circle cx="12" cy="12" r="3"/>
                                         <path d="M12 4V2M20 12h2M12 20v2M4 12H2"/>
                                     </g>
                                 <?php else: ?>
-                                    <!-- Router / Network Hop Icon -->
                                     <g transform="translate(-10, -10) scale(0.83)" stroke="#ffffff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                                         <rect x="4" y="6" width="16" height="12" rx="3"/>
                                         <circle cx="8.5" cy="12" r="1" fill="#ffffff"/>
@@ -1028,7 +2040,6 @@ $total_nodes_count = count($graph_nodes);
                                     </g>
                                 <?php endif; ?>
 
-                                <!-- Node Labels (Role & IP) -->
                                 <text y="38" text-anchor="middle" style="font-size:10px; font-weight:800; fill:#334155; letter-spacing:0.5px; pointer-events:none;">
                                     <?= h($node['role']) ?>
                                 </text>
@@ -1043,7 +2054,7 @@ $total_nodes_count = count($graph_nodes);
             </svg>
         </div>
 
-        <!-- 4. RIGHT DETAILS / INSPECTOR PANEL -->
+        <!-- 4. SIDEBAR INSPECTOR -->
         <div class="rp-sidebar" id="sidebarPanel">
             <div class="rp-sidebar-header">
                 <h3 class="rp-sidebar-title" id="panelRoleTitle">HOP</h3>
@@ -1097,10 +2108,54 @@ $total_nodes_count = count($graph_nodes);
                 </div>
             </div>
         </div>
-
     </div>
 
-    <!-- 5. JAVASCRIPT LOGIC (PAN, ZOOM, DRAG, SELECTION) -->
+    <!-- SHARE MODAL -->
+    <div class="modal-overlay" id="shareModal">
+        <div class="modal-card">
+            <div class="modal-head">
+                <h3>Share Dashboard Link</h3>
+                <button style="border:none; background:none; cursor:pointer;" onclick="closeModal('shareModal')">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div>
+                    <label class="form-label">1. Direct Portal URL</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="modalDirectUrl" class="form-control-custom" readonly value="<?= h($full_origin . $script_url) ?>">
+                        <button class="btn-action-icon" style="background:var(--brand-green); color:#fff;" onclick="copyInput('modalDirectUrl')">Copy</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label">2. Standalone Fullscreen URL (NOC View)</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="modalStandaloneUrl" class="form-control-custom" readonly value="<?= h($standalone_url) ?>">
+                        <button class="btn-action-icon" style="background:var(--brand-green); color:#fff;" onclick="copyInput('modalStandaloneUrl')">Copy</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label">3. Iframe Embed Code</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="modalEmbedCode" class="form-control-custom" readonly value='<iframe src="<?= h($standalone_url) ?>" width="100%" height="700" frameborder="0"></iframe>'>
+                        <button class="btn-action-icon" style="background:var(--brand-green); color:#fff;" onclick="copyInput('modalEmbedCode')">Copy</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn-action-icon" onclick="closeModal('shareModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST POPUP -->
+    <div class="toast-popup" id="toastPopup">
+        <span class="material-symbols-outlined" style="font-size:18px; color:#10b981;">check_circle</span>
+        <span id="toastMsg">Copied to clipboard!</span>
+    </div>
+
     <script>
         (function() {
             'use strict';
@@ -1109,12 +2164,9 @@ $total_nodes_count = count($graph_nodes);
             const graphNodes = <?= json_encode($graph_nodes) ?>;
             const graphEdges = <?= json_encode($graph_edges) ?>;
 
-            // DOM Elements
             const canvasWrapper = document.getElementById('canvasWrapper');
-            const mainSvg = document.getElementById('mainSvg');
             const viewportGroup = document.getElementById('viewportGroup');
 
-            // Sidebar Inspector Elements
             const panelRoleTitle = document.getElementById('panelRoleTitle');
             const panelIpSub = document.getElementById('panelIpSub');
             const valSelection = document.getElementById('valSelection');
@@ -1126,13 +2178,11 @@ $total_nodes_count = count($graph_nodes);
             const valMaxMs = document.getElementById('valMaxMs');
             const valInfoText = document.getElementById('valInfoText');
 
-            // Viewport Transform State
             let scale = 1.0;
             let pointX = 0, pointY = 0;
             let startPan = { x: 0, y: 0 };
             let isPanning = false;
 
-            // Node Dragging State
             let activeDragNode = null;
             let dragOffset = { x: 0, y: 0 };
 
@@ -1144,7 +2194,6 @@ $total_nodes_count = count($graph_nodes);
                 return Math.min(Math.max(val, min), max);
             }
 
-            // --- ZOOM & PAN ---
             document.getElementById('btnZoomIn').addEventListener('click', () => {
                 scale = clamp(scale + 0.15, 0.4, 3.0);
                 updateViewport();
@@ -1167,7 +2216,6 @@ $total_nodes_count = count($graph_nodes);
                 const delta = e.deltaY > 0 ? -0.08 : 0.08;
                 const newScale = clamp(scale + delta, 0.4, 3.0);
                 
-                // Zoom towards mouse pointer
                 const rect = canvasWrapper.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
@@ -1197,7 +2245,6 @@ $total_nodes_count = count($graph_nodes);
                     return;
                 }
 
-                // If clicked on background, pan canvas
                 isPanning = true;
                 startPan = { x: e.clientX - pointX, y: e.clientY - pointY };
             });
@@ -1231,7 +2278,6 @@ $total_nodes_count = count($graph_nodes);
                 activeDragNode = null;
             });
 
-            // Update edge curves and label coordinates when dragging nodes
             function updateConnectedEdges(nodeKey) {
                 const paths = document.querySelectorAll(`.flow-path[data-from="${nodeKey}"], .flow-path[data-to="${nodeKey}"]`);
                 paths.forEach(p => {
@@ -1254,7 +2300,6 @@ $total_nodes_count = count($graph_nodes);
                 });
             }
 
-            // --- NODE & EDGE SELECTION ---
             function clearSelection() {
                 document.querySelectorAll('.graph-node.selected').forEach(n => n.classList.remove('selected'));
             }
@@ -1307,11 +2352,9 @@ $total_nodes_count = count($graph_nodes);
                 valInfoText.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; margin-right:4px;">info</span> Latensi edge mengikuti respon hop tujuan (' + toNode.ip + ').';
             };
 
-            // Auto select first node on initial load
             const firstKey = Object.keys(graphNodes)[0];
             if (firstKey) selectNode(firstKey);
 
-            // Auto Refresh Timer
             const refreshMap = { '30s': 30, '1m': 60, '5m': 300 };
             const refreshSec = refreshMap['<?= h($auto_refresh) ?>'] || 0;
             if (refreshSec > 0) {
@@ -1319,6 +2362,32 @@ $total_nodes_count = count($graph_nodes);
                     location.reload();
                 }, refreshSec * 1000);
             }
+
+            window.openShareModal = function() {
+                document.getElementById('shareModal').style.display = 'flex';
+            };
+            window.closeModal = function(id) {
+                document.getElementById(id).style.display = 'none';
+            };
+
+            window.showToast = function(msg) {
+                const t = document.getElementById('toastPopup');
+                document.getElementById('toastMsg').textContent = msg;
+                t.classList.add('show');
+                setTimeout(() => t.classList.remove('show'), 2200);
+            };
+
+            window.copyInput = function(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.select();
+                navigator.clipboard.writeText(el.value).then(() => {
+                    showToast('Link copied to clipboard!');
+                }).catch(() => {
+                    document.execCommand('copy');
+                    showToast('Link copied!');
+                });
+            };
 
         })();
     </script>

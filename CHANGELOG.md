@@ -2,9 +2,18 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
-## [2.4] - 2026-08-26 (Route Parser Dashboard Visualization)
+## [2.4] - 2026-08-26 (Route Parser Dashboard Hub & Share URL)
 ### Added
-- **Route Parser Dashboard:** Modul visualisasi topologi jaringan baru (`Dashboard/Route-Parser/route-parser.php`) berbasis hasil pelacakan rute plugin `route_parser` Pandora FMS (modul `RouteStep` dan `RouteTarget`).
+- **Multi-Dashboard Hub & Management:**
+  - Halaman Dashboard Hub untuk membuat, mengedit, memfilter, dan mengelola banyak Route Parser Dashboard sekaligus.
+  - Ringkasan metrik statistik (Total Dashboards, Route Agents Detected, RouteStep Modules, Engine Status).
+  - Modal pembuatan & pengaturan dashboard (pilihan Agent Pandora, Source IP, Threshold Warning & Critical, Default Range, Auto-Refresh).
+- **Share URL & Embed Engine:**
+  - Fitur **Share URL** untuk setiap dashboard dengan tiga opsi:
+    1. *Direct Portal Link:* Membuka dashboard langsung di dalam antarmuka PFMS-Toolkit.
+    2. *Standalone URL (`&standalone=1`):* Tampilan layar penuh (*fullscreen*) tanpa header portal, ideal untuk layar monitoring NOC / TV Wall.
+    3. *Iframe Embed Code:* Kode embed `<iframe>` siap pakai untuk disematkan pada Grafana, visual console, atau web portal eksternal.
+  - Tombol one-click copy dengan visual toast notification.
 - **Interactive SVG Topology Engine:**
   - Visualisasi aliran data animasi (*animated dashed flow lines*) dengan indikator latensi per *hop*.
   - Hierarchical Tree Layout otomatis dari Source IP menuju ke seluruh Target.
