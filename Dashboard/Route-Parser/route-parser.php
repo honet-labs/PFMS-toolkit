@@ -2317,6 +2317,11 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                     <span>nodes</span>
                 </div>
 
+                <button class="btn-action-icon" style="background:var(--brand-green); color:#fff; padding:6px 12px; gap:6px; font-weight:600;" title="Add Target Route to this Agent" onclick="openAddTargetModal()">
+                    <span class="material-symbols-outlined" style="font-size:16px;">add</span>
+                    <span>Add Target</span>
+                </button>
+
                 <button class="btn-action-icon" title="Share Direct URL & Embed Code" onclick="openShareModal()">
                     <span class="material-symbols-outlined" style="font-size:16px;">share</span>
                     Share
@@ -2522,6 +2527,55 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                     Klik edge untuk melihat detail koneksi. Double-click node untuk membuka modul di Pandora FMS.
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ADD TARGET MODAL (SCOPED TO CURRENT AGENT) -->
+    <div class="modal-overlay" id="addTargetModal">
+        <div class="modal-card" style="width:520px;">
+            <div class="modal-head">
+                <h3>Add Target Route to Agent</h3>
+                <button type="button" style="border:none; background:none; cursor:pointer;" onclick="closeModal('addTargetModal')">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <form id="addTargetForm" onsubmit="executeAddTargetToCurrentAgent(event)">
+                <div class="modal-body">
+                    <div>
+                        <label class="form-label">Source Pandora Agent (Locked to current)</label>
+                        <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:8px 12px; border-radius:4px; font-weight:600; font-size:13px; color:#1e293b; display:flex; align-items:center; justify-content:space-between;">
+                            <span><?= h(pretty_text($agent_info['alias'] ?: $agent_info['nombre'] ?: ('Agent #' . $selected_agent_id))) ?></span>
+                            <span style="font-size:11px; color:#64748b; font-weight:500;">ID: <?= (int)$selected_agent_id ?> &middot; IP: <?= h($source_ip) ?></span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="form-label">New Target Destination (IP / Hostname)</label>
+                        <input type="text" id="targetIpInput" class="form-control-custom" placeholder="e.g. 8.8.8.8 or 10.10.6.220" required>
+                    </div>
+
+                    <div>
+                        <label class="form-label">From Intermediate Hop (Optional)</label>
+                        <input type="text" id="targetFromHopInput" class="form-control-custom" placeholder="e.g. <?= h($source_ip) ?> (leave blank to start from source agent)">
+                    </div>
+
+                    <div id="targetProgressBox" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px; font-size:12px;">
+                        <div style="display:flex; align-items:center; gap:8px; color:var(--brand-green); font-weight:600;">
+                            <span class="material-symbols-outlined" style="animation:spin 1s linear infinite; font-size:18px;">sync</span>
+                            <span id="targetProgressMsg">Executing route_parser discovery...</span>
+                        </div>
+                        <pre id="targetLogPreview" style="margin-top:8px; margin-bottom:0; background:#0b1a26; color:#10b981; padding:8px; border-radius:4px; font-size:11px; max-height:140px; overflow-y:auto; white-space:pre-wrap; display:none;"></pre>
+                    </div>
+                </div>
+
+                <div class="modal-foot">
+                    <button type="button" class="btn-action-icon" style="background:#f1f5f9; color:#475569;" onclick="closeModal('addTargetModal')">Cancel</button>
+                    <button type="submit" class="btn-action-icon" style="background:var(--brand-green); color:#fff; font-weight:600; padding:0 16px;" id="btnSubmitAddTarget">
+                        <span class="material-symbols-outlined" style="font-size:16px;">rocket_launch</span>
+                        Run Discovery & Add Target
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -2802,6 +2856,72 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                 }
                 
                 if (icon) icon.textContent = isCollapsed ? 'chevron_left' : 'chevron_right';
+            };
+
+            window.openAddTargetModal = function() {
+                document.getElementById('targetIpInput').value = '';
+                document.getElementById('targetFromHopInput').value = '';
+                document.getElementById('targetProgressBox').style.display = 'none';
+                document.getElementById('targetLogPreview').style.display = 'none';
+                document.getElementById('btnSubmitAddTarget').disabled = false;
+                document.getElementById('btnSubmitAddTarget').style.opacity = '1';
+                document.getElementById('addTargetModal').style.display = 'flex';
+            };
+
+            window.executeAddTargetToCurrentAgent = async function(e) {
+                e.preventDefault();
+                const btn = document.getElementById('btnSubmitAddTarget');
+                const pBox = document.getElementById('targetProgressBox');
+                const pMsg = document.getElementById('targetProgressMsg');
+                const pLog = document.getElementById('targetLogPreview');
+
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+                pBox.style.display = 'block';
+                pLog.style.display = 'none';
+                pMsg.textContent = 'Executing route_parser discovery & creating modules on agent...';
+                pMsg.style.color = 'var(--brand-green)';
+
+                const data = {
+                    agent_id: <?= (int)$selected_agent_id ?>,
+                    target_ip: document.getElementById('targetIpInput').value.trim(),
+                    from_hop: document.getElementById('targetFromHopInput').value.trim(),
+                    warn_threshold: <?= $warn_threshold ?>,
+                    crit_threshold: <?= $crit_threshold ?>
+                };
+
+                try {
+                    const res = await fetch('?api=add_route_path', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': <?= json_encode($csrf_token) ?>
+                        },
+                        body: JSON.stringify(data)
+                    });
+                    const json = await res.json();
+                    if (json.ok) {
+                        pMsg.textContent = 'Success! ' + json.message;
+                        if (json.raw_output) {
+                            pLog.textContent = json.raw_output;
+                            pLog.style.display = 'block';
+                        }
+                        showToast('Target modules added to agent!');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1200);
+                    } else {
+                        pMsg.textContent = 'Discovery Failed: ' + (json.error || 'Unknown error');
+                        pMsg.style.color = '#ef4444';
+                        btn.disabled = false;
+                        btn.style.opacity = '1';
+                    }
+                } catch (err) {
+                    pMsg.textContent = 'Network error: ' + err.message;
+                    pMsg.style.color = '#ef4444';
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                }
             };
 
             window.openShareModal = function() {
