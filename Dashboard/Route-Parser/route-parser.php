@@ -1401,7 +1401,22 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
             flex-direction: column;
         }
 
-        /* TOP HEADER TOOLBAR */
+        /* TOP HEADER TOOLBAR & COLLAPSIBLE WRAPPER */
+        .rp-header-section {
+            transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+            max-height: 250px;
+            overflow: hidden;
+            opacity: 1;
+            flex-shrink: 0;
+            background: #ffffff;
+        }
+        .rp-header-section.collapsed {
+            max-height: 0 !important;
+            opacity: 0 !important;
+            pointer-events: none;
+            border-bottom: none !important;
+        }
+
         .rp-header {
             background: #ffffff;
             border-bottom: 1px solid var(--border-color);
@@ -1586,9 +1601,56 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
         }
         .rp-canvas-wrapper:active { cursor: grabbing; }
 
+        /* FLOATING TOP BAR FOR COLLAPSE/EXPAND */
+        .rp-top-floating-bar {
+            position: absolute;
+            top: 14px;
+            left: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 20;
+        }
+
+        .rp-floating-pill-btn {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            padding: 5px 12px;
+            border-radius: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #334155;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .rp-floating-pill-btn:hover {
+            background: #f8fafc;
+            color: var(--brand-green);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+        .rp-floating-pill-btn span.material-symbols-outlined {
+            font-size: 16px;
+        }
+
+        .rp-standalone-chip {
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid var(--border-color);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--primary-navy);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            backdrop-filter: blur(4px);
+        }
+
         .rp-canvas-tools {
             position: absolute;
-            top: 20px;
+            top: 56px;
             left: 20px;
             display: flex;
             flex-direction: column;
@@ -1663,15 +1725,45 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
             stroke-width: 4px !important;
         }
 
-        /* SIDEBAR INSPECTOR */
+        /* SIDEBAR INSPECTOR & COLLAPSIBLE MECHANISM */
         .rp-sidebar {
             width: 320px;
             background: #ffffff;
             border-left: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
-            z-index: 5;
+            z-index: 15;
             box-shadow: -2px 0 10px rgba(0,0,0,0.02);
+            transition: margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            flex-shrink: 0;
+        }
+        .rp-sidebar.collapsed {
+            margin-right: -320px;
+        }
+
+        .rp-sidebar-toggle-tab {
+            position: absolute;
+            top: 20px;
+            left: -32px;
+            width: 32px;
+            height: 38px;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-right: none;
+            border-radius: 6px 0 0 6px;
+            box-shadow: -3px 2px 6px rgba(0,0,0,0.06);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #475569;
+            transition: background 0.15s, color 0.15s;
+            z-index: 20;
+        }
+        .rp-sidebar-toggle-tab:hover {
+            background: #f8fafc;
+            color: var(--brand-green);
         }
 
         .rp-sidebar-header {
@@ -1810,67 +1902,69 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
 </head>
 <body>
 
-    <!-- 1. HEADER TOOLBAR -->
-    <div class="rp-header">
-        <div class="rp-title-area">
-            <?php if (!$is_standalone): ?>
-                <a href="<?= $back_to_hub_url ?>" class="rp-back-btn" title="Back to Dashboard List">
-                    <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
-                    Dashboards
-                </a>
+    <!-- 1. COLLAPSIBLE HEADER SECTION -->
+    <div class="rp-header-section <?= $is_standalone ? 'collapsed' : '' ?>" id="headerSection">
+        <div class="rp-header">
+            <div class="rp-title-area">
+                <?php if (!$is_standalone): ?>
+                    <a href="<?= $back_to_hub_url ?>" class="rp-back-btn" title="Back to Dashboard List">
+                        <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+                        Dashboards
+                    </a>
+                    <span style="color:#cbd5e1;">·</span>
+                <?php endif; ?>
+
+                <h1 class="rp-main-title">
+                    <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:22px;">route</span>
+                    <?= h($current_dashboard['name']) ?>
+                </h1>
                 <span style="color:#cbd5e1;">·</span>
-            <?php endif; ?>
-
-            <h1 class="rp-main-title">
-                <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:22px;">route</span>
-                <?= h($current_dashboard['name']) ?>
-            </h1>
-            <span style="color:#cbd5e1;">·</span>
-            <div class="rp-hash-badge" title="<?= h($topology_hash) ?>"><?= h($topology_hash) ?></div>
-        </div>
-
-        <div class="rp-controls-area">
-            <div class="rp-badge">Agent ID: <?= (int)$selected_agent_id ?></div>
-
-            <form method="GET" id="rangeForm" style="display:flex; align-items:center; gap:6px; margin:0;">
-                <input type="hidden" name="page" value="<?= h($_GET['page'] ?? '') ?>">
-                <input type="hidden" name="dashboard_id" value="<?= h($current_dashboard['id']) ?>">
-                <?php if ($is_standalone): ?><input type="hidden" name="standalone" value="1"><?php endif; ?>
-
-                <div style="display:flex; align-items:center; gap:4px;">
-                    <label style="font-size:11px; font-weight:600; color:var(--text-muted);">Range:</label>
-                    <select name="range" class="rp-select" onchange="document.getElementById('rangeForm').submit();">
-                        <option value="1h" <?= $time_range === '1h' ? 'selected' : '' ?>>Last 1 hour</option>
-                        <option value="6h" <?= $time_range === '6h' ? 'selected' : '' ?>>Last 6 hours</option>
-                        <option value="1d" <?= $time_range === '1d' ? 'selected' : '' ?>>Last 1 day</option>
-                        <option value="7d" <?= $time_range === '7d' ? 'selected' : '' ?>>Last 7 days</option>
-                        <option value="30d" <?= $time_range === '30d' ? 'selected' : '' ?>>Last 30 days</option>
-                    </select>
-                </div>
-            </form>
-
-            <div class="rp-badge">Targets: <?= (int)$targets_count ?></div>
-
-            <div class="rp-badge circle-counter" title="Total Nodes in Path">
-                <?= $total_nodes_count ?>
-                <span>nodes</span>
+                <div class="rp-hash-badge" title="<?= h($topology_hash) ?>"><?= h($topology_hash) ?></div>
             </div>
 
-            <button class="btn-action-icon" title="Share Direct URL & Embed Code" onclick="openShareModal()">
-                <span class="material-symbols-outlined" style="font-size:16px;">share</span>
-                Share
-            </button>
-        </div>
-    </div>
+            <div class="rp-controls-area">
+                <div class="rp-badge">Agent ID: <?= (int)$selected_agent_id ?></div>
 
-    <!-- 2. SUB HEADER -->
-    <div class="rp-subheader">
-        <div class="rp-sub-pills">
-            <span class="rp-pill">Topology: route_parser</span>
-            <span class="rp-pill">Auto refresh: <?= h($auto_refresh) ?></span>
+                <form method="GET" id="rangeForm" style="display:flex; align-items:center; gap:6px; margin:0;">
+                    <input type="hidden" name="page" value="<?= h($_GET['page'] ?? '') ?>">
+                    <input type="hidden" name="dashboard_id" value="<?= h($current_dashboard['id']) ?>">
+                    <?php if ($is_standalone): ?><input type="hidden" name="standalone" value="1"><?php endif; ?>
+
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <label style="font-size:11px; font-weight:600; color:var(--text-muted);">Range:</label>
+                        <select name="range" class="rp-select" onchange="document.getElementById('rangeForm').submit();">
+                            <option value="1h" <?= $time_range === '1h' ? 'selected' : '' ?>>Last 1 hour</option>
+                            <option value="6h" <?= $time_range === '6h' ? 'selected' : '' ?>>Last 6 hours</option>
+                            <option value="1d" <?= $time_range === '1d' ? 'selected' : '' ?>>Last 1 day</option>
+                            <option value="7d" <?= $time_range === '7d' ? 'selected' : '' ?>>Last 7 days</option>
+                            <option value="30d" <?= $time_range === '30d' ? 'selected' : '' ?>>Last 30 days</option>
+                        </select>
+                    </div>
+                </form>
+
+                <div class="rp-badge">Targets: <?= (int)$targets_count ?></div>
+
+                <div class="rp-badge circle-counter" title="Total Nodes in Path">
+                    <?= $total_nodes_count ?>
+                    <span>nodes</span>
+                </div>
+
+                <button class="btn-action-icon" title="Share Direct URL & Embed Code" onclick="openShareModal()">
+                    <span class="material-symbols-outlined" style="font-size:16px;">share</span>
+                    Share
+                </button>
+            </div>
         </div>
-        <div>
-            Threshold: <b style="color:#d97706;">warn <?= $warn_threshold ?>ms</b> · <b style="color:#dc2626;">crit <?= $crit_threshold ?>ms</b> · Min/Max Window: <b><?= h($range_label) ?></b> · Source IP: <b style="color:var(--primary-navy);"><?= h($source_ip) ?></b>
+
+        <!-- 2. SUB HEADER -->
+        <div class="rp-subheader">
+            <div class="rp-sub-pills">
+                <span class="rp-pill">Topology: route_parser</span>
+                <span class="rp-pill">Auto refresh: <?= h($auto_refresh) ?></span>
+            </div>
+            <div>
+                Threshold: <b style="color:#d97706;">warn <?= $warn_threshold ?>ms</b> · <b style="color:#dc2626;">crit <?= $crit_threshold ?>ms</b> · Min/Max Window: <b><?= h($range_label) ?></b> · Source IP: <b style="color:var(--primary-navy);"><?= h($source_ip) ?></b>
+            </div>
         </div>
     </div>
 
@@ -1878,6 +1972,19 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
     <div class="rp-workspace">
         <div class="rp-canvas-wrapper" id="canvasWrapper">
             
+            <!-- FLOATING CONTROLS PILL -->
+            <div class="rp-top-floating-bar" id="topFloatingBar">
+                <button class="rp-floating-pill-btn" id="btnToggleHeader" onclick="toggleHeader()" title="Toggle Header Controls">
+                    <span class="material-symbols-outlined" id="headerToggleIcon"><?= $is_standalone ? 'expand_more' : 'expand_less' ?></span>
+                    <span id="headerToggleText"><?= $is_standalone ? 'Controls' : 'Hide Menu' ?></span>
+                </button>
+                <?php if ($is_standalone): ?>
+                    <div class="rp-standalone-chip">
+                        <?= h($current_dashboard['name']) ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+
             <div class="rp-canvas-tools">
                 <button class="rp-tool-btn" id="btnZoomIn" title="Zoom In"><span class="material-symbols-outlined">add</span></button>
                 <button class="rp-tool-btn" id="btnZoomOut" title="Zoom Out"><span class="material-symbols-outlined">remove</span></button>
@@ -1990,8 +2097,12 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
             </svg>
         </div>
 
-        <!-- 4. SIDEBAR INSPECTOR -->
-        <div class="rp-sidebar" id="sidebarPanel">
+        <!-- 4. SIDEBAR INSPECTOR (COLLAPSIBLE) -->
+        <div class="rp-sidebar <?= $is_standalone ? 'collapsed' : '' ?>" id="sidebarPanel">
+            <button class="rp-sidebar-toggle-tab" id="btnToggleSidebar" onclick="toggleSidebar()" title="Toggle Inspector Panel">
+                <span class="material-symbols-outlined" id="sidebarToggleIcon"><?= $is_standalone ? 'chevron_left' : 'chevron_right' ?></span>
+            </button>
+
             <div class="rp-sidebar-header">
                 <h3 class="rp-sidebar-title" id="panelRoleTitle">HOP</h3>
                 <div class="rp-sidebar-sub" id="panelIpSub"><?= h($source_ip) ?></div>
@@ -2298,6 +2409,32 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                     location.reload();
                 }, refreshSec * 1000);
             }
+
+            window.toggleHeader = function() {
+                const hs = document.getElementById('headerSection');
+                const icon = document.getElementById('headerToggleIcon');
+                const text = document.getElementById('headerToggleText');
+                if (!hs) return;
+                const isCollapsed = hs.classList.toggle('collapsed');
+                if (icon) icon.textContent = isCollapsed ? 'expand_more' : 'expand_less';
+                if (text) text.textContent = isCollapsed ? 'Controls' : 'Hide Menu';
+            };
+
+            window.toggleSidebar = function(forceState = null) {
+                const sb = document.getElementById('sidebarPanel');
+                const icon = document.getElementById('sidebarToggleIcon');
+                if (!sb) return;
+                
+                let isCollapsed;
+                if (forceState !== null) {
+                    isCollapsed = !forceState;
+                    sb.classList.toggle('collapsed', isCollapsed);
+                } else {
+                    isCollapsed = sb.classList.toggle('collapsed');
+                }
+                
+                if (icon) icon.textContent = isCollapsed ? 'chevron_left' : 'chevron_right';
+            };
 
             window.openShareModal = function() {
                 document.getElementById('shareModal').style.display = 'flex';
