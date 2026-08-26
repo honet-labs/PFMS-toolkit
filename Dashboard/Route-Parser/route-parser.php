@@ -1879,10 +1879,28 @@ if ($use_demo_data) {
         }
     }
 
-    // Step 3: Sequential Branch Chaining & Auto-Healing
-    // Walk through all non-root nodes in order of discovery
+    // Step 3: Smart Subnet & Topology Hop Resolver
+    // Helper to find common IP prefix depth (0 to 3)
+    $ip_score = function(string $ip1, string $ip2): int {
+        $p1 = explode('.', trim($ip1));
+        $p2 = explode('.', trim($ip2));
+        if (count($p1) !== 4 || count($p2) !== 4) return 0;
+        if ($p1[0] !== $p2[0]) return 0;
+        if ($p1[1] !== $p2[1]) return 1;
+        if ($p1[2] !== $p2[2]) return 2;
+        return 3;
+    };
+
     $curr_chain_parent = $main_root_key;
     $db_updates = [];
+
+    // Separate hops and targets
+    $hop_keys = [];
+    foreach ($graph_nodes as $k => $n) {
+        if ($k !== $main_root_key && $n['type'] === 'hop') {
+            $hop_keys[] = $k;
+        }
+    }
 
     foreach ($modules_raw as $m) {
         $mid = (int)$m['id_agente_modulo'];
@@ -1895,25 +1913,47 @@ if ($use_demo_data) {
         $node = &$graph_nodes[$key];
         $is_target = ($node['type'] === 'target');
 
-        // If parent is missing or invalid, link in sequence
-        if (empty($node['parent']) || !isset($graph_nodes[$node['parent']]) || $node['parent'] === $key) {
-            $node['parent'] = $curr_chain_parent;
-            if (isset($graph_nodes[$curr_chain_parent])) {
-                $db_updates[$mid] = (int)$graph_nodes[$curr_chain_parent]['id'];
+        // Check if node already has a valid parent (not pointing to self or invalid)
+        $has_valid_parent = (!empty($node['parent']) && isset($graph_nodes[$node['parent']]) && $node['parent'] !== $key);
+
+        if (!$has_valid_parent) {
+            $best_parent_key = null;
+            $best_score = 0;
+
+            // 1. Try to find the closest intermediate hop sharing the same IP subnet
+            foreach ($hop_keys as $hk) {
+                if ($hk === $key) continue;
+                $score = $ip_score($node['ip'], $graph_nodes[$hk]['ip']);
+                if ($score > $best_score) {
+                    $best_score = $score;
+                    $best_parent_key = $hk;
+                }
+            }
+
+            // 2. If matching subnet hop found with score >= 2 (e.g. 172.17.8.x), attach to that hop
+            if ($best_parent_key !== null && $best_score >= 2) {
+                $node['parent'] = $best_parent_key;
+            } elseif ($best_parent_key !== null && $best_score >= 1 && $is_target) {
+                $node['parent'] = $best_parent_key;
+            } else {
+                // 3. Otherwise, use sequential chain parent or root
+                $node['parent'] = $curr_chain_parent ?: $main_root_key;
+            }
+
+            if (isset($graph_nodes[$node['parent']])) {
+                $db_updates[$mid] = (int)$graph_nodes[$node['parent']]['id'];
             }
         }
 
         if ($is_target) {
-            // Target completes a route branch -> next branch starts back from source root
             $curr_chain_parent = $main_root_key;
         } else {
-            // Intermediate hop -> next hop connects to this one
             $curr_chain_parent = $key;
         }
     }
     unset($node);
 
-    // Persist healed parent links to database so MySQL is permanently accurate
+    // Persist healed parent links to database
     if (!empty($db_updates) && isset($pdo) && $pdo instanceof PDO) {
         $stFix = $pdo->prepare("UPDATE tagente_modulo SET parent_module_id = ? WHERE id_agente_modulo = ?");
         foreach ($db_updates as $f_mid => $f_pid) {
