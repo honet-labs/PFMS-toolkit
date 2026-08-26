@@ -464,6 +464,171 @@ if ($api === 'add_route_path') {
     exit;
 }
 
+if ($api === 'rescan_dashboard') {
+    if (ob_get_level() > 0) ob_clean();
+    header('Content-Type: application/json');
+
+    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!empty($csrf_token) && $client_token !== $csrf_token) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
+        exit;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $agent_id = (int)($input['agent_id'] ?? 0);
+
+    if (empty($agent_id)) {
+        echo json_encode(['ok' => false, 'error' => 'Agent ID is required.']);
+        exit;
+    }
+
+    // 1. Fetch Agent info
+    $agent_info = null;
+    if (isset($pdo) && $pdo instanceof PDO) {
+        $stA = $pdo->prepare("SELECT id_agente, nombre, alias, direccion FROM tagente WHERE id_agente = ?");
+        $stA->execute([$agent_id]);
+        $agent_info = $stA->fetch(PDO::FETCH_ASSOC);
+    }
+    if (!$agent_info) {
+        echo json_encode(['ok' => false, 'error' => 'Agent not found.']);
+        exit;
+    }
+
+    $agent_name = $agent_info['nombre'];
+    $agent_alias = $agent_info['alias'] ?: $agent_name;
+    $source_ip = $agent_info['direccion'] ?: '';
+
+    // 2. Binary Locator
+    $possible_bins = [
+        '/usr/share/pandora_server/util/plugin/route_parser',
+        '/etc/pandora/plugins/route_parser',
+        '/usr/lib/pandora/plugins/route_parser',
+        '/var/www/html/pandora_console/attachment/plugin/route_parser',
+        __DIR__ . '/route_parser',
+        __DIR__ . '/../../tools/netpath-pfms/route_parser'
+    ];
+    $bin_path = null;
+    foreach ($possible_bins as $pb) {
+        if (file_exists($pb) && is_executable($pb)) {
+            $bin_path = $pb;
+            break;
+        }
+    }
+    if (!$bin_path) {
+        $which = trim((string)@shell_exec('which route_parser 2>/dev/null'));
+        if (!empty($which) && is_executable($which)) $bin_path = $which;
+    }
+
+    // 3. Find all target modules for this agent
+    $stTargets = $pdo->prepare("
+        SELECT id_agente_modulo, nombre 
+        FROM tagente_modulo 
+        WHERE id_agente = ? 
+          AND disabled = 0 
+          AND (nombre LIKE 'RouteStepTarget_%' OR nombre LIKE 'RouteTarget_%')
+        ORDER BY id_agente_modulo ASC
+    ");
+    $stTargets->execute([$agent_id]);
+    $targets = $stTargets->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($targets)) {
+        echo json_encode(['ok' => false, 'error' => 'No target modules found on this agent to probe.']);
+        exit;
+    }
+
+    $spool_dir = '/var/spool/pandora/data_in';
+    if (!is_dir($spool_dir) || !is_writable($spool_dir)) $spool_dir = sys_get_temp_dir();
+
+    $name_to_id = [];
+    $root_mod_id = 0;
+    $stAllMods = $pdo->prepare("SELECT id_agente_modulo, nombre, parent_module_id FROM tagente_modulo WHERE id_agente = ? AND disabled = 0");
+    $stAllMods->execute([$agent_id]);
+    while ($m = $stAllMods->fetch(PDO::FETCH_ASSOC)) {
+        $name_to_id[$m['nombre']] = (int)$m['id_agente_modulo'];
+        if ($m['parent_module_id'] == 0 || (!empty($source_ip) && strpos($m['nombre'], $source_ip) !== false)) {
+            if ($root_mod_id === 0) $root_mod_id = (int)$m['id_agente_modulo'];
+        }
+    }
+
+    $success_cnt = 0;
+    $now_ts = time();
+
+    foreach ($targets as $t) {
+        $target_ip = preg_replace('/^Route(?:Step)?Target_/i', '', $t['nombre']);
+        $target_ip = trim($target_ip);
+        if (empty($target_ip)) continue;
+
+        $xml_output = '';
+        $exec_output = [];
+        $ret = 0;
+
+        if ($bin_path) {
+            $cmd = escapeshellcmd($bin_path) . " -t " . escapeshellarg($target_ip);
+            @exec($cmd, $exec_output, $ret);
+            $xml_output = implode("\n", $exec_output);
+        }
+
+        if (empty($xml_output) || strpos($xml_output, '<module>') === false) continue;
+
+        // Ingest into Pandora Spooler
+        $ts = date('Y-m-d H:i:s');
+        $agent_xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<agent_data agent_name=\"" . htmlspecialchars($agent_name, ENT_QUOTES) . "\" timestamp=\"$ts\" version=\"1.0\" os=\"Other\" interval=\"300\">\n" . $xml_output . "\n</agent_data>";
+        $fn = rtrim($spool_dir, '/') . '/netpath.live.' . bin2hex(random_bytes(4)) . '.' . time() . '.data';
+        @file_put_contents($fn, $agent_xml);
+
+        // Update tagente_estado & tagente_datos
+        preg_match_all('/<module>(.*?)<\/module>/s', $xml_output, $mod_matches);
+        $prev_mod_id = $root_mod_id;
+
+        foreach ($mod_matches[1] as $mblock) {
+            $m_name = ''; $m_data = 0.0; $m_parent = '';
+            if (preg_match('/<name>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/name>/', $mblock, $nm)) $m_name = trim($nm[1]);
+            if (preg_match('/<data>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/data>/', $mblock, $dm)) $m_data = (float)trim($dm[1]);
+            if (preg_match('/<module_parent>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/module_parent>/', $mblock, $pm)) $m_parent = trim($pm[1]);
+
+            if (empty($m_name)) continue;
+
+            $parent_mid = 0;
+            if (!empty($m_parent) && isset($name_to_id[$m_parent])) {
+                $parent_mid = $name_to_id[$m_parent];
+            } elseif ($prev_mod_id > 0 && (empty($source_ip) || strpos($m_name, $source_ip) === false)) {
+                $parent_mid = $prev_mod_id;
+            } elseif ($root_mod_id > 0 && (empty($source_ip) || strpos($m_name, $source_ip) === false)) {
+                $parent_mid = $root_mod_id;
+            }
+
+            $mod_id = $name_to_id[$m_name] ?? 0;
+            if ($mod_id > 0) {
+                $pdo->prepare("UPDATE tagente_modulo SET parent_module_id = ?, unit = 'ms', disabled = 0 WHERE id_agente_modulo = ?")->execute([$parent_mid, $mod_id]);
+            } else {
+                $pdo->prepare("INSERT INTO tagente_modulo (id_agente, id_tipo_modulo, nombre, parent_module_id, unit, descripcion, disabled, id_module_group, history_data) VALUES (?, 4, ?, ?, 'ms', ?, 0, 1, 1)")->execute([$agent_id, $m_name, $parent_mid, 'Route parser hop for ' . $m_name]);
+                $mod_id = (int)$pdo->lastInsertId();
+                if ($mod_id > 0) $name_to_id[$m_name] = $mod_id;
+            }
+
+            if ($mod_id > 0) {
+                if ($parent_mid === 0 && (strpos($m_name, $source_ip) !== false || $root_mod_id === 0)) {
+                    $root_mod_id = $mod_id;
+                }
+                $prev_mod_id = $mod_id;
+
+                // Upsert tagente_estado
+                $pdo->prepare("INSERT INTO tagente_estado (id_agente_modulo, datos, estado, utimestamp) VALUES (?, ?, 0, ?) ON DUPLICATE KEY UPDATE datos = VALUES(datos), estado = VALUES(estado), utimestamp = VALUES(utimestamp)")->execute([$mod_id, $m_data, $now_ts]);
+
+                // Insert into tagente_datos
+                $pdo->prepare("INSERT INTO tagente_datos (id_agente_modulo, datos, utimestamp) VALUES (?, ?, ?)")->execute([$mod_id, $m_data, $now_ts]);
+            }
+        }
+        $success_cnt++;
+    }
+
+    echo json_encode([
+        'ok' => true,
+        'message' => "Rescan completed! $success_cnt target(s) successfully probed and updated in Pandora FMS."
+    ]);
+    exit;
+}
+
 if ($api === 'save_dashboard') {
     if (ob_get_level() > 0) ob_clean();
     header('Content-Type: application/json');
@@ -2446,6 +2611,11 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                     <span>nodes</span>
                 </div>
 
+                <button class="btn-action-icon" id="btnRescanAll" style="background:#ffffff; border:1px solid var(--border-color); color:var(--primary-navy); padding:6px 12px; gap:6px; font-weight:600;" title="Run live route probe on all targets for this agent" onclick="rescanAgentRoutes()">
+                    <span class="material-symbols-outlined" id="rescanIcon" style="font-size:16px;">sync</span>
+                    <span id="rescanText">Rescan Routes</span>
+                </button>
+
                 <button class="btn-action-icon" style="background:var(--brand-green); color:#fff; padding:6px 12px; gap:6px; font-weight:600;" title="Add Target Route to this Agent" onclick="openAddTargetModal()">
                     <span class="material-symbols-outlined" style="font-size:16px;">add</span>
                     <span>Add Target</span>
@@ -3050,6 +3220,42 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                     pMsg.style.color = '#ef4444';
                     btn.disabled = false;
                     btn.style.opacity = '1';
+                }
+            };
+
+            window.rescanAgentRoutes = async function() {
+                const btn = document.getElementById('btnRescanAll');
+                const icon = document.getElementById('rescanIcon');
+                const text = document.getElementById('rescanText');
+
+                if (btn) btn.disabled = true;
+                if (icon) icon.style.animation = 'spin 1s linear infinite';
+                if (text) text.textContent = 'Probing...';
+
+                try {
+                    const res = await fetch('?api=rescan_dashboard', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': <?= json_encode($csrf_token) ?>
+                        },
+                        body: JSON.stringify({ agent_id: <?= (int)$selected_agent_id ?> })
+                    });
+                    const json = await res.json();
+                    if (json.ok) {
+                        showToast('Route modules updated with fresh latency!');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        alert('Rescan error: ' + (json.error || 'Failed to probe routes'));
+                        if (btn) btn.disabled = false;
+                        if (icon) icon.style.animation = '';
+                        if (text) text.textContent = 'Rescan Routes';
+                    }
+                } catch (err) {
+                    alert('Network error: ' + err.message);
+                    if (btn) btn.disabled = false;
+                    if (icon) icon.style.animation = '';
+                    if (text) text.textContent = 'Rescan Routes';
                 }
             };
 
