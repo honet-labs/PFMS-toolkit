@@ -1486,7 +1486,7 @@ if (!$current_dashboard):
             };
 
             try {
-                const res = await fetch('?api=add_route_path', {
+                const res = await fetch('?page=' + encodeURIComponent('<?= $portal_page_param ?>') + '&api=add_route_path', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1576,7 +1576,7 @@ if (!$current_dashboard):
             };
 
             try {
-                const res = await fetch('?api=save_dashboard', {
+                const res = await fetch('?page=' + encodeURIComponent('<?= $portal_page_param ?>') + '&api=save_dashboard', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1598,7 +1598,7 @@ if (!$current_dashboard):
         async function deleteDashboard(id, name) {
             if (!confirm(`Are you sure you want to delete dashboard "${name}"?`)) return;
             try {
-                const res = await fetch('?api=delete_dashboard', {
+                const res = await fetch('?page=' + encodeURIComponent('<?= $portal_page_param ?>') + '&api=delete_dashboard', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1933,6 +1933,8 @@ if ($use_demo_data) {
             ];
         }
     }
+
+    $targets_count = count(array_filter($graph_nodes, fn($n) => ($n['type'] ?? '') === 'target'));
 }
 
 // Tree Layout Helper
@@ -2624,11 +2626,6 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
 
                 <div class="rp-badge">Targets: <?= (int)$targets_count ?></div>
 
-                <div class="rp-badge circle-counter" title="Total Nodes in Path">
-                    <?= $total_nodes_count ?>
-                    <span>nodes</span>
-                </div>
-
                 <button class="btn-action-icon" id="btnRescanAll" style="background:#ffffff; border:1px solid var(--border-color); color:var(--primary-navy); padding:6px 12px; gap:6px; font-weight:600;" title="Run live route probe on all targets for this agent" onclick="rescanAgentRoutes()">
                     <span class="material-symbols-outlined" id="rescanIcon" style="font-size:16px;">sync</span>
                     <span id="rescanText">Rescan Routes</span>
@@ -3208,7 +3205,7 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                 };
 
                 try {
-                    const res = await fetch('?api=add_route_path', {
+                    const res = await fetch('?page=' + encodeURIComponent('<?= $portal_page_param ?>') + '&api=add_route_path', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -3251,7 +3248,7 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                 if (text) text.textContent = 'Probing...';
 
                 try {
-                    const res = await fetch('?api=rescan_dashboard', {
+                    const res = await fetch('?page=' + encodeURIComponent('<?= $portal_page_param ?>') + '&api=rescan_dashboard', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
