@@ -2,6 +2,17 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.5] - 2026-08-30 (Route Parser Auto-Refresh, Embed Live Polling & Data Consistency Fix)
+### Fixed
+- **Auto-Refresh & Realtime Poller:**
+  - Menambahkan dropdown **Auto Refresh** (`Off`, `10s`, `30s`, `1m`, `2m`, `5m`) di toolbar header.
+  - Menambahkan endpoint API `api=get_realtime_data` untuk polling berkala via AJAX tanpa me-reload/mereset viewport SVG, posisi pan/zoom, dan sidebar inspector.
+  - Memperbaiki kegagalan auto-refresh pada mode **Share URL & Iframe Embed** (`&standalone=1` / `&embed=1`) dengan memastikan parameter URL dan autentikasi polling tetap terjaga.
+- **Module Data Consistency & Non-Destructive Topology:**
+  - Menghapus seluruh query `UPDATE tagente_modulo` saat render halaman yang sebelumnya merusak nama dan relasi `parent_module_id` di database.
+  - Memperbaiki pembacaan latensi dari `tagente_estado` dan fallback ke `tagente_datos` serta sanitasi angka latensi.
+  - Regex pembersihan nama modul hop (`clean_hop_label`) dan deteksi target (`is_target_module`) yang lebih fleksibel.
+
 ## [2.4] - 2026-08-26 (Route Parser Dashboard Hub, Add Route Path & Standalone Clean View)
 ### Added
 - **Route Path Discovery & Module Provisioning:**

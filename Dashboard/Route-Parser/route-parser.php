@@ -49,8 +49,9 @@ $user_id = $_SESSION['id_usuario'] ?? 0;
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 $is_standalone = isset($_GET['standalone']) || isset($_GET['embed']);
 $is_demo_param = isset($_GET['demo']) || isset($_GET['debug']);
+$is_realtime_api = (isset($_GET['api']) && $_GET['api'] === 'get_realtime_data');
 
-if (empty($user_id) && !$is_standalone && !$is_demo_param) {
+if (empty($user_id) && !$is_standalone && !$is_demo_param && !$is_realtime_api) {
     $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
     $pandora_base = preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $m) ? rtrim($m[1], '/') : '/pandora_console';
     header("Location: " . $pandora_base . "/index.php");
@@ -83,13 +84,202 @@ if (!function_exists('pretty_text')) {
 }
 
 function clean_hop_label(string $module_name): string {
-    $prefixes = ['RouteStepTarget_', 'RouteStep_', 'RouteTarget_'];
-    foreach ($prefixes as $p) {
-        if (strpos($module_name, $p) === 0) {
-            return substr($module_name, strlen($p));
+    $cleaned = preg_replace('/^(?:Route(?:Step)?(?:Target)?|RouteHop|netpath)[_\-\s]+/i', '', trim($module_name));
+    return trim((string)$cleaned);
+}
+
+function is_target_module(string $module_name): bool {
+    return (bool)preg_match('/(?:Target|RouteTarget|RouteStepTarget)/i', $module_name);
+}
+
+function get_agent_route_modules(PDO $pdo, int $agent_id, int $range_start, int $range_end, float $warn_threshold = 10.0, float $crit_threshold = 50.0): array {
+    $stMod = $pdo->prepare("
+        SELECT tm.id_agente_modulo, tm.nombre, tm.parent_module_id, tm.descripcion, tm.unit,
+               te.datos as last_val, te.estado, te.utimestamp as last_ts
+        FROM tagente_modulo tm
+        LEFT JOIN tagente_estado te ON te.id_agente_modulo = tm.id_agente_modulo
+        WHERE tm.id_agente = ? 
+          AND tm.disabled = 0
+          AND (tm.nombre LIKE 'RouteStep%' OR tm.nombre LIKE 'RouteTarget%' OR tm.nombre LIKE 'Route%')
+        ORDER BY tm.id_agente_modulo ASC
+    ");
+    $stMod->execute([$agent_id]);
+    $modules_raw = $stMod->fetchAll(PDO::FETCH_ASSOC);
+    if (empty($modules_raw)) return ['modules' => [], 'stats' => []];
+
+    // Compute stats from tagente_datos for the selected time window
+    $stats_by_module = [];
+    $mod_ids = array_column($modules_raw, 'id_agente_modulo');
+    if (!empty($mod_ids)) {
+        $placeholders = implode(',', array_fill(0, count($mod_ids), '?'));
+        $params = array_merge($mod_ids, [$range_start, $range_end]);
+        try {
+            $stStats = $pdo->prepare("
+                SELECT id_agente_modulo, MIN(datos) as min_val, MAX(datos) as max_val, AVG(datos) as avg_val
+                FROM tagente_datos
+                WHERE id_agente_modulo IN ($placeholders)
+                  AND utimestamp BETWEEN ? AND ?
+                GROUP BY id_agente_modulo
+            ");
+            $stStats->execute($params);
+            while ($row = $stStats->fetch(PDO::FETCH_ASSOC)) {
+                $stats_by_module[(int)$row['id_agente_modulo']] = [
+                    'min' => (float)$row['min_val'],
+                    'max' => (float)$row['max_val'],
+                    'avg' => (float)$row['avg_val']
+                ];
+            }
+        } catch (Throwable $e) {}
+    }
+
+    // Fallback: If last_val in tagente_estado is NULL, query the latest row from tagente_datos
+    foreach ($modules_raw as &$m) {
+        $mid = (int)$m['id_agente_modulo'];
+        if ($m['last_val'] === null || $m['last_val'] === '') {
+            try {
+                $stLatest = $pdo->prepare("SELECT datos, utimestamp FROM tagente_datos WHERE id_agente_modulo = ? ORDER BY utimestamp DESC LIMIT 1");
+                $stLatest->execute([$mid]);
+                $latest = $stLatest->fetch(PDO::FETCH_ASSOC);
+                if ($latest) {
+                    $m['last_val'] = $latest['datos'];
+                    $m['last_ts'] = $latest['utimestamp'];
+                }
+            } catch (Throwable $e) {}
         }
     }
-    return $module_name;
+    unset($m);
+
+    return ['modules' => $modules_raw, 'stats' => $stats_by_module];
+}
+
+function build_route_topology(array $modules_raw, array $stats_by_module, string $source_ip, float $warn_threshold, float $crit_threshold, ?array $agent_info = null): array {
+    $graph_nodes = [];
+    $graph_edges = [];
+    
+    $clean_src_ip = trim($source_ip ?: ($agent_info['direccion'] ?? ''));
+    if (empty($clean_src_ip)) $clean_src_ip = '172.17.8.96';
+
+    $id_to_key = [];
+    foreach ($modules_raw as $m) {
+        $mid = (int)$m['id_agente_modulo'];
+        $id_to_key[$mid] = 'mod_' . $mid;
+    }
+
+    // Step 1: Identify if an explicit source hop module exists matching the source IP
+    $src_mod_key = null;
+    foreach ($modules_raw as $m) {
+        $mid = (int)$m['id_agente_modulo'];
+        $clean_label = clean_hop_label($m['nombre']);
+        $is_target = is_target_module($m['nombre']);
+        if (!$is_target && $clean_label === $clean_src_ip) {
+            $src_mod_key = $id_to_key[$mid];
+            break;
+        }
+    }
+
+    $virtual_src_key = 'hop_src';
+    if ($src_mod_key === null) {
+        $graph_nodes[$virtual_src_key] = [
+            'id' => 0,
+            'name' => 'Source Agent (' . $clean_src_ip . ')',
+            'ip' => $clean_src_ip,
+            'type' => 'src',
+            'role' => 'SRC',
+            'status' => 'ok',
+            'last_ms' => 0.0,
+            'min_ms' => 0.0,
+            'max_ms' => 0.0,
+            'parent' => null
+        ];
+        $root_parent_key = $virtual_src_key;
+    } else {
+        $root_parent_key = $src_mod_key;
+    }
+
+    // Step 2: Register all modules as nodes
+    foreach ($modules_raw as $m) {
+        $mid = (int)$m['id_agente_modulo'];
+        $key = $id_to_key[$mid];
+        $raw_name = $m['nombre'];
+        $ip = clean_hop_label($raw_name);
+        $is_target = is_target_module($raw_name);
+        $is_src = ($key === $src_mod_key);
+        
+        $raw_val_str = (string)($m['last_val'] ?? '');
+        $cleaned_val_str = preg_replace('/[^0-9\.]/', '', $raw_val_str);
+        $last_val = ($cleaned_val_str !== '') ? (float)$cleaned_val_str : 0.0;
+
+        $stats = $stats_by_module[$mid] ?? null;
+        $min_ms = $stats ? (float)$stats['min'] : $last_val;
+        $max_ms = $stats ? (float)$stats['max'] : $last_val;
+
+        $estado_code = (int)($m['estado'] ?? 0);
+        $status = match ($estado_code) {
+            1 => 'crit',
+            2 => 'warn',
+            default => 'ok'
+        };
+        if ($status === 'ok') {
+            if ($crit_threshold > 0 && $last_val >= $crit_threshold) $status = 'crit';
+            elseif ($warn_threshold > 0 && $last_val >= $warn_threshold) $status = 'warn';
+        }
+
+        $p_id = (int)($m['parent_module_id'] ?? 0);
+        $parent_key = null;
+        if ($p_id > 0 && isset($id_to_key[$p_id]) && $id_to_key[$p_id] !== $key) {
+            $parent_key = $id_to_key[$p_id];
+        }
+
+        $graph_nodes[$key] = [
+            'id' => $mid,
+            'name' => $raw_name,
+            'ip' => $ip,
+            'type' => $is_src ? 'src' : ($is_target ? 'target' : 'hop'),
+            'role' => $is_src ? 'SRC' : ($is_target ? 'TARGET' : 'HOP'),
+            'status' => $status,
+            'last_ms' => $last_val,
+            'min_ms' => $min_ms,
+            'max_ms' => $max_ms,
+            'parent' => $parent_key
+        ];
+    }
+
+    // Step 3: Link any unlinked hops naturally to root or sequential previous hop
+    $last_chain_hop = $root_parent_key;
+    foreach ($graph_nodes as $key => &$node) {
+        if ($node['type'] === 'src') continue;
+        
+        if (empty($node['parent']) || !isset($graph_nodes[$node['parent']])) {
+            $node['parent'] = $last_chain_hop ?: $root_parent_key;
+        }
+
+        if ($node['type'] === 'hop') {
+            $last_chain_hop = $key;
+        } elseif ($node['type'] === 'target') {
+            $last_chain_hop = $root_parent_key;
+        }
+    }
+    unset($node);
+
+    // Step 4: Build graph edges
+    foreach ($graph_nodes as $key => $n) {
+        if (!empty($n['parent']) && isset($graph_nodes[$n['parent']]) && $n['parent'] !== $key) {
+            $graph_edges[] = [
+                'from' => $n['parent'],
+                'to' => $key,
+                'label' => round($n['last_ms'], 3) . ' ms',
+                'ms' => $n['last_ms'],
+                'status' => $n['status']
+            ];
+        }
+    }
+
+    return [
+        'nodes' => $graph_nodes,
+        'edges' => $graph_edges,
+        'source_ip' => $clean_src_ip,
+        'targets_count' => count(array_filter($graph_nodes, fn($n) => ($n['type'] ?? '') === 'target'))
+    ];
 }
 
 function load_route_dashboards(string $file): array {
@@ -199,6 +389,85 @@ if (empty($dashboards)) {
 
 // --- 4. AJAX API ENDPOINTS ---
 $api = $_GET['api'] ?? '';
+
+if ($api === 'get_realtime_data') {
+    if (ob_get_level() > 0) ob_clean();
+    header('Content-Type: application/json');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+
+    $d_id = $_GET['dashboard_id'] ?? '';
+    $dash = null;
+    foreach ($dashboards as $d) {
+        if ($d['id'] === $d_id) { $dash = $d; break; }
+    }
+    if (!$dash) {
+        echo json_encode(['ok' => false, 'error' => 'Dashboard not found']);
+        exit;
+    }
+
+    $time_range = $_GET['range'] ?? ($dash['default_range'] ?? '1d');
+    $range_seconds = match ($time_range) {
+        '1h' => 3600,
+        '6h' => 21600,
+        '1d' => 86400,
+        '7d' => 604800,
+        '30d' => 2592000,
+        default => 86400
+    };
+    $now = time();
+    $range_start = $now - $range_seconds;
+
+    $agent_id = (int)($dash['agent_id'] ?? 0);
+    $warn_th = (float)($dash['warn_threshold'] ?? 10.0);
+    $crit_th = (float)($dash['crit_threshold'] ?? 50.0);
+
+    $agent_info = null;
+    if ($agent_id > 0 && isset($pdo) && $pdo instanceof PDO) {
+        try {
+            $stA = $pdo->prepare("SELECT id_agente, nombre, alias, direccion FROM tagente WHERE id_agente = ?");
+            $stA->execute([$agent_id]);
+            $agent_info = $stA->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {}
+    }
+
+    $mod_res = ($agent_id > 0 && isset($pdo) && $pdo instanceof PDO)
+        ? get_agent_route_modules($pdo, $agent_id, $range_start, $now, $warn_th, $crit_th)
+        : ['modules' => [], 'stats' => []];
+
+    $use_demo = !empty($dash['is_demo']) || empty($mod_res['modules']);
+
+    if ($use_demo) {
+        $topo = [
+            'nodes' => [
+                'hop_src' => ['id' => 101, 'name' => 'RouteStep_172.17.8.96', 'ip' => '172.17.8.96', 'type' => 'src', 'role' => 'SRC', 'status' => 'ok', 'last_ms' => 0.0, 'min_ms' => 0.0, 'max_ms' => 0.056],
+                'hop_gw' => ['id' => 102, 'name' => 'RouteStep_172.17.8.1', 'ip' => '172.17.8.1', 'type' => 'hop', 'role' => 'HOP', 'status' => 'ok', 'last_ms' => 0.92, 'min_ms' => 0.45, 'max_ms' => 1.85],
+                'hop_branch1' => ['id' => 103, 'name' => 'RouteStep_10.10.5.1', 'ip' => '10.10.5.1', 'type' => 'hop', 'role' => 'HOP', 'status' => 'ok', 'last_ms' => 0.316, 'min_ms' => 0.21, 'max_ms' => 0.95],
+                'target_1' => ['id' => 104, 'name' => 'RouteStepTarget_10.10.5.81', 'ip' => '10.10.5.81', 'type' => 'target', 'role' => 'TARGET', 'status' => 'warn', 'last_ms' => 10.737, 'min_ms' => 5.2, 'max_ms' => 18.4],
+                'hop_branch2' => ['id' => 105, 'name' => 'RouteStep_10.10.6.1', 'ip' => '10.10.6.1', 'type' => 'hop', 'role' => 'HOP', 'status' => 'ok', 'last_ms' => 0.285, 'min_ms' => 0.18, 'max_ms' => 0.82],
+                'target_2' => ['id' => 106, 'name' => 'RouteStepTarget_10.10.6.220', 'ip' => '10.10.6.220', 'type' => 'target', 'role' => 'TARGET', 'status' => 'ok', 'last_ms' => 2.162, 'min_ms' => 1.15, 'max_ms' => 4.30]
+            ],
+            'edges' => [
+                ['from' => 'hop_src', 'to' => 'hop_gw', 'label' => '0.92 ms', 'ms' => 0.92, 'status' => 'ok'],
+                ['from' => 'hop_gw', 'to' => 'hop_branch1', 'label' => '0.316 ms', 'ms' => 0.316, 'status' => 'ok'],
+                ['from' => 'hop_branch1', 'to' => 'target_1', 'label' => '10.737 ms', 'ms' => 10.737, 'status' => 'warn'],
+                ['from' => 'hop_gw', 'to' => 'hop_branch2', 'label' => '0.285 ms', 'ms' => 0.285, 'status' => 'ok'],
+                ['from' => 'hop_branch2', 'to' => 'target_2', 'label' => '2.162 ms', 'ms' => 2.162, 'status' => 'ok']
+            ]
+        ];
+    } else {
+        $source_ip = $dash['source_ip'] ?? ($agent_info['direccion'] ?? '172.17.8.96');
+        $topo = build_route_topology($mod_res['modules'], $mod_res['stats'], $source_ip, $warn_th, $crit_th, $agent_info);
+    }
+
+    echo json_encode([
+        'ok' => true,
+        'nodes' => $topo['nodes'],
+        'edges' => $topo['edges'],
+        'time_str' => date('H:i:s'),
+        'timestamp' => time()
+    ]);
+    exit;
+}
 
 if ($api === 'add_route_path') {
     if (ob_get_level() > 0) ob_clean();
@@ -1662,40 +1931,9 @@ if ($selected_agent_id > 0 && isset($pdo) && $pdo instanceof PDO) {
         $stAgent->execute([$selected_agent_id]);
         $agent_info = $stAgent->fetch(PDO::FETCH_ASSOC);
 
-        $stMod = $pdo->prepare("
-            SELECT tm.id_agente_modulo, tm.nombre, tm.parent_module_id, tm.descripcion,
-                   te.datos as last_val, te.estado, te.utimestamp as last_ts
-            FROM tagente_modulo tm
-            LEFT JOIN tagente_estado te ON te.id_agente_modulo = tm.id_agente_modulo
-            WHERE tm.id_agente = ? 
-              AND tm.disabled = 0
-              AND (tm.nombre LIKE 'RouteStep%' OR tm.nombre LIKE 'RouteTarget%')
-            ORDER BY tm.id_agente_modulo ASC
-        ");
-        $stMod->execute([$selected_agent_id]);
-        $modules_raw = $stMod->fetchAll(PDO::FETCH_ASSOC);
-
-        if (!empty($modules_raw)) {
-            $mod_ids = array_column($modules_raw, 'id_agente_modulo');
-            $placeholders = implode(',', array_fill(0, count($mod_ids), '?'));
-            $params = array_merge($mod_ids, [$range_start, $now]);
-            
-            $stStats = $pdo->prepare("
-                SELECT id_agente_modulo, MIN(datos) as min_val, MAX(datos) as max_val, AVG(datos) as avg_val
-                FROM tagente_datos
-                WHERE id_agente_modulo IN ($placeholders)
-                  AND utimestamp BETWEEN ? AND ?
-                GROUP BY id_agente_modulo
-            ");
-            $stStats->execute($params);
-            while ($row = $stStats->fetch(PDO::FETCH_ASSOC)) {
-                $stats_by_module[(int)$row['id_agente_modulo']] = [
-                    'min' => (float)$row['min_val'],
-                    'max' => (float)$row['max_val'],
-                    'avg' => (float)$row['avg_val']
-                ];
-            }
-        }
+        $mod_res = get_agent_route_modules($pdo, $selected_agent_id, $range_start, $now, $warn_threshold, $crit_threshold);
+        $modules_raw = $mod_res['modules'];
+        $stats_by_module = $mod_res['stats'];
     } catch (Throwable $e) {
         error_log("Route Parser error: " . $e->getMessage());
     }
@@ -1719,7 +1957,7 @@ if ($use_demo_data) {
             'name' => 'RouteStep_172.17.8.96',
             'ip' => '172.17.8.96',
             'type' => 'src',
-            'role' => 'HOP',
+            'role' => 'SRC',
             'status' => 'ok',
             'last_ms' => 0.0,
             'min_ms' => 0.0,
@@ -1797,184 +2035,18 @@ if ($use_demo_data) {
     ];
     $targets_count = 2;
 } else {
-    $id_to_key = [];
-    $main_root_key = null;
-    $clean_src_ip = trim((string)$source_ip);
-
-    foreach ($modules_raw as $m) {
-        $mid = (int)$m['id_agente_modulo'];
-        $id_to_key[$mid] = 'mod_' . $mid;
-    }
-
-    // Step 1: Identify the main source / root module
-    foreach ($modules_raw as $m) {
-        $mid = (int)$m['id_agente_modulo'];
-        $ip = clean_hop_label($m['nombre']);
-        $is_target = (strpos($m['nombre'], 'Target') !== false || strpos($m['nombre'], 'RouteTarget') !== false);
-        if (!$is_target && !empty($clean_src_ip) && ($ip === $clean_src_ip || strpos($m['nombre'], $clean_src_ip) !== false)) {
-            $main_root_key = $id_to_key[$mid];
-            break;
-        }
-    }
-    if ($main_root_key === null && !empty($modules_raw)) {
-        foreach ($modules_raw as $m) {
-            $is_target = (strpos($m['nombre'], 'Target') !== false || strpos($m['nombre'], 'RouteTarget') !== false);
-            if (!$is_target) {
-                $main_root_key = $id_to_key[(int)$m['id_agente_modulo']];
-                break;
-            }
-        }
-        if ($main_root_key === null) {
-            $main_root_key = $id_to_key[(int)$modules_raw[0]['id_agente_modulo']];
-        }
-    }
-
-    // Step 2: Build raw nodes (filtering out duplicate source hops)
-    $seen_hop_ips = [$clean_src_ip => $main_root_key];
-
-    foreach ($modules_raw as $m) {
-        $mid = (int)$m['id_agente_modulo'];
-        $key = $id_to_key[$mid];
-        $ip = clean_hop_label($m['nombre']);
-        $is_target = (strpos($m['nombre'], 'Target') !== false || strpos($m['nombre'], 'RouteTarget') !== false);
-        $is_src = ($key === $main_root_key);
-        $last_val = (float)($m['last_val'] ?? 0.0);
-        $p_id = (int)$m['parent_module_id'];
-
-        // Filter out duplicate redundant source hops that match the root IP
-        if (!$is_src && !$is_target && !empty($clean_src_ip) && $ip === $clean_src_ip) {
-            continue;
-        }
-
-        $stats = $stats_by_module[$mid] ?? null;
-        $min_ms = $stats ? $stats['min'] : $last_val;
-        $max_ms = $stats ? $stats['max'] : $last_val;
-
-        $status = match ((int)($m['estado'] ?? 0)) { 0 => 'ok', 1 => 'crit', 2 => 'warn', default => 'ok' };
-        if ($status === 'ok') {
-            if ($last_val >= $crit_threshold) $status = 'crit';
-            elseif ($last_val >= $warn_threshold) $status = 'warn';
-        }
-
-        $graph_nodes[$key] = [
-            'id' => $mid,
-            'name' => $m['nombre'],
-            'ip' => $ip,
-            'type' => $is_target ? 'target' : ($is_src ? 'src' : 'hop'),
-            'role' => $is_target ? 'TARGET' : 'HOP',
-            'status' => $status,
-            'last_ms' => $last_val,
-            'min_ms' => $min_ms,
-            'max_ms' => $max_ms,
-            'parent' => ($p_id > 0 && isset($id_to_key[$p_id]) && $id_to_key[$p_id] !== $key) ? $id_to_key[$p_id] : null
-        ];
-    }
-
-    if ($main_root_key && isset($graph_nodes[$main_root_key])) {
-        $graph_nodes[$main_root_key]['type'] = 'src';
-        $graph_nodes[$main_root_key]['parent'] = null;
-        if (!empty($clean_src_ip) && $clean_src_ip !== '172.17.8.189') {
-            $graph_nodes[$main_root_key]['ip'] = $clean_src_ip;
-            $graph_nodes[$main_root_key]['name'] = 'RouteStep_' . $clean_src_ip;
-            if (isset($pdo) && $pdo instanceof PDO) {
-                try {
-                    $pdo->prepare("UPDATE tagente_modulo SET nombre = ? WHERE id_agente_modulo = ?")->execute(['RouteStep_' . $clean_src_ip, $graph_nodes[$main_root_key]['id']]);
-                } catch (Throwable $e) {}
-            }
-        }
-    }
-
-    // Step 3: Smart Subnet & Topology Hop Resolver
-    // Helper to find common IP prefix depth (0 to 3)
-    $ip_score = function(string $ip1, string $ip2): int {
-        $p1 = explode('.', trim($ip1));
-        $p2 = explode('.', trim($ip2));
-        if (count($p1) !== 4 || count($p2) !== 4) return 0;
-        if ($p1[0] !== $p2[0]) return 0;
-        if ($p1[1] !== $p2[1]) return 1;
-        if ($p1[2] !== $p2[2]) return 2;
-        return 3;
-    };
-
-    $curr_chain_parent = $main_root_key;
-    $db_updates = [];
-
-    // Separate intermediate hops
-    $hop_keys = [];
-    foreach ($graph_nodes as $k => $n) {
-        if ($k !== $main_root_key && $n['type'] === 'hop') {
-            $hop_keys[] = $k;
-        }
-    }
-
-    foreach ($graph_nodes as $key => &$node) {
-        if ($key === $main_root_key) continue;
-        $mid = (int)$node['id'];
-        $is_target = ($node['type'] === 'target');
-
-        // Check if there is a closer intermediate hop sharing the same IP subnet (/24 or /16)
-        $best_parent_key = null;
-        $best_score = 0;
-
-        foreach ($hop_keys as $hk) {
-            if ($hk === $key) continue;
-            $score = $ip_score($node['ip'], $graph_nodes[$hk]['ip']);
-            if ($score > $best_score) {
-                $best_score = $score;
-                $best_parent_key = $hk;
-            }
-        }
-
-        // Check if current parent is valid
-        $has_valid_parent = (!empty($node['parent']) && isset($graph_nodes[$node['parent']]) && $node['parent'] !== $key);
-
-        // If target/hop is currently linked to root (or invalid), but a subnet hop (score >= 2) exists:
-        if ($best_parent_key !== null && $best_score >= 2) {
-            if (!$has_valid_parent || $node['parent'] === $main_root_key) {
-                $node['parent'] = $best_parent_key;
-                $db_updates[$mid] = (int)$graph_nodes[$best_parent_key]['id'];
-            }
-        } elseif ($best_parent_key !== null && $best_score >= 1 && $is_target && (!$has_valid_parent || $node['parent'] === $main_root_key)) {
-            $node['parent'] = $best_parent_key;
-            $db_updates[$mid] = (int)$graph_nodes[$best_parent_key]['id'];
-        } elseif (!$has_valid_parent) {
-            $node['parent'] = $curr_chain_parent ?: $main_root_key;
-            if (isset($graph_nodes[$node['parent']])) {
-                $db_updates[$mid] = (int)$graph_nodes[$node['parent']]['id'];
-            }
-        }
-
-        if ($is_target) {
-            $curr_chain_parent = $main_root_key;
-        } else {
-            $curr_chain_parent = $key;
-        }
-    }
-    unset($node);
-
-    // Persist healed parent links to database
-    if (!empty($db_updates) && isset($pdo) && $pdo instanceof PDO) {
-        $stFix = $pdo->prepare("UPDATE tagente_modulo SET parent_module_id = ? WHERE id_agente_modulo = ?");
-        foreach ($db_updates as $f_mid => $f_pid) {
-            try { $stFix->execute([$f_pid, $f_mid]); } catch (Throwable $e) {}
-        }
-    }
-
-    // Step 4: Build Graph Edges
-    foreach ($graph_nodes as $key => $n) {
-        if (!empty($n['parent']) && isset($graph_nodes[$n['parent']])) {
-            $graph_edges[] = [
-                'from' => $n['parent'],
-                'to' => $key,
-                'label' => round($n['last_ms'], 3) . ' ms',
-                'ms' => $n['last_ms'],
-                'status' => $n['status']
-            ];
-        }
-    }
-
-    $targets_count = count(array_filter($graph_nodes, fn($n) => ($n['type'] ?? '') === 'target'));
+    $topo = build_route_topology($modules_raw, $stats_by_module, $source_ip, $warn_threshold, $crit_threshold, $agent_info);
+    $graph_nodes = $topo['nodes'];
+    $graph_edges = $topo['edges'];
+    $source_ip = $topo['source_ip'];
+    $targets_count = $topo['targets_count'];
 }
+
+$script_path = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+$clean_script_dir = dirname($script_path);
+$direct_script_url = rtrim($clean_script_dir, '/') . '/route-parser.php';
+$standalone_url = $full_origin . $direct_script_url . '?dashboard_id=' . urlencode($current_dashboard['id'] ?? '') . '&standalone=1';
+$portal_url = $full_origin . $clean_script_path . '?page=' . urlencode($portal_page_param) . '&dashboard_id=' . urlencode($current_dashboard['id'] ?? '');
 
 // Tree Layout Helper
 function calculate_tree_layout_v3(array $nodes, array $edges): array {
@@ -2646,9 +2718,10 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
             <div class="rp-controls-area">
                 <div class="rp-badge">Agent ID: <?= (int)$selected_agent_id ?></div>
 
-                <form method="GET" id="rangeForm" style="display:flex; align-items:center; gap:6px; margin:0;">
+                <form method="GET" id="rangeForm" style="display:flex; align-items:center; gap:10px; margin:0;">
                     <input type="hidden" name="page" value="<?= h($_GET['page'] ?? '') ?>">
                     <input type="hidden" name="dashboard_id" value="<?= h($current_dashboard['id']) ?>">
+                    <input type="hidden" name="refresh" id="hiddenRefreshParam" value="<?= h($auto_refresh) ?>">
                     <?php if ($is_standalone): ?><input type="hidden" name="standalone" value="1"><?php endif; ?>
 
                     <div style="display:flex; align-items:center; gap:4px;">
@@ -2659,6 +2732,18 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                             <option value="1d" <?= $time_range === '1d' ? 'selected' : '' ?>>Last 1 day</option>
                             <option value="7d" <?= $time_range === '7d' ? 'selected' : '' ?>>Last 7 days</option>
                             <option value="30d" <?= $time_range === '30d' ? 'selected' : '' ?>>Last 30 days</option>
+                        </select>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <label style="font-size:11px; font-weight:600; color:var(--text-muted);">Auto Refresh:</label>
+                        <select name="refresh_sel" id="refreshSelect" class="rp-select" onchange="onRefreshSelectChange(this.value)">
+                            <option value="0" <?= $auto_refresh === '0' || empty($auto_refresh) ? 'selected' : '' ?>>Off</option>
+                            <option value="10s" <?= $auto_refresh === '10s' ? 'selected' : '' ?>>10s</option>
+                            <option value="30s" <?= $auto_refresh === '30s' ? 'selected' : '' ?>>30s</option>
+                            <option value="1m" <?= $auto_refresh === '1m' ? 'selected' : '' ?>>1 min</option>
+                            <option value="2m" <?= $auto_refresh === '2m' ? 'selected' : '' ?>>2 min</option>
+                            <option value="5m" <?= $auto_refresh === '5m' ? 'selected' : '' ?>>5 min</option>
                         </select>
                     </div>
                 </form>
@@ -2686,7 +2771,11 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
         <div class="rp-subheader">
             <div class="rp-sub-pills">
                 <span class="rp-pill">Topology: route_parser</span>
-                <span class="rp-pill">Auto refresh: <?= h($auto_refresh) ?></span>
+                <span class="rp-pill" id="subAutoRefreshPill" style="display:flex; align-items:center; gap:4px;">
+                    <span class="status-dot ok" id="syncStatusDot" style="display:<?= ($auto_refresh !== '0' && !empty($auto_refresh)) ? 'inline-block' : 'none' ?>;"></span>
+                    <span id="syncStatusText">Auto refresh: <?= h(($auto_refresh !== '0' && !empty($auto_refresh)) ? $auto_refresh : 'Off') ?></span>
+                    <span id="countdownBadge" style="font-weight:700; color:var(--brand-green); display:<?= ($auto_refresh !== '0' && !empty($auto_refresh)) ? 'inline' : 'none' ?>;"></span>
+                </span>
             </div>
             <div>
                 Threshold: <b style="color:#d97706;">warn <?= $warn_threshold ?>ms</b> · <b style="color:#dc2626;">crit <?= $crit_threshold ?>ms</b> · Min/Max Window: <b><?= h($range_label) ?></b> · Source IP: <b style="color:var(--primary-navy);"><?= h($source_ip) ?></b>
@@ -3126,13 +3215,16 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                 document.querySelectorAll('.graph-node.selected').forEach(n => n.classList.remove('selected'));
             }
 
-            window.selectNode = function(key) {
+            let selectedItem = { type: null, key: null, from: null, to: null };
+
+            window.selectNode = function(key, updateClear = true) {
+                selectedItem = { type: 'node', key: key };
                 const n = graphNodes[key];
                 if (!n) return;
 
-                clearSelection();
+                if (updateClear) clearSelection();
                 const nodeEl = document.getElementById(`node-${key}`);
-                if (nodeEl) nodeEl.classList.add('selected');
+                if (nodeEl && updateClear) nodeEl.classList.add('selected');
 
                 panelRoleTitle.textContent = n.role || 'HOP';
                 panelIpSub.textContent = n.ip || '';
@@ -3150,13 +3242,14 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                 valInfoText.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; margin-right:4px;">info</span> Double-click node untuk membuka halaman modul di Pandora FMS.';
             };
 
-            window.selectEdge = function(fromKey, toKey) {
+            window.selectEdge = function(fromKey, toKey, updateClear = true) {
+                selectedItem = { type: 'edge', from: fromKey, to: toKey };
                 const edge = graphEdges.find(e => e.from === fromKey && e.to === toKey);
                 const fromNode = graphNodes[fromKey];
                 const toNode = graphNodes[toKey];
                 if (!edge || !fromNode || !toNode) return;
 
-                clearSelection();
+                if (updateClear) clearSelection();
 
                 panelRoleTitle.textContent = 'EDGE / CONNECTION';
                 panelIpSub.textContent = `${fromNode.ip} → ${toNode.ip}`;
@@ -3177,13 +3270,164 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
             const firstKey = Object.keys(graphNodes)[0];
             if (firstKey) selectNode(firstKey);
 
-            const refreshMap = { '30s': 30, '1m': 60, '5m': 300 };
-            const refreshSec = refreshMap['<?= h($auto_refresh) ?>'] || 0;
-            if (refreshSec > 0) {
-                setTimeout(() => {
-                    location.reload();
-                }, refreshSec * 1000);
+            // Double click on node opens Pandora FMS module configuration
+            canvasWrapper.addEventListener('dblclick', (e) => {
+                const nodeTarget = e.target.closest('.graph-node');
+                if (nodeTarget) {
+                    const key = nodeTarget.dataset.key;
+                    const n = graphNodes[key];
+                    if (n && n.id > 0) {
+                        window.open(`/pandora_console/index.php?sec=gagente&sec2=godmode/agente/configurar_agente&tab=module&id_agente_modulo=${n.id}`, '_blank');
+                    }
+                }
+            });
+
+            // Live Realtime Poller & Auto Refresh System
+            let currentAutoRefresh = <?= json_encode($auto_refresh) ?>;
+            let currentRange = <?= json_encode($time_range) ?>;
+            let countdownSeconds = 0;
+            let timerInterval = null;
+            let isFetching = false;
+
+            const refreshSecMap = { '10s': 10, '30s': 30, '1m': 60, '2m': 120, '5m': 300 };
+
+            function getRefreshSeconds(val) {
+                return refreshSecMap[val] || 0;
             }
+
+            function startLivePoller() {
+                if (timerInterval) clearInterval(timerInterval);
+                const sec = getRefreshSeconds(currentAutoRefresh);
+                const countBadge = document.getElementById('countdownBadge');
+                const syncDot = document.getElementById('syncStatusDot');
+                const syncText = document.getElementById('syncStatusText');
+                const hiddenRefresh = document.getElementById('hiddenRefreshParam');
+                if (hiddenRefresh) hiddenRefresh.value = currentAutoRefresh;
+
+                if (sec <= 0) {
+                    if (countBadge) countBadge.style.display = 'none';
+                    if (syncDot) syncDot.style.display = 'none';
+                    if (syncText) syncText.textContent = 'Auto refresh: Off';
+                    return;
+                }
+
+                countdownSeconds = sec;
+                if (countBadge) {
+                    countBadge.style.display = 'inline';
+                    countBadge.textContent = `(${countdownSeconds}s)`;
+                }
+                if (syncDot) syncDot.style.display = 'inline-block';
+                if (syncText) syncText.textContent = `Auto refresh: ${currentAutoRefresh}`;
+
+                timerInterval = setInterval(() => {
+                    countdownSeconds--;
+                    if (countdownSeconds <= 0) {
+                        countdownSeconds = sec;
+                        triggerRealtimeDataFetch();
+                    }
+                    if (countBadge) countBadge.textContent = `(${countdownSeconds}s)`;
+                }, 1000);
+            }
+
+            async function triggerRealtimeDataFetch() {
+                if (isFetching) return;
+                isFetching = true;
+                const syncDot = document.getElementById('syncStatusDot');
+                if (syncDot) syncDot.style.opacity = '0.3';
+                try {
+                    const dashboardId = <?= json_encode($current_dashboard['id']) ?>;
+                    const isStandalone = <?= json_encode($is_standalone) ?>;
+                    const isDemo = <?= json_encode($is_demo) ?>;
+
+                    // Build robust URL preserving standalone/embed and demo params across portal/iframe/direct
+                    const urlObj = new URL(window.location.href);
+                    urlObj.searchParams.set('api', 'get_realtime_data');
+                    urlObj.searchParams.set('dashboard_id', dashboardId);
+                    urlObj.searchParams.set('range', currentRange);
+                    if (isStandalone) urlObj.searchParams.set('standalone', '1');
+                    if (isDemo) urlObj.searchParams.set('demo', '1');
+
+                    const res = await fetch(urlObj.toString(), {
+                        headers: { 'Accept': 'application/json' },
+                        cache: 'no-store'
+                    });
+                    const data = await res.json();
+                    if (data && data.ok) {
+                        updateTopologyData(data.nodes, data.edges);
+                        showToast(`Data refreshed (${data.time_str})`);
+                    }
+                } catch (e) {
+                    console.warn("Realtime refresh error:", e);
+                } finally {
+                    isFetching = false;
+                    if (syncDot) syncDot.style.opacity = '1';
+                }
+            }
+
+            function updateTopologyData(newNodes, newEdges) {
+                if (!newNodes) return;
+                
+                // Update graphNodes in memory
+                for (const key in newNodes) {
+                    if (graphNodes[key]) {
+                        Object.assign(graphNodes[key], newNodes[key]);
+                    } else {
+                        graphNodes[key] = newNodes[key];
+                    }
+
+                    // Update DOM Node Color
+                    const nodeEl = document.getElementById(`node-${key}`);
+                    if (nodeEl) {
+                        const n = graphNodes[key];
+                        const circle = nodeEl.querySelector('.node-base');
+                        if (circle) {
+                            const nodeColor = n.status === 'warn' ? '#f59e0b' : (n.status === 'crit' ? '#ef4444' : '#22c55e');
+                            circle.setAttribute('fill', nodeColor);
+                        }
+                    }
+                }
+
+                // Update Edge colors and labels
+                if (newEdges) {
+                    graphEdges = newEdges;
+                    newEdges.forEach(e => {
+                        const pathEl = document.getElementById(`path-${e.from}-${e.to}`);
+                        if (pathEl) {
+                            const edgeColor = e.status === 'warn' ? '#f59e0b' : (e.status === 'crit' ? '#ef4444' : '#22c55e');
+                            pathEl.setAttribute('stroke', edgeColor);
+                            pathEl.setAttribute('data-ms', e.ms);
+                            pathEl.setAttribute('data-label', e.label);
+                        }
+                        const labelEl = document.getElementById(`label-${e.from}-${e.to}`);
+                        if (labelEl) {
+                            const box = labelEl.querySelector('.edge-label-box');
+                            if (box) box.textContent = e.label;
+                        }
+                    });
+                }
+
+                // Refresh inspector details if currently selected
+                if (selectedItem.type === 'node' && selectedItem.key && graphNodes[selectedItem.key]) {
+                    selectNode(selectedItem.key, false);
+                } else if (selectedItem.type === 'edge' && selectedItem.from && selectedItem.to) {
+                    selectEdge(selectedItem.from, selectedItem.to, false);
+                }
+            }
+
+            window.onRefreshSelectChange = function(val) {
+                currentAutoRefresh = val;
+                const hiddenRefresh = document.getElementById('hiddenRefreshParam');
+                if (hiddenRefresh) hiddenRefresh.value = val;
+
+                const url = new URL(window.location.href);
+                url.searchParams.set('refresh', val);
+                window.history.replaceState({}, '', url.toString());
+
+                startLivePoller();
+            };
+
+            // Start poller on initial load
+            startLivePoller();
 
             window.toggleHeader = function() {
                 const hs = document.getElementById('headerSection');
