@@ -912,14 +912,17 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; visibility: hidden !important; }
-        body { background-color: #ffffff !important; padding: 0 !important; }
-        .main-content { padding: 10px 15px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow-x: hidden; }
+        .main-content { padding: 10px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
         .dashboard-card { box-shadow: none !important; border: 1px solid #eee !important; border-radius: 4px !important; width: 100% !important; margin-bottom: 0 !important; }
         .grid-layout { grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; display: block !important; }
         <?php if ($isHideHeader): ?>
         .dashboard-card-header { display: none !important; }
         .main-content { padding: 0 !important; }
-        .dashboard-card { border: none !important; }
+        .dashboard-card { border: none !important; margin: 0 !important; }
+        .mini-stats-row { padding: 6px 8px !important; border-bottom: none !important; }
+        html, body { overflow: hidden !important; }
+        .floating-header-toggle { display: none !important; }
         <?php endif; ?>
         <?php endif; ?>
 
@@ -1216,10 +1219,34 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 
         <div class="form-group" id="wrap_show_stats">
             <label>Show Status Cards (UP, Critical, etc.)</label>
-            <select id="b_show_stats" class="form-control-fix">
+            <select id="b_show_stats" class="form-control-fix" onchange="toggleVisibleStatsGroup()">
                 <option value="1">Show</option>
                 <option value="0">Hide</option>
             </select>
+        </div>
+
+        <div class="form-group" id="wrap_visible_stats">
+            <label style="margin-bottom:6px; display:block;">Visible Stat Cards (Pilih Kartu Status)</label>
+            <div style="display:flex; flex-wrap:wrap; gap:12px; background:#f8fafc; padding:10px 14px; border:1px solid #e2e8f0; border-radius:6px;">
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_total" value="total" checked style="width:15px; height:15px;"> Total
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_normal" value="normal" checked style="width:15px; height:15px;"> UP
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_warning" value="warning" checked style="width:15px; height:15px;"> Warning
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_critical" value="critical" checked style="width:15px; height:15px;"> Critical
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_unknown" value="unknown" checked style="width:15px; height:15px;"> Unknown
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_not_init" value="not_init" checked style="width:15px; height:15px;"> Not Init
+                </label>
+            </div>
         </div>
 
         <div class="form-group" id="wrap_single_value_options" style="display:none;">
@@ -2189,15 +2216,34 @@ function renderGrid() {
             </div>`;
 
         const showStatsStyle = (c.view_type !== 'cards' && (c.show_stats === 0 || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer'].includes(c.view_type))) ? 'display: none !important;' : '';
+        const visStats = Array.isArray(c.visible_stats) && c.visible_stats.length > 0 
+            ? c.visible_stats 
+            : ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'];
+
+        let statsHtml = '';
+        if (visStats.includes('total')) {
+            statsHtml += `<div class="mini-stat st-border-black" onclick="showDetailModal('${c.id}', 'all')"><div class="mini-stat-val text-black" id="st_tot_${c.id}">0</div><div class="mini-stat-label">TOTAL</div></div>`;
+        }
+        if (visStats.includes('normal')) {
+            statsHtml += `<div class="mini-stat st-border-green" onclick="showDetailModal('${c.id}', 'normal')"><div class="mini-stat-val text-green" id="st_normal_${c.id}">0</div><div class="mini-stat-label">UP</div></div>`;
+        }
+        if (visStats.includes('warning')) {
+            statsHtml += `<div class="mini-stat st-border-yellow" onclick="showDetailModal('${c.id}', 'warning')"><div class="mini-stat-val text-yellow" id="st_warning_${c.id}">0</div><div class="mini-stat-label">WARNING</div></div>`;
+        }
+        if (visStats.includes('critical')) {
+            statsHtml += `<div class="mini-stat st-border-red" onclick="showDetailModal('${c.id}', 'critical')"><div class="mini-stat-val text-red" id="st_critical_${c.id}">0</div><div class="mini-stat-label">CRITICAL</div></div>`;
+        }
+        if (visStats.includes('unknown')) {
+            statsHtml += `<div class="mini-stat st-border-gray" onclick="showDetailModal('${c.id}', 'unknown')"><div class="mini-stat-val text-gray" id="st_unknown_${c.id}">0</div><div class="mini-stat-label">UNKNOWN</div></div>`;
+        }
+        if (visStats.includes('not_init')) {
+            statsHtml += `<div class="mini-stat st-border-blue" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" id="st_not_init_${c.id}">0</div><div class="mini-stat-label">NOT INIT</div></div>`;
+        }
+
         div.innerHTML = `<div class="dashboard-card-header"><div><h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="color:#004d40;">analytics</span> ${c.title}</h5><div style="font-size:10px; color:#7f8c8d; font-weight: normal;"><span id="meta_up_${c.id}">Awaiting...</span> <span id="meta_timer_${c.id}"></span></div></div>${acts}</div>
         <div class="dashboard-card-body">
             <div class="mini-stats-row" style="${showStatsStyle}">
-                <div class="mini-stat st-border-black" onclick="showDetailModal('${c.id}', 'all')"><div class="mini-stat-val text-black" id="st_tot_${c.id}">0</div><div class="mini-stat-label">TOTAL</div></div>
-                <div class="mini-stat st-border-green" onclick="showDetailModal('${c.id}', 'normal')"><div class="mini-stat-val text-green" id="st_normal_${c.id}">0</div><div class="mini-stat-label">UP</div></div>
-                <div class="mini-stat st-border-yellow" onclick="showDetailModal('${c.id}', 'warning')"><div class="mini-stat-val text-yellow" id="st_warning_${c.id}">0</div><div class="mini-stat-label">WARNING</div></div>
-                <div class="mini-stat st-border-red" onclick="showDetailModal('${c.id}', 'critical')"><div class="mini-stat-val text-red" id="st_critical_${c.id}">0</div><div class="mini-stat-label">CRITICAL</div></div>
-                <div class="mini-stat st-border-gray" onclick="showDetailModal('${c.id}', 'unknown')"><div class="mini-stat-val text-gray" id="st_unknown_${c.id}">0</div><div class="mini-stat-label">UNKNOWN</div></div>
-                <div class="mini-stat st-border-blue" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" id="st_not_init_${c.id}">0</div><div class="mini-stat-label">NOT INIT</div></div>
+                ${statsHtml}
             </div>
             <div id="content_view_${c.id}"></div>
         </div>`;
@@ -2924,10 +2970,28 @@ function toggleViewTypeOptions() {
         if (wrapSingleValue) wrapSingleValue.style.display = 'none';
     }
 
-    if (vt === 'line' || vt === 'area' || vt === 'bar' || vt === 'history_table' || vt === 'single_value' || vt === 'cards') {
+    const wrapVisibleStats = document.getElementById('wrap_visible_stats');
+    if (vt === 'cards') {
         if (wrapShowStats) wrapShowStats.style.display = 'none';
-    } else {
+        if (wrapVisibleStats) wrapVisibleStats.style.display = 'block';
+    } else if (vt === 'table' || vt === 'heatmap') {
         if (wrapShowStats) wrapShowStats.style.display = 'block';
+        if (wrapVisibleStats) wrapVisibleStats.style.display = (document.getElementById('b_show_stats').value == '1') ? 'block' : 'none';
+    } else {
+        if (wrapShowStats) wrapShowStats.style.display = 'none';
+        if (wrapVisibleStats) wrapVisibleStats.style.display = 'none';
+    }
+}
+
+function toggleVisibleStatsGroup() {
+    const vt = document.getElementById('b_view_type').value;
+    const wrapVisibleStats = document.getElementById('wrap_visible_stats');
+    if (wrapVisibleStats) {
+        if (vt === 'cards') {
+            wrapVisibleStats.style.display = 'block';
+        } else {
+            wrapVisibleStats.style.display = (document.getElementById('b_show_stats').value == '1') ? 'block' : 'none';
+        }
     }
 }
 
@@ -2943,6 +3007,10 @@ async function openBuilder() {
     document.getElementById('b_chart_limit').value = '0';
     document.getElementById('b_show_legend_count').value = '1';
     document.getElementById('b_show_stats').value = '1';
+    ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'].forEach(s => {
+        const el = document.getElementById('b_stat_' + s);
+        if (el) el.checked = true;
+    });
     if (document.getElementById('b_show_module_name')) document.getElementById('b_show_module_name').value = '1';
     toggleViewTypeOptions();
     document.getElementById('inner_search').value = '';
@@ -2978,6 +3046,15 @@ async function openEdit(id) {
     document.getElementById('b_chart_limit').value = c.chart_limit || '0';
     document.getElementById('b_show_legend_count').value = (c.show_legend_count !== undefined) ? String(c.show_legend_count) : '1';
     document.getElementById('b_show_stats').value = (c.show_stats !== undefined) ? String(c.show_stats) : '1';
+    
+    const vis = Array.isArray(c.visible_stats) && c.visible_stats.length > 0
+        ? c.visible_stats
+        : ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'];
+    ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'].forEach(s => {
+        const el = document.getElementById('b_stat_' + s);
+        if (el) el.checked = vis.includes(s);
+    });
+
     document.getElementById('b_chart_font_size').value = c.chart_font_size || '11';
     if (document.getElementById('b_show_module_name')) {
         document.getElementById('b_show_module_name').value = (c.show_module_name !== undefined) ? String(c.show_module_name) : '1';
@@ -3014,6 +3091,16 @@ function saveWidget() {
     if (!currentDashId) return;
     const matchType = document.querySelector('input[name="b_match_type"]:checked').value;
     const keywordVal = (matchType === 'exact') ? document.getElementById('p_keyword_exact').value : document.getElementById('b_keyword').value;
+    
+    const visStats = [];
+    ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'].forEach(s => {
+        const el = document.getElementById('b_stat_' + s);
+        if (el && el.checked) visStats.push(s);
+    });
+    if (visStats.length === 0) {
+        visStats.push('total', 'normal', 'warning', 'critical', 'unknown', 'not_init');
+    }
+
     const card = {
         id: editingCardId || 'c'+Date.now(),
         title: document.getElementById('b_title').value||'Widget',
@@ -3030,6 +3117,7 @@ function saveWidget() {
         chart_limit: document.getElementById('b_chart_limit').value,
         show_legend_count: parseInt(document.getElementById('b_show_legend_count').value),
         show_stats: parseInt(document.getElementById('b_show_stats').value),
+        visible_stats: visStats,
         show_module_name: document.getElementById('b_show_module_name') ? parseInt(document.getElementById('b_show_module_name').value) : 1,
         visible_columns: Array.from(document.querySelectorAll('.col-visibility-chk:checked')).map(el => el.value),
         manual_ids: selectedIds.join(',')

@@ -466,14 +466,17 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; }
-        body { background-color: #ffffff !important; padding: 0 !important; }
-        .main-content { padding: 10px 15px !important; }
+        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow-x: hidden; }
+        .main-content { padding: 10px !important; }
         .grid-layout { grid-template-columns: 1fr !important; }
         .dashboard-card { box-shadow: none !important; border: 1px solid #eee !important; }
         <?php if ($isHideHeader): ?>
         .dashboard-card-header { display: none !important; }
         .main-content { padding: 0 !important; }
-        .dashboard-card { border: none !important; }
+        .dashboard-card { border: none !important; margin: 0 !important; }
+        .mini-stats-row { padding: 6px 8px !important; border-bottom: none !important; }
+        html, body { overflow: hidden !important; }
+        .floating-header-toggle { display: none !important; }
         <?php endif; ?>
         <?php endif; ?>
 

@@ -768,14 +768,17 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; visibility: hidden !important; }
-        body { background-color: #ffffff !important; padding: 0 !important; }
-        .main-content { padding: 10px 15px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow-x: hidden; }
+        .main-content { padding: 10px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
         .dashboard-card { box-shadow: none !important; border: 1px solid #eee !important; border-radius: 4px !important; width: 100% !important; margin-bottom: 0 !important; }
         .grid-layout { grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; display: block !important; }
         <?php if ($isHideHeader): ?>
         .dashboard-card-header { display: none !important; }
         .main-content { padding: 0 !important; }
-        .dashboard-card { border: none !important; }
+        .dashboard-card { border: none !important; margin: 0 !important; }
+        .mini-stats-row { padding: 6px 8px !important; border-bottom: none !important; }
+        html, body { overflow: hidden !important; }
+        .floating-header-toggle { display: none !important; }
         <?php endif; ?>
         <?php endif; ?>
 
@@ -977,6 +980,30 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
                 <option value="heatmap">Heatmap View (Grid Summary)</option>
                 <option value="cards">Cards Status View (Stats Only)</option>
             </select>
+        </div>
+
+        <div class="form-group">
+            <label style="margin-bottom:6px; display:block;">Visible Stat Cards (Pilih Kartu Status)</label>
+            <div style="display:flex; flex-wrap:wrap; gap:12px; background:#f8fafc; padding:10px 14px; border:1px solid #e2e8f0; border-radius:6px;">
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_total" value="total" checked style="width:15px; height:15px;"> Total
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_normal" value="normal" checked style="width:15px; height:15px;"> UP / OK
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_critical" value="critical" checked style="width:15px; height:15px;"> Critical
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_warning" value="warning" checked style="width:15px; height:15px;"> Warning
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_unknown" value="unknown" checked style="width:15px; height:15px;"> Unknown
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="b_stat_not_init" value="not_init" checked style="width:15px; height:15px;"> Not Init
+                </label>
+            </div>
         </div>
 
         <div class="form-group"><label>Filter By Group</label><select id="b_group" class="form-control-fix" onchange="toggleManualSelector()"></select></div>
@@ -1229,6 +1256,30 @@ function renderGrid() {
         let lblWarn = c.lbl_warn || 'WARNING';
         let lblCrit = c.lbl_crit || 'CRITICAL';
 
+        const visStats = Array.isArray(c.visible_stats) && c.visible_stats.length > 0 
+            ? c.visible_stats 
+            : ['total', 'normal', 'critical', 'warning', 'unknown', 'not_init'];
+
+        let statsHtml = '';
+        if (visStats.includes('total')) {
+            statsHtml += `<div class="mini-stat st-border-black" onclick="showDetailModal('${c.id}', 'all')"><div class="mini-stat-val text-black" id="st_tot_${c.id}">0</div><div class="mini-stat-label">TOTAL</div></div>`;
+        }
+        if (visStats.includes('normal')) {
+            statsHtml += `<div class="mini-stat st-border-green" onclick="showDetailModal('${c.id}', 'normal')"><div class="mini-stat-val text-green" id="st_norm_${c.id}">0</div><div class="mini-stat-label">${lblOk.toUpperCase()}</div></div>`;
+        }
+        if (visStats.includes('critical')) {
+            statsHtml += `<div class="mini-stat st-border-red" onclick="showDetailModal('${c.id}', 'critical')"><div class="mini-stat-val text-red" id="st_crit_${c.id}">0</div><div class="mini-stat-label">${lblCrit.toUpperCase()}</div></div>`;
+        }
+        if (visStats.includes('warning')) {
+            statsHtml += `<div class="mini-stat st-border-yellow" onclick="showDetailModal('${c.id}', 'warning')"><div class="mini-stat-val text-yellow" id="st_warn_${c.id}">0</div><div class="mini-stat-label">${lblWarn.toUpperCase()}</div></div>`;
+        }
+        if (visStats.includes('unknown')) {
+            statsHtml += `<div class="mini-stat st-border-gray" onclick="showDetailModal('${c.id}', 'unknown')"><div class="mini-stat-val text-gray" id="st_unk_${c.id}">0</div><div class="mini-stat-label">UNKNOWN</div></div>`;
+        }
+        if (visStats.includes('not_init')) {
+            statsHtml += `<div class="mini-stat st-border-blue" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" id="st_not_init_${c.id}">0</div><div class="mini-stat-label">NOT INIT</div></div>`;
+        }
+
         div.innerHTML = `
             <div class="dashboard-card-header">
                 <div><h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="color:#004d40;">fact_check</span> ${c.title}</h5><div style="font-size:10px; color:#7f8c8d; font-weight: normal;"><span id="meta_up_${c.id}">Awaiting...</span> <span id="meta_timer_${c.id}"></span></div></div>
@@ -1236,12 +1287,7 @@ function renderGrid() {
             </div>
             <div class="dashboard-card-body">
                 <div class="mini-stats-row">
-                    <div class="mini-stat st-border-black" onclick="showDetailModal('${c.id}', 'all')"><div class="mini-stat-val text-black" id="st_tot_${c.id}">0</div><div class="mini-stat-label">TOTAL</div></div>
-                    <div class="mini-stat st-border-green" onclick="showDetailModal('${c.id}', 'normal')"><div class="mini-stat-val text-green" id="st_norm_${c.id}">0</div><div class="mini-stat-label">${lblOk.toUpperCase()}</div></div>
-                    <div class="mini-stat st-border-red" onclick="showDetailModal('${c.id}', 'critical')"><div class="mini-stat-val text-red" id="st_crit_${c.id}">0</div><div class="mini-stat-label">${lblCrit.toUpperCase()}</div></div>
-                    <div class="mini-stat st-border-yellow" onclick="showDetailModal('${c.id}', 'warning')"><div class="mini-stat-val text-yellow" id="st_warn_${c.id}">0</div><div class="mini-stat-label">${lblWarn.toUpperCase()}</div></div>
-                    <div class="mini-stat st-border-gray" onclick="showDetailModal('${c.id}', 'unknown')"><div class="mini-stat-val text-gray" id="st_unk_${c.id}">0</div><div class="mini-stat-label">UNKNOWN</div></div>
-                    <div class="mini-stat st-border-blue" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" id="st_not_init_${c.id}">0</div><div class="mini-stat-label">NOT INIT</div></div>
+                    ${statsHtml}
                 </div>
                 <div id="content_view_${c.id}"></div>
             </div>`;
@@ -1266,14 +1312,12 @@ function fetchCardData(card) {
 
         if (!cardSearch[card.id]) cardSearch[card.id] = '';
 
-        if(document.getElementById(`st_tot_${card.id}`)) {
-            document.getElementById(`st_tot_${card.id}`).innerText = res.stats.total;
-            document.getElementById(`st_norm_${card.id}`).innerText = res.stats.normal;
-            document.getElementById(`st_crit_${card.id}`).innerText = res.stats.critical;
-            document.getElementById(`st_warn_${card.id}`).innerText = res.stats.warning;
-            document.getElementById(`st_unk_${card.id}`).innerText = res.stats.unknown;
-            document.getElementById(`st_not_init_${card.id}`).innerText = res.stats.not_init;
-        }
+        if(document.getElementById(`st_tot_${card.id}`)) document.getElementById(`st_tot_${card.id}`).innerText = res.stats.total;
+        if(document.getElementById(`st_norm_${card.id}`)) document.getElementById(`st_norm_${card.id}`).innerText = res.stats.normal;
+        if(document.getElementById(`st_crit_${card.id}`)) document.getElementById(`st_crit_${card.id}`).innerText = res.stats.critical;
+        if(document.getElementById(`st_warn_${card.id}`)) document.getElementById(`st_warn_${card.id}`).innerText = res.stats.warning;
+        if(document.getElementById(`st_unk_${card.id}`)) document.getElementById(`st_unk_${card.id}`).innerText = res.stats.unknown;
+        if(document.getElementById(`st_not_init_${card.id}`)) document.getElementById(`st_not_init_${card.id}`).innerText = res.stats.not_init;
 
         const container = document.getElementById(`content_view_${card.id}`);
         if (card.view_type === 'cards') {
@@ -1540,22 +1584,100 @@ function processExport() {
 }
 function closeExport() { document.getElementById('exportModal').style.display = 'none'; }
 
-async function openBuilder() { editingCardId=null; document.getElementById('b_title').value=''; document.getElementById('b_keyword').value='Host Alive'; document.getElementById('b_lbl_ok').value=''; document.getElementById('b_lbl_warn').value=''; document.getElementById('b_lbl_crit').value=''; document.getElementById('b_group').value='0'; document.getElementById('inner_search').value=''; selectedIds = []; document.getElementById('sel_count').innerText = "0 Selected"; toggleManualSelector(); document.getElementById('builderModal').style.display='flex'; await loadAgentsForBuilder(''); }
-async function openEdit(id) { editingCardId=id; const c = dashboardCards.find(x=>x.id===id); document.getElementById('builderTitle').innerText='Edit Widget'; ['title','view_type','group','keyword','limit','refresh'].forEach(k => document.getElementById('b_'+k).value = c[k==='group'?'group_id':(k==='refresh'?'refresh_sec':k)]); document.getElementById('b_lbl_ok').value = c.lbl_ok || ''; document.getElementById('b_lbl_warn').value = c.lbl_warn || ''; document.getElementById('b_lbl_crit').value = c.lbl_crit || ''; document.getElementById('inner_search').value=''; selectedIds = c.manual_ids ? String(c.manual_ids).split(',') : []; document.getElementById('sel_count').innerText = selectedIds.length + " Selected"; toggleManualSelector(); document.getElementById('builderModal').style.display='flex'; await loadAgentsForBuilder(''); }
-function closeBuilder() { document.getElementById('builderModal').style.display='none'; }
+async function openBuilder() { 
+    editingCardId = null; 
+    document.getElementById('b_title').value = ''; 
+    document.getElementById('b_keyword').value = 'Host Alive'; 
+    document.getElementById('b_lbl_ok').value = ''; 
+    document.getElementById('b_lbl_warn').value = ''; 
+    document.getElementById('b_lbl_crit').value = ''; 
+    document.getElementById('b_group').value = '0'; 
+    document.getElementById('inner_search').value = ''; 
+    selectedIds = []; 
+    document.getElementById('sel_count').innerText = "0 Selected"; 
+    ['total', 'normal', 'critical', 'warning', 'unknown', 'not_init'].forEach(s => {
+        const el = document.getElementById('b_stat_' + s);
+        if (el) el.checked = true;
+    });
+    toggleManualSelector(); 
+    document.getElementById('builderModal').style.display = 'flex'; 
+    await loadAgentsForBuilder(''); 
+}
+
+async function openEdit(id) { 
+    editingCardId = id; 
+    const c = dashboardCards.find(x => x.id === id); 
+    document.getElementById('builderTitle').innerText = 'Edit Widget'; 
+    ['title', 'view_type', 'group', 'keyword', 'limit', 'refresh'].forEach(k => {
+        document.getElementById('b_' + k).value = c[k === 'group' ? 'group_id' : (k === 'refresh' ? 'refresh_sec' : k)];
+    }); 
+    document.getElementById('b_lbl_ok').value = c.lbl_ok || ''; 
+    document.getElementById('b_lbl_warn').value = c.lbl_warn || ''; 
+    document.getElementById('b_lbl_crit').value = c.lbl_crit || ''; 
+    document.getElementById('inner_search').value = ''; 
+    selectedIds = c.manual_ids ? String(c.manual_ids).split(',') : []; 
+    document.getElementById('sel_count').innerText = selectedIds.length + " Selected"; 
+    
+    const vis = Array.isArray(c.visible_stats) && c.visible_stats.length > 0 
+        ? c.visible_stats 
+        : ['total', 'normal', 'critical', 'warning', 'unknown', 'not_init'];
+    ['total', 'normal', 'critical', 'warning', 'unknown', 'not_init'].forEach(s => {
+        const el = document.getElementById('b_stat_' + s);
+        if (el) el.checked = vis.includes(s);
+    });
+
+    toggleManualSelector(); 
+    document.getElementById('builderModal').style.display = 'flex'; 
+    await loadAgentsForBuilder(''); 
+}
+
+function closeBuilder() { document.getElementById('builderModal').style.display = 'none'; }
 
 function saveWidget() {
-    const card = { id: editingCardId || 'c'+Date.now(), title: document.getElementById('b_title').value||'Availability', view_type: document.getElementById('b_view_type').value, group_id: document.getElementById('b_group').value, keyword: document.getElementById('b_keyword').value, limit: document.getElementById('b_limit').value, refresh_sec: document.getElementById('b_refresh').value, manual_ids: selectedIds.join(','), lbl_ok: document.getElementById('b_lbl_ok').value, lbl_warn: document.getElementById('b_lbl_warn').value, lbl_crit: document.getElementById('b_lbl_crit').value };
-    let tempCards = editingCardId ? dashboardCards.map(x=>x.id===editingCardId?card:x) : [...dashboardCards, card];
+    const visStats = [];
+    ['total', 'normal', 'critical', 'warning', 'unknown', 'not_init'].forEach(s => {
+        const el = document.getElementById('b_stat_' + s);
+        if (el && el.checked) visStats.push(s);
+    });
+    if (visStats.length === 0) {
+        visStats.push('total', 'normal', 'critical', 'warning', 'unknown', 'not_init');
+    }
+
+    const card = { 
+        id: editingCardId || 'c' + Date.now(), 
+        title: document.getElementById('b_title').value || 'Availability', 
+        view_type: document.getElementById('b_view_type').value, 
+        group_id: document.getElementById('b_group').value, 
+        keyword: document.getElementById('b_keyword').value, 
+        limit: document.getElementById('b_limit').value, 
+        refresh_sec: document.getElementById('b_refresh').value, 
+        manual_ids: selectedIds.join(','), 
+        lbl_ok: document.getElementById('b_lbl_ok').value, 
+        lbl_warn: document.getElementById('b_lbl_warn').value, 
+        lbl_crit: document.getElementById('b_lbl_crit').value,
+        visible_stats: visStats
+    };
+    let tempCards = editingCardId ? dashboardCards.map(x => x.id === editingCardId ? card : x) : [...dashboardCards, card];
     const btn = document.getElementById("btnSaveWidget"); btn.innerHTML = 'Saving...'; btn.disabled = true;
 
-    fetch('?api=save_config',{method:'POST', body:JSON.stringify(tempCards), headers: {'X-CSRF-TOKEN': '<?= $csrf_token ?>'}}).then(r=>r.json()).then(res=>{
-        if(res.ok) { dashboardCards = tempCards; renderGrid(); fetchCardData(card); closeBuilder(); } 
-        else { 
+    fetch('?api=save_config', {
+        method: 'POST', 
+        body: JSON.stringify(tempCards), 
+        headers: { 'X-CSRF-TOKEN': '<?= $csrf_token ?>' }
+    }).then(r => r.json()).then(res => {
+        if(res.ok) { 
+            dashboardCards = tempCards; 
+            renderGrid(); 
+            fetchCardData(card); 
+            closeBuilder(); 
+        } else { 
             let errMsg = res.error && res.error.message ? res.error.message : res.error;
             alert(`FAILED TO SAVE WIDGET!\n\nSystem rejected save with reason:\n${errMsg || 'Unknown Error'}\n\nFile Target: ${res.file || 'File permission issue'}`); 
         }
-    }).finally(()=>{ btn.innerHTML = 'Save Widget'; btn.disabled = false; });
+    }).finally(() => { 
+        btn.innerHTML = 'Save Widget'; 
+        btn.disabled = false; 
+    });
 }
 function deleteCard(id) { if(confirm('Delete?')){ let tempCards = dashboardCards.filter(x=>x.id!==id); fetch('?api=save_config',{method:'POST', body:JSON.stringify(tempCards), headers: {'X-CSRF-TOKEN': '<?= $csrf_token ?>'}}).then(r=>r.json()).then(res=>{ if(res.ok){ dashboardCards=tempCards; renderGrid(); }else{ alert("Failed to delete! Check file permissions."); } }); } }
 
