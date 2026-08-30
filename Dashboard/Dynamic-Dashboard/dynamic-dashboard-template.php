@@ -2274,7 +2274,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                     </iframe>
                 </div>`;
             } else {
-                chartHtml = `<div class="chart-wrapper" style="height:${chartH}px;"><div id="chart_${uniqueId}" style="width:100%; height:100%;"></div></div>`;
+                chartHtml = `<div class="chart-wrapper" style="height:${chartH}px; display:flex; flex-direction:column;"><div id="chart_${uniqueId}" style="width:100%; flex-grow:1; min-height:120px;"></div><div id="chart_legend_${uniqueId}" class="chart-html-legend" style="display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; max-height:75px; overflow-y:auto; padding:4px 2px; margin-top:4px; border-top:1px solid #f1f5f9;"></div></div>`;
             }
 
             contentHtml = `<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">${modNameHtml}${statusHtml}</div>${chartHtml}`;
@@ -2783,10 +2783,6 @@ function refreshCurrentNodeData() {
                         let dom = document.getElementById(`chart_${uniqueId}`);
                         if (!dom) return;
                         chartInstances[uniqueId] = echarts.init(dom);
-                        const dynamicGridBottom = (seriesData.length > 1) 
-                            ? Math.min(85, (p.show_time ? 26 : 15) + Math.ceil(seriesData.length / 2.5) * 16) 
-                            : (p.show_time ? 35 : 20);
-
                         chartInstances[uniqueId].setOption({
                             tooltip: { 
                                 trigger: 'axis', 
@@ -2824,20 +2820,24 @@ function refreshCurrentNodeData() {
                                     return html;
                                 }
                             },
-                            legend: { 
-                                type: 'plain', 
-                                orient: 'horizontal',
-                                bottom: 0, 
-                                padding: [0, 5, 2, 5], 
-                                icon: 'circle', 
-                                itemGap: 12,
-                                textStyle: { fontSize: Math.max(9, chartFs - 1), color: '#64748b' } 
-                            },
-                            grid: { left: 5, right: 15, top: 15, bottom: dynamicGridBottom, containLabel: true },
+                            legend: { show: false, data: seriesData.map(s => s.name) },
+                            grid: { left: 8, right: 15, top: 12, bottom: p.show_time ? 24 : 10, containLabel: true },
                             xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: labels, show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                             yAxis: { type: 'value', max: p.force_100 ? 100 : null, splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' } },
                             series: seriesData
                         });
+
+                        const legendEl = document.getElementById(`chart_legend_${uniqueId}`);
+                        if (legendEl && seriesData.length > 0) {
+                            legendEl.innerHTML = seriesData.map((s, idx) => {
+                                const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
+                                const safeName = s.name.replace(/"/g, '&quot;');
+                                return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleDynamicEchartsLegend('${uniqueId}', this)" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
+                                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
+                                    <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
+                                </div>`;
+                            }).join('');
+                        }
                         window.addEventListener('resize', () => chartInstances[uniqueId].resize());
                     } catch(e) { console.error("MultiChart ECharts Error:", e); }
                 }
@@ -4015,6 +4015,36 @@ function filterCardTableViewer(uniqueId, keyword) {
 function escapeHtml(unsafe) {
     if (!unsafe) return '';
     return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function toggleDynamicEchartsLegend(uniqueId, el) {
+    const chart = chartInstances[uniqueId];
+    if (!chart) return;
+    const seriesName = el.getAttribute('data-series');
+    chart.dispatchAction({
+        type: 'legendToggleSelect',
+        name: seriesName
+    });
+    el.classList.toggle('legend-inactive');
+    if (el.classList.contains('legend-inactive')) {
+        el.style.opacity = '0.35';
+        el.style.textDecoration = 'line-through';
+    } else {
+        el.style.opacity = '1';
+        el.style.textDecoration = 'none';
+    }
+}
+
+function highlightDynamicEchartsSeries(uniqueId, seriesName) {
+    const chart = chartInstances[uniqueId];
+    if (!chart) return;
+    chart.dispatchAction({ type: 'highlight', seriesName: seriesName });
+}
+
+function downplayDynamicEchartsSeries(uniqueId, seriesName) {
+    const chart = chartInstances[uniqueId];
+    if (!chart) return;
+    chart.dispatchAction({ type: 'downplay', seriesName: seriesName });
 }
 
 </script>

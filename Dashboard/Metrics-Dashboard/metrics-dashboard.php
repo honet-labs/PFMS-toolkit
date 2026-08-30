@@ -3720,9 +3720,9 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         Chart.defaults.font.family = dashboardFontFamily;
         Chart.defaults.color = "#4a5568";
     }
-
-    container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; height: 230px; padding: 0;">
-        <div id="chart_canvas_${cardId}" style="width:100%; height:100%; min-height:180px;"></div>
+    container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; display: flex; flex-direction: column;">
+        <div id="chart_canvas_${cardId}" style="width: 100%; height: 200px;"></div>
+        <div id="chart_legend_${cardId}" class="chart-html-legend" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-height: 75px; overflow-y: auto; padding: 4px 2px; margin-top: 4px; border-top: 1px solid #f1f5f9;"></div>
     </div>`;
 
     if (activeCharts[cardId]) {
@@ -3740,7 +3740,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         'rgba(245, 124, 0, 0.75)',   // Vibrant Orange
         'rgba(123, 31, 162, 0.75)',  // Royal Purple
         'rgba(0, 150, 136, 0.75)',   // Sea Green
-        'rgba(251, 192, 45, 0.75)',  // Golden Yellow
+        'rgba(251, 192, 45, 0.75)',   // Golden Yellow
         'rgba(97, 97, 97, 0.75)',    // Slate Gray
         'rgba(233, 30, 99, 0.75)',    // Hot Pink
         'rgba(141, 110, 99, 0.75)'   // Earth Brown
@@ -3769,6 +3769,9 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
     };
 
     if (viewType === 'pie' || viewType === 'donut') {
+        const legendEl = document.getElementById(`chart_legend_${cardId}`);
+        if (legendEl) legendEl.style.display = 'none';
+
         const statusMap = [
             { label: 'UP (Normal)', value: parseInt(stats.normal) || 0, color: '#2ecc71', border: '#27ae60' },
             { label: 'Warning', value: parseInt(stats.warning) || 0, color: '#f1c40f', border: '#f39c12' },
@@ -3777,31 +3780,9 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             { label: 'Not Init', value: parseInt(stats.not_init) || 0, color: '#3498db', border: '#2980b9' }
         ];
 
+        const showLegendCount = (card.show_legend_count !== undefined) ? !!card.show_legend_count : true;
         const activeStatuses = statusMap.filter(s => s.value > 0);
-        const finalStatuses = activeStatuses.length > 0 ? activeStatuses : statusMap;
-
-        let displayStatuses = [...finalStatuses];
-        if (chartLimit > 0 && displayStatuses.length > chartLimit) {
-            displayStatuses.sort((a, b) => b.value - a.value);
-            const topList = displayStatuses.slice(0, chartLimit);
-            const othersList = displayStatuses.slice(chartLimit);
-            const sumOthers = othersList.reduce((acc, curr) => acc + curr.value, 0);
-            if (sumOthers > 0) {
-                topList.push({
-                    label: 'Others',
-                    value: sumOthers,
-                    color: '#9b51e0',
-                    border: '#8e44ad'
-                });
-            }
-            displayStatuses = topList;
-        }
-
-        const showLegendCount = (card.show_legend_count !== 0);
-        const labels = displayStatuses.map(s => showLegendCount ? `${s.label} (${s.value})` : s.label);
-        const values = displayStatuses.map(s => s.value);
-        const bgColors = displayStatuses.map(s => s.color);
-        const borderColors = displayStatuses.map(s => s.border);
+        const displayStatuses = activeStatuses.length > 0 ? activeStatuses : statusMap;
 
         const pieData = displayStatuses.map(s => ({
             name: showLegendCount ? `${s.label} (${s.value})` : s.label,
@@ -3812,12 +3793,11 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
         activeCharts[cardId].setOption({
             tooltip: { trigger: 'item', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6, formatter: '{b}: {c} ({d}%)' },
-            legend: { orient: 'vertical', right: 10, top: 'center', itemWidth: 10, itemHeight: 10, textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#475569' } },
             series: [{
                 name: 'Count',
-                type: viewType === 'pie' ? 'pie' : 'pie',
+                type: 'pie',
                 radius: viewType === 'pie' ? '70%' : ['40%', '70%'],
-                center: ['40%', '50%'],
+                center: ['50%', '50%'],
                 data: pieData,
                 label: { show: true, formatter: '{b}\n{c} ({d}%)', fontSize: Math.max(9, chartFontSize - 1), color: '#475569' },
                 labelLine: { show: true, length: 15, length2: 10 }
@@ -3862,10 +3842,6 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 };
             });
 
-            const dynamicGridBottom = (seriesData.length > 1) 
-                ? Math.min(85, 26 + Math.ceil(seriesData.length / 2.5) * 16) 
-                : 26;
-
             activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
             activeCharts[cardId].setOption({
                 tooltip: { 
@@ -3901,16 +3877,8 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         return html;
                     }
                 },
-                legend: { 
-                    type: 'plain', 
-                    orient: 'horizontal',
-                    bottom: 0, 
-                    padding: [0, 5, 2, 5], 
-                    icon: 'circle', 
-                    itemGap: 12,
-                    textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } 
-                },
-                grid: { left: 5, right: 15, top: 15, bottom: dynamicGridBottom, containLabel: true },
+                legend: { show: false, data: seriesData.map(s => s.name) },
+                grid: { left: 8, right: 15, top: 12, bottom: 24, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: labels, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                 yAxis: { 
                     type: 'value', 
@@ -3928,6 +3896,18 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 },
                 series: seriesData
             });
+
+            const legendEl = document.getElementById(`chart_legend_${cardId}`);
+            if (legendEl) {
+                legendEl.innerHTML = seriesData.map((s, idx) => {
+                    const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
+                    const safeName = s.name.replace(/"/g, '&quot;');
+                    return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFontSize - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleEchartsLegend('${cardId}', this)" onmouseenter="highlightEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
+                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
+                        <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
+                    </div>`;
+                }).join('');
+            }
         } else {
             const processedData = [...data];
             const uniqueAgents = [...new Set(processedData.map(r => r.agent_alias))];
@@ -3952,10 +3932,6 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                     lineStyle: { width: viewType === 'bar' ? 0 : 2 }
                 };
             });
-
-            const dynamicGridBottom = (seriesData.length > 1) 
-                ? Math.min(85, 26 + Math.ceil(seriesData.length / 2.5) * 16) 
-                : 26;
 
             activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
             activeCharts[cardId].setOption({
@@ -3992,22 +3968,56 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         return html;
                     }
                 },
-                legend: { 
-                    type: 'plain', 
-                    orient: 'horizontal',
-                    bottom: 0, 
-                    padding: [0, 5, 2, 5], 
-                    icon: 'circle', 
-                    itemGap: 12,
-                    textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } 
-                },
-                grid: { left: 5, right: 15, top: 15, bottom: dynamicGridBottom, containLabel: true },
+                legend: { show: false, data: seriesData.map(s => s.name) },
+                grid: { left: 8, right: 15, top: 12, bottom: 24, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: uniqueAgents, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                 yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' } },
                 series: seriesData
             });
+
+            const legendEl = document.getElementById(`chart_legend_${cardId}`);
+            if (legendEl) {
+                legendEl.innerHTML = seriesData.map((s, idx) => {
+                    const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
+                    const safeName = s.name.replace(/"/g, '&quot;');
+                    return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFontSize - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleEchartsLegend('${cardId}', this)" onmouseenter="highlightEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
+                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
+                        <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
+                    </div>`;
+                }).join('');
+            }
         }
     }
+}
+
+function toggleEchartsLegend(cardId, el) {
+    const chart = activeCharts[cardId];
+    if (!chart) return;
+    const seriesName = el.getAttribute('data-series');
+    chart.dispatchAction({
+        type: 'legendToggleSelect',
+        name: seriesName
+    });
+    el.classList.toggle('legend-inactive');
+    if (el.classList.contains('legend-inactive')) {
+        el.style.opacity = '0.35';
+        el.style.textDecoration = 'line-through';
+    } else {
+        el.style.opacity = '1';
+        el.style.textDecoration = 'none';
+    }
+}
+
+function highlightEchartsSeries(cardId, seriesName) {
+    const chart = activeCharts[cardId];
+    if (!chart) return;
+    chart.dispatchAction({ type: 'highlight', seriesName: seriesName });
+}
+
+function downplayEchartsSeries(cardId, seriesName) {
+    const chart = activeCharts[cardId];
+    if (!chart) return;
+    chart.dispatchAction({ type: 'downplay', seriesName: seriesName });
 }
 
 init();
