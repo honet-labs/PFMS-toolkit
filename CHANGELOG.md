@@ -27,6 +27,9 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - Mengurutkan item data pada popup tooltip grafik secara otomatis dari nilai terbesar ke nilai terkecil (*descending order*), dilengkapi styling scroll container rapi saat terdapat banyak interface/modul.
 - **Network Bandwidth Auto-Conversion with On/Off Toggle:**
   - Menambahkan fitur opsi konfigurasi On/Off `Auto-Convert Traffic to bps / Kbps / Mbps / Gbps` pada builder modal widget/panel untuk mengonversi data traffic network (`bytes/s`, `bps`) secara otomatis ke standar bit rate jaringan (*8x multiplier* untuk byte rate) menjadi `bps`, `Kbps`, `Mbps`, dan `Gbps` pada popup tooltip dan kartu nilai.
+- **Standalone & Embed Minimalist Spacing (Eliminate Bottom Whitespace/Gap):**
+  - Mengoptimalkan padding container, margin card, dan ukuran canvas ECharts pada mode standalone/embed (`s=1` / `standalone=1`) agar tidak ada celah kosong (*whitespace/gap*) di bagian bawah card/widget.
+  - Memperbarui margin grid bawah dan legend padding ECharts serta tinggi default iframe embed (`height="280"` dengan header, `height="240"` tanpa header) sehingga tampilan widget di Visual Console Pandora FMS presisi dan kompak tanpa sisa ruang kosong.
 - **UI Cleanliness:**
   - Menghilangkan banner status diagnostik "DB Nodes" pada Metrics Dashboard agar tampilan header lebih bersih dan rapi.
 

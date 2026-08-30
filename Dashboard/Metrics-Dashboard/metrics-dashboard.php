@@ -909,15 +909,19 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; visibility: hidden !important; }
-        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow-x: hidden; }
-        .main-content { padding: 10px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
-        .dashboard-card { box-shadow: none !important; border: 1px solid #eee !important; border-radius: 4px !important; width: 100% !important; margin-bottom: 0 !important; }
+        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
+        .main-content { padding: 4px 6px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+        .dashboard-card { box-shadow: none !important; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; width: 100% !important; margin: 0 !important; margin-bottom: 0 !important; }
+        .dashboard-card-header { padding: 8px 12px !important; }
+        .dashboard-card-body { padding: 6px 8px 8px 8px !important; gap: 6px !important; }
         .grid-layout { grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; display: block !important; }
+        .chart-container { height: 220px !important; padding: 0 !important; margin: 0 !important; }
         <?php if ($isHideHeader): ?>
         .dashboard-card-header { display: none !important; }
         .main-content { padding: 0 !important; }
         .dashboard-card { border: none !important; margin: 0 !important; }
-        .mini-stats-row { padding: 6px 8px !important; border-bottom: none !important; }
+        .dashboard-card-body { padding: 4px 6px !important; }
+        .mini-stats-row { padding: 4px 6px !important; border-bottom: none !important; }
         html, body { overflow: hidden !important; }
         .floating-header-toggle { display: none !important; }
         <?php endif; ?>
@@ -3288,7 +3292,8 @@ function updateShareUrls() {
         u.searchParams.set('hide_header', '1');
     }
     const urlString = u.toString();
-    const embedCode = `<iframe src="${urlString}" width="100%" height="320" frameborder="0"></iframe>`;
+    const defaultHeight = hideHeader ? '240' : '280';
+    const embedCode = `<iframe src="${urlString}" width="100%" height="${defaultHeight}" frameborder="0"></iframe>`;
     
     document.getElementById('shareStandaloneInput').value = urlString;
     document.getElementById('shareEmbedInput').value = embedCode;
@@ -3716,8 +3721,8 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         Chart.defaults.color = "#4a5568";
     }
 
-    container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; height: 260px; padding: 5px;">
-        <div id="chart_canvas_${cardId}" style="width:100%; height:100%; min-height:200px;"></div>
+    container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; height: 230px; padding: 0;">
+        <div id="chart_canvas_${cardId}" style="width:100%; height:100%; min-height:180px;"></div>
     </div>`;
 
     if (activeCharts[cardId]) {
@@ -3892,8 +3897,8 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         return html;
                     }
                 },
-                legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
-                grid: { left: 5, right: 15, top: 15, bottom: 45, containLabel: true },
+                legend: { type: 'scroll', bottom: 2, padding: [2, 5, 2, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
+                grid: { left: 5, right: 15, top: 15, bottom: 35, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: labels, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                 yAxis: { 
                     type: 'value', 
@@ -3971,8 +3976,8 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         return html;
                     }
                 },
-                legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
-                grid: { left: 5, right: 15, top: 15, bottom: 45, containLabel: true },
+                legend: { type: 'scroll', bottom: 2, padding: [2, 5, 2, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
+                grid: { left: 5, right: 15, top: 15, bottom: 35, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: uniqueAgents, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                 yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' } },
                 series: seriesData

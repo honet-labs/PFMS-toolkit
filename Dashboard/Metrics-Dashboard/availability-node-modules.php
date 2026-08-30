@@ -768,15 +768,18 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; visibility: hidden !important; }
-        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow-x: hidden; }
-        .main-content { padding: 10px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
-        .dashboard-card { box-shadow: none !important; border: 1px solid #eee !important; border-radius: 4px !important; width: 100% !important; margin-bottom: 0 !important; }
+        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
+        .main-content { padding: 4px 6px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+        .dashboard-card { box-shadow: none !important; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; width: 100% !important; margin: 0 !important; margin-bottom: 0 !important; }
+        .dashboard-card-header { padding: 8px 12px !important; }
+        .dashboard-card-body { padding: 6px 8px 8px 8px !important; }
         .grid-layout { grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; display: block !important; }
         <?php if ($isHideHeader): ?>
         .dashboard-card-header { display: none !important; }
         .main-content { padding: 0 !important; }
         .dashboard-card { border: none !important; margin: 0 !important; }
-        .mini-stats-row { padding: 6px 8px !important; border-bottom: none !important; }
+        .dashboard-card-body { padding: 4px 6px !important; }
+        .mini-stats-row { padding: 4px 6px !important; border-bottom: none !important; }
         html, body { overflow: hidden !important; }
         .floating-header-toggle { display: none !important; }
         <?php endif; ?>
