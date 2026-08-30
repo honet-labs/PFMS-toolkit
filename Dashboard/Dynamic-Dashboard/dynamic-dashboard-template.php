@@ -2170,7 +2170,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const fw = p.font_weight || 700;
     const showMod = p.show_module !== false; 
     const isMultiOverlay = moduleData.module_name === 'Multi-Module Overlay';
-    const chartH = Math.max(120, (parseInt(p.height) || 200) - 60);
+    const chartH = Math.max(220, (parseInt(p.height) || 260) - 20);
     const modNameHtml = (showMod && !isMultiOverlay) ? `<div class="mod-subtitle">${moduleData.module_name}</div>` : '';
     const statusHtml = isMultiOverlay ? '' : `<div style="display:flex; align-items:center;"><span class="status-dot ${bgClass}"></span><span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span></div>`;
 
@@ -2274,7 +2274,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                     </iframe>
                 </div>`;
             } else {
-                chartHtml = `<div class="chart-wrapper" style="height:${chartH}px; display:flex; flex-direction:column;"><div id="chart_${uniqueId}" style="width:100%; flex-grow:1; min-height:120px;"></div><div id="chart_legend_${uniqueId}" class="chart-html-legend" style="display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; max-height:75px; overflow-y:auto; padding:4px 2px; margin-top:4px; border-top:1px solid #f1f5f9;"></div></div>`;
+                chartHtml = `<div class="chart-wrapper" style="min-height:${chartH}px; display:flex; flex-direction:column;"><div id="chart_${uniqueId}" style="width:100%; height:260px; min-height:200px;"></div><div id="chart_legend_${uniqueId}" class="chart-html-legend" style="display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; max-height:75px; overflow-y:auto; padding:4px 2px; margin-top:4px; border-top:1px solid #f1f5f9;"></div></div>`;
             }
 
             contentHtml = `<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">${modNameHtml}${statusHtml}</div>${chartHtml}`;
