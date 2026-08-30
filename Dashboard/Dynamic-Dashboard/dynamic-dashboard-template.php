@@ -1384,6 +1384,65 @@ let currentDetailModuleId = null;
 let currentDetailModuleTitle = '';
 let currentDetailViewType = '';
 
+function formatHumanMetric(val, rawUnit) {
+    if (val === null || val === undefined || val === '' || isNaN(val) || val === '-') {
+        return '-';
+    }
+    let num = parseFloat(val);
+    if (isNaN(num)) return val;
+
+    const unit = (rawUnit || '').trim();
+    const uLower = unit.toLowerCase();
+
+    if (num === 0) {
+        return unit ? `0 ${unit}` : '0';
+    }
+
+    // 1. Bytes/sec or Bytes (bytes/s, B/s, byte/s, bytes, B)
+    if (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s' || uLower === 'bytes' || uLower === 'b') {
+        const isRate = uLower.includes('/s');
+        const suffix = isRate ? '/s' : '';
+        const abs = Math.abs(num);
+        if (abs >= 1073741824) { // 1024^3
+            return (num / 1073741824).toFixed(2) + ' GB' + suffix;
+        } else if (abs >= 1048576) { // 1024^2
+            return (num / 1048576).toFixed(2) + ' MB' + suffix;
+        } else if (abs >= 1024) {
+            return (num / 1024).toFixed(2) + ' KB' + suffix;
+        } else {
+            return (num % 1 === 0 ? num : num.toFixed(2)) + ' ' + (isRate ? 'B/s' : 'B');
+        }
+    }
+
+    // 2. Bits/sec or Bits (bps, bit/s, bits/s, bits)
+    if (uLower === 'bps' || uLower === 'bit/s' || uLower === 'bits/s' || uLower === 'bits') {
+        const abs = Math.abs(num);
+        if (abs >= 1000000000) {
+            return (num / 1000000000).toFixed(2) + ' Gbps';
+        } else if (abs >= 1000000) {
+            return (num / 1000000).toFixed(2) + ' Mbps';
+        } else if (abs >= 1000) {
+            return (num / 1000).toFixed(2) + ' Kbps';
+        } else {
+            return (num % 1 === 0 ? num : num.toFixed(2)) + ' bps';
+        }
+    }
+
+    // 3. Percentage
+    if (uLower === '%') {
+        return (num % 1 === 0 ? num : num.toFixed(2)) + '%';
+    }
+
+    // 4. Latency / Time
+    if (uLower === 'ms' || uLower === 's') {
+        return (num % 1 === 0 ? num : num.toFixed(2)) + ' ' + unit;
+    }
+
+    // 5. General numbers
+    const formatted = (num % 1 === 0) ? num.toLocaleString() : num.toFixed(2);
+    return unit ? `${formatted} ${unit}` : formatted;
+}
+
 // V4.8 IS_STANDALONE FLAG
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
 const DIRECT_SCRIPT_URL = '<?= $directScriptUrl ?>';
@@ -2739,14 +2798,8 @@ function refreshCurrentNodeData() {
                                     html += `<div style="max-height:320px; overflow-y:auto; padding-right:4px;">`;
                                     sortedParams.forEach(p => {
                                         const mod = activeModules[p.seriesIndex];
-                                        const unitStr = (mod && mod.unit) ? ' ' + mod.unit : '';
-                                        let val = p.value;
-                                        let displayVal = '-';
-                                        if (val !== null && val !== undefined && val !== '' && !isNaN(val) && val !== '-') {
-                                            let numericVal = parseFloat(val);
-                                            numericVal = (numericVal % 1 === 0) ? numericVal.toLocaleString() : numericVal.toFixed(2);
-                                            displayVal = numericVal + unitStr;
-                                        }
+                                        const unitStr = (mod && mod.unit) ? mod.unit : '';
+                                        const displayVal = formatHumanMetric(p.value, unitStr);
                                         html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
                                             <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
                                             <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>

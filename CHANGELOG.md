@@ -25,6 +25,8 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - Memperbaiki bug nilai `undefined bytes/s` pada tooltip grafik ECharts (Line/Area/Bar) dengan memastikan sinkronisasi modul history, forward-fill timestamp asinkron, dan sanitasi nilai `null`/`undefined` ke format angka/satuan yang valid.
 - **Auto-Sorting Chart Tooltip (Highest to Lowest):**
   - Mengurutkan item data pada popup tooltip grafik secara otomatis dari nilai terbesar ke nilai terkecil (*descending order*), dilengkapi styling scroll container rapi saat terdapat banyak interface/modul.
+- **Smart Unit Auto-Conversion (KB/s, MB/s, GB/s, Gbps):**
+  - Mengonversi satuan metrik bandwidth dan penyimpanan (seperti `bytes/s`, `bps`, `bytes`) secara otomatis dan dinamis menjadi satuan yang mudah dibaca pengguna (`B/s`, `KB/s`, `MB/s`, `GB/s` atau `bps`, `Kbps`, `Mbps`, `Gbps`) pada popup tooltip dan kartu nilai.
 - **UI Cleanliness:**
   - Menghilangkan banner status diagnostik "DB Nodes" pada Metrics Dashboard agar tampilan header lebih bersih dan rapi.
 
