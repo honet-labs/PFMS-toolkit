@@ -97,19 +97,94 @@ if ($api === 'save_config') {
     ]); 
     exit;
 }
+if (!function_exists('get_hierarchical_groups')) {
+    function get_hierarchical_groups(PDO $pdo, string $prefix_id = 'primary', string $node_label = ''): array {
+        try {
+            $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name, parent FROM tgrupo ORDER BY nombre ASC");
+            $all = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            if (empty($all)) return [];
+
+            $by_parent = [];
+            foreach ($all as $g) {
+                $p = (int)($g['parent'] ?? 0);
+                $by_parent[$p][] = $g;
+            }
+
+            foreach ($by_parent as $p => &$children) {
+                usort($children, function($a, $b) {
+                    return strcasecmp($a['name'], $b['name']);
+                });
+            }
+            unset($children);
+
+            $result = [];
+            $traverse = function(int $parent_id, int $depth, string $path_accum) use (&$traverse, &$result, &$by_parent, $prefix_id, $node_label) {
+                if (!isset($by_parent[$parent_id])) return;
+
+                foreach ($by_parent[$parent_id] as $g) {
+                    $gid = (int)$g['id'];
+                    $clean_name = pretty_text($g['name']);
+                    $current_path = $path_accum ? ($path_accum . ' / ' . $clean_name) : $clean_name;
+
+                    $indent = '';
+                    if ($depth > 0) {
+                        $indent = str_repeat("    ", $depth - 1) . "└─ ";
+                    }
+
+                    $displayName = $indent . $clean_name;
+                    if (!empty($node_label)) {
+                        $displayName = '[' . $node_label . '] ' . $displayName;
+                    }
+
+                    $result[] = [
+                        'id' => $prefix_id . ':' . $gid,
+                        'name' => $displayName,
+                        'path' => $current_path,
+                        'depth' => $depth,
+                        'raw_id' => $gid
+                    ];
+
+                    $traverse($gid, $depth + 1, $current_path);
+                }
+            };
+
+            $traverse(0, 0, '');
+
+            $seen_ids = array_column($result, 'raw_id');
+            foreach ($all as $g) {
+                $gid = (int)$g['id'];
+                if (!in_array($gid, $seen_ids, true)) {
+                    $clean_name = pretty_text($g['name']);
+                    $displayName = $clean_name;
+                    if (!empty($node_label)) $displayName = '[' . $node_label . '] ' . $displayName;
+                    $result[] = [
+                        'id' => $prefix_id . ':' . $gid,
+                        'name' => $displayName,
+                        'path' => $clean_name,
+                        'depth' => 0,
+                        'raw_id' => $gid
+                    ];
+                }
+            }
+
+            return $result;
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+}
+
 if ($api === 'groups' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
     $dropdown = [['id' => '0', 'name' => '--- Manual Selection / All ---']];
     
-    // 1. Primary DB groups
-    try {
-        $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
-        while($g = $stmt->fetch()) { 
-            $dropdown[] = ['id' => 'primary:' . $g['id'], 'name' => '[Primary] ' . pretty_text($g['name'])]; 
-        }
-    } catch (Throwable $e) {}
+    // 1. Primary DB groups (Hierarchical Tree)
+    $primary_groups = get_hierarchical_groups($pdo, 'primary', '');
+    foreach ($primary_groups as $pg) {
+        $dropdown[] = ['id' => $pg['id'], 'name' => $pg['name'], 'path' => $pg['path']];
+    }
     
-    // 2. Custom DB groups
+    // 2. Custom DB groups (Hierarchical Tree for remote nodes)
     global $custom_pdos, $custom_connections;
     if (!empty($custom_pdos)) {
         foreach ($custom_pdos as $cid => $cpdo) {
@@ -118,12 +193,10 @@ if ($api === 'groups' && $db_status) {
                 if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
             }
             if (empty($cname)) $cname = $cid;
-            try {
-                $stmt = $cpdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
-                while($g = $stmt->fetch()) { 
-                    $dropdown[] = ['id' => $cid . ':' . $g['id'], 'name' => '[' . $cname . '] ' . pretty_text($g['name'])]; 
-                }
-            } catch (Throwable $e) {}
+            $custom_groups = get_hierarchical_groups($cpdo, $cid, $cname);
+            foreach ($custom_groups as $cg) {
+                $dropdown[] = ['id' => $cg['id'], 'name' => $cg['name'], 'path' => $cg['path']];
+            }
         }
     }
     

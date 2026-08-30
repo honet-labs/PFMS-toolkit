@@ -11,6 +11,9 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 - **Module Data Consistency & Non-Destructive Topology:**
   - Menghapus seluruh query `UPDATE tagente_modulo` saat render halaman yang sebelumnya merusak nama dan relasi `parent_module_id` di database.
   - Memperbaiki pembacaan latensi dari `tagente_estado` dan fallback ke `tagente_datos` serta sanitasi angka latensi.
+- **Hierarchical Group Tree Selection:**
+  - Memperbaiki dropdown pemilihan Group pada Availability Nodes, Metrics Dashboard, Dynamic Dashboard, dan Optical Power Metrics agar menampilkan struktur hierarki grup dan sub-sub grup secara bertingkat dengan indentasi visual (`└─ `) sesuai Pandora FMS Tree View.
+  - Menghilangkan prefix `[Primary]` yang redundan pada grup database utama agar nama grup bersih dan mudah dicari.
 - **UI Cleanliness:**
   - Menghilangkan banner status diagnostik "DB Nodes" pada Metrics Dashboard agar tampilan header lebih bersih dan rapi.
 
