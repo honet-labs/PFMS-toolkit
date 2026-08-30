@@ -639,10 +639,7 @@ if ($api === 'card_data' && $db_status) {
 
         $historyData = [];
         if (!empty($tableData) && isset($_GET['history']) && $_GET['history'] === '1') {
-            $historyLimit = 10;
-            if (isset($_GET['chart_limit']) && (int)$_GET['chart_limit'] > 0) {
-                $historyLimit = (int)$_GET['chart_limit'];
-            }
+            $historyLimit = (isset($_GET['chart_limit']) && (int)$_GET['chart_limit'] > 0) ? (int)$_GET['chart_limit'] : 25;
             if (isset($_GET['view_type']) && $_GET['view_type'] === 'single_value') {
                 $historyLimit = 1;
             }
@@ -1628,19 +1625,27 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                 nativeModuleChartInstance.setOption({
                     tooltip: { 
                         trigger: 'axis', 
+                        confine: true,
+                        appendToBody: true,
                         backgroundColor: 'rgba(15, 23, 42, 0.95)', 
                         textStyle: { color: '#cbd5e1', fontSize: 12 }, 
                         padding: 10, 
                         borderRadius: 6,
                         formatter: function (params) {
-                            let html = params[0].name ? params[0].name + '<br/>' : '';
+                            if (!params || params.length === 0) return '';
+                            let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
                             params.forEach(p => {
                                 let val = p.value;
-                                if (val !== null && val !== undefined && !isNaN(val)) {
-                                    val = parseFloat(val);
-                                    val = (val % 1 === 0) ? val : val.toFixed(2);
+                                let displayVal = '-';
+                                if (val !== null && val !== undefined && val !== '' && !isNaN(val) && val !== '-') {
+                                    let numericVal = parseFloat(val);
+                                    numericVal = (numericVal % 1 === 0) ? numericVal.toLocaleString() : numericVal.toFixed(2);
+                                    displayVal = numericVal + (unit ? ' ' + unit : '');
                                 }
-                                html += `${p.marker}${p.seriesName}: <b>${val}${unit}</b><br/>`;
+                                html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin:2px 0;">
+                                    <span>${p.marker} ${p.seriesName}</span>
+                                    <span style="font-weight:600; color:#fff;">${displayVal}</span>
+                                </div>`;
                             });
                             return html;
                         }
@@ -3742,20 +3747,28 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         });
     } else {
         if (history && history.length > 0) {
+            const historyModIds = [...new Set(history.map(h => String(h.id_mod)))];
+            const activeData = data.filter(m => historyModIds.includes(String(m.id_agente_modulo)));
+            const targetData = activeData.length > 0 ? activeData : data.slice(0, chartLimit > 0 ? chartLimit : 25);
+
             const uniqueTimestamps = [...new Set(history.map(h => h.utimestamp))].sort((a, b) => a - b);
             const labels = uniqueTimestamps.map(ts => {
                 const found = history.find(h => h.utimestamp === ts);
                 return found ? found.time : '';
             });
 
-            const seriesData = data.map((m, idx) => {
+            const seriesData = targetData.map((m, idx) => {
                 const color = borders[idx % borders.length];
                 const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
-                let lastVal = null;
+                modHist.sort((a, b) => a.utimestamp - b.utimestamp);
+
+                let lastVal = (modHist.length > 0 && modHist[0].val !== null && modHist[0].val !== undefined) ? modHist[0].val : null;
                 const dataPoints = uniqueTimestamps.map(ts => {
                     const h = modHist.find(x => x.utimestamp === ts);
-                    if (h) lastVal = h.val;
-                    return lastVal;
+                    if (h !== undefined && h.val !== undefined && h.val !== null) {
+                        lastVal = (typeof h.val === 'number') ? h.val : parseFloat(h.val);
+                    }
+                    return (lastVal !== null && !isNaN(lastVal)) ? lastVal : null;
                 });
 
                 return {
@@ -3775,21 +3788,29 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             activeCharts[cardId].setOption({
                 tooltip: { 
                     trigger: 'axis', 
+                    confine: true,
+                    appendToBody: true,
                     backgroundColor: 'rgba(15, 23, 42, 0.95)', 
                     textStyle: { color: '#cbd5e1', fontSize: 12 }, 
                     padding: 10, 
                     borderRadius: 6,
                     formatter: function(params) {
-                        let html = params[0].name ? params[0].name + '<br/>' : '';
+                        if (!params || params.length === 0) return '';
+                        let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
                         params.forEach(p => {
-                            const mod = data[p.seriesIndex];
+                            const mod = targetData[p.seriesIndex];
                             const unitStr = (mod && mod.unit) ? ' ' + mod.unit : '';
                             let val = p.value;
-                            if (val !== null && val !== undefined && !isNaN(val)) {
-                                val = parseFloat(val);
-                                val = (val % 1 === 0) ? val : val.toFixed(2);
+                            let displayVal = '-';
+                            if (val !== null && val !== undefined && val !== '' && !isNaN(val) && val !== '-') {
+                                let numericVal = parseFloat(val);
+                                numericVal = (numericVal % 1 === 0) ? numericVal.toLocaleString() : numericVal.toFixed(2);
+                                displayVal = numericVal + unitStr;
                             }
-                            html += `${p.marker}${p.seriesName}: <b>${val}${unitStr}</b><br/>`;
+                            html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin:2px 0;">
+                                <span>${p.marker} ${p.seriesName}</span>
+                                <span style="font-weight:600; color:#fff;">${displayVal}</span>
+                            </div>`;
                         });
                         return html;
                     }
@@ -3797,7 +3818,20 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
                 grid: { left: 5, right: 15, top: 15, bottom: 45, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: labels, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
-                yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' } },
+                yAxis: { 
+                    type: 'value', 
+                    splitLine: { lineStyle: { color: '#f0f3f5' } }, 
+                    axisLabel: { 
+                        fontSize: Math.max(8, chartFontSize - 2), 
+                        color: '#64748b',
+                        formatter: function(value) {
+                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + 'G';
+                            if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+                            if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
+                            return value;
+                        }
+                    } 
+                },
                 series: seriesData
             });
         } else {
@@ -3829,21 +3863,29 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             activeCharts[cardId].setOption({
                 tooltip: { 
                     trigger: 'axis', 
+                    confine: true,
+                    appendToBody: true,
                     backgroundColor: 'rgba(15, 23, 42, 0.95)', 
                     textStyle: { color: '#cbd5e1', fontSize: 12 }, 
                     padding: 10, 
                     borderRadius: 6,
                     formatter: function(params) {
-                        let html = params[0].name ? params[0].name + '<br/>' : '';
+                        if (!params || params.length === 0) return '';
+                        let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
                         params.forEach(p => {
                             const foundMod = processedData.find(r => r.module_name === p.seriesName);
                             const unitStr = (foundMod && foundMod.unit) ? ' ' + foundMod.unit : '';
                             let val = p.value;
-                            if (val !== null && val !== undefined && !isNaN(val)) {
-                                val = parseFloat(val);
-                                val = (val % 1 === 0) ? val : val.toFixed(2);
+                            let displayVal = '-';
+                            if (val !== null && val !== undefined && val !== '' && !isNaN(val) && val !== '-') {
+                                let numericVal = parseFloat(val);
+                                numericVal = (numericVal % 1 === 0) ? numericVal.toLocaleString() : numericVal.toFixed(2);
+                                displayVal = numericVal + unitStr;
                             }
-                            html += `${p.marker}${p.seriesName}: <b>${val}${unitStr}</b><br/>`;
+                            html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin:2px 0;">
+                                <span>${p.marker} ${p.seriesName}</span>
+                                <span style="font-weight:600; color:#fff;">${displayVal}</span>
+                            </div>`;
                         });
                         return html;
                     }

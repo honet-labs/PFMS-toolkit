@@ -21,6 +21,8 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 - **Selectable Visible Stat Cards & Zero-Scrollbar Minimalist Embed:**
   - Menambahkan opsi konfigurasi di Widget Builder untuk memilih kartu status mana saja yang ingin ditampilkan/disembunyikan (`Total`, `UP/OK`, `Warning`, `Critical`, `Unknown`, `Not Init`).
   - Menghilangkan scrollbar browser (`overflow: hidden`) dan merapikan margin/padding card saat widget di-embed dengan `hide_header=1` agar tampilan embed di Visual Console benar-benar rapi tanpa scrollbar yang mengganggu.
+- **Chart Tooltip & Series Data Alignment Fix:**
+  - Memperbaiki bug nilai `undefined bytes/s` pada tooltip grafik ECharts (Line/Area/Bar) dengan memastikan sinkronisasi modul history, forward-fill timestamp asinkron, dan sanitasi nilai `null`/`undefined` ke format angka/satuan yang valid.
 - **UI Cleanliness:**
   - Menghilangkan banner status diagnostik "DB Nodes" pada Metrics Dashboard agar tampilan header lebih bersih dan rapi.
 
