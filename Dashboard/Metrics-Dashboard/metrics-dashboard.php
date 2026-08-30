@@ -1505,36 +1505,40 @@ function formatHumanMetric(val, rawUnit) {
     const uLower = unit.toLowerCase();
 
     if (num === 0) {
+        if (uLower.includes('byte') || uLower.includes('bit') || uLower === 'b/s' || uLower === 'bps') {
+            return '0 bps';
+        }
         return unit ? `0 ${unit}` : '0';
     }
 
-    // 1. Bytes/sec or Bytes (bytes/s, B/s, byte/s, bytes, B)
-    if (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s' || uLower === 'bytes' || uLower === 'b') {
-        const isRate = uLower.includes('/s');
-        const suffix = isRate ? '/s' : '';
-        const abs = Math.abs(num);
-        if (abs >= 1073741824) { // 1024^3
-            return (num / 1073741824).toFixed(2) + ' GB' + suffix;
-        } else if (abs >= 1048576) { // 1024^2
-            return (num / 1048576).toFixed(2) + ' MB' + suffix;
-        } else if (abs >= 1024) {
-            return (num / 1024).toFixed(2) + ' KB' + suffix;
+    // 1. Network Traffic Rate (bytes/s, B/s, byte/s, bps, bit/s, bits/s, bits) -> Convert to bps, Kbps, Mbps, Gbps
+    if (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s' || uLower === 'bps' || uLower === 'bit/s' || uLower === 'bits/s' || uLower === 'bits') {
+        const isByteRate = (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s');
+        const bits = isByteRate ? (num * 8) : num;
+        const absBits = Math.abs(bits);
+
+        if (absBits >= 1000000000) { // 1 Gbps
+            return (bits / 1000000000).toFixed(2) + ' Gbps';
+        } else if (absBits >= 1000000) { // 1 Mbps
+            return (bits / 1000000).toFixed(2) + ' Mbps';
+        } else if (absBits >= 1000) { // 1 Kbps
+            return (bits / 1000).toFixed(2) + ' Kbps';
         } else {
-            return (num % 1 === 0 ? num : num.toFixed(2)) + ' ' + (isRate ? 'B/s' : 'B');
+            return (bits % 1 === 0 ? bits : bits.toFixed(2)) + ' bps';
         }
     }
 
-    // 2. Bits/sec or Bits (bps, bit/s, bits/s, bits)
-    if (uLower === 'bps' || uLower === 'bit/s' || uLower === 'bits/s' || uLower === 'bits') {
+    // 2. Storage / Memory (bytes, B without /s)
+    if (uLower === 'bytes' || uLower === 'b') {
         const abs = Math.abs(num);
-        if (abs >= 1000000000) {
-            return (num / 1000000000).toFixed(2) + ' Gbps';
-        } else if (abs >= 1000000) {
-            return (num / 1000000).toFixed(2) + ' Mbps';
-        } else if (abs >= 1000) {
-            return (num / 1000).toFixed(2) + ' Kbps';
+        if (abs >= 1073741824) { // 1024^3
+            return (num / 1073741824).toFixed(2) + ' GB';
+        } else if (abs >= 1048576) { // 1024^2
+            return (num / 1048576).toFixed(2) + ' MB';
+        } else if (abs >= 1024) {
+            return (num / 1024).toFixed(2) + ' KB';
         } else {
-            return (num % 1 === 0 ? num : num.toFixed(2)) + ' bps';
+            return (num % 1 === 0 ? num : num.toFixed(2)) + ' B';
         }
     }
 
