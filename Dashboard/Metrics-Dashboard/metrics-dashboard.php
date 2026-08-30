@@ -892,6 +892,7 @@ if ($api === 'export_data' && $db_status) {
 }
 
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
+$isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || (isset($_GET['no_header']) && $_GET['no_header'] == '1') || (isset($_GET['header']) && $_GET['header'] == '0');
 ?>
 <!doctype html>
 <html lang="en">
@@ -912,10 +913,20 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; visibility: hidden !important; }
         body { background-color: #ffffff !important; padding: 0 !important; }
-        .main-content { padding: 20px 25px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
-        .dashboard-card { box-shadow: none !important; border: 1px solid #eee !important; border-radius: 4px !important; width: 100% !important; }
+        .main-content { padding: 10px 15px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+        .dashboard-card { box-shadow: none !important; border: 1px solid #eee !important; border-radius: 4px !important; width: 100% !important; margin-bottom: 0 !important; }
         .grid-layout { grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; display: block !important; }
+        <?php if ($isHideHeader): ?>
+        .dashboard-card-header { display: none !important; }
+        .main-content { padding: 0 !important; }
+        .dashboard-card { border: none !important; }
         <?php endif; ?>
+        <?php endif; ?>
+
+        .floating-header-toggle { position: fixed; top: 8px; right: 8px; z-index: 9999; background: rgba(255, 255, 255, 0.92); border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer; color: #64748b; opacity: 0.25; transition: opacity 0.2s, background 0.2s; backdrop-filter: blur(2px); display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .floating-header-toggle:hover { opacity: 1; background: #ffffff; color: #0b1a26; }
+        .toast-popup { position: fixed; bottom: 25px; right: 25px; background: #0f172a; color: #fff; padding: 10px 18px; border-radius: 6px; font-size: 13px; display: flex; align-items: center; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); transform: translateY(80px); opacity: 0; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); z-index: 99999; }
+        .toast-popup.show { transform: translateY(0); opacity: 1; }
 
         .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 10; }
         .header-logo { height: 24px; width: auto; }
@@ -1397,6 +1408,56 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         </div>
     </div>
 </div>
+
+<!-- SHARE WIDGET MODAL -->
+<div class="modal-overlay" id="shareWidgetModal" style="z-index: 2100;">
+    <div class="modal-box" style="width: 560px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:12px; margin-bottom:18px;">
+            <h5 style="font-weight: 600; margin:0; font-size:15px; color:#0b1a26;" id="shareModalTitle">Share Widget URL</h5>
+            <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeModal('shareWidgetModal')">close</span>
+        </div>
+        
+        <div style="margin-bottom:18px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px 15px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-weight:500; font-size:13px; color:#1e293b;">
+                <input type="checkbox" id="shareHideHeaderChk" style="width:16px; height:16px; cursor:pointer;" onchange="updateShareUrls()">
+                <span><strong>Hide Card Header</strong> (Sembunyikan Title & Timestamp untuk Iframe / Visual Console)</span>
+            </label>
+        </div>
+
+        <div class="form-group" style="margin-bottom:15px;">
+            <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:5px; display:block;">1. Standalone Fullscreen URL</label>
+            <div style="display:flex; gap:8px;">
+                <input type="text" id="shareStandaloneInput" class="form-control-fix" readonly style="margin-bottom:0; background:#f8fafc; font-family:monospace; font-size:12px;">
+                <button class="btn-apply" style="padding:0 18px;" onclick="copyShareText('shareStandaloneInput')">Copy</button>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:15px;">
+            <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:5px; display:block;">2. Iframe Embed Code (Visual Console / External)</label>
+            <div style="display:flex; gap:8px;">
+                <input type="text" id="shareEmbedInput" class="form-control-fix" readonly style="margin-bottom:0; background:#f8fafc; font-family:monospace; font-size:12px;">
+                <button class="btn-apply" style="padding:0 18px;" onclick="copyShareText('shareEmbedInput')">Copy</button>
+            </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+            <button class="btn-secondary-custom" onclick="closeModal('shareWidgetModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- TOAST POPUP -->
+<div class="toast-popup" id="toastPopup">
+    <span class="material-symbols-outlined" style="font-size:18px; color:#10b981;">check_circle</span>
+    <span id="toastMsg">Copied to clipboard!</span>
+</div>
+
+<?php if ($isStandalone): ?>
+<button id="floatingHeaderToggle" class="floating-header-toggle" onclick="toggleCardHeaderVisibility()" title="Toggle Header (Hide/Show)">
+    <span class="material-symbols-outlined" style="font-size:16px;" id="floatingHeaderIcon"><?= $isHideHeader ? 'visibility' : 'visibility_off' ?></span>
+    <span id="floatingHeaderText" style="font-size:10px;"><?= $isHideHeader ? 'Show Header' : 'Hide Header' ?></span>
+</button>
+<?php endif; ?>
 
 <script>
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
@@ -3020,23 +3081,74 @@ function deleteCard(id) {
     }
 }
 
+let currentShareCard = null;
+
+function showToast(msg) {
+    const t = document.getElementById('toastPopup');
+    if (!t) return alert(msg);
+    document.getElementById('toastMsg').textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function copyShareText(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.select();
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(el.value).then(() => showToast('Link copied to clipboard!'));
+    } else {
+        document.execCommand('copy');
+        showToast('Link copied!');
+    }
+}
+
 function copyStandaloneUrl(card) {
-    if(!currentDashId) return;
+    if (!currentDashId) return;
+    currentShareCard = card;
+    document.getElementById('shareModalTitle').innerText = 'Share: ' + (card.title || 'Widget');
+    document.getElementById('shareHideHeaderChk').checked = false;
+    updateShareUrls();
+    document.getElementById('shareWidgetModal').style.display = 'flex';
+}
+
+function updateShareUrls() {
+    if (!currentShareCard || !currentDashId) return;
+    const hideHeader = document.getElementById('shareHideHeaderChk').checked;
     const u = new URL(window.location.origin + DIRECT_SCRIPT_URL);
     u.searchParams.set('s', '1');
     u.searchParams.set('d', currentDashId);
-    u.searchParams.set('card_id', card.id);
-    const urlString = u.toString();
-
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(urlString).then(() => alert("URL Share Widget Copied!"));
-    } else {
-        const textArea = document.createElement("textarea");
-        textArea.value = urlString; textArea.style.position = "fixed"; textArea.style.left = "-999999px"; textArea.style.top = "-999999px";
-        document.body.appendChild(textArea); textArea.focus(); textArea.select();
-        try { document.execCommand('copy'); alert("URL Share Widget Copied!"); } catch (err) { prompt("Copy manual:", urlString); }
-        textArea.remove();
+    u.searchParams.set('card_id', currentShareCard.id);
+    if (hideHeader) {
+        u.searchParams.set('hide_header', '1');
     }
+    const urlString = u.toString();
+    const embedCode = `<iframe src="${urlString}" width="100%" height="320" frameborder="0"></iframe>`;
+    
+    document.getElementById('shareStandaloneInput').value = urlString;
+    document.getElementById('shareEmbedInput').value = embedCode;
+}
+
+function toggleCardHeaderVisibility() {
+    const headers = document.querySelectorAll('.dashboard-card-header');
+    const icon = document.getElementById('floatingHeaderIcon');
+    const text = document.getElementById('floatingHeaderText');
+    let isCurrentlyHidden = false;
+    headers.forEach(h => {
+        if (h.style.display === 'none' || getComputedStyle(h).display === 'none') {
+            h.style.display = 'flex';
+        } else {
+            h.style.display = 'none';
+            isCurrentlyHidden = true;
+        }
+    });
+    if (icon) icon.textContent = isCurrentlyHidden ? 'visibility' : 'visibility_off';
+    if (text) text.textContent = isCurrentlyHidden ? 'Show Header' : 'Hide Header';
+}
+
+function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
 }
 
 function duplicatePanel(id) {

@@ -14,6 +14,10 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 - **Hierarchical Group Tree Selection:**
   - Memperbaiki dropdown pemilihan Group pada Availability Nodes, Metrics Dashboard, Dynamic Dashboard, dan Optical Power Metrics agar menampilkan struktur hierarki grup dan sub-sub grup secara bertingkat dengan indentasi visual (`└─ `) sesuai Pandora FMS Tree View.
   - Menghilangkan prefix `[Primary]` yang redundan pada grup database utama agar nama grup bersih dan mudah dicari.
+- **Share URL & Minimalist Embed (Hide/Show Header):**
+  - Menambahkan modal interaktif **Share Widget URL** pada Availability Node & Modules, Metrics Dashboard, dan Optical Power Metrics dengan opsi checkbox **Hide Card Header** (`&hide_header=1`).
+  - Memungkinkan embed widget ke dalam Pandora FMS Visual Console, Grafana, atau iframe eksternal secara bersih tanpa memakan ruang header card (judul dan timestamps).
+  - Menambahkan tombol floating toggle pada tampilan standalone untuk menyembunyikan/menampilkan header widget secara instan.
 - **UI Cleanliness:**
   - Menghilangkan banner status diagnostik "DB Nodes" pada Metrics Dashboard agar tampilan header lebih bersih dan rapi.
 
