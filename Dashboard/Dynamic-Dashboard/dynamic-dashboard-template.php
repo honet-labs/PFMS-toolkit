@@ -2726,19 +2726,33 @@ function refreshCurrentNodeData() {
                                 padding: 10, 
                                 borderRadius: 6,
                                 formatter: function(params) {
-                                    let html = params[0].name ? params[0].name + '<br/>' : '';
-                                    params.forEach(p => {
+                                    if (!params || params.length === 0) return '';
+                                    
+                                    // Sort descending by value
+                                    const sortedParams = [...params].sort((a, b) => {
+                                        let valA = (a.value !== null && a.value !== undefined && a.value !== '' && !isNaN(a.value) && a.value !== '-') ? parseFloat(a.value) : -Infinity;
+                                        let valB = (b.value !== null && b.value !== undefined && b.value !== '' && !isNaN(b.value) && b.value !== '-') ? parseFloat(b.value) : -Infinity;
+                                        return valB - valA;
+                                    });
+
+                                    let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
+                                    html += `<div style="max-height:320px; overflow-y:auto; padding-right:4px;">`;
+                                    sortedParams.forEach(p => {
                                         const mod = activeModules[p.seriesIndex];
                                         const unitStr = (mod && mod.unit) ? ' ' + mod.unit : '';
                                         let val = p.value;
-                                        let displayVal = 'N/A';
-                                        if (val !== null && val !== undefined && val !== '' && !isNaN(val)) {
+                                        let displayVal = '-';
+                                        if (val !== null && val !== undefined && val !== '' && !isNaN(val) && val !== '-') {
                                             let numericVal = parseFloat(val);
-                                            numericVal = (numericVal % 1 === 0) ? numericVal : numericVal.toFixed(2);
+                                            numericVal = (numericVal % 1 === 0) ? numericVal.toLocaleString() : numericVal.toFixed(2);
                                             displayVal = numericVal + unitStr;
                                         }
-                                        html += `${p.marker}${p.seriesName}: <b>${displayVal}</b><br/>`;
+                                        html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
+                                            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
+                                            <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
+                                        </div>`;
                                     });
+                                    html += `</div>`;
                                     return html;
                                 }
                             },

@@ -3796,8 +3796,17 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                     borderRadius: 6,
                     formatter: function(params) {
                         if (!params || params.length === 0) return '';
+                        
+                        // Sort descending by value
+                        const sortedParams = [...params].sort((a, b) => {
+                            let valA = (a.value !== null && a.value !== undefined && a.value !== '' && !isNaN(a.value) && a.value !== '-') ? parseFloat(a.value) : -Infinity;
+                            let valB = (b.value !== null && b.value !== undefined && b.value !== '' && !isNaN(b.value) && b.value !== '-') ? parseFloat(b.value) : -Infinity;
+                            return valB - valA;
+                        });
+
                         let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
-                        params.forEach(p => {
+                        html += `<div style="max-height:320px; overflow-y:auto; padding-right:4px;">`;
+                        sortedParams.forEach(p => {
                             const mod = targetData[p.seriesIndex];
                             const unitStr = (mod && mod.unit) ? ' ' + mod.unit : '';
                             let val = p.value;
@@ -3807,11 +3816,12 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                                 numericVal = (numericVal % 1 === 0) ? numericVal.toLocaleString() : numericVal.toFixed(2);
                                 displayVal = numericVal + unitStr;
                             }
-                            html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin:2px 0;">
-                                <span>${p.marker} ${p.seriesName}</span>
-                                <span style="font-weight:600; color:#fff;">${displayVal}</span>
+                            html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
+                                <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
+                                <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
                             </div>`;
                         });
+                        html += `</div>`;
                         return html;
                     }
                 },
@@ -3871,8 +3881,17 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                     borderRadius: 6,
                     formatter: function(params) {
                         if (!params || params.length === 0) return '';
+                        
+                        // Sort descending by value
+                        const sortedParams = [...params].sort((a, b) => {
+                            let valA = (a.value !== null && a.value !== undefined && a.value !== '' && !isNaN(a.value) && a.value !== '-') ? parseFloat(a.value) : -Infinity;
+                            let valB = (b.value !== null && b.value !== undefined && b.value !== '' && !isNaN(b.value) && b.value !== '-') ? parseFloat(b.value) : -Infinity;
+                            return valB - valA;
+                        });
+
                         let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
-                        params.forEach(p => {
+                        html += `<div style="max-height:320px; overflow-y:auto; padding-right:4px;">`;
+                        sortedParams.forEach(p => {
                             const foundMod = processedData.find(r => r.module_name === p.seriesName);
                             const unitStr = (foundMod && foundMod.unit) ? ' ' + foundMod.unit : '';
                             let val = p.value;
@@ -3882,11 +3901,12 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                                 numericVal = (numericVal % 1 === 0) ? numericVal.toLocaleString() : numericVal.toFixed(2);
                                 displayVal = numericVal + unitStr;
                             }
-                            html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin:2px 0;">
-                                <span>${p.marker} ${p.seriesName}</span>
-                                <span style="font-weight:600; color:#fff;">${displayVal}</span>
+                            html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
+                                <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
+                                <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
                             </div>`;
                         });
+                        html += `</div>`;
                         return html;
                     }
                 },
