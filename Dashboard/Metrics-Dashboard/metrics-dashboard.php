@@ -1312,6 +1312,12 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
             </div>
         </div>
 
+        <div class="form-group" style="margin-bottom: 12px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;">
+                <input type="checkbox" id="b_auto_convert_traffic" checked style="width:16px; height:16px; margin:0;"> Auto-Convert Traffic to bps / Kbps / Mbps / Gbps (On/Off)
+            </label>
+        </div>
+
         <div class="form-group" style="margin-bottom: 15px;">
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;">
                 <input type="checkbox" id="b_use_raw" style="width:16px; height:16px; margin:0;"> Use Raw Value (No Formatting)
@@ -3073,6 +3079,7 @@ async function openBuilder() {
         const el = document.getElementById('b_stat_' + s);
         if (el) el.checked = true;
     });
+    if (document.getElementById('b_auto_convert_traffic')) document.getElementById('b_auto_convert_traffic').checked = true;
     if (document.getElementById('b_show_module_name')) document.getElementById('b_show_module_name').value = '1';
     toggleViewTypeOptions();
     document.getElementById('inner_search').value = '';
@@ -3092,10 +3099,10 @@ async function openBuilder() {
 }
 async function openEdit(id) {
     editingCardId = id; const c = dashboardCards.find(x => x.id === id); document.getElementById('builderTitle').innerText='Edit Widget';
-    ['title','view_type','group','limit','refresh','icon_size','font_size','use_raw'].forEach(k => {
+    ['title','view_type','group','limit','refresh','icon_size','font_size','use_raw','auto_convert_traffic'].forEach(k => {
         const el = document.getElementById('b_'+k);
         if(el) {
-            if (el.type === 'checkbox') el.checked = !!c[k];
+            if (el.type === 'checkbox') el.checked = (c[k] !== undefined) ? !!c[k] : (k === 'auto_convert_traffic' ? true : false);
             else el.value = c[k==='group'?'group_id':(k==='refresh'?'refresh_sec':k)] || (k==='icon_size'?'18':(k==='font_size'?'14':''));
         }
     });
@@ -3175,6 +3182,7 @@ function saveWidget() {
         icon_size: document.getElementById('b_icon_size').value || 18,
         font_size: document.getElementById('b_font_size').value || 14,
         chart_font_size: parseInt(document.getElementById('b_chart_font_size').value) || 11,
+        auto_convert_traffic: document.getElementById('b_auto_convert_traffic') ? document.getElementById('b_auto_convert_traffic').checked : true,
         use_raw: document.getElementById('b_use_raw').checked,
         chart_limit: document.getElementById('b_chart_limit').value,
         show_legend_count: parseInt(document.getElementById('b_show_legend_count').value),
@@ -3632,10 +3640,11 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
     }
 
     const card = dashboardCards.find(c => c.id === cardId) || {};
+    const autoConvert = (card.auto_convert_traffic !== undefined) ? !!card.auto_convert_traffic : true;
 
     if (viewType === 'single_value') {
         const m = data[0] || {};
-        const valDisplay = formatHumanMetric(m.current_value, m.unit);
+        const valDisplay = formatHumanMetric(m.current_value, m.unit, autoConvert);
         const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[m.estado] || '#95a5a6';
         const showText = card.show_module_name !== 0;
         
@@ -3864,7 +3873,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         sortedParams.forEach(p => {
                             const mod = targetData[p.seriesIndex];
                             const unitStr = (mod && mod.unit) ? mod.unit : '';
-                            const displayVal = formatHumanMetric(p.value, unitStr);
+                            const displayVal = formatHumanMetric(p.value, unitStr, autoConvert);
                             html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
                                 <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
                                 <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
@@ -3943,7 +3952,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         sortedParams.forEach(p => {
                             const foundMod = processedData.find(r => r.module_name === p.seriesName);
                             const unitStr = (foundMod && foundMod.unit) ? foundMod.unit : '';
-                            const displayVal = formatHumanMetric(p.value, unitStr);
+                            const displayVal = formatHumanMetric(p.value, unitStr, autoConvert);
                             html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
                                 <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
                                 <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>

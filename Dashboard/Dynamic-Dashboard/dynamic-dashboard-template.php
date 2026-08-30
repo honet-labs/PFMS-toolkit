@@ -1215,6 +1215,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             </div>
 
             <div style="margin-top:15px; padding:10px; border-top:1px solid #eee;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin:0 0 10px 0;">
+                    <input type="checkbox" id="p_auto_convert_traffic" checked style="width:18px; height:18px; cursor:pointer;">
+                    <span style="font-size:13px; font-weight:500; color:#4a5568;">Auto-Convert Traffic to bps / Kbps / Mbps / Gbps (On/Off)</span>
+                </label>
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin:0;">
                     <input type="checkbox" id="p_hidden" style="width:18px; height:18px; cursor:pointer;">
                     <span style="font-size:13px; font-weight:500; color:#4a5568;">Hide Panel (Benar-benar sembunyikan dari Dashboard & Share URL)</span>
@@ -2800,12 +2804,13 @@ function refreshCurrentNodeData() {
 
                                     let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
                                     html += `<div style="max-height:320px; overflow-y:auto; padding-right:4px;">`;
-                                    sortedParams.forEach(p => {
-                                        const mod = activeModules[p.seriesIndex];
+                                    const autoConvert = (p.auto_convert_traffic !== undefined) ? !!p.auto_convert_traffic : true;
+                                    sortedParams.forEach(sp => {
+                                        const mod = activeModules[sp.seriesIndex];
                                         const unitStr = (mod && mod.unit) ? mod.unit : '';
-                                        const displayVal = formatHumanMetric(p.value, unitStr);
+                                        const displayVal = formatHumanMetric(sp.value, unitStr, autoConvert);
                                         html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
-                                            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
+                                            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${sp.marker} ${sp.seriesName}</span>
                                             <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
                                         </div>`;
                                     });
@@ -3055,6 +3060,7 @@ function openPanelBuilder() {
     document.getElementById('p_lbl_0').value = '';
     document.getElementById('p_show_module').checked = true;
     document.getElementById('p_use_raw').checked = false;
+    document.getElementById('p_auto_convert_traffic').checked = true;
     document.getElementById('p_show_time').checked = true;
     document.getElementById('p_hidden').checked = false;
     document.getElementById('p_multi_overlay').checked = false;
@@ -3080,6 +3086,7 @@ function openPanelEdit(id) {
     document.getElementById('p_font_weight').value = p.font_weight || 700;
     document.getElementById('p_show_module').checked = p.show_module !== false;
     document.getElementById('p_use_raw').checked = p.use_raw || false;
+    document.getElementById('p_auto_convert_traffic').checked = p.auto_convert_traffic !== false;
     document.getElementById('p_force_100').checked = p.force_100 || false;
     document.getElementById('p_show_time').checked = p.show_time !== false;
     document.getElementById('p_chart_engine').value = p.chart_engine || 'custom';
@@ -3131,6 +3138,7 @@ function applyPanel() {
         font_weight: document.getElementById('p_font_weight').value || 700,
         show_module: document.getElementById('p_show_module').checked,
         use_raw: document.getElementById('p_use_raw').checked,
+        auto_convert_traffic: document.getElementById('p_auto_convert_traffic').checked,
         force_100: document.getElementById('p_force_100').checked,
         show_time: document.getElementById('p_show_time').checked,
         chart_engine: document.getElementById('p_chart_engine').value || 'custom',

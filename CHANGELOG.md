@@ -25,8 +25,8 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - Memperbaiki bug nilai `undefined bytes/s` pada tooltip grafik ECharts (Line/Area/Bar) dengan memastikan sinkronisasi modul history, forward-fill timestamp asinkron, dan sanitasi nilai `null`/`undefined` ke format angka/satuan yang valid.
 - **Auto-Sorting Chart Tooltip (Highest to Lowest):**
   - Mengurutkan item data pada popup tooltip grafik secara otomatis dari nilai terbesar ke nilai terkecil (*descending order*), dilengkapi styling scroll container rapi saat terdapat banyak interface/modul.
-- **Network Bandwidth Auto-Conversion (bps, Kbps, Mbps, Gbps):**
-  - Mengonversi data traffic network (`bytes/s`, `bps`) secara otomatis ke standar bit rate jaringan (*8x multiplier* untuk byte rate) menjadi `bps`, `Kbps`, `Mbps`, dan `Gbps` pada popup tooltip dan kartu nilai.
+- **Network Bandwidth Auto-Conversion with On/Off Toggle:**
+  - Menambahkan fitur opsi konfigurasi On/Off `Auto-Convert Traffic to bps / Kbps / Mbps / Gbps` pada builder modal widget/panel untuk mengonversi data traffic network (`bytes/s`, `bps`) secara otomatis ke standar bit rate jaringan (*8x multiplier* untuk byte rate) menjadi `bps`, `Kbps`, `Mbps`, dan `Gbps` pada popup tooltip dan kartu nilai.
 - **UI Cleanliness:**
   - Menghilangkan banner status diagnostik "DB Nodes" pada Metrics Dashboard agar tampilan header lebih bersih dan rapi.
 
