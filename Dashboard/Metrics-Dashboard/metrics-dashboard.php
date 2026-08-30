@@ -909,18 +909,22 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; visibility: hidden !important; }
-        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
-        .main-content { padding: 4px 6px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
-        .dashboard-card { box-shadow: none !important; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; width: 100% !important; margin: 0 !important; margin-bottom: 0 !important; }
-        .dashboard-card-header { padding: 8px 12px !important; }
-        .dashboard-card-body { padding: 6px 8px 8px 8px !important; gap: 6px !important; }
-        .grid-layout { grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; display: block !important; }
-        .chart-container { height: 220px !important; padding: 0 !important; margin: 0 !important; }
+        html, body { height: 100% !important; width: 100% !important; background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
+        .main-content { height: 100% !important; width: 100% !important; max-width: 100% !important; padding: 4px 6px !important; margin: 0 !important; display: flex !important; flex-direction: column !important; box-sizing: border-box !important; }
+        #view_detail { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; }
+        .grid-layout { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; margin: 0 !important; }
+        .dashboard-card { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; box-shadow: none !important; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; margin: 0 !important; margin-bottom: 0 !important; overflow: hidden !important; }
+        .dashboard-card-header { padding: 8px 12px !important; flex-shrink: 0 !important; }
+        .dashboard-card-body { padding: 6px 8px 8px 8px !important; gap: 0 !important; display: flex !important; flex-direction: column !important; flex: 1 !important; height: calc(100% - 40px) !important; overflow: hidden !important; }
+        .dashboard-card-body > div[id^="content_view_"] { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; }
+        .chart-container { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; padding: 0 !important; margin: 0 !important; }
+        .chart-container > div[id^="chart_canvas_"] { flex: 1 !important; min-height: 120px !important; width: 100% !important; height: 100% !important; }
+        .chart-html-legend { flex-shrink: 0 !important; max-height: 80px !important; overflow-y: auto !important; margin-top: auto !important; }
         <?php if ($isHideHeader): ?>
         .dashboard-card-header { display: none !important; }
         .main-content { padding: 0 !important; }
         .dashboard-card { border: none !important; margin: 0 !important; }
-        .dashboard-card-body { padding: 4px 6px !important; }
+        .dashboard-card-body { padding: 4px 6px !important; height: 100% !important; }
         .mini-stats-row { padding: 4px 6px !important; border-bottom: none !important; }
         html, body { overflow: hidden !important; }
         .floating-header-toggle { display: none !important; }
@@ -3720,9 +3724,9 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         Chart.defaults.font.family = dashboardFontFamily;
         Chart.defaults.color = "#4a5568";
     }
-    container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; display: flex; flex-direction: column;">
-        <div id="chart_canvas_${cardId}" style="width: 100%; height: 200px;"></div>
-        <div id="chart_legend_${cardId}" class="chart-html-legend" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-height: 75px; overflow-y: auto; padding: 4px 2px; margin-top: 4px; border-top: 1px solid #f1f5f9;"></div>
+    container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; height: 100%; flex: 1; display: flex; flex-direction: column;">
+        <div id="chart_canvas_${cardId}" style="width: 100%; flex: 1; min-height: 140px; height: 100%;"></div>
+        <div id="chart_legend_${cardId}" class="chart-html-legend" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-height: 75px; overflow-y: auto; padding: 4px 2px; margin-top: auto; border-top: 1px solid #f1f5f9; flex-shrink: 0;"></div>
     </div>`;
 
     if (activeCharts[cardId]) {
@@ -3985,6 +3989,19 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
                     </div>`;
                 }).join('');
+            }
+        }
+
+        if (window.ResizeObserver) {
+            const canvasEl = document.getElementById(`chart_canvas_${cardId}`);
+            if (canvasEl && (!window._roMap || !window._roMap[cardId])) {
+                window._roMap = window._roMap || {};
+                window._roMap[cardId] = new ResizeObserver(() => {
+                    if (activeCharts[cardId] && typeof activeCharts[cardId].resize === 'function') {
+                        activeCharts[cardId].resize();
+                    }
+                });
+                window._roMap[cardId].observe(canvasEl);
             }
         }
     }
