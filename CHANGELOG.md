@@ -30,6 +30,8 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 - **Standalone & Embed Minimalist Spacing (Eliminate Bottom Whitespace/Gap):**
   - Mengoptimalkan padding container, margin card, dan ukuran canvas ECharts pada mode standalone/embed (`s=1` / `standalone=1`) agar tidak ada celah kosong (*whitespace/gap*) di bagian bawah card/widget.
   - Memperbarui margin grid bawah dan legend padding ECharts serta tinggi default iframe embed (`height="280"` dengan header, `height="240"` tanpa header) sehingga tampilan widget di Visual Console Pandora FMS presisi dan kompak tanpa sisa ruang kosong.
+- **Multi-Line Legend Wrap (Zero Pagination):**
+  - Mengubah mode legend grafik ECharts dari mode scroll pagination (`< 1/7 >`) menjadi mode **Multi-Line Wrap** (`type: 'plain'`) dengan penyesuaian dinamis margin bawah grid (`dynamicGridBottom`) sehingga seluruh nama antarmuka/modul terlihat sekaligus secara rapi tanpa harus menekan tombol navigasi halaman.
 - **UI Cleanliness:**
   - Menghilangkan banner status diagnostik "DB Nodes" pada Metrics Dashboard agar tampilan header lebih bersih dan rapi.
 

@@ -3862,6 +3862,10 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 };
             });
 
+            const dynamicGridBottom = (seriesData.length > 1) 
+                ? Math.min(85, 26 + Math.ceil(seriesData.length / 2.5) * 16) 
+                : 26;
+
             activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
             activeCharts[cardId].setOption({
                 tooltip: { 
@@ -3897,8 +3901,16 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         return html;
                     }
                 },
-                legend: { type: 'scroll', bottom: 2, padding: [2, 5, 2, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
-                grid: { left: 5, right: 15, top: 15, bottom: 35, containLabel: true },
+                legend: { 
+                    type: 'plain', 
+                    orient: 'horizontal',
+                    bottom: 0, 
+                    padding: [0, 5, 2, 5], 
+                    icon: 'circle', 
+                    itemGap: 12,
+                    textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } 
+                },
+                grid: { left: 5, right: 15, top: 15, bottom: dynamicGridBottom, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: labels, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                 yAxis: { 
                     type: 'value', 
@@ -3941,6 +3953,10 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 };
             });
 
+            const dynamicGridBottom = (seriesData.length > 1) 
+                ? Math.min(85, 26 + Math.ceil(seriesData.length / 2.5) * 16) 
+                : 26;
+
             activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
             activeCharts[cardId].setOption({
                 tooltip: { 
@@ -3976,8 +3992,16 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         return html;
                     }
                 },
-                legend: { type: 'scroll', bottom: 2, padding: [2, 5, 2, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } },
-                grid: { left: 5, right: 15, top: 15, bottom: 35, containLabel: true },
+                legend: { 
+                    type: 'plain', 
+                    orient: 'horizontal',
+                    bottom: 0, 
+                    padding: [0, 5, 2, 5], 
+                    icon: 'circle', 
+                    itemGap: 12,
+                    textStyle: { fontSize: Math.max(9, chartFontSize - 1), color: '#64748b' } 
+                },
+                grid: { left: 5, right: 15, top: 15, bottom: dynamicGridBottom, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: uniqueAgents, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                 yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' } },
                 series: seriesData

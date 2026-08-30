@@ -2783,6 +2783,10 @@ function refreshCurrentNodeData() {
                         let dom = document.getElementById(`chart_${uniqueId}`);
                         if (!dom) return;
                         chartInstances[uniqueId] = echarts.init(dom);
+                        const dynamicGridBottom = (seriesData.length > 1) 
+                            ? Math.min(85, (p.show_time ? 26 : 15) + Math.ceil(seriesData.length / 2.5) * 16) 
+                            : (p.show_time ? 35 : 20);
+
                         chartInstances[uniqueId].setOption({
                             tooltip: { 
                                 trigger: 'axis', 
@@ -2820,8 +2824,16 @@ function refreshCurrentNodeData() {
                                     return html;
                                 }
                             },
-                            legend: { type: 'scroll', bottom: 0, padding: [10, 5, 5, 5], icon: 'circle', textStyle: { fontSize: Math.max(9, chartFs - 1), color: '#64748b' } },
-                            grid: { left: 5, right: 15, top: 15, bottom: p.show_time ? 45 : 25, containLabel: true },
+                            legend: { 
+                                type: 'plain', 
+                                orient: 'horizontal',
+                                bottom: 0, 
+                                padding: [0, 5, 2, 5], 
+                                icon: 'circle', 
+                                itemGap: 12,
+                                textStyle: { fontSize: Math.max(9, chartFs - 1), color: '#64748b' } 
+                            },
+                            grid: { left: 5, right: 15, top: 15, bottom: dynamicGridBottom, containLabel: true },
                             xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: labels, show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                             yAxis: { type: 'value', max: p.force_100 ? 100 : null, splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' } },
                             series: seriesData
