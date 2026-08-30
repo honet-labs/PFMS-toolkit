@@ -11,7 +11,8 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 - **Module Data Consistency & Non-Destructive Topology:**
   - Menghapus seluruh query `UPDATE tagente_modulo` saat render halaman yang sebelumnya merusak nama dan relasi `parent_module_id` di database.
   - Memperbaiki pembacaan latensi dari `tagente_estado` dan fallback ke `tagente_datos` serta sanitasi angka latensi.
-  - Regex pembersihan nama modul hop (`clean_hop_label`) dan deteksi target (`is_target_module`) yang lebih fleksibel.
+- **UI Cleanliness:**
+  - Menghilangkan banner status diagnostik "DB Nodes" pada Metrics Dashboard agar tampilan header lebih bersih dan rapi.
 
 ## [2.4] - 2026-08-26 (Route Parser Dashboard Hub, Add Route Path & Standalone Clean View)
 ### Added

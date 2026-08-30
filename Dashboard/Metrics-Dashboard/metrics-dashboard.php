@@ -818,83 +818,6 @@ if ($api === 'export_data' && $db_status) {
     exit;
 }
 
-// Diagnostic endpoint: show status of all DB nodes
-if ($api === 'db_nodes_status') {
-    ob_clean(); header('Content-Type: application/json');
-    global $custom_pdos, $custom_connections, $custom_db_statuses;
-    
-    $nodes = [];
-    
-    // Primary node
-    $nodes[] = [
-        'id' => 'primary',
-        'name' => 'Primary (Pandora FMS)',
-        'status' => $db_status ? 'connected' : 'failed',
-        'error' => $db_error ?: null,
-        'agents_count' => 0
-    ];
-    if ($db_status) {
-        try {
-            $st = $pdo->query("SELECT COUNT(*) FROM tagente WHERE disabled = 0");
-            $nodes[0]['agents_count'] = (int)$st->fetchColumn();
-        } catch (Throwable $e) {}
-    }
-    
-    // History node
-    $history_tokens = [];
-    if ($db_status) {
-        try {
-            $st = $pdo->query("SELECT token, value FROM tconfig WHERE token LIKE '%history%'");
-            if ($st) {
-                $history_tokens = $st->fetchAll(PDO::FETCH_KEY_PAIR);
-            }
-        } catch (Throwable $e) {}
-    }
-    $nodes[] = [
-        'id' => 'history',
-        'name' => 'Default Historical DB',
-        'status' => $history_db_status ? 'connected' : ($history_db_host ? 'failed' : 'not_configured'),
-        'type' => 'history_only',
-        'tconfig_history_tokens' => $history_tokens
-    ];
-    
-    // Custom nodes
-    if (!empty($custom_connections)) {
-        foreach ($custom_connections as $conn) {
-            $cid = $conn['id'] ?? '';
-            $cname = $conn['name'] ?? $cid;
-            $is_connected = isset($custom_pdos[$cid]);
-            $node_info = [
-                'id' => $cid,
-                'name' => $cname,
-                'host' => $conn['host'] ?? '',
-                'dbname' => $conn['dbname'] ?? '',
-                'status' => $is_connected ? 'connected' : 'failed',
-                'agents_count' => 0,
-                'has_tagente' => false
-            ];
-            
-            if ($is_connected) {
-                // Check if DB has tagente table (= full Pandora DB) and count agents
-                try {
-                    $st = $custom_pdos[$cid]->query("SELECT COUNT(*) FROM tagente WHERE disabled = 0");
-                    $count = (int)$st->fetchColumn();
-                    $node_info['agents_count'] = $count;
-                    $node_info['has_tagente'] = true;
-                } catch (Throwable $e) {
-                    $node_info['has_tagente'] = false;
-                    $node_info['table_error'] = $e->getMessage();
-                }
-            }
-            
-            $nodes[] = $node_info;
-        }
-    }
-    
-    echo json_encode(['ok' => true, 'nodes' => $nodes]);
-    exit;
-}
-
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
 ?>
 <!doctype html>
@@ -1068,20 +991,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         
         .modal-header-custom { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .modal-footer-custom { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
-
-        /* DB NODES STATUS BANNER */
-        .db-nodes-banner { background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 8px 30px; display: none; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; }
-        .db-nodes-banner.visible { display: flex; }
-        .db-node-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 12px; font-weight: 500; border: 1px solid transparent; }
-        .db-node-chip.connected { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
-        .db-node-chip.failed { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
-        .db-node-chip.not_configured { background: #e2e8f0; color: #64748b; border-color: #cbd5e1; }
-        .db-node-chip .node-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-        .db-node-chip.connected .node-dot { background: #10b981; }
-        .db-node-chip.failed .node-dot { background: #ef4444; }
-        .db-node-chip.not_configured .node-dot { background: #94a3b8; }
-        .db-nodes-toggle { background: none; border: none; color: #64748b; cursor: pointer; font-size: 11px; padding: 2px 6px; display: inline-flex; align-items: center; gap: 3px; transition: 0.2s; border-radius: 4px; }
-        .db-nodes-toggle:hover { background: #e2e8f0; color: #334155; }
     </style>
 </head>
 <body class="<?= $isStandalone ? 'is-standalone-view' : '' ?>">
@@ -1111,17 +1020,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         <button class="btn-secondary-custom" onclick="closeDashboard()" title="Back to List"><span class="material-symbols-outlined">arrow_back</span> Back</button>
         <button class="btn-apply" onclick="openBuilder()"><span class="material-symbols-outlined">add</span> Add Widget</button>
     </div>
-</div>
-
-<!-- DB Nodes Status Banner -->
-<div class="db-nodes-banner" id="dbNodesBanner">
-    <span style="color: #475569; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
-        <span class="material-symbols-outlined" style="font-size:14px!important; color:#004d40;">dns</span> DB Nodes:
-    </span>
-    <div id="dbNodesChips" style="display: inline-flex; gap: 8px; flex-wrap: wrap; align-items: center;"></div>
-    <button class="db-nodes-toggle" id="dbNodesToggle" onclick="toggleDbNodesBanner()" title="Toggle DB nodes info">
-        <span class="material-symbols-outlined" style="font-size:14px!important;">expand_less</span>
-    </button>
 </div>
 
 <div id="view_list" class="main-content pt-4">
@@ -1867,69 +1765,6 @@ async function init() {
     worker.postMessage('start');
     worker.onmessage = (e) => { if(e.data === 'tick') runTimerLogic(); };
     document.addEventListener("visibilitychange", () => { if (!document.hidden && currentDashId) { dashboardCards.forEach(c => fetchCardData(c)); } });
-    
-    // Load DB nodes status (non-blocking)
-    loadDbNodesStatus();
-}
-
-async function loadDbNodesStatus() {
-    try {
-        const res = await fetch('?api=db_nodes_status&_t=' + Date.now());
-        const data = await res.json();
-        if (!data.ok || !data.nodes) return;
-        
-        const banner = document.getElementById('dbNodesBanner');
-        const chips = document.getElementById('dbNodesChips');
-        if (!banner || !chips) return;
-        
-        let hasCustomNodes = false;
-        let hasIssues = false;
-        let html = '';
-        
-        data.nodes.forEach(node => {
-            if (node.id === 'history' && node.status === 'not_configured') return; // Skip unconfigured history
-            if (node.id !== 'primary' && node.id !== 'history') hasCustomNodes = true;
-            if (node.status === 'failed') hasIssues = true;
-            
-            let label = node.name;
-            let extra = '';
-            
-            if (node.status === 'connected' && node.agents_count !== undefined && node.agents_count > 0) {
-                extra = ` (${node.agents_count} agents)`;
-            } else if (node.status === 'connected' && node.has_tagente === false) {
-                extra = ' (No tagente table!)';
-                hasIssues = true;
-            } else if (node.status === 'failed') {
-                extra = ' ✗';
-            }
-            
-            html += `<span class="db-node-chip ${node.status}" title="${node.status === 'failed' ? 'Connection failed - check credentials in Settings' : (node.has_tagente === false ? 'Database does not contain Pandora FMS agent tables (tagente). This must be a full Pandora DB, not just a history DB.' : 'Connected')}">
-                <span class="node-dot"></span>${label}${extra}
-            </span>`;
-        });
-        
-        // Only show banner if there are custom nodes or issues
-        if (hasCustomNodes || hasIssues) {
-            chips.innerHTML = html;
-            banner.classList.add('visible');
-        }
-    } catch (e) {
-        console.warn('Failed to load DB nodes status:', e);
-    }
-}
-
-function toggleDbNodesBanner() {
-    const banner = document.getElementById('dbNodesBanner');
-    const toggle = document.getElementById('dbNodesToggle');
-    if (!banner) return;
-    
-    if (banner.classList.contains('visible')) {
-        banner.classList.remove('visible');
-        if (toggle) toggle.querySelector('.material-symbols-outlined').innerText = 'expand_more';
-    } else {
-        banner.classList.add('visible');
-        if (toggle) toggle.querySelector('.material-symbols-outlined').innerText = 'expand_less';
-    }
 }
 
 function renderDashboardList() {
