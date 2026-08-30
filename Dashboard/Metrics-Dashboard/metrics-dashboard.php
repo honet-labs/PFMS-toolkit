@@ -1500,7 +1500,7 @@ let currentDetailModuleId = null;
 let currentDetailModuleTitle = '';
 let currentDetailViewType = '';
 
-function formatHumanMetric(val, rawUnit) {
+function formatHumanMetric(val, rawUnit, autoConvertTraffic = true) {
     if (val === null || val === undefined || val === '' || isNaN(val) || val === '-') {
         return '-';
     }
@@ -1511,14 +1511,14 @@ function formatHumanMetric(val, rawUnit) {
     const uLower = unit.toLowerCase();
 
     if (num === 0) {
-        if (uLower.includes('byte') || uLower.includes('bit') || uLower === 'b/s' || uLower === 'bps') {
+        if (autoConvertTraffic && (uLower.includes('byte') || uLower.includes('bit') || uLower === 'b/s' || uLower === 'bps')) {
             return '0 bps';
         }
         return unit ? `0 ${unit}` : '0';
     }
 
-    // 1. Network Traffic Rate (bytes/s, B/s, byte/s, bps, bit/s, bits/s, bits) -> Convert to bps, Kbps, Mbps, Gbps
-    if (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s' || uLower === 'bps' || uLower === 'bit/s' || uLower === 'bits/s' || uLower === 'bits') {
+    // 1. Network Traffic Rate (bytes/s, B/s, byte/s, bps, bit/s, bits/s, bits) -> Convert to bps, Kbps, Mbps, Gbps ONLY if autoConvertTraffic is true
+    if (autoConvertTraffic && (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s' || uLower === 'bps' || uLower === 'bit/s' || uLower === 'bits/s' || uLower === 'bits')) {
         const isByteRate = (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s');
         const bits = isByteRate ? (num * 8) : num;
         const absBits = Math.abs(bits);
@@ -1558,7 +1558,7 @@ function formatHumanMetric(val, rawUnit) {
         return (num % 1 === 0 ? num : num.toFixed(2)) + ' ' + unit;
     }
 
-    // 5. General numbers
+    // 5. General numbers (or when autoConvertTraffic is false)
     const formatted = (num % 1 === 0) ? num.toLocaleString() : num.toFixed(2);
     return unit ? `${formatted} ${unit}` : formatted;
 }
@@ -3102,8 +3102,15 @@ async function openEdit(id) {
     ['title','view_type','group','limit','refresh','icon_size','font_size','use_raw','auto_convert_traffic'].forEach(k => {
         const el = document.getElementById('b_'+k);
         if(el) {
-            if (el.type === 'checkbox') el.checked = (c[k] !== undefined) ? !!c[k] : (k === 'auto_convert_traffic' ? true : false);
-            else el.value = c[k==='group'?'group_id':(k==='refresh'?'refresh_sec':k)] || (k==='icon_size'?'18':(k==='font_size'?'14':''));
+            if (el.type === 'checkbox') {
+                if (c[k] !== undefined) {
+                    el.checked = (c[k] === true || c[k] === 1 || c[k] === '1' || c[k] === 'true');
+                } else {
+                    el.checked = (k === 'auto_convert_traffic');
+                }
+            } else {
+                el.value = c[k==='group'?'group_id':(k==='refresh'?'refresh_sec':k)] || (k==='icon_size'?'18':(k==='font_size'?'14':''));
+            }
         }
     });
 
@@ -3640,7 +3647,9 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
     }
 
     const card = dashboardCards.find(c => c.id === cardId) || {};
-    const autoConvert = (card.auto_convert_traffic !== undefined) ? !!card.auto_convert_traffic : true;
+    const autoConvert = (card.auto_convert_traffic !== undefined)
+        ? (card.auto_convert_traffic === true || card.auto_convert_traffic === 1 || card.auto_convert_traffic === '1' || card.auto_convert_traffic === 'true')
+        : true;
 
     if (viewType === 'single_value') {
         const m = data[0] || {};

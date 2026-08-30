@@ -1388,7 +1388,7 @@ let currentDetailModuleId = null;
 let currentDetailModuleTitle = '';
 let currentDetailViewType = '';
 
-function formatHumanMetric(val, rawUnit) {
+function formatHumanMetric(val, rawUnit, autoConvertTraffic = true) {
     if (val === null || val === undefined || val === '' || isNaN(val) || val === '-') {
         return '-';
     }
@@ -1399,14 +1399,14 @@ function formatHumanMetric(val, rawUnit) {
     const uLower = unit.toLowerCase();
 
     if (num === 0) {
-        if (uLower.includes('byte') || uLower.includes('bit') || uLower === 'b/s' || uLower === 'bps') {
+        if (autoConvertTraffic && (uLower.includes('byte') || uLower.includes('bit') || uLower === 'b/s' || uLower === 'bps')) {
             return '0 bps';
         }
         return unit ? `0 ${unit}` : '0';
     }
 
-    // 1. Network Traffic Rate (bytes/s, B/s, byte/s, bps, bit/s, bits/s, bits) -> Convert to bps, Kbps, Mbps, Gbps
-    if (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s' || uLower === 'bps' || uLower === 'bit/s' || uLower === 'bits/s' || uLower === 'bits') {
+    // 1. Network Traffic Rate (bytes/s, B/s, byte/s, bps, bit/s, bits/s, bits) -> Convert to bps, Kbps, Mbps, Gbps ONLY if autoConvertTraffic is true
+    if (autoConvertTraffic && (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s' || uLower === 'bps' || uLower === 'bit/s' || uLower === 'bits/s' || uLower === 'bits')) {
         const isByteRate = (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s');
         const bits = isByteRate ? (num * 8) : num;
         const absBits = Math.abs(bits);
@@ -1446,7 +1446,7 @@ function formatHumanMetric(val, rawUnit) {
         return (num % 1 === 0 ? num : num.toFixed(2)) + ' ' + unit;
     }
 
-    // 5. General numbers
+    // 5. General numbers (or when autoConvertTraffic is false)
     const formatted = (num % 1 === 0) ? num.toLocaleString() : num.toFixed(2);
     return unit ? `${formatted} ${unit}` : formatted;
 }
@@ -2804,7 +2804,9 @@ function refreshCurrentNodeData() {
 
                                     let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
                                     html += `<div style="max-height:320px; overflow-y:auto; padding-right:4px;">`;
-                                    const autoConvert = (p.auto_convert_traffic !== undefined) ? !!p.auto_convert_traffic : true;
+                                    const autoConvert = (p.auto_convert_traffic !== undefined)
+                                        ? (p.auto_convert_traffic === true || p.auto_convert_traffic === 1 || p.auto_convert_traffic === '1' || p.auto_convert_traffic === 'true')
+                                        : true;
                                     sortedParams.forEach(sp => {
                                         const mod = activeModules[sp.seriesIndex];
                                         const unitStr = (mod && mod.unit) ? mod.unit : '';
