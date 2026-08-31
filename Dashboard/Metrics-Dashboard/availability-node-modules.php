@@ -772,17 +772,21 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; visibility: hidden !important; }
-        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
-        .main-content { padding: 4px 6px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
-        .dashboard-card { box-shadow: none !important; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; width: 100% !important; margin: 0 !important; margin-bottom: 0 !important; }
-        .dashboard-card-header { padding: 8px 12px !important; }
-        .dashboard-card-body { padding: 6px 8px 8px 8px !important; }
-        .grid-layout { grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; display: block !important; }
+        html, body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; height: 100% !important; width: 100% !important; }
+        .main-content { padding: 4px 6px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; height: 100% !important; display: flex !important; flex-direction: column !important; box-sizing: border-box !important; }
+        .dashboard-card { box-shadow: none !important; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; width: 100% !important; height: 100% !important; margin: 0 !important; margin-bottom: 0 !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; }
+        .dashboard-card-header { padding: 8px 12px !important; flex-shrink: 0 !important; }
+        .dashboard-card-body { padding: 6px 8px 8px 8px !important; flex: 1 1 auto !important; height: calc(100% - 40px) !important; overflow: hidden !important; }
+        .grid-layout { grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; display: flex !important; flex-direction: column !important; flex: 1 1 auto !important; height: 100% !important; margin: 0 !important; }
+        .modal-overlay { padding: 6px !important; align-items: stretch !important; }
+        .detail-modal-box { width: 100% !important; max-width: 100% !important; height: 100% !important; max-height: 100% !important; border-radius: 6px !important; }
+        .detail-modal-header { padding: 8px 12px !important; }
+        .detail-modal-header .detail-modal-subtitle { display: none !important; }
         <?php if ($isHideHeader): ?>
         .dashboard-card-header { display: none !important; }
         .main-content { padding: 0 !important; }
         .dashboard-card { border: none !important; margin: 0 !important; }
-        .dashboard-card-body { padding: 4px 6px !important; }
+        .dashboard-card-body { padding: 4px 6px !important; height: 100% !important; }
         .mini-stats-row { padding: 4px 6px !important; border-bottom: none !important; }
         html, body { overflow: hidden !important; }
         .floating-header-toggle { display: none !important; }
@@ -879,9 +883,10 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
         .search-input-header { width: 0; padding: 0; border: none; outline: none; background: transparent; transition: all 0.3s; font-size: 12px; font-weight: normal; color: #333; }
         .search-input-header.active { width: 150px; padding: 4px 10px; border-bottom: 2px solid #004d40; margin-right: 10px; background: #fff; }
 
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 2000; }
-        .modal-box { background: #fff; width: 550px; padding: 25px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #e0e4e8; max-height: 90vh; overflow-y: auto; }
-        .detail-modal-box { width: 1000px !important; max-width: 95% !important; padding: 0; overflow: hidden; display: flex; flex-direction: column;}
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: none; align-items: center; justify-content: center; z-index: 99999; padding: 12px; box-sizing: border-box; }
+        .modal-box { background: #fff; width: 550px; padding: 25px; border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.2); border: 1px solid #e0e4e8; max-height: 90vh; overflow-y: auto; }
+        .detail-modal-box { width: 1000px !important; max-width: 98% !important; max-height: 94vh !important; height: auto; padding: 0 !important; overflow: hidden !important; display: flex !important; flex-direction: column !important; border-radius: 8px; border: 1px solid #cbd5e1; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.25); }
+        .detail-modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding: 14px 20px; background: #f8fafc; flex-shrink: 0; }
 
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; font-size: 11px !important; text-transform: uppercase; font-weight: normal !important; color: #7f8c8d; margin-bottom: 5px; }
@@ -930,22 +935,22 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 
 <div class="main-content pt-4"><div class="grid-layout" id="dashboardGrid"></div></div>
 
-<div class="modal-overlay" id="detailModal" style="z-index: 2050;">
+<div class="modal-overlay" id="detailModal" style="z-index: 99999;">
     <div class="modal-box detail-modal-box">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid #e0e4e8; padding:20px 25px; background: #f8f9fa;">
-            <div style="flex: 1;">
-                <h5 style="font-weight: normal!important; text-transform:uppercase; margin:0; color:#0b1a26;" id="detailModalTitle">Node Details</h5>
-                <div style="font-size:11px!important; color:#7f8c8d; margin-top:5px; font-weight: normal;">* Displays the list of nodes based on the status group you clicked.</div>
+        <div class="detail-modal-header">
+            <div style="flex: 1; min-width: 0; padding-right: 10px;">
+                <h5 style="font-weight: 600!important; text-transform:uppercase; margin:0; color:#0b1a26; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" id="detailModalTitle">Node Details</h5>
+                <div class="detail-modal-subtitle" style="font-size:11px!important; color:#7f8c8d; margin-top:2px; font-weight: normal;">* Displays the list of nodes based on the status group you clicked.</div>
             </div>
-            <div style="display:flex; align-items:center; gap: 15px;">
+            <div style="display:flex; align-items:center; gap: 10px; flex-shrink: 0;">
                 <div class="modal-search-container">
                     <span class="material-symbols-outlined search-icon">search</span>
                     <input type="text" id="detailModalSearch" placeholder="Search agent or module..." onkeyup="filterDetailModal()">
                 </div>
-                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeDetailModal()">close</span>
+                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size: 20px;" onclick="closeDetailModal()">close</span>
             </div>
         </div>
-        <div id="detailModalContent" style="padding: 0; background: #fff;"></div>
+        <div id="detailModalContent" style="padding: 0; background: #fff; flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column;"></div>
     </div>
 </div>
 
@@ -1490,7 +1495,7 @@ function renderDetailModalPage() {
     const endIdx = Math.min(startIdx + MODAL_PAGE_SIZE, total);
     const pageData = modalFilteredData.slice(startIdx, endIdx);
 
-    let h = '<div style="padding:0; max-height:60vh; overflow-y:auto;"><table class="table-pfms"><thead><tr><th>Node Agent</th><th>IP Address</th><th>Group</th><th>Module Name</th><th>Status</th><th>Last Update</th></tr></thead><tbody>';
+    let h = '<div style="padding:0; flex: 1 1 auto; min-height: 0; overflow-y:auto; overflow-x:auto;"><table class="table-pfms" style="margin:0;"><thead><tr style="position:sticky; top:0; background:#f8fafc; z-index:2; box-shadow:0 1px 0 #e2e8f0;"><th style="white-space:nowrap;">Node Agent</th><th style="white-space:nowrap;">IP Address</th><th style="white-space:nowrap;">Group</th><th style="white-space:nowrap;">Module Name</th><th style="white-space:nowrap;">Status</th><th style="white-space:nowrap;">Last Update</th></tr></thead><tbody>';
 
     if(pageData.length === 0) {
          h += '<tr><td colspan="6" style="text-align:center; padding: 25px; color:#7f8c8d; font-weight: normal;">No modules found.</td></tr>';
@@ -1520,12 +1525,12 @@ function renderDetailModalPage() {
 
     if(totalPages > 1) {
         h += `
-        <div class="pagination-container" style="background:#fff; border-radius:0;">
+        <div class="pagination-container" style="background:#fff; border-top:1px solid #e2e8f0; border-radius:0; padding:6px 14px; flex-shrink: 0; box-shadow: 0 -1px 3px rgba(0,0,0,0.02);">
             <div style="font-size:11px; font-weight: normal; color:#7f8c8d;">Showing ${startIdx + 1} to ${endIdx} of ${total} Entries</div>
-            <div style="display:flex; gap:10px;">
-                <button class="pagination-btn" ${modalCurrentPage === 1 ? 'disabled' : ''} onclick="changeModalPage(-1)">Prev</button>
-                <span style="font-size:12px; font-weight: normal; align-self:center;">Page ${modalCurrentPage} / ${totalPages}</span>
-                <button class="pagination-btn" ${modalCurrentPage === totalPages ? 'disabled' : ''} onclick="changeModalPage(1)">Next</button>
+            <div style="display:flex; gap:8px;">
+                <button class="pagination-btn" style="padding:3px 8px; font-size:11px;" ${modalCurrentPage === 1 ? 'disabled' : ''} onclick="changeModalPage(-1)">Prev</button>
+                <span style="font-size:11px; font-weight: normal; align-self:center;">Page ${modalCurrentPage} / ${totalPages}</span>
+                <button class="pagination-btn" style="padding:3px 8px; font-size:11px;" ${modalCurrentPage === totalPages ? 'disabled' : ''} onclick="changeModalPage(1)">Next</button>
             </div>
         </div>`;
     }

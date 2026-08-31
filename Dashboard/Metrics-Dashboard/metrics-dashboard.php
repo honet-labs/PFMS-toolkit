@@ -924,6 +924,10 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
         .chart-container { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; padding: 0 !important; margin: 0 !important; }
         .chart-container > div[id^="chart_canvas_"] { flex: 1 !important; min-height: 120px !important; width: 100% !important; height: 100% !important; }
         .chart-html-legend { flex-shrink: 0 !important; max-height: 80px !important; overflow-y: auto !important; margin-top: auto !important; }
+        .modal-overlay { padding: 6px !important; align-items: stretch !important; }
+        .detail-modal-box { width: 100% !important; max-width: 100% !important; height: 100% !important; max-height: 100% !important; border-radius: 6px !important; }
+        .detail-modal-header { padding: 8px 12px !important; }
+        .detail-modal-header .detail-modal-subtitle { display: none !important; }
         <?php if ($isHideHeader): ?>
         .dashboard-card-header { display: none !important; }
         .main-content { padding: 0 !important; }
@@ -948,35 +952,34 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
         .nav-icon-btn { color: #4a5568 !important; text-decoration: none; display: flex; align-items: center; justify-content: center; height: 36px; width: 36px; border-radius: 50%; transition: 0.2s; border:none; background:transparent; cursor:pointer;}
 
         .pandora-header-bottom { background-color: #f4f6f8; padding: 15px 30px; display: flex; align-items: center; justify-content: space-between; }
-        .page-breadcrumb { font-size: 11px !important; color: #64748b !important; margin-bottom: 4px; font-weight: normal !important; text-transform: uppercase; letter-spacing: 0.5px; }
-        .page-title { font-size: 18px !important; color: #0b1a26 !important; margin: 0; font-weight: 600 !important; line-height: 1.2; }
-
-        .top-controls { display: flex !important; flex-direction: row !important; gap: 10px !important; align-items: center !important; }
-        .btn-apply { background: #004d40; color: #fff !important; border: none; padding: 8px 25px; border-radius: 4px; font-weight: normal !important; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; transition:0.2s;}
-        .btn-apply:hover { background: #00332a; }
-        .btn-secondary-custom { background: #fff; color: #4a5568 !important; border: 1px solid #dce1e5; padding: 8px 20px; border-radius: 4px; font-weight: normal !important; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;}
-        .icon-btn-card { background: transparent; border: none; padding: 4px; cursor: pointer; color: #7f8c8d; border-radius: 4px; display:inline-flex; align-items:center; }
-        .icon-btn-card:hover { background: #e0e4e8; color: #0b1a26; }
-
-        .main-content { padding: 0 30px 30px 30px; }
+        .page-breadcrumb { font-size: 11px !important; font-weight: normal !important; color: #7f8c8d; text-transform: uppercase; margin-bottom: 4px; display: block; }
+        .page-title { font-size: 18px !important; font-weight: normal !important; color: #0b1a26; margin: 0; }
         
-        .grid-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 700px), 1fr)); gap: 20px; align-items: start; }
-        .grid-layout.single-item { grid-template-columns: 1fr; }
-        @media (max-width: 1200px) { .grid-layout { grid-template-columns: 1fr; } }
+        .top-controls { display: flex; gap: 10px; align-items: center; }
+        .btn-secondary-custom { background-color: #ffffff; border: 1px solid #dce1e5; color: #0b1a26; padding: 7px 14px; border-radius: 4px; font-size: 12px !important; font-weight: normal !important; display: flex; align-items: center; gap: 6px; cursor: pointer; text-decoration: none; transition: 0.2s; }
+        .btn-secondary-custom:hover { background-color: #f8f9fa; border-color: #b5c1c9; }
+        .btn-apply { background-color: #004d40; border: 1px solid #004d40; color: #ffffff; padding: 7px 16px; border-radius: 4px; font-size: 12px !important; font-weight: normal !important; display: flex; align-items: center; gap: 6px; cursor: pointer; text-decoration: none; }
+        .btn-apply:hover { background-color: #00382e; border-color: #00382e; color: #fff; }
 
-        .dashboard-card { background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: inline-block; width:100%; margin-bottom:20px; break-inside: avoid; vertical-align: top; overflow: hidden; border: 1px solid #f0f3f5; cursor: default; transition: transform 0.2s, box-shadow 0.2s; }
-        .dashboard-card.dragging { opacity: 0.5; transform: scale(0.98); box-shadow: 0 10px 20px rgba(0,0,0,0.1); cursor: grabbing; }
-        .dashboard-card.drag-over { border: 2px dashed #004d40; border-radius: 8px; }
+        .main-content { padding: 30px; max-width: 100%; margin: 0 auto; box-sizing: border-box; }
+        .grid-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; align-items: stretch; }
+        .grid-layout.single-item { grid-template-columns: 1fr !important; }
 
-        .dashboard-card-header { padding: 15px 20px; border-bottom: 1px solid #e0e4e8; background-color: #f8f9fa; display: flex; justify-content: space-between; align-items: center; cursor: grab; }
-        .dashboard-card-header:active { cursor: grabbing; }
-        .dashboard-card-title { font-size: 14px !important; font-weight: 500 !important; color: #1e293b !important; margin: 0; letter-spacing: 0.3px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
-        .dashboard-card-body { padding: 20px; display: flex; flex-direction: column; gap: 20px; flex-grow:1;}
+        .dashboard-card { background: #ffffff; border: 1px solid #e0e4e8; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        .dashboard-card.dragging { opacity: 0.4; border: 2px dashed #004d40; }
+        .dashboard-card.drag-over { border-top: 3px solid #004d40; }
+        .dashboard-card-header { padding: 12px 18px; border-bottom: 1px solid #f0f3f5; display: flex; justify-content: space-between; align-items: center; background-color: #ffffff; }
+        .dashboard-card-title { font-size: 13px !important; font-weight: normal !important; color: #0b1a26; margin: 0; display: flex; align-items: center; gap: 6px; }
+        .card-actions { display: flex; gap: 6px; }
+        .icon-btn-card { background: none; border: none; color: #7f8c8d; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+        .icon-btn-card:hover { background: #f0f3f5; color: #0b1a26; }
 
-        .mini-stats-row { display: flex; gap: 10px; width: 100%; flex-wrap: wrap;}
-        .mini-stat { flex: 1; min-width: 90px; text-align: center; padding: 12px 5px; border-radius: 6px; background: #ffffff; border: 1px solid #e0e4e8; border-bottom: 4px solid #ccc; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .mini-stat:hover { transform: translateY(-3px); box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
-        .mini-stat-val { font-size: 22px !important; font-weight: normal !important; line-height: 1; margin-bottom: 5px; }
+        .dashboard-card-body { padding: 15px 18px; display: flex; flex-direction: column; gap: 15px; flex-grow: 1; }
+
+        .mini-stats-row { display: flex; gap: 10px; border-bottom: 1px solid #f0f3f5; padding-bottom: 15px; }
+        .mini-stat { flex: 1; border-bottom: 2px solid transparent; padding-bottom: 4px; cursor: pointer; transition: 0.2s; }
+        .mini-stat:hover { opacity: 0.8; }
+        .mini-stat-val { font-size: 18px !important; font-weight: normal !important; line-height: 1.1; }
         .mini-stat-label { font-size: 9px !important; text-transform: uppercase; color: #7f8c8d; font-weight: normal !important; white-space: nowrap; }
 
         .st-border-black { border-bottom-color: #0b1a26; } .text-black { color: #0b1a26 !important; }
@@ -1022,9 +1025,10 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
         .search-input-header { width: 0; padding: 0; border: none; outline: none; background: transparent; transition: all 0.3s; font-size: 12px; font-weight: normal; color: #333; }
         .search-input-header.active { width: 150px; padding: 4px 10px; border-bottom: 2px solid #004d40; margin-right: 10px; background: #fff; }
 
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 2000; }
-        .modal-box { background: #fff; width: 550px; padding: 25px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #e0e4e8; max-height: 90vh; overflow-y: auto; }
-        .detail-modal-box { width: 1000px !important; max-width: 95% !important; padding: 0; overflow: hidden; display: flex; flex-direction: column;}
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: none; align-items: center; justify-content: center; z-index: 99999; padding: 12px; box-sizing: border-box; }
+        .modal-box { background: #fff; width: 550px; padding: 25px; border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.2); border: 1px solid #e0e4e8; max-height: 90vh; overflow-y: auto; }
+        .detail-modal-box { width: 1000px !important; max-width: 98% !important; max-height: 94vh !important; height: auto; padding: 0 !important; overflow: hidden !important; display: flex !important; flex-direction: column !important; border-radius: 8px; border: 1px solid #cbd5e1; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.25); }
+        .detail-modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding: 14px 20px; background: #f8fafc; flex-shrink: 0; }
         .iframe-modal-box { width: 950px; max-width: 95%; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1); display: flex; flex-direction: column;}
         .iframe-header { padding: 15px 20px; border-bottom: 1px solid #e0e4e8; display: flex; justify-content: space-between; align-items: center; background-color: #f8f9fa; }
         .iframe-title { font-weight: normal !important; font-size: 14px !important; color: #0b1a26;}
@@ -1153,22 +1157,22 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
     </div>
 </div>
 
-<div class="modal-overlay" id="detailModal" style="z-index: 2050;">
+<div class="modal-overlay" id="detailModal" style="z-index: 99999;">
     <div class="modal-box detail-modal-box">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid #e0e4e8; padding:20px 25px; background: #f8f9fa;">
-            <div style="flex: 1;">
-                <h5 style="font-weight: normal!important; text-transform:uppercase; margin:0; color:#0b1a26;" id="detailModalTitle">Module Details</h5>
-                <div style="font-size:11px!important; color:#7f8c8d; margin-top:5px; font-weight: normal;">* Displays the list of modules based on the status group you clicked.</div>
+        <div class="detail-modal-header">
+            <div style="flex: 1; min-width: 0; padding-right: 10px;">
+                <h5 style="font-weight: 600!important; text-transform:uppercase; margin:0; color:#0b1a26; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" id="detailModalTitle">Module Details</h5>
+                <div class="detail-modal-subtitle" style="font-size:11px!important; color:#7f8c8d; margin-top:2px; font-weight: normal;">* Displays the list of modules based on the status group you clicked.</div>
             </div>
-            <div style="display:flex; align-items:center; gap: 15px;">
+            <div style="display:flex; align-items:center; gap: 10px; flex-shrink: 0;">
                 <div class="modal-search-container">
                     <span class="material-symbols-outlined search-icon">search</span>
                     <input type="text" id="detailModalSearch" placeholder="Search agent or module..." onkeyup="filterDetailModal()">
                 </div>
-                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeDetailModal()">close</span>
+                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size: 20px;" onclick="closeDetailModal()">close</span>
             </div>
         </div>
-        <div id="detailModalContent" style="padding: 0; background: #fff;"></div>
+        <div id="detailModalContent" style="padding: 0; background: #fff; flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column;"></div>
     </div>
 </div>
 
@@ -2861,7 +2865,7 @@ function renderDetailModalPage() {
     const endIdx = Math.min(startIdx + MODAL_PAGE_SIZE, total);
     const pageData = modalFilteredData.slice(startIdx, endIdx);
 
-    let h = '<div style="padding:0; max-height:60vh; overflow-y:auto;"><table class="table-pfms"><thead><tr><th>Agent</th><th>Group</th><th>IP Address</th><th>Sensor Module</th><th>Value</th><th style="text-align:center;">Status</th><th style="text-align:center;">Actions</th></tr></thead><tbody>';
+    let h = '<div style="padding:0; flex: 1 1 auto; min-height: 0; overflow-y:auto; overflow-x:auto;"><table class="table-pfms" style="margin:0;"><thead><tr style="position:sticky; top:0; background:#f8fafc; z-index:2; box-shadow:0 1px 0 #e2e8f0;"><th style="white-space:nowrap;">Agent</th><th style="white-space:nowrap;">Group</th><th style="white-space:nowrap;">IP Address</th><th style="white-space:nowrap;">Sensor Module</th><th style="white-space:nowrap;">Value</th><th style="text-align:center; white-space:nowrap;">Status</th><th style="text-align:center; white-space:nowrap;">Actions</th></tr></thead><tbody>';
 
     if (pageData.length === 0) {
         h += '<tr><td colspan="7" style="text-align:center; padding: 25px; color:#7f8c8d; font-weight: normal;">No matching data found.</td></tr>';
@@ -2906,12 +2910,12 @@ function renderDetailModalPage() {
 
     if(totalPages > 1) {
         h += `
-        <div class="pagination-container" style="background:#fff; border-radius:0;">
+        <div class="pagination-container" style="background:#fff; border-top:1px solid #e2e8f0; border-radius:0; padding:6px 14px; flex-shrink: 0; box-shadow: 0 -1px 3px rgba(0,0,0,0.02);">
             <div style="font-size:11px; font-weight: normal; color:#7f8c8d;">Showing ${startIdx + 1} to ${endIdx} of ${total} Entries</div>
-            <div style="display:flex; gap:10px;">
-                <button class="pagination-btn" ${modalCurrentPage === 1 ? 'disabled' : ''} onclick="changeModalPage(-1)">Prev</button>
-                <span style="font-size:12px; font-weight: normal; align-self:center;">Page ${modalCurrentPage} / ${totalPages}</span>
-                <button class="pagination-btn" ${modalCurrentPage === totalPages ? 'disabled' : ''} onclick="changeModalPage(1)">Next</button>
+            <div style="display:flex; gap:8px;">
+                <button class="pagination-btn" style="padding:3px 8px; font-size:11px;" ${modalCurrentPage === 1 ? 'disabled' : ''} onclick="changeModalPage(-1)">Prev</button>
+                <span style="font-size:11px; font-weight: normal; align-self:center;">Page ${modalCurrentPage} / ${totalPages}</span>
+                <button class="pagination-btn" style="padding:3px 8px; font-size:11px;" ${modalCurrentPage === totalPages ? 'disabled' : ''} onclick="changeModalPage(1)">Next</button>
             </div>
         </div>`;
     }
