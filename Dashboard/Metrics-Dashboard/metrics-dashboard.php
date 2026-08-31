@@ -1338,6 +1338,23 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             </div>
         </div>
 
+        <div style="display:flex; gap:15px; margin-bottom: 15px;">
+            <div style="flex:1;">
+                <label>Stats Card Background</label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <input type="color" id="b_stat_bg_color" value="#ffffff" style="width:36px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; background:#fff;" onchange="document.getElementById('b_stat_bg_color_hex').value = this.value;">
+                    <input type="text" id="b_stat_bg_color_hex" class="form-control-fix" value="" placeholder="#ffffff" style="flex:1; height:34px; margin-bottom:0;" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('b_stat_bg_color').value = this.value;">
+                </div>
+            </div>
+            <div style="flex:1;">
+                <label>Stats Card Font Color</label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <input type="color" id="b_stat_font_color" value="#334155" style="width:36px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; background:#fff;" onchange="document.getElementById('b_stat_font_color_hex').value = this.value;">
+                    <input type="text" id="b_stat_font_color_hex" class="form-control-fix" value="" placeholder="Default (Status Color)" style="flex:1; height:34px; margin-bottom:0;" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('b_stat_font_color').value = this.value;">
+                </div>
+            </div>
+        </div>
+
         <div class="form-group" style="margin-bottom: 12px;">
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;">
                 <input type="checkbox" id="b_auto_convert_traffic" checked style="width:16px; height:16px; margin:0;"> Auto-Convert Traffic to bps / Kbps / Mbps / Gbps (On/Off)
@@ -2404,24 +2421,28 @@ function renderGrid() {
             ? c.visible_stats 
             : ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'];
 
+        const statBg = c.stat_bg_color ? `background: ${c.stat_bg_color} !important;` : '';
+        const statValColor = c.stat_font_color ? `color: ${c.stat_font_color} !important;` : '';
+        const statLblColor = c.stat_font_color ? `color: ${c.stat_font_color} !important; opacity: 0.75;` : '';
+
         let statsHtml = '';
         if (visStats.includes('total')) {
-            statsHtml += `<div class="mini-stat st-border-black" onclick="showDetailModal('${c.id}', 'all')"><div class="mini-stat-val text-black" id="st_tot_${c.id}">0</div><div class="mini-stat-label">TOTAL</div></div>`;
+            statsHtml += `<div class="mini-stat st-border-black" style="${statBg}" onclick="showDetailModal('${c.id}', 'all')"><div class="mini-stat-val text-black" style="${statValColor}" id="st_tot_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor}">TOTAL</div></div>`;
         }
         if (visStats.includes('normal')) {
-            statsHtml += `<div class="mini-stat st-border-green" onclick="showDetailModal('${c.id}', 'normal')"><div class="mini-stat-val text-green" id="st_normal_${c.id}">0</div><div class="mini-stat-label">UP</div></div>`;
+            statsHtml += `<div class="mini-stat st-border-green" style="${statBg}" onclick="showDetailModal('${c.id}', 'normal')"><div class="mini-stat-val text-green" style="${statValColor}" id="st_normal_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor}">UP</div></div>`;
         }
         if (visStats.includes('warning')) {
-            statsHtml += `<div class="mini-stat st-border-yellow" onclick="showDetailModal('${c.id}', 'warning')"><div class="mini-stat-val text-yellow" id="st_warning_${c.id}">0</div><div class="mini-stat-label">WARNING</div></div>`;
+            statsHtml += `<div class="mini-stat st-border-yellow" style="${statBg}" onclick="showDetailModal('${c.id}', 'warning')"><div class="mini-stat-val text-yellow" style="${statValColor}" id="st_warning_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor}">WARNING</div></div>`;
         }
         if (visStats.includes('critical')) {
-            statsHtml += `<div class="mini-stat st-border-red" onclick="showDetailModal('${c.id}', 'critical')"><div class="mini-stat-val text-red" id="st_critical_${c.id}">0</div><div class="mini-stat-label">CRITICAL</div></div>`;
+            statsHtml += `<div class="mini-stat st-border-red" style="${statBg}" onclick="showDetailModal('${c.id}', 'critical')"><div class="mini-stat-val text-red" style="${statValColor}" id="st_critical_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor}">CRITICAL</div></div>`;
         }
         if (visStats.includes('unknown')) {
-            statsHtml += `<div class="mini-stat st-border-gray" onclick="showDetailModal('${c.id}', 'unknown')"><div class="mini-stat-val text-gray" id="st_unknown_${c.id}">0</div><div class="mini-stat-label">UNKNOWN</div></div>`;
+            statsHtml += `<div class="mini-stat st-border-gray" style="${statBg}" onclick="showDetailModal('${c.id}', 'unknown')"><div class="mini-stat-val text-gray" style="${statValColor}" id="st_unknown_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor}">UNKNOWN</div></div>`;
         }
         if (visStats.includes('not_init')) {
-            statsHtml += `<div class="mini-stat st-border-blue" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" id="st_not_init_${c.id}">0</div><div class="mini-stat-label">NOT INIT</div></div>`;
+            statsHtml += `<div class="mini-stat st-border-blue" style="${statBg}" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" style="${statValColor}" id="st_not_init_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor}">NOT INIT</div></div>`;
         }
 
         div.innerHTML = `<div class="dashboard-card-header"><div><h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="color:#004d40;">analytics</span> ${c.title}</h5><div style="font-size:10px; color:#7f8c8d; font-weight: normal;"><span id="meta_up_${c.id}">Awaiting...</span> <span id="meta_timer_${c.id}"></span></div></div>${acts}</div>
@@ -3232,6 +3253,10 @@ async function openBuilder() {
         const el = document.getElementById('b_stat_' + s);
         if (el) el.checked = true;
     });
+    document.getElementById('b_stat_bg_color').value = '#ffffff';
+    document.getElementById('b_stat_bg_color_hex').value = '';
+    document.getElementById('b_stat_font_color').value = '#334155';
+    document.getElementById('b_stat_font_color_hex').value = '';
     if (document.getElementById('b_auto_convert_traffic')) document.getElementById('b_auto_convert_traffic').checked = true;
     if (document.getElementById('b_show_module_name')) document.getElementById('b_show_module_name').value = '1';
     toggleViewTypeOptions();
@@ -3266,6 +3291,11 @@ async function openEdit(id) {
             }
         }
     });
+
+    document.getElementById('b_stat_bg_color').value = c.stat_bg_color || '#ffffff';
+    document.getElementById('b_stat_bg_color_hex').value = c.stat_bg_color || '';
+    document.getElementById('b_stat_font_color').value = c.stat_font_color || '#334155';
+    document.getElementById('b_stat_font_color_hex').value = c.stat_font_color || '';
 
     const activeCols = c.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
     document.querySelectorAll('.col-visibility-chk').forEach(el => {
@@ -3342,6 +3372,8 @@ function saveWidget() {
         icon_size: document.getElementById('b_icon_size').value || 18,
         font_size: document.getElementById('b_font_size').value || 14,
         chart_font_size: parseInt(document.getElementById('b_chart_font_size').value) || 11,
+        stat_bg_color: document.getElementById('b_stat_bg_color_hex').value.trim(),
+        stat_font_color: document.getElementById('b_stat_font_color_hex').value.trim(),
         auto_convert_traffic: document.getElementById('b_auto_convert_traffic') ? document.getElementById('b_auto_convert_traffic').checked : true,
         use_raw: document.getElementById('b_use_raw').checked,
         chart_limit: document.getElementById('b_chart_limit').value,

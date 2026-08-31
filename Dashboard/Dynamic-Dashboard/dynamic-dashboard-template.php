@@ -1191,6 +1191,23 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 </label>
             </div>
 
+            <div style="display:flex; gap:10px; margin-top:5px; margin-bottom:10px;" id="wrap_stats_color">
+                <div class="form-group" style="flex:1; margin-bottom:0;">
+                    <label style="color:#4a5568; font-size:10px; font-weight: 600!important;">Stats Card Background</label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="color" id="p_stat_bg_color" value="#ffffff" style="width:36px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; background:#fff;" onchange="document.getElementById('p_stat_bg_color_hex').value = this.value;">
+                        <input type="text" id="p_stat_bg_color_hex" class="form-control-fix" value="" placeholder="#ffffff" style="flex:1; height:34px; margin-bottom:0;" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('p_stat_bg_color').value = this.value;">
+                    </div>
+                </div>
+                <div class="form-group" style="flex:1; margin-bottom:0;">
+                    <label style="color:#4a5568; font-size:10px; font-weight: 600!important;">Stats Card Font Color</label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="color" id="p_stat_font_color" value="#334155" style="width:36px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; background:#fff;" onchange="document.getElementById('p_stat_font_color_hex').value = this.value;">
+                        <input type="text" id="p_stat_font_color_hex" class="form-control-fix" value="" placeholder="Default (Status Color)" style="flex:1; height:34px; margin-bottom:0;" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('p_stat_font_color').value = this.value;">
+                    </div>
+                </div>
+            </div>
+
             <div style="display:flex; gap:10px; margin-top:5px; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e4e8;">
                 <div class="form-group" style="flex:1; margin-bottom:0;">
                     <label style="color:#4a5568; font-size:10px; font-weight: 600!important;">Label for Value 1 (UP)</label>
@@ -2351,31 +2368,35 @@ function generateSummaryPanelHtml(p, modules) {
     });
 
     if (p.type === 'status_stats') {
+        const statBg = p.stat_bg_color ? `background: ${p.stat_bg_color} !important;` : '';
+        const statValColor = p.stat_font_color ? `color: ${p.stat_font_color} !important;` : '';
+        const statLblColor = p.stat_font_color ? `color: ${p.stat_font_color} !important; opacity: 0.75;` : '';
+
         content = `
             <div class="mini-stats-row">
-                <div class="mini-stat st-black" onclick="showStatusDetails('${p.id}', -1, 'TOTAL')">
-                    <div class="mini-stat-val" style="color:#333;">${stats.total}</div>
-                    <div class="mini-stat-label">TOTAL</div>
+                <div class="mini-stat st-black" style="${statBg}" onclick="showStatusDetails('${p.id}', -1, 'TOTAL')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#333;'}">${stats.total}</div>
+                    <div class="mini-stat-label" style="${statLblColor}">TOTAL</div>
                 </div>
-                <div class="mini-stat st-green" onclick="showStatusDetails('${p.id}', 0, 'UP')">
-                    <div class="mini-stat-val" style="color:#2ecc71;">${stats.up}</div>
-                    <div class="mini-stat-label">UP / OK</div>
+                <div class="mini-stat st-green" style="${statBg}" onclick="showStatusDetails('${p.id}', 0, 'UP')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#2ecc71;'}">${stats.up}</div>
+                    <div class="mini-stat-label" style="${statLblColor}">UP / OK</div>
                 </div>
-                <div class="mini-stat st-red" onclick="showStatusDetails('${p.id}', 1, 'CRITICAL')">
-                    <div class="mini-stat-val" style="color:#e74c3c;">${stats.crit}</div>
-                    <div class="mini-stat-label">CRITICAL</div>
+                <div class="mini-stat st-red" style="${statBg}" onclick="showStatusDetails('${p.id}', 1, 'CRITICAL')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#e74c3c;'}">${stats.crit}</div>
+                    <div class="mini-stat-label" style="${statLblColor}">CRITICAL</div>
                 </div>
-                <div class="mini-stat st-yellow" onclick="showStatusDetails('${p.id}', 2, 'WARNING')">
-                    <div class="mini-stat-val" style="color:#f1c40f;">${stats.warn}</div>
-                    <div class="mini-stat-label">WARNING</div>
+                <div class="mini-stat st-yellow" style="${statBg}" onclick="showStatusDetails('${p.id}', 2, 'WARNING')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#f1c40f;'}">${stats.warn}</div>
+                    <div class="mini-stat-label" style="${statLblColor}">WARNING</div>
                 </div>
-                <div class="mini-stat st-gray" onclick="showStatusDetails('${p.id}', 3, 'UNKNOWN')">
-                    <div class="mini-stat-val" style="color:#94a3b8;">${stats.unknown}</div>
-                    <div class="mini-stat-label">UNKNOWN</div>
+                <div class="mini-stat st-gray" style="${statBg}" onclick="showStatusDetails('${p.id}', 3, 'UNKNOWN')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#94a3b8;'}">${stats.unknown}</div>
+                    <div class="mini-stat-label" style="${statLblColor}">UNKNOWN</div>
                 </div>
-                <div class="mini-stat st-blue" onclick="showStatusDetails('${p.id}', 4, 'NOT INIT')">
-                    <div class="mini-stat-val" style="color:#3498db;">${stats.not_init}</div>
-                    <div class="mini-stat-label">NOT INIT</div>
+                <div class="mini-stat st-blue" style="${statBg}" onclick="showStatusDetails('${p.id}', 4, 'NOT INIT')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#3498db;'}">${stats.not_init}</div>
+                    <div class="mini-stat-label" style="${statLblColor}">NOT INIT</div>
                 </div>
             </div>`;
     } else if (p.type === 'status_table') {
@@ -3121,6 +3142,10 @@ function openPanelBuilder() {
     document.getElementById('p_chart_font_size').value = '10';
     document.getElementById('p_lbl_1').value = '';
     document.getElementById('p_lbl_0').value = '';
+    document.getElementById('p_stat_bg_color').value = '#ffffff';
+    document.getElementById('p_stat_bg_color_hex').value = '';
+    document.getElementById('p_stat_font_color').value = '#334155';
+    document.getElementById('p_stat_font_color_hex').value = '';
     document.getElementById('p_show_module').checked = true;
     document.getElementById('p_use_raw').checked = false;
     document.getElementById('p_auto_convert_traffic').checked = true;
@@ -3147,6 +3172,10 @@ function openPanelEdit(id) {
     document.getElementById('p_chart_font_size').value = p.chart_font_size || 10;
     document.getElementById('p_font_size').value = p.font_size || 32;
     document.getElementById('p_font_weight').value = p.font_weight || 700;
+    document.getElementById('p_stat_bg_color').value = p.stat_bg_color || '#ffffff';
+    document.getElementById('p_stat_bg_color_hex').value = p.stat_bg_color || '';
+    document.getElementById('p_stat_font_color').value = p.stat_font_color || '#334155';
+    document.getElementById('p_stat_font_color_hex').value = p.stat_font_color || '';
     document.getElementById('p_show_module').checked = p.show_module !== false;
     document.getElementById('p_use_raw').checked = p.use_raw || false;
     document.getElementById('p_auto_convert_traffic').checked = p.auto_convert_traffic !== false;
@@ -3199,6 +3228,8 @@ function applyPanel() {
         chart_font_size: parseInt(document.getElementById('p_chart_font_size').value) || 10,
         font_size: parseInt(document.getElementById('p_font_size').value) || 32,
         font_weight: document.getElementById('p_font_weight').value || 700,
+        stat_bg_color: document.getElementById('p_stat_bg_color_hex').value.trim(),
+        stat_font_color: document.getElementById('p_stat_font_color_hex').value.trim(),
         show_module: document.getElementById('p_show_module').checked,
         use_raw: document.getElementById('p_use_raw').checked,
         auto_convert_traffic: document.getElementById('p_auto_convert_traffic').checked,
