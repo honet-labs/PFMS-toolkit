@@ -2352,7 +2352,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         `;
     }
 
-    return `<div class="panel-card ${hiddenClass}" style="height: 100%; margin:0;"><div class="panel-header"><div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:6px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span> ${p.title}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div></div>`;
+    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:6px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span> ${p.title}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div></div>`;
 }
 
 function generateSummaryPanelHtml(p, modules) {
@@ -2371,32 +2371,37 @@ function generateSummaryPanelHtml(p, modules) {
         const statBg = p.stat_bg_color ? `background: ${p.stat_bg_color} !important;` : '';
         const statValColor = p.stat_font_color ? `color: ${p.stat_font_color} !important;` : '';
         const statLblColor = p.stat_font_color ? `color: ${p.stat_font_color} !important; opacity: 0.75;` : '';
+        const valFs = p.font_size ? `font-size: ${p.font_size}px !important;` : '';
+        const valFw = p.font_weight ? `font-weight: ${p.font_weight} !important;` : '';
+        const lblFs = p.font_size ? `font-size: ${Math.max(8, Math.round(p.font_size * 0.4))}px !important;` : '';
+        const cardMinH = p.height ? `min-height: ${Math.max(50, parseInt(p.height) - 70)}px;` : '';
+        const statCardStyle = `${statBg} ${cardMinH} ${p.height ? 'display:flex; flex-direction:column; justify-content:center; align-items:center;' : ''}`;
 
         content = `
             <div class="mini-stats-row">
-                <div class="mini-stat st-black" style="${statBg}" onclick="showStatusDetails('${p.id}', -1, 'TOTAL')">
-                    <div class="mini-stat-val" style="${statValColor || 'color:#333;'}">${stats.total}</div>
-                    <div class="mini-stat-label" style="${statLblColor}">TOTAL</div>
+                <div class="mini-stat st-black" style="${statCardStyle}" onclick="showStatusDetails('${p.id}', -1, 'TOTAL')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#333;'} ${valFs} ${valFw}">${stats.total}</div>
+                    <div class="mini-stat-label" style="${statLblColor} ${lblFs}">TOTAL</div>
                 </div>
-                <div class="mini-stat st-green" style="${statBg}" onclick="showStatusDetails('${p.id}', 0, 'UP')">
-                    <div class="mini-stat-val" style="${statValColor || 'color:#2ecc71;'}">${stats.up}</div>
-                    <div class="mini-stat-label" style="${statLblColor}">UP / OK</div>
+                <div class="mini-stat st-green" style="${statCardStyle}" onclick="showStatusDetails('${p.id}', 0, 'UP')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#2ecc71;'} ${valFs} ${valFw}">${stats.up}</div>
+                    <div class="mini-stat-label" style="${statLblColor} ${lblFs}">UP / OK</div>
                 </div>
-                <div class="mini-stat st-red" style="${statBg}" onclick="showStatusDetails('${p.id}', 1, 'CRITICAL')">
-                    <div class="mini-stat-val" style="${statValColor || 'color:#e74c3c;'}">${stats.crit}</div>
-                    <div class="mini-stat-label" style="${statLblColor}">CRITICAL</div>
+                <div class="mini-stat st-red" style="${statCardStyle}" onclick="showStatusDetails('${p.id}', 1, 'CRITICAL')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#e74c3c;'} ${valFs} ${valFw}">${stats.crit}</div>
+                    <div class="mini-stat-label" style="${statLblColor} ${lblFs}">CRITICAL</div>
                 </div>
-                <div class="mini-stat st-yellow" style="${statBg}" onclick="showStatusDetails('${p.id}', 2, 'WARNING')">
-                    <div class="mini-stat-val" style="${statValColor || 'color:#f1c40f;'}">${stats.warn}</div>
-                    <div class="mini-stat-label" style="${statLblColor}">WARNING</div>
+                <div class="mini-stat st-yellow" style="${statCardStyle}" onclick="showStatusDetails('${p.id}', 2, 'WARNING')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#f1c40f;'} ${valFs} ${valFw}">${stats.warn}</div>
+                    <div class="mini-stat-label" style="${statLblColor} ${lblFs}">WARNING</div>
                 </div>
-                <div class="mini-stat st-gray" style="${statBg}" onclick="showStatusDetails('${p.id}', 3, 'UNKNOWN')">
-                    <div class="mini-stat-val" style="${statValColor || 'color:#94a3b8;'}">${stats.unknown}</div>
-                    <div class="mini-stat-label" style="${statLblColor}">UNKNOWN</div>
+                <div class="mini-stat st-gray" style="${statCardStyle}" onclick="showStatusDetails('${p.id}', 3, 'UNKNOWN')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#94a3b8;'} ${valFs} ${valFw}">${stats.unknown}</div>
+                    <div class="mini-stat-label" style="${statLblColor} ${lblFs}">UNKNOWN</div>
                 </div>
-                <div class="mini-stat st-blue" style="${statBg}" onclick="showStatusDetails('${p.id}', 4, 'NOT INIT')">
-                    <div class="mini-stat-val" style="${statValColor || 'color:#3498db;'}">${stats.not_init}</div>
-                    <div class="mini-stat-label" style="${statLblColor}">NOT INIT</div>
+                <div class="mini-stat st-blue" style="${statCardStyle}" onclick="showStatusDetails('${p.id}', 4, 'NOT INIT')">
+                    <div class="mini-stat-val" style="${statValColor || 'color:#3498db;'} ${valFs} ${valFw}">${stats.not_init}</div>
+                    <div class="mini-stat-label" style="${statLblColor} ${lblFs}">NOT INIT</div>
                 </div>
             </div>`;
     } else if (p.type === 'status_table') {
@@ -2633,7 +2638,7 @@ function generateSummaryPanelHtml(p, modules) {
     const hiddenClass = isHidden ? 'is-hidden' : '';
 
     return `
-        <div class="panel-card ${hiddenClass}" style="height: 100%; margin:0;">
+        <div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;">
             <div class="panel-header">
                 <div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; color:#b5c1c9; vertical-align:middle; margin-right:4px;" title="Drag">drag_indicator</span> ${p.title}</h6></div>
                 ${controlsHtml}
