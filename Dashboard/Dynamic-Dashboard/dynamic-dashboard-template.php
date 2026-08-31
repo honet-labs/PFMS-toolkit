@@ -3337,20 +3337,19 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
             valHtml = displayVal;
         }
 
-        const isPrimary = !String(m.agent_id).includes(':') || String(m.agent_id).startsWith(PRIMARY_UUID + ':');
-        const rawAgentId = String(m.agent_id).includes(':') ? String(m.agent_id).split(':')[1] : m.agent_id;
-        const rawModId = String(m.id).includes(':') ? String(m.id).split(':')[1] : m.id;
+        const rawAgentId = String(m.agent_id || '').includes(':') ? String(m.agent_id).split(':')[1] : m.agent_id;
+        const rawModId = String(m.id || '').includes(':') ? String(m.id).split(':')[1] : m.id;
 
         let agentLinkHtml = '';
-        if (isPrimary && rawAgentId) {
-            agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="white-space:nowrap;">${m.agent_name}</a>`;
+        if (rawAgentId && rawAgentId != '0' && rawAgentId !== 'undefined') {
+            agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="color:#1976d2 !important; font-weight:600 !important; text-decoration:none; cursor:pointer; white-space:nowrap;">${m.agent_name}</a>`;
         } else {
             agentLinkHtml = `<span style="color:#334155; font-weight:600; white-space:nowrap;">${m.agent_name}</span>`;
         }
 
         let moduleLinkHtml = '';
-        if (isPrimary && rawModId) {
-            moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link">${m.module_name}</a>`;
+        if (rawModId && rawModId != '0' && rawModId !== 'undefined') {
+            moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link" style="color:#0b1a26 !important; font-weight:500 !important; text-decoration:none; cursor:pointer;">${m.module_name}</a>`;
         } else {
             moduleLinkHtml = `<span style="font-weight:500;">${m.module_name}</span>`;
         }

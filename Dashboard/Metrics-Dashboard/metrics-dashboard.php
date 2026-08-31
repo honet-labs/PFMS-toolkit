@@ -2587,11 +2587,10 @@ function renderTablePage(cardId) {
 
             let rowHtml = '<tr>';
             if (visibleCols.includes('agent')) {
-                const isPrimaryAgent = String(r.id_agente).startsWith(PRIMARY_UUID + ':');
+                const rawAgentId = String(r.id_agente || '').includes(':') ? String(r.id_agente).split(':')[1] : r.id_agente;
                 let agentLinkHtml = '';
-                if (isPrimaryAgent) {
-                    const rawAgentId = String(r.id_agente).split(':')[1] || r.id_agente;
-                    agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="font-size:${tableFs}px!important; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${r.agent_alias}</a>`;
+                if (rawAgentId && rawAgentId != '0' && rawAgentId !== 'undefined') {
+                    agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="font-size:${tableFs}px!important; font-family: 'Inter', system-ui, -apple-system, sans-serif !important; color:#1976d2 !important; font-weight:600 !important; text-decoration:none; cursor:pointer;">${r.agent_alias}</a>`;
                 } else {
                     agentLinkHtml = `<span style="font-size:${tableFs}px!important; font-weight:500; color:#334155; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${r.agent_alias}</span>`;
                 }
@@ -2606,10 +2605,9 @@ function renderTablePage(cardId) {
                 rowHtml += `<td style="white-space: nowrap;"><code class="ip-text" style="font-family: 'Courier New', monospace !important;">${r.ip_address||'-'}</code></td>`;
             }
             if (visibleCols.includes('module')) {
-                const rawModId = String(r.id_agente_modulo).includes(':') ? String(r.id_agente_modulo).split(':')[1] : r.id_agente_modulo;
-                const isPrimaryAgent = !String(r.id_agente).includes(':') || String(r.id_agente).startsWith(PRIMARY_UUID + ':');
-                const modHtml = (isPrimaryAgent && rawModId)
-                    ? `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link" style="color:#0b1a26; font-weight:normal; text-decoration:none; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${r.module_name}</a>`
+                const rawModId = String(r.id_agente_modulo || '').includes(':') ? String(r.id_agente_modulo).split(':')[1] : r.id_agente_modulo;
+                const modHtml = (rawModId && rawModId != '0' && rawModId !== 'undefined')
+                    ? `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link" style="color:#0b1a26 !important; font-weight:normal; text-decoration:none; cursor:pointer; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${r.module_name}</a>`
                     : `<span style="font-weight: normal; color:#334155; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${r.module_name}</span>`;
                 rowHtml += `<td>
                     <div style="margin-bottom:4px; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">${modHtml}</div>
@@ -2961,20 +2959,19 @@ function renderDetailModalPage() {
         pageData.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let unitStr = r.unit ? ` ${r.unit}` : '';
-            const isPrimaryAgent = !String(r.id_agente).includes(':') || String(r.id_agente).startsWith(PRIMARY_UUID + ':');
-            const rawAgentId = String(r.id_agente).includes(':') ? String(r.id_agente).split(':')[1] : r.id_agente;
-            const rawModId = String(r.id_agente_modulo).includes(':') ? String(r.id_agente_modulo).split(':')[1] : r.id_agente_modulo;
+            const rawAgentId = String(r.id_agente || '').includes(':') ? String(r.id_agente).split(':')[1] : r.id_agente;
+            const rawModId = String(r.id_agente_modulo || '').includes(':') ? String(r.id_agente_modulo).split(':')[1] : r.id_agente_modulo;
 
             let agentLinkHtml = '';
-            if (isPrimaryAgent && rawAgentId) {
-                agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="color:#1976d2; font-weight:600; text-decoration:none;">${r.agent_alias}</a>`;
+            if (rawAgentId && rawAgentId != '0' && rawAgentId !== 'undefined') {
+                agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="color:#1976d2 !important; font-weight:600 !important; text-decoration:none; cursor:pointer;">${r.agent_alias}</a>`;
             } else {
                 agentLinkHtml = `<span style="font-weight:500; color:#334155;">${r.agent_alias}</span>`;
             }
 
             let moduleLinkHtml = '';
-            if (isPrimaryAgent && rawModId) {
-                moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link" style="color:#0b1a26; font-weight:500; text-decoration:none;">${r.module_name}</a>`;
+            if (rawModId && rawModId != '0' && rawModId !== 'undefined') {
+                moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link" style="color:#0b1a26 !important; font-weight:500 !important; text-decoration:none; cursor:pointer;">${r.module_name}</a>`;
             } else {
                 moduleLinkHtml = `<span style="color:#0b1a26; font-weight: normal;">${r.module_name}</span>`;
             }
