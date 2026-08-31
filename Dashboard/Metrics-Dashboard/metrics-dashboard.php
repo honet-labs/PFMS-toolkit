@@ -960,6 +960,9 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
         .btn-secondary-custom:hover { background-color: #f8f9fa; border-color: #b5c1c9; }
         .btn-apply { background-color: #004d40; border: 1px solid #004d40; color: #ffffff; padding: 7px 16px; border-radius: 4px; font-size: 12px !important; font-weight: normal !important; display: flex; align-items: center; gap: 6px; cursor: pointer; text-decoration: none; }
         .btn-apply:hover { background-color: #00382e; border-color: #00382e; color: #fff; }
+        .icon-btn-card { background: transparent !important; border: none !important; padding: 4px; cursor: pointer; color: #7f8c8d; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; outline: none; }
+        .icon-btn-card:hover { background: #e0e4e8 !important; color: #0b1a26; }
+        .icon-btn-card .material-symbols-outlined { font-size: 18px !important; }
 
         .main-content { padding: 0 30px 30px 30px; }
         
