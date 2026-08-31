@@ -1999,9 +1999,22 @@ async function init() {
         fetch('?api=module_list').then(r=>r.json()).then(data => { globalModuleList = data; });
         
         const p = new URLSearchParams(window.location.search);
-        const urlDashId = p.get('d') || p.get('dash_id');
+        let urlDashId = p.get('d') || p.get('dash_id');
+        const openModalCardId = p.get('open_modal') || p.get('card_id');
+        const openModalStatus = p.get('status_filter') || p.get('status');
+
+        if (!urlDashId && openModalCardId) {
+            const parentDash = masterDashboards.find(d => (d.panels || []).some(card => card.id === openModalCardId));
+            if (parentDash) urlDashId = parentDash.id;
+        }
+
         if (urlDashId && masterDashboards.some(x => x.id === urlDashId)) {
             openDashboard(urlDashId);
+            if (openModalCardId && openModalStatus) {
+                setTimeout(() => {
+                    showDetailModal(openModalCardId, openModalStatus);
+                }, 600);
+            }
         } else {
             renderDashboardList();
         }
@@ -2010,6 +2023,22 @@ async function init() {
     worker.postMessage('start');
     worker.onmessage = (e) => { if(e.data === 'tick') runTimerLogic(); };
     document.addEventListener("visibilitychange", () => { if (!document.hidden && currentDashId) { dashboardCards.forEach(c => fetchCardData(c)); } });
+}
+
+function updateURLState(dashId) {
+    if (IS_STANDALONE) return;
+    try {
+        const url = new URL(window.location.href);
+        if (dashId) {
+            url.searchParams.set('d', dashId);
+        } else {
+            url.searchParams.delete('d');
+            url.searchParams.delete('dash_id');
+        }
+        url.searchParams.delete('open_modal');
+        url.searchParams.delete('status_filter');
+        window.history.replaceState({}, '', url.toString());
+    } catch(e) {}
 }
 
 function renderDashboardList() {
@@ -2803,6 +2832,26 @@ function renderDetailModalTable(dataArray) {
 }
 
 async function showDetailModal(cardId, statusFilter) {
+    if (IS_STANDALONE) {
+        try {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('s');
+            u.searchParams.delete('standalone');
+            u.searchParams.delete('hide_header');
+            u.searchParams.delete('no_header');
+            u.searchParams.delete('header');
+            if (currentDashId && currentDashId !== 'std') {
+                u.searchParams.set('d', currentDashId);
+            }
+            u.searchParams.set('open_modal', cardId);
+            u.searchParams.set('status_filter', statusFilter);
+            window.open(u.toString(), '_blank');
+        } catch (e) {
+            window.open(`?open_modal=${cardId}&status_filter=${statusFilter}`, '_blank');
+        }
+        return;
+    }
+
     const card = dashboardCards.find(c => c.id === cardId);
     if (!card) return;
 

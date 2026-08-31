@@ -1151,6 +1151,13 @@ async function init() {
     } else {
         dashboardCards = loadedCards;
         loadGroups();
+        const openModalCardId = p.get('open_modal') || p.get('card_id');
+        const openModalStatus = p.get('status_filter') || p.get('status');
+        if (openModalCardId && openModalStatus) {
+            setTimeout(() => {
+                showDetailModal(openModalCardId, openModalStatus);
+            }, 600);
+        }
     }
     renderGrid();
     dashboardCards.forEach(c => { cardTimers[c.id] = parseInt(c.refresh_sec); fetchCardData(c); });
@@ -1440,6 +1447,23 @@ function changePage(cardId, direction) {
 }
 
 async function showDetailModal(cardId, statusFilter) {
+    if (IS_STANDALONE) {
+        try {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('s');
+            u.searchParams.delete('standalone');
+            u.searchParams.delete('hide_header');
+            u.searchParams.delete('no_header');
+            u.searchParams.delete('header');
+            u.searchParams.set('open_modal', cardId);
+            u.searchParams.set('status_filter', statusFilter);
+            window.open(u.toString(), '_blank');
+        } catch (e) {
+            window.open(`?open_modal=${cardId}&status_filter=${statusFilter}`, '_blank');
+        }
+        return;
+    }
+
     const card = dashboardCards.find(c => c.id === cardId);
     if (!card) return;
 
