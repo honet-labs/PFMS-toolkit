@@ -3846,6 +3846,18 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 };
             });
 
+            const legendEl = document.getElementById(`chart_legend_${cardId}`);
+            if (legendEl) {
+                legendEl.innerHTML = seriesData.map((s, idx) => {
+                    const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
+                    const safeName = s.name.replace(/"/g, '&quot;');
+                    return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFontSize - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleEchartsLegend('${cardId}', this)" onmouseenter="highlightEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
+                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
+                        <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
+                    </div>`;
+                }).join('');
+            }
+
             activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
             activeCharts[cardId].setOption({
                 tooltip: { 
@@ -3882,7 +3894,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                     }
                 },
                 legend: { show: false, data: seriesData.map(s => s.name) },
-                grid: { left: 8, right: 15, top: 12, bottom: 24, containLabel: true },
+                grid: { left: 8, right: 15, top: 12, bottom: 28, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: labels, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                 yAxis: { 
                     type: 'value', 
@@ -3901,17 +3913,11 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 series: seriesData
             });
 
-            const legendEl = document.getElementById(`chart_legend_${cardId}`);
-            if (legendEl) {
-                legendEl.innerHTML = seriesData.map((s, idx) => {
-                    const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
-                    const safeName = s.name.replace(/"/g, '&quot;');
-                    return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFontSize - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleEchartsLegend('${cardId}', this)" onmouseenter="highlightEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
-                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
-                        <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
-                    </div>`;
-                }).join('');
-            }
+            setTimeout(() => {
+                if (activeCharts[cardId] && typeof activeCharts[cardId].resize === 'function') {
+                    activeCharts[cardId].resize();
+                }
+            }, 50);
         } else {
             const processedData = [...data];
             const uniqueAgents = [...new Set(processedData.map(r => r.agent_alias))];
@@ -3936,6 +3942,18 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                     lineStyle: { width: viewType === 'bar' ? 0 : 2 }
                 };
             });
+
+            const legendEl = document.getElementById(`chart_legend_${cardId}`);
+            if (legendEl) {
+                legendEl.innerHTML = seriesData.map((s, idx) => {
+                    const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
+                    const safeName = s.name.replace(/"/g, '&quot;');
+                    return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFontSize - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleEchartsLegend('${cardId}', this)" onmouseenter="highlightEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
+                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
+                        <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
+                    </div>`;
+                }).join('');
+            }
 
             activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
             activeCharts[cardId].setOption({
@@ -3973,23 +3991,17 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                     }
                 },
                 legend: { show: false, data: seriesData.map(s => s.name) },
-                grid: { left: 8, right: 15, top: 12, bottom: 24, containLabel: true },
+                grid: { left: 8, right: 15, top: 12, bottom: 28, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: uniqueAgents, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                 yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' } },
                 series: seriesData
             });
 
-            const legendEl = document.getElementById(`chart_legend_${cardId}`);
-            if (legendEl) {
-                legendEl.innerHTML = seriesData.map((s, idx) => {
-                    const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
-                    const safeName = s.name.replace(/"/g, '&quot;');
-                    return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFontSize - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleEchartsLegend('${cardId}', this)" onmouseenter="highlightEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
-                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
-                        <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
-                    </div>`;
-                }).join('');
-            }
+            setTimeout(() => {
+                if (activeCharts[cardId] && typeof activeCharts[cardId].resize === 'function') {
+                    activeCharts[cardId].resize();
+                }
+            }, 50);
         }
 
         if (window.ResizeObserver) {

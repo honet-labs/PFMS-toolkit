@@ -2782,6 +2782,19 @@ function refreshCurrentNodeData() {
                     try {
                         let dom = document.getElementById(`chart_${uniqueId}`);
                         if (!dom) return;
+
+                        const legendEl = document.getElementById(`chart_legend_${uniqueId}`);
+                        if (legendEl && seriesData.length > 0) {
+                            legendEl.innerHTML = seriesData.map((s, idx) => {
+                                const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
+                                const safeName = s.name.replace(/"/g, '&quot;');
+                                return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleDynamicEchartsLegend('${uniqueId}', this)" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
+                                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
+                                    <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
+                                </div>`;
+                            }).join('');
+                        }
+
                         chartInstances[uniqueId] = echarts.init(dom);
                         chartInstances[uniqueId].setOption({
                             tooltip: { 
@@ -2821,23 +2834,18 @@ function refreshCurrentNodeData() {
                                 }
                             },
                             legend: { show: false, data: seriesData.map(s => s.name) },
-                            grid: { left: 8, right: 15, top: 12, bottom: p.show_time ? 24 : 10, containLabel: true },
+                            grid: { left: 8, right: 15, top: 12, bottom: p.show_time ? 28 : 10, containLabel: true },
                             xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: labels, show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                             yAxis: { type: 'value', max: p.force_100 ? 100 : null, splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' } },
                             series: seriesData
                         });
 
-                        const legendEl = document.getElementById(`chart_legend_${uniqueId}`);
-                        if (legendEl && seriesData.length > 0) {
-                            legendEl.innerHTML = seriesData.map((s, idx) => {
-                                const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
-                                const safeName = s.name.replace(/"/g, '&quot;');
-                                return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleDynamicEchartsLegend('${uniqueId}', this)" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
-                                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
-                                    <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
-                                </div>`;
-                            }).join('');
-                        }
+                        setTimeout(() => {
+                            if (chartInstances[uniqueId] && typeof chartInstances[uniqueId].resize === 'function') {
+                                chartInstances[uniqueId].resize();
+                            }
+                        }, 50);
+
                         window.addEventListener('resize', () => chartInstances[uniqueId].resize());
                     } catch(e) { console.error("MultiChart ECharts Error:", e); }
                 }
