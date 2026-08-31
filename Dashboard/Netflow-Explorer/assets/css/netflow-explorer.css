@@ -67,9 +67,9 @@
     .legend{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding: 0 8px 12px; }
     .legend-item{ display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
     .swatch{ width:14px; height:14px; border-radius:4px; border:1px solid rgba(100,116,139,0.25); display:inline-block; }
-    .swatch.src{ background:#4F81BD; }
-    .swatch.dst{ background:#F28E2B; }
-    .swatch.flow{ background:rgba(148,163,184,0.35); }
+    .swatch.src{ background:#00796b; }
+    .swatch.dst{ background:#00acc1; }
+    .swatch.flow{ background:rgba(0, 121, 107, 0.35); border: 1px solid #00796b; }
     .info-pop{ display:none; margin: 10px 8px 0; padding: 10px 12px; border:1px solid var(--line); border-radius:12px; background:#fff; font-size:12px; color:var(--muted); }
     .info-pop.open{ display:block; }
 

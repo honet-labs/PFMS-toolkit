@@ -415,10 +415,23 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
         </div>
         <div class="dashboard-card-body p-4">
             <div class="sankey-inner"><div id="sankeyChart" class="sankey-canvas" style="min-height: 400px;"></div></div>
-            <div class="mt-4 pt-3" style="border-top: 1px dashed #e0e4e8; display:flex; gap:20px; font-size: 12px; font-weight: normal; color: #7f8c8d;">
-                <span style="display:flex; align-items:center; gap:5px;"><div style="width:12px; height:12px; background:#1f77b4; border-radius:2px;"></div> Source</span>
-                <span style="display:flex; align-items:center; gap:5px;"><div style="width:12px; height:12px; background:#ff7f0e; border-radius:2px;"></div> Destination / Layer</span>
-                <span style="display:flex; align-items:center; gap:5px;"><div style="width:12px; height:12px; background:rgba(0,0,0,0.2); border-radius:2px;"></div> Traffic flow</span>
+            <div class="mt-4 pt-3" style="border-top: 1px dashed #e0e4e8; display:flex; gap:20px; font-size: 12px; font-weight: normal; color: #7f8c8d; flex-wrap:wrap; align-items:center;">
+                <?php if ($sankeyMode === 'srcproto'): ?>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#00796b; border-radius:2px;"></div> Source IP</span>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#00acc1; border-radius:2px;"></div> Protocol</span>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#0284c7; border-radius:2px;"></div> Destination IP</span>
+                <?php elseif ($sankeyMode === 'srcdstport'): ?>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#00796b; border-radius:2px;"></div> Source IP</span>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#00acc1; border-radius:2px;"></div> Destination IP</span>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#0284c7; border-radius:2px;"></div> Port</span>
+                <?php elseif ($sankeyMode === 'srcport'): ?>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#00796b; border-radius:2px;"></div> Source IP</span>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#00acc1; border-radius:2px;"></div> Port</span>
+                <?php else: ?>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#00796b; border-radius:2px;"></div> Source</span>
+                    <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:#00acc1; border-radius:2px;"></div> Destination / Layer</span>
+                <?php endif; ?>
+                <span style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; background:rgba(0, 121, 107, 0.35); border: 1px solid #00796b; border-radius:2px;"></div> Traffic flow</span>
                 <span style="margin-left: auto; color:#b5c1c9;">Grouped to Top <?= (int)$nodeGroupN; ?> nodes per layer</span>
             </div>
         </div>
