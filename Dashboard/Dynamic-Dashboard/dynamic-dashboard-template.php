@@ -71,12 +71,16 @@ require_once __DIR__ . '/../../includes/db-connection.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
+session_write_close();
 
 // 3. HELPERS (Using global ones from db-connection.php)
 // function h() and pretty_text() are handled globally.
 
 // 4. AJAX ENDPOINTS
 $api = $_GET['api'] ?? '';
+if (!empty($api)) {
+    if (!ob_start("ob_gzhandler")) ob_start();
+}
 
 if ($api === 'load_config') {
     if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');

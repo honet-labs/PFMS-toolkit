@@ -679,29 +679,17 @@ function get_modules_history_data_batch($pdo, $pdo_history, $modIds, $start, $en
         }
 
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        
-        $queries = [];
-        $params = [];
-        
-        $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
-        foreach ($tables as $tbl) {
-            $queries[] = "SELECT id_agente_modulo, utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo IN ($placeholders) AND utimestamp BETWEEN ? AND ?";
-            foreach ($ids as $id) {
-                $params[] = $id;
-            }
-            $params[] = $start;
-            $params[] = $end;
-        }
+        $max_limit = min(5000, count($ids) * 500);
 
-        $union_sql = implode(" UNION ALL ", $queries) . " ORDER BY ts DESC";
-        // Safe limit to prevent query memory blowout
-        $union_sql .= " LIMIT " . (count($ids) * 500);
+        // Fast Path: Query indexed numeric table `tagente_datos` directly (99.9% of metrics)
+        $direct_sql = "SELECT id_agente_modulo, utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo IN ($placeholders) AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT $max_limit";
+        $direct_params = array_merge($ids, [$start, $end]);
 
         $node_data = [];
         foreach ($h_pdos as $h_pdo) {
             try {
-                $stmt = $h_pdo->prepare($union_sql);
-                $stmt->execute($params);
+                $stmt = $h_pdo->prepare($direct_sql);
+                $stmt->execute($direct_params);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 if (!empty($rows)) {
                     foreach ($rows as $row) {
@@ -712,18 +700,53 @@ function get_modules_history_data_batch($pdo, $pdo_history, $modIds, $start, $en
                             'datos' => $row['datos']
                         ];
                     }
-                    break; // Use the first successful history source
+                    break;
                 }
             } catch (Throwable $e) {
-                error_log("Batch history query failed for node $node: " . $e->getMessage());
+                error_log("Batch direct history query failed for node $node: " . $e->getMessage());
             }
         }
-        
-        // If empty, try the active_pdo as fallback if it wasn't already tried
+
+        // Fallback Path: Check string/incremental tables if direct query returned no rows (e.g. string/inc modules)
+        if (empty($node_data)) {
+            $queries = [];
+            $fallback_params = [];
+            $fallback_tables = ['tagente_datos_inc', 'tagente_datos_string'];
+            foreach ($fallback_tables as $tbl) {
+                $queries[] = "SELECT id_agente_modulo, utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo IN ($placeholders) AND utimestamp BETWEEN ? AND ?";
+                foreach ($ids as $id) $fallback_params[] = $id;
+                $fallback_params[] = $start;
+                $fallback_params[] = $end;
+            }
+            $fallback_union_sql = implode(" UNION ALL ", $queries) . " ORDER BY ts DESC LIMIT $max_limit";
+
+            foreach ($h_pdos as $h_pdo) {
+                try {
+                    $stmt = $h_pdo->prepare($fallback_union_sql);
+                    $stmt->execute($fallback_params);
+                    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($rows)) {
+                        foreach ($rows as $row) {
+                            $prefixed_mod_id = $node . ':' . $row['id_agente_modulo'];
+                            $node_data[] = [
+                                'id_mod' => $prefixed_mod_id,
+                                'ts' => (int)$row['ts'],
+                                'datos' => $row['datos']
+                            ];
+                        }
+                        break;
+                    }
+                } catch (Throwable $e) {
+                    error_log("Batch fallback history query failed for node $node: " . $e->getMessage());
+                }
+            }
+        }
+
+        // Fallback to active_pdo if primary history pdo was empty
         if (empty($node_data) && $node === 'primary' && $pdo_history !== null) {
             try {
-                $stmt = $active_pdo->prepare($union_sql);
-                $stmt->execute($params);
+                $stmt = $active_pdo->prepare($direct_sql);
+                $stmt->execute($direct_params);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 foreach ($rows as $row) {
                     $prefixed_mod_id = $node . ':' . $row['id_agente_modulo'];

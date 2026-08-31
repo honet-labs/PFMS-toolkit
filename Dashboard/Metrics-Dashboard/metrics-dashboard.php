@@ -38,6 +38,7 @@ require_once __DIR__ . '/../../includes/db-connection.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
+session_write_close();
 
 // 3. HELPERS & DB INIT
 if (!function_exists('h')) {
@@ -73,6 +74,9 @@ function map_pandora_status($estado) {
 
 // 4. AJAX ENDPOINTS
 $api = $_GET['api'] ?? '';
+if (!empty($api)) {
+    if (!ob_start("ob_gzhandler")) ob_start();
+}
 
 if ($api === 'load_config') {
     ob_clean(); header('Content-Type: application/json');
@@ -2070,6 +2074,30 @@ function renderDashboardList() {
     });
 }
 
+let cardObserver = null;
+let cardLoadedMap = {};
+
+function initCardObserver() {
+    if (cardObserver) {
+        cardObserver.disconnect();
+    }
+    if ('IntersectionObserver' in window && !IS_STANDALONE) {
+        cardObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const cardId = entry.target.dataset.cardId;
+                    if (cardId && !cardLoadedMap[cardId]) {
+                        cardLoadedMap[cardId] = true;
+                        const card = dashboardCards.find(c => c.id === cardId);
+                        if (card) fetchCardData(card);
+                    }
+                    cardObserver.unobserve(entry.target);
+                }
+            });
+        }, { rootMargin: '250px 0px' });
+    }
+}
+
 function openDashboard(id) {
     const d = masterDashboards.find(x => x.id === id);
     if (!d) return;
@@ -2091,10 +2119,22 @@ function openDashboard(id) {
     
     renderGrid();
     
-    // Initialize timers and fetch data
-    dashboardCards.forEach(c => {
+    // Initialize timers and fetch data (Top 4 eager-loaded, rest lazy-loaded via IntersectionObserver)
+    cardLoadedMap = {};
+    initCardObserver();
+    
+    dashboardCards.forEach((c, idx) => {
         cardTimers[c.id] = parseInt(c.refresh_sec);
-        fetchCardData(c);
+        if (idx < 4 || IS_STANDALONE || !cardObserver) {
+            cardLoadedMap[c.id] = true;
+            fetchCardData(c);
+        } else {
+            const cardEl = document.getElementById('box_' + c.id);
+            if (cardEl) {
+                cardEl.dataset.cardId = c.id;
+                cardObserver.observe(cardEl);
+            }
+        }
     });
 }
 
@@ -2182,6 +2222,7 @@ function runTimerLogic() {
     if(document.getElementById('detailModal') && document.getElementById('detailModal').style.display === 'flex') return;
 
     dashboardCards.forEach(c => {
+        if (!cardLoadedMap[c.id] && !IS_STANDALONE) return;
         if (cardTimers[c.id] === undefined) cardTimers[c.id] = parseInt(c.refresh_sec);
         cardTimers[c.id]--;
         let m = document.getElementById(`meta_timer_${c.id}`); if(m) m.innerText = `(Refresh in ${cardTimers[c.id]}s)`;

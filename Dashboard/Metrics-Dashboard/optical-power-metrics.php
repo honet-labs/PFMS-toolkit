@@ -27,6 +27,7 @@ if (empty($_SESSION['pfms_csrf_token'])) {
     $_SESSION['pfms_csrf_token'] = bin2hex(random_bytes(32));
 }
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
+session_write_close();
 
 // 3. HELPERS & DB INIT
 require_once(__DIR__ . '/../../tools/utils.php');
@@ -41,6 +42,9 @@ if (!function_exists('extract_number_from_string')) {
 
 // 4. AJAX ENDPOINTS
 $api = $_GET['api'] ?? '';
+if (!empty($api)) {
+    if (!ob_start("ob_gzhandler")) ob_start();
+}
 
 if ($api === 'load_config') {
     ob_clean(); header('Content-Type: application/json');
