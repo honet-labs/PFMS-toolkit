@@ -961,25 +961,25 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
         .btn-apply { background-color: #004d40; border: 1px solid #004d40; color: #ffffff; padding: 7px 16px; border-radius: 4px; font-size: 12px !important; font-weight: normal !important; display: flex; align-items: center; gap: 6px; cursor: pointer; text-decoration: none; }
         .btn-apply:hover { background-color: #00382e; border-color: #00382e; color: #fff; }
 
-        .main-content { padding: 30px; max-width: 100%; margin: 0 auto; box-sizing: border-box; }
-        .grid-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; align-items: stretch; }
-        .grid-layout.single-item { grid-template-columns: 1fr !important; }
+        .main-content { padding: 0 30px 30px 30px; }
+        
+        .grid-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 700px), 1fr)); gap: 20px; align-items: start; }
+        .grid-layout.single-item { grid-template-columns: 1fr; }
+        @media (max-width: 1200px) { .grid-layout { grid-template-columns: 1fr; } }
 
-        .dashboard-card { background: #ffffff; border: 1px solid #e0e4e8; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; overflow: hidden; position: relative; }
-        .dashboard-card.dragging { opacity: 0.4; border: 2px dashed #004d40; }
-        .dashboard-card.drag-over { border-top: 3px solid #004d40; }
-        .dashboard-card-header { padding: 12px 18px; border-bottom: 1px solid #f0f3f5; display: flex; justify-content: space-between; align-items: center; background-color: #ffffff; }
-        .dashboard-card-title { font-size: 13px !important; font-weight: normal !important; color: #0b1a26; margin: 0; display: flex; align-items: center; gap: 6px; }
-        .card-actions { display: flex; gap: 6px; }
-        .icon-btn-card { background: none; border: none; color: #7f8c8d; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
-        .icon-btn-card:hover { background: #f0f3f5; color: #0b1a26; }
+        .dashboard-card { background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: inline-block; width:100%; margin-bottom:20px; break-inside: avoid; vertical-align: top; overflow: hidden; border: 1px solid #f0f3f5; cursor: default; transition: transform 0.2s, box-shadow 0.2s; }
+        .dashboard-card.dragging { opacity: 0.5; transform: scale(0.98); box-shadow: 0 10px 20px rgba(0,0,0,0.1); cursor: grabbing; }
+        .dashboard-card.drag-over { border: 2px dashed #004d40; border-radius: 8px; }
 
-        .dashboard-card-body { padding: 15px 18px; display: flex; flex-direction: column; gap: 15px; flex-grow: 1; }
+        .dashboard-card-header { padding: 15px 20px; border-bottom: 1px solid #e0e4e8; background-color: #f8f9fa; display: flex; justify-content: space-between; align-items: center; cursor: grab; }
+        .dashboard-card-header:active { cursor: grabbing; }
+        .dashboard-card-title { font-size: 14px !important; font-weight: 500 !important; color: #1e293b !important; margin: 0; letter-spacing: 0.3px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+        .dashboard-card-body { padding: 20px; display: flex; flex-direction: column; gap: 20px; flex-grow:1;}
 
-        .mini-stats-row { display: flex; gap: 10px; border-bottom: 1px solid #f0f3f5; padding-bottom: 15px; }
-        .mini-stat { flex: 1; border-bottom: 2px solid transparent; padding-bottom: 4px; cursor: pointer; transition: 0.2s; }
-        .mini-stat:hover { opacity: 0.8; }
-        .mini-stat-val { font-size: 18px !important; font-weight: normal !important; line-height: 1.1; }
+        .mini-stats-row { display: flex; gap: 10px; width: 100%; flex-wrap: wrap;}
+        .mini-stat { flex: 1; min-width: 90px; text-align: center; padding: 12px 5px; border-radius: 6px; background: #ffffff; border: 1px solid #e0e4e8; border-bottom: 4px solid #ccc; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .mini-stat:hover { transform: translateY(-3px); box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+        .mini-stat-val { font-size: 22px !important; font-weight: normal !important; line-height: 1; margin-bottom: 5px; }
         .mini-stat-label { font-size: 9px !important; text-transform: uppercase; color: #7f8c8d; font-weight: normal !important; white-space: nowrap; }
 
         .st-border-black { border-bottom-color: #0b1a26; } .text-black { color: #0b1a26 !important; }
