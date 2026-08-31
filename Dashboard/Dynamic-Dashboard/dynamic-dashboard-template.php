@@ -576,6 +576,11 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .breadcrumb-link { cursor: pointer; color: #1976d2 !important; text-decoration: none; transition:0.2s;}
         .breadcrumb-link:hover { text-decoration: underline; color:#0d47a1!important; }
 
+        .agent-link { color: #1976d2 !important; font-weight: 600 !important; text-decoration: none; cursor: pointer; transition: 0.2s; }
+        .agent-link:hover { text-decoration: underline !important; color: #0d47a1 !important; }
+        .module-link { color: #0b1a26 !important; font-weight: 500 !important; text-decoration: none; cursor: pointer; transition: 0.2s; }
+        .module-link:hover { text-decoration: underline !important; color: #1976d2 !important; }
+
         .list-table-wrap { background: #fff; border: 1px solid #e0e4e8; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02);}
         table.list-table { border-collapse: collapse !important; width: 100% !important; margin: 0 !important; }
         table.list-table thead th { background-color: #fafbfc !important; border-bottom: 1px solid #e0e4e8 !important; text-transform: uppercase; padding: 15px 20px !important; font-weight: normal !important; color: #7f8c8d !important; font-size: 11px !important; }
@@ -3332,20 +3337,30 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
             valHtml = displayVal;
         }
 
-        const isPrimary = String(m.agent_id).startsWith(PRIMARY_UUID + ':');
+        const isPrimary = !String(m.agent_id).includes(':') || String(m.agent_id).startsWith(PRIMARY_UUID + ':');
+        const rawAgentId = String(m.agent_id).includes(':') ? String(m.agent_id).split(':')[1] : m.agent_id;
+        const rawModId = String(m.id).includes(':') ? String(m.id).split(':')[1] : m.id;
+
         let agentLinkHtml = '';
-        if (isPrimary) {
-            const rawAgentId = String(m.agent_id).split(':')[1] || m.agent_id;
-            agentLinkHtml = `<span style="color:#3498db; font-weight:600; cursor:pointer; white-space:nowrap;" onclick="window.open('${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}', '_blank')">${m.agent_name}</span>`;
+        if (isPrimary && rawAgentId) {
+            agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="white-space:nowrap;">${m.agent_name}</a>`;
         } else {
             agentLinkHtml = `<span style="color:#334155; font-weight:600; white-space:nowrap;">${m.agent_name}</span>`;
         }
+
+        let moduleLinkHtml = '';
+        if (isPrimary && rawModId) {
+            moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link">${m.module_name}</a>`;
+        } else {
+            moduleLinkHtml = `<span style="font-weight:500;">${m.module_name}</span>`;
+        }
+
         return `
             <tr>
                 <td>${agentLinkHtml}</td>
                 <td style="white-space:nowrap;">${m.group_name}</td>
                 <td style="color:#e74c3c; white-space:nowrap;">${m.ip_address}</td>
-                <td style="font-weight:500;">${m.module_name}</td>
+                <td>${moduleLinkHtml}</td>
                 <td style="font-weight:600; white-space:nowrap;">${valHtml}</td>
                 <td style="white-space:nowrap;"><span class="status-pill-dyn ${bgClass}">${statusLbl}</span></td>
                 <td style="text-align:center; white-space:nowrap;">

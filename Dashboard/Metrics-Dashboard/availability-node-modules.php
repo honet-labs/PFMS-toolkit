@@ -625,6 +625,7 @@ if ($api === 'status_details' && $db_status) {
                 'agent_name'  => $row['node_label'] . pretty_text($row['agent_alias']),
                 'group_name'  => pretty_text($row['group_name']),
                 'ip_address'  => $row['ip_address'],
+                'module_id'   => $row['node'] . ':' . $row['id_agente_modulo'],
                 'module_name' => pretty_text($row['module_name']),
                 'value'       => $dispVal,
                 'estado'      => $v_estado,
@@ -874,7 +875,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .loading-text { font-weight: normal !important; color: #004d40; letter-spacing: 1px; text-transform: uppercase; font-size: 11px !important; }
 
-        .agent-link { color: #1976d2 !important; text-decoration: none; font-weight: normal !important; font-size: 14px !important; word-break: break-word; }
+        .agent-link { color: #1976d2 !important; text-decoration: none; font-weight: 600 !important; font-size: 14px !important; word-break: break-word; transition: 0.2s; }
+        .agent-link:hover { text-decoration: underline !important; color: #0d47a1 !important; }
+        .module-link { color: #0b1a26 !important; text-decoration: none; font-weight: 500 !important; word-break: break-word; transition: 0.2s; }
+        .module-link:hover { text-decoration: underline !important; color: #1976d2 !important; }
         .ip-text { color: #d63384 !important; font-size: 11px !important; font-weight: normal; background:#fff0f6; padding:2px 6px; border-radius:4px;}
         .status-pill { padding: 4px 10px; border-radius: 4px; font-weight: normal !important; font-size: 10px !important; text-transform: uppercase; display: inline-block; min-width: 70px; text-align: center; white-space: normal; word-break: break-word; max-width: 150px; }
 
@@ -1438,19 +1442,29 @@ function renderTablePage(cardId) {
         data.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let bgColor = sObj.color;
-            const isPrimary = String(r.agent_id).startsWith(PRIMARY_UUID + ':');
+            const isPrimary = !String(r.agent_id).includes(':') || String(r.agent_id).startsWith(PRIMARY_UUID + ':');
+            const rawAgentId = String(r.agent_id).includes(':') ? String(r.agent_id).split(':')[1] : r.agent_id;
+            const rawModId = r.module_id ? (String(r.module_id).includes(':') ? String(r.module_id).split(':')[1] : r.module_id) : '';
+
             let agentLinkHtml = '';
-            if (isPrimary) {
-                const rawAgentId = String(r.agent_id).split(':')[1] || r.agent_id;
+            if (isPrimary && rawAgentId) {
                 agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link">${r.agent_name}</a>`;
             } else {
                 agentLinkHtml = `<span class="agent-link-text" style="font-weight:600; color:#334155;">${r.agent_name}</span>`;
             }
+
+            let moduleLinkHtml = '';
+            if (isPrimary && rawModId) {
+                moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link">${r.module_name}</a>`;
+            } else {
+                moduleLinkHtml = `<span style="color:#0b1a26; font-weight: normal;">${r.module_name}</span>`;
+            }
+
             h += `<tr>
                     <td><div class="node-wrap"><div class="dot ${bgColor}"></div>${agentLinkHtml}</div></td>
                     <td><code class="ip-text">${r.ip_address||'-'}</code></td>
                     <td style="color:#7f8c8d">${r.group_name}</td>
-                    <td style="color:#0b1a26; font-weight: normal;">${r.module_name}</td>
+                    <td>${moduleLinkHtml}</td>
                     <td><span class="status-pill ${bgColor}">${r.value || sObj.label}</span></td>
                     <td style="color:#7f8c8d; font-size:11px!important; font-weight: normal;">${r.time_ago}</td>
                   </tr>`;
@@ -1558,22 +1572,29 @@ function renderDetailModalPage() {
     if(pageData.length === 0) {
          h += '<tr><td colspan="6" style="text-align:center; padding: 25px; color:#7f8c8d; font-weight: normal;">No modules found.</td></tr>';
     } else {
-        pageData.forEach(r => {
-            const sObj = getStatusObj(r.estado);
-            let bgColor = sObj.color;
-            const isPrimary = String(r.agent_id).startsWith(PRIMARY_UUID + ':');
+            const isPrimary = !String(r.agent_id).includes(':') || String(r.agent_id).startsWith(PRIMARY_UUID + ':');
+            const rawAgentId = String(r.agent_id).includes(':') ? String(r.agent_id).split(':')[1] : r.agent_id;
+            const rawModId = r.module_id ? (String(r.module_id).includes(':') ? String(r.module_id).split(':')[1] : r.module_id) : '';
+
             let agentLinkHtml = '';
-            if (isPrimary) {
-                const rawAgentId = String(r.agent_id).split(':')[1] || r.agent_id;
+            if (isPrimary && rawAgentId) {
                 agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link">${r.agent_name}</a>`;
             } else {
                 agentLinkHtml = `<span class="agent-link-text" style="font-weight:600; color:#334155;">${r.agent_name}</span>`;
             }
+
+            let moduleLinkHtml = '';
+            if (isPrimary && rawModId) {
+                moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link">${r.module_name}</a>`;
+            } else {
+                moduleLinkHtml = `<span style="color:#0b1a26; font-weight: normal;">${r.module_name}</span>`;
+            }
+
             h += `<tr>
                     <td><div class="node-wrap"><div class="dot ${bgColor}"></div>${agentLinkHtml}</div></td>
                     <td><code class="ip-text">${r.ip_address||'-'}</code></td>
                     <td style="color:#7f8c8d">${r.group_name}</td>
-                    <td style="color:#0b1a26; font-weight: normal;">${r.module_name}</td>
+                    <td>${moduleLinkHtml}</td>
                     <td><span class="status-pill ${bgColor}">${r.value || sObj.label}</span></td>
                     <td style="color:#7f8c8d; font-size:11px!important; font-weight: normal;">${r.time_ago}</td>
                   </tr>`;
