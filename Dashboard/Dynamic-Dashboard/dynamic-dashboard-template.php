@@ -530,6 +530,7 @@ if ($api === 'bulk_panel_data') {
 }
 
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
+$isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (isset($_GET['view_modal']) && $_GET['view_modal'] == '1');
 ?>
 <!doctype html>
 <html lang="en">
@@ -549,7 +550,12 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; line-height: 1; }
 
         /* V4.8 STANDALONE UI OVERRIDES */
-        <?php if ($isStandalone): ?>
+        <?php if ($isModalOnly): ?>
+        .pandora-header-top, .pandora-header-bottom, .toolbar-right, .drag-handle, #view_list, #view_detail, #listTopControls, .grafana-toolbar, .main-content { display: none !important; }
+        html, body { height: 100% !important; width: 100% !important; background-color: #f4f6f8 !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
+        .modal-overlay#statusDetailModal { position: fixed !important; inset: 0 !important; background: #f4f6f8 !important; display: flex !important; align-items: stretch !important; justify-content: center !important; z-index: 99999 !important; padding: 12px !important; box-sizing: border-box !important; }
+        .modal-overlay#statusDetailModal .modal-box { width: 100% !important; max-width: 100% !important; height: 100% !important; max-height: 100% !important; border-radius: 8px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important; border: 1px solid #cbd5e1 !important; background: #ffffff !important; }
+        <?php elseif ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .toolbar-right, .drag-handle, #view_list, #listTopControls { display: none !important; }
         .grafana-toolbar { border-top: 1px solid #dce1e5; margin-top:0 !important;}
         .main-content { padding: 20px 25px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
@@ -1457,6 +1463,7 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true) {
 
 // V4.8 IS_STANDALONE FLAG
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
+const IS_MODAL_ONLY = <?= $isModalOnly ? 'true' : 'false' ?>;
 const DIRECT_SCRIPT_URL = '<?= $directScriptUrl ?>';
 
 // V4.8: SHARE LINK FUNCTIONS
@@ -1648,13 +1655,25 @@ async function init() {
         let urlDashId = u.get('d') || u.get('dash_id');
         const urlGroupId = u.get('g') || u.get('group_id');
         const urlAgentId = u.get('a') || u.get('agent_id');
-        const openModalPanelId = u.get('open_modal') || u.get('panel_id') || u.get('p');
+        const openModalPanelId = u.get('open_modal') || u.get('panel_id') || u.get('p') || u.get('card_id');
         const openModalStatus = u.get('status_filter') !== null ? parseInt(u.get('status_filter')) : null;
         const openModalLabel = u.get('status_label') || 'UP';
 
         if (!urlDashId && openModalPanelId) {
             const parentDash = masterDashboards.find(d => (d.panels || []).some(panel => panel.id === openModalPanelId));
             if (parentDash) urlDashId = parentDash.id;
+        }
+
+        if (IS_MODAL_ONLY) {
+            if (urlDashId) {
+                openDashboard(urlDashId, urlGroupId, urlAgentId);
+            }
+            if (openModalPanelId && openModalStatus !== null) {
+                setTimeout(() => {
+                    showStatusDetails(openModalPanelId, openModalStatus, openModalLabel);
+                }, 500);
+            }
+            return;
         }
 
         if (urlDashId && masterDashboards.some(d => d.id === urlDashId)) {
@@ -3262,11 +3281,11 @@ function changeTablePage(panelId, newPage) {
 }
 
 function showStatusDetails(panelId, statusFilter, statusLabel) {
-    if (IS_STANDALONE) {
+    if (IS_STANDALONE && !IS_MODAL_ONLY) {
         try {
             const u = new URL(window.location.href);
-            u.searchParams.delete('standalone');
-            u.searchParams.delete('s');
+            u.searchParams.set('s', '1');
+            u.searchParams.set('modal_only', '1');
             u.searchParams.delete('hide_header');
             u.searchParams.delete('no_header');
             u.searchParams.delete('header');
@@ -3276,7 +3295,7 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
             u.searchParams.set('status_label', statusLabel);
             window.open(u.toString(), '_blank');
         } catch (e) {
-            window.open(`?open_modal=${panelId}&status_filter=${statusFilter}&status_label=${encodeURIComponent(statusLabel)}`, '_blank');
+            window.open(`?s=1&modal_only=1&open_modal=${panelId}&status_filter=${statusFilter}&status_label=${encodeURIComponent(statusLabel)}`, '_blank');
         }
         return;
     }
@@ -3356,6 +3375,10 @@ function filterStatusDetailTable() {
 }
 
 function closeStatusDetailModal() {
+    if (IS_MODAL_ONLY) {
+        window.close();
+        return;
+    }
     document.getElementById('statusDetailModal').style.display = 'none';
 }
 

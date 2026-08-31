@@ -894,6 +894,7 @@ if ($api === 'export_data' && $db_status) {
 
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
 $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || (isset($_GET['no_header']) && $_GET['no_header'] == '1') || (isset($_GET['header']) && $_GET['header'] == '0');
+$isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (isset($_GET['view_modal']) && $_GET['view_modal'] == '1');
 ?>
 <!doctype html>
 <html lang="en">
@@ -911,7 +912,13 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
         body { background-color: #f4f6f8; margin: 0; padding: 0; }
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; line-height: 1; }
 
-        <?php if ($isStandalone): ?>
+        <?php if ($isModalOnly): ?>
+        .pandora-header-top, .pandora-header-bottom, .top-controls, .main-content, #view_list, #view_detail, .floating-header-toggle { display: none !important; }
+        html, body { height: 100% !important; width: 100% !important; background-color: #f4f6f8 !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
+        .modal-overlay#detailModal { position: fixed !important; inset: 0 !important; background: #f4f6f8 !important; display: flex !important; align-items: stretch !important; justify-content: center !important; z-index: 99999 !important; padding: 12px !important; box-sizing: border-box !important; }
+        .detail-modal-box { width: 100% !important; max-width: 100% !important; height: 100% !important; max-height: 100% !important; border-radius: 8px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important; border: 1px solid #cbd5e1 !important; background: #ffffff !important; }
+        .detail-modal-header { padding: 14px 20px !important; background: #f8fafc !important; border-bottom: 1px solid #e2e8f0 !important; }
+        <?php elseif ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; visibility: hidden !important; }
         html, body { height: 100% !important; width: 100% !important; background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
         .main-content { height: 100% !important; width: 100% !important; max-width: 100% !important; padding: 4px 6px !important; margin: 0 !important; display: flex !important; flex-direction: column !important; box-sizing: border-box !important; }
@@ -1511,6 +1518,7 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
 <script>
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
+const IS_MODAL_ONLY = <?= $isModalOnly ? 'true' : 'false' ?>;
 const DIRECT_SCRIPT_URL = '<?= $directScriptUrl ?>';
 const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
 
@@ -1915,6 +1923,29 @@ async function init() {
         } else {
             masterDashboards = loadedData;
         }
+    }
+
+    if (IS_MODAL_ONLY) {
+        const p = new URLSearchParams(window.location.search);
+        const targetCardId = p.get('card_id') || p.get('open_modal');
+        const targetStatus = p.get('status_filter') || p.get('status') || 'all';
+        let targetCard = null;
+        for (let d of masterDashboards) {
+            let c = (d.panels || []).find(x => String(x.id).trim() === String(targetCardId).trim());
+            if (c) { targetCard = c; break; }
+        }
+        if (!targetCard) {
+            targetCard = {
+                id: targetCardId || 'std',
+                group_id: p.get('group_id') || p.get('g') || '0',
+                keyword: p.get('keyword') || '%',
+                manual_ids: p.get('manual_ids') || '',
+                match_type: p.get('match_type') || 'contains'
+            };
+        }
+        dashboardCards = [targetCard];
+        showDetailModal(targetCard.id, targetStatus);
+        return;
     }
 
     if (IS_STANDALONE) {
@@ -2835,22 +2866,22 @@ function renderDetailModalTable(dataArray) {
 }
 
 async function showDetailModal(cardId, statusFilter) {
-    if (IS_STANDALONE) {
+    if (IS_STANDALONE && !IS_MODAL_ONLY) {
         try {
             const u = new URL(window.location.href);
-            u.searchParams.delete('s');
-            u.searchParams.delete('standalone');
+            u.searchParams.set('s', '1');
+            u.searchParams.set('modal_only', '1');
             u.searchParams.delete('hide_header');
             u.searchParams.delete('no_header');
             u.searchParams.delete('header');
             if (currentDashId && currentDashId !== 'std') {
                 u.searchParams.set('d', currentDashId);
             }
-            u.searchParams.set('open_modal', cardId);
+            u.searchParams.set('card_id', cardId);
             u.searchParams.set('status_filter', statusFilter);
             window.open(u.toString(), '_blank');
         } catch (e) {
-            window.open(`?open_modal=${cardId}&status_filter=${statusFilter}`, '_blank');
+            window.open(`?s=1&modal_only=1&card_id=${cardId}&status_filter=${statusFilter}`, '_blank');
         }
         return;
     }
@@ -2980,7 +3011,13 @@ function changeModalPage(dir) {
     renderDetailModalPage();
 }
 
-function closeDetailModal() { document.getElementById('detailModal').style.display = 'none'; }
+function closeDetailModal() {
+    if (IS_MODAL_ONLY) {
+        window.close();
+        return;
+    }
+    document.getElementById('detailModal').style.display = 'none';
+}
 
 function openExport(cardId) {
     curExpCardId = cardId; const data = cardDataStore[cardId]; if(!data || !data.length) return alert("No data.");
