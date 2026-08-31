@@ -1645,12 +1645,25 @@ async function init() {
         });
         
         const u = new URLSearchParams(window.location.search);
-        const urlDashId = u.get('d') || u.get('dash_id');
+        let urlDashId = u.get('d') || u.get('dash_id');
         const urlGroupId = u.get('g') || u.get('group_id');
         const urlAgentId = u.get('a') || u.get('agent_id');
+        const openModalPanelId = u.get('open_modal') || u.get('panel_id') || u.get('p');
+        const openModalStatus = u.get('status_filter') !== null ? parseInt(u.get('status_filter')) : null;
+        const openModalLabel = u.get('status_label') || 'UP';
+
+        if (!urlDashId && openModalPanelId) {
+            const parentDash = masterDashboards.find(d => (d.panels || []).some(panel => panel.id === openModalPanelId));
+            if (parentDash) urlDashId = parentDash.id;
+        }
 
         if (urlDashId && masterDashboards.some(d => d.id === urlDashId)) {
             openDashboard(urlDashId, urlGroupId, urlAgentId);
+            if (openModalPanelId && openModalStatus !== null) {
+                setTimeout(() => {
+                    showStatusDetails(openModalPanelId, openModalStatus, openModalLabel);
+                }, 800);
+            }
         } else {
             renderDashboardList();
         }
@@ -3249,6 +3262,25 @@ function changeTablePage(panelId, newPage) {
 }
 
 function showStatusDetails(panelId, statusFilter, statusLabel) {
+    if (IS_STANDALONE) {
+        try {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('standalone');
+            u.searchParams.delete('s');
+            u.searchParams.delete('hide_header');
+            u.searchParams.delete('no_header');
+            u.searchParams.delete('header');
+            if (currentDashId) u.searchParams.set('d', currentDashId);
+            u.searchParams.set('open_modal', panelId);
+            u.searchParams.set('status_filter', statusFilter);
+            u.searchParams.set('status_label', statusLabel);
+            window.open(u.toString(), '_blank');
+        } catch (e) {
+            window.open(`?open_modal=${panelId}&status_filter=${statusFilter}&status_label=${encodeURIComponent(statusLabel)}`, '_blank');
+        }
+        return;
+    }
+
     const data = lastFetchedData[panelId];
     if (!data || !data.modules) return;
 
