@@ -2755,10 +2755,13 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                     <span id="rescanText">Rescan Routes</span>
                 </button>
 
+                <!-- Add Target feature temporarily disabled as requested -->
+                <?php /*
                 <button class="btn-action-icon" style="background:var(--brand-green); color:#fff; padding:6px 12px; gap:6px; font-weight:600;" title="Add Target Route to this Agent" onclick="openAddTargetModal()">
                     <span class="material-symbols-outlined" style="font-size:16px;">add</span>
                     <span>Add Target</span>
                 </button>
+                */ ?>
 
                 <button class="btn-action-icon" title="Share Direct URL & Embed Code" onclick="openShareModal()">
                     <span class="material-symbols-outlined" style="font-size:16px;">share</span>
