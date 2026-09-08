@@ -21,6 +21,7 @@
         "cron.php",
         "pfms_latency_map.php",
         "pfms_lib.php",
+        "traffic-interface.php",
         "mib-webui-(beta).php",
         "mibs-converter-%28beta%29.php"
     ]

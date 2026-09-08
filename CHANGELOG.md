@@ -2,6 +2,17 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.6] - 2026-09-08 (Traffic Dashboard Fix: 500 Error, Category Handling & Module Discovery)
+### Fixed
+- **Traffic Dashboard 500 Internal Server Error & Empty Dashboard Fix:**
+  - Memperbaiki fatal error `TypeError` pada decoding JSON konfigurasi dashboard baru saat bernilai `null` dengan menambahkan validasi `is_array($config)`.
+  - Mengubah penanganan error backend dari `catch (Exception $e)` menjadi `catch (Throwable $e)` agar menangkap seluruh tipe engine Error dan mencegah respons HTTP 500.
+  - Memperbaiki query SQL traffic yang gagal akibat referensi tabel `tcategory` / kolom `id_category` dengan melakukan pengecekan dinamis ke database schema.
+  - Memperbaiki bug filter kategori `enabled_categories: []` yang sebelumnya menghapus semua interface yang ditemukan pada dashboard baru.
+  - Menambahkan dukungan pola prefix modul traffic (`traffic in - `, `traffic out - `, dll.) dan suffix modul tambahan.
+  - Memperbaiki error handling AJAX di frontend dan mencegah korupsi array PHP akibat loop referensi (`unset($iface)`).
+  - Mengatur `traffic-interface.php` sebagai alias forwarder dan memperbarui `portal_config.json`.
+
 ## [2.5] - 2026-08-30 (Route Parser Auto-Refresh, Embed Live Polling & Data Consistency Fix)
 ### Fixed
 - **Auto-Refresh & Realtime Poller:**
