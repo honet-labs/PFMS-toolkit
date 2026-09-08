@@ -25,6 +25,11 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - Memperbaiki bug filter kategori `enabled_categories: []` yang sebelumnya menghapus semua interface yang ditemukan pada dashboard baru.
   - Menambahkan dukungan pola prefix modul traffic (`traffic in - `, `traffic out - `, dll.) dan suffix modul tambahan.
   - Memperbaiki error handling AJAX di frontend dan mencegah korupsi array PHP akibat loop referensi (`unset($iface)`).
+  - Menambahkan header `http_response_code(200)` dan `Content-Type: application/json; charset=utf-8` secara eksplisit pada seluruh endpoint API (`load_config`, `save_config`, `categories`, `groups`, `agents`, `data`, `series`).
+  - Menegakkan ulang penekanan error (`error_reporting` dan `ini_set('display_errors', 0)`) setelah pemanggilan `db-connection.php` guna mencegah pesan Notice/Warning PHP 8 diteruskan ke FastCGI/Apache yang dapat memicu header HTTP Status 500.
+  - Memperbaiki penanganan respons fetch AJAX di frontend agar mem-parse teks sebagai JSON terlebih dahulu sehingga respons sukses (`ok: true`) tetap diproses dengan benar tanpa terhalang false-positive error.
+  - Menambahkan ekspansi sub-grup hierarkis rekursif pada `?api=data` dan `?api=agents` sehingga antarmuka pada agen yang berada di sub-grup / anak grup terdeteksi dengan tepat.
+  - Menambahkan pesan informatif yang ramah ketika tidak ada antarmuka yang cocok dengan filter atau konfigurasi node yang dipilih.
   - Mengatur `traffic-interface.php` sebagai alias forwarder dan memperbarui `portal_config.json`.
 
 ## [2.5] - 2026-08-30 (Route Parser Auto-Refresh, Embed Live Polling & Data Consistency Fix)

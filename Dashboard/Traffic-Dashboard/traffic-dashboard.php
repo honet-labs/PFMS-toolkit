@@ -27,6 +27,13 @@ require_once __DIR__ . '/../../includes/db-connection.php';
 header_remove('X-Frame-Options');
 header("Content-Security-Policy: frame-ancestors 'self' *;");
 
+// Re-enforce error suppression for production stability and prevent PHP 8 notices/warnings from triggering FastCGI 500 status
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING & ~E_DEPRECATED);
+ini_set('display_errors', 0);
+ini_set('display_startup_errors', 0);
+
+$isStandalone = (isset($_GET['s']) && $_GET['s'] == '1') || (isset($_GET['standalone']) && $_GET['standalone'] == '1');
+
 $CONFIG_FILE = __DIR__ . '/traffic-dashboard-saved.json';
 if (!file_exists($CONFIG_FILE) && file_exists(__DIR__ . '/traffic-interface-saved.json')) {
     $CONFIG_FILE = __DIR__ . '/traffic-interface-saved.json';
@@ -107,14 +114,16 @@ function util_level(float $pct, float $warn, float $crit): string {
 $api = $_GET['api'] ?? '';
 
 if ($api === 'load_config') {
-    if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
+    http_response_code(200);
+    if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
     if(file_exists($CONFIG_FILE)) { echo file_get_contents($CONFIG_FILE); } 
     else { echo json_encode([]); } 
     exit;
 }
 
 if ($api === 'save_config') {
-    if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
+    http_response_code(200);
+    if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
     $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if (empty($csrf_token) || $client_token !== $csrf_token) {
         echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh portal.']); exit;
@@ -345,7 +354,8 @@ if ($api === 'export') {
 }
 
 if ($api === 'categories') {
-    if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
+    http_response_code(200);
+    if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
     $categories = [];
     $cat_map = [];
     
@@ -378,7 +388,8 @@ if ($api === 'categories') {
 }
 
 if ($api === 'groups') {
-    if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
+    http_response_code(200);
+    if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
     $dropdown = [['id' => '0', 'name' => '-- Select Target Group --']];
     
     try {
@@ -408,7 +419,8 @@ if ($api === 'groups') {
 }
 
 if ($api === 'agents') {
-    if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
+    http_response_code(200);
+    if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
     $groupIdRaw = $_GET['group_id'] ?? '0';
     $groupParsed = parse_node_id($groupIdRaw);
     
@@ -445,8 +457,29 @@ if ($api === 'agents') {
             $sql = "SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0";
             $params = [];
             if ($info['group_id'] > 0) {
-                $sql .= " AND id_grupo = ?";
-                $params[] = $info['group_id'];
+                $targetGroups = [$info['group_id']];
+                try {
+                    $stmtAllGroups = $active_pdo->query("SELECT id_grupo, parent FROM tgrupo");
+                    if ($stmtAllGroups) {
+                        $allGroups = $stmtAllGroups->fetchAll(PDO::FETCH_ASSOC);
+                        if (!function_exists('traffic_get_child_groups')) {
+                            function traffic_get_child_groups($parentId, $allGroups) {
+                                $children = [$parentId];
+                                foreach ($allGroups as $g) {
+                                    if ($g['parent'] == $parentId && $g['id_grupo'] != $parentId) {
+                                        $children = array_merge($children, traffic_get_child_groups($g['id_grupo'], $allGroups));
+                                    }
+                                }
+                                return array_unique($children);
+                            }
+                        }
+                        $targetGroups = traffic_get_child_groups($info['group_id'], $allGroups);
+                    }
+                } catch (Throwable $e) {}
+
+                $inPlaceholders = implode(',', array_fill(0, count($targetGroups), '?'));
+                $sql .= " AND id_grupo IN ($inPlaceholders)";
+                $params = array_merge($params, $targetGroups);
             }
             $sql .= " ORDER BY alias ASC";
             $stmt = $active_pdo->prepare($sql);
@@ -463,7 +496,8 @@ if ($api === 'agents') {
 }
 
 if ($api === 'data') {
-    if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
+    http_response_code(200);
+    if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
 
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
     $groupIdRaw = $input['group_id'] ?? '0';
@@ -563,7 +597,34 @@ if ($api === 'data') {
                         LEFT JOIN tagente_estado ae ON ae.id_agente_modulo = am.id_agente_modulo
                         WHERE am.disabled = 0 AND a.disabled = 0";
 
-                if ($info['group_id'] > 0) { $sql .= " AND a.id_grupo = :gid"; $params[':gid'] = $info['group_id']; }
+                if ($info['group_id'] > 0) {
+                    $targetGroups = [$info['group_id']];
+                    try {
+                        $stmtAllGroups = $active_pdo->query("SELECT id_grupo, parent FROM tgrupo");
+                        if ($stmtAllGroups) {
+                            $allGroups = $stmtAllGroups->fetchAll(PDO::FETCH_ASSOC);
+                            if (!function_exists('traffic_get_child_groups')) {
+                                function traffic_get_child_groups($parentId, $allGroups) {
+                                    $children = [$parentId];
+                                    foreach ($allGroups as $g) {
+                                        if ($g['parent'] == $parentId && $g['id_grupo'] != $parentId) {
+                                            $children = array_merge($children, traffic_get_child_groups($g['id_grupo'], $allGroups));
+                                        }
+                                    }
+                                    return array_unique($children);
+                                }
+                            }
+                            $targetGroups = traffic_get_child_groups($info['group_id'], $allGroups);
+                        }
+                    } catch (Throwable $e) {}
+
+                    $inG = [];
+                    foreach ($targetGroups as $idx => $tgId) {
+                        $inG[] = ":gid{$idx}";
+                        $params[":gid{$idx}"] = $tgId;
+                    }
+                    $sql .= " AND a.id_grupo IN (" . implode(',', $inG) . ")";
+                }
                 if ($info['agent_id'] > 0) { $sql .= " AND a.id_agente = :aid"; $params[':aid'] = $info['agent_id']; }
 
                 $sql .= " AND ({$allLikes})";
@@ -892,7 +953,8 @@ if ($api === 'data') {
 }
 
 if ($api === 'series') {
-    if (ob_get_length()) ob_clean(); header('Content-Type: application/json');
+    http_response_code(200);
+    if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
     $inIdRaw = $_GET['in']??'0'; 
     $outIdRaw = $_GET['out']??'0';
     $unit = $_GET['unit'] ?? 'Mbps';
@@ -2190,18 +2252,22 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         let res;
         try {
             const r = await fetch('?api=data', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':CSRF_TOKEN}, body:JSON.stringify(payload) });
-            if (!r.ok) {
-                const text = await r.text();
-                body.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ef4444; padding:20px;">Server error (${r.status}): ${text.substring(0, 150)}</td></tr>`;
-                return;
+            const text = await r.text();
+            try {
+                res = JSON.parse(text);
+            } catch (jsonErr) {
+                if (!r.ok) {
+                    body.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ef4444; padding:20px;">Server error (${r.status}): ${text.substring(0, 150)}</td></tr>`;
+                    return;
+                }
+                throw jsonErr;
             }
-            res = await r.json();
         } catch (err) {
             body.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ef4444; padding:20px;">Error communicating with server: ${err.message}</td></tr>`;
             return;
         }
-        if(!res.ok) {
-            body.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ef4444; padding:20px;">${res.error || 'Failed to retrieve data'}</td></tr>`;
+        if(!res || !res.ok) {
+            body.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ef4444; padding:20px;">${res?.error || 'Failed to retrieve data'}</td></tr>`;
             return;
         }
         console.log("Returned Data:", res.data);
@@ -2209,7 +2275,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const warnT = parseFloat(document.getElementById('f_warn').value) || 70;
         const critT = parseFloat(document.getElementById('f_crit').value) || 80;
         
-        document.getElementById('last_update_text').innerText = `Update: ${res.updated_at}`;
+        document.getElementById('last_update_text').innerText = `Update: ${res.updated_at || '-'}`;
+
+        if (!res.data || res.data.length === 0) {
+            body.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#64748b; padding:30px; font-weight:500;">Tidak ada antarmuka (interface) yang ditemukan untuk filter ini.<br><span style="font-size:11px; color:#94a3b8; font-weight:normal;">Periksa kembali konfigurasi target Agent/Node, atau filter Group & Kategori.</span></td></tr>`;
+            renderPagination(res.pagination || { total: 0, page: 1, total_pages: 0 });
+            resetTimer();
+            return;
+        }
         body.innerHTML = res.data.map(r => {
             const rxLevel = r.rx_pct >= critT ? 'crit' : (r.rx_pct >= warnT ? 'warn' : 'ok');
             const txLevel = r.tx_pct >= critT ? 'crit' : (r.tx_pct >= warnT ? 'warn' : 'ok');
