@@ -13,7 +13,7 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - Menambahkan dropdown pemilihan limit baris per halaman langsung pada pagination bar tabel (`Show: 5 | 10 | 15 | 20 | 25 | 50 | 100`) serta opsi input `Rows Per Page (Limit)` pada builder modal widget.
   - Menambahkan fitur pengurutan data (**Sort By**): mendukung pengurutan **Highest Value First (DESC)** untuk memunculkan nilai modul tertinggi di posisi paling atas, serta pengurutan Lowest Value (ASC), Latest Timestamp (DESC), Oldest Timestamp (ASC), Agent Name, dan Module Name.
   - Membuat seluruh header kolom tabel (`TIMESTAMP`, `AGENT NAME`, `MODULE NAME`, `VALUE`) interaktif dan dapat di-klik untuk *instant toggle sorting* (ASC / DESC) dilengkapi indikator panah status pengurutan.
-  - Mengintegrasikan konversi satuan traffic otomatis (bps/Kbps/Mbps/Gbps) pada nilai history table view.
+  - Mengintegrasikan konversi satuan traffic otomatis (bps/Kbps/Mbps/Gbps) pada nilai history table view, serta menambahkan toggle tombol interaktif **`Convert (Mbps)`** langsung pada footer pagination tabel dan pengaturan checkbox pada modal edit untuk beralih secara instan antara nilai konversi bit rate (Mbps) dan nilai mentah modul (bytes/s).
 - **Traffic Auto-Convert & Bit-Rate Units Enforcement (Mbps vs Mbytes/s):**
   - Mengatasi kemunculan satuan `Mbytes/s` pada sumbu Y dan angka raw byte pada popup tooltip grafik.
   - Memastikan seluruh modul traffic jaringan (seperti `ifInOctets`, `ifOutOctets`, modul bertipe rate byte/s atau octet) secara mutlak dikonversi ke satuan standar bandwidth bit-rate jaringan (**`bps`**, **`Kbps`**, **`Mbps`**, **`Gbps`**) dengan pengali byte-ke-bit ($8\times$).
