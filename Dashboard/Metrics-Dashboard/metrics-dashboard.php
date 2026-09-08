@@ -1292,6 +1292,18 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             </select>
         </div>
 
+        <div class="form-group" id="wrap_history_table_options" style="display:none;">
+            <label style="font-weight:600; margin-bottom:6px; display:block;">History Table Sort Order (Urutan Data)</label>
+            <select id="b_history_sort" class="form-control-fix">
+                <option value="val_desc">Highest Value First / Nilai Tertinggi (DESC)</option>
+                <option value="val_asc">Lowest Value First / Nilai Terendah (ASC)</option>
+                <option value="time_desc" selected>Newest Timestamp / Waktu Terbaru (DESC)</option>
+                <option value="time_asc">Oldest Timestamp / Waktu Terlama (ASC)</option>
+                <option value="agent_asc">Agent Name (A-Z)</option>
+                <option value="mod_asc">Module Name (A-Z)</option>
+            </select>
+        </div>
+
         <div class="form-group"><label>Filter By Group</label><select id="b_group" class="form-control-fix" onchange="toggleManualSelector(); refreshBuilderModuleList();"></select></div>
         <div id="manual_selector_box" class="form-group" style="display:none;">
             <label>Select Agents (Unlimited)</label>
@@ -2817,98 +2829,179 @@ function renderHistoryTableWidget(cardId, tableData, historyData) {
         return;
     }
 
-    // Cache the data for client-side pagination
+    // Cache the data for client-side pagination and sorting
     window.widgetHistoryStores = window.widgetHistoryStores || {};
     window.widgetHistoryStores[cardId] = { table: tableData, history: historyData };
+
+    const card = dashboardCards.find(c => c.id === cardId);
+    if (!card) return;
 
     const moduleMap = {};
     tableData.forEach(m => {
         moduleMap[m.id_agente_modulo] = m;
     });
 
+    const autoConvert = (card.auto_convert_traffic !== undefined)
+        ? (card.auto_convert_traffic === true || card.auto_convert_traffic === 1 || card.auto_convert_traffic === '1' || card.auto_convert_traffic === 'true')
+        : true;
+
     let combinedHistory = [];
     historyData.forEach(h => {
         const m = moduleMap[h.id_mod];
         if (m) {
+            let valNum = parseFloat(h.val);
+            let numericVal = isNaN(valNum) ? 0 : valNum;
+
+            const isTraffic = isTrafficMetric(m.module_name, m.unit, card.title);
+            const isByte = isTraffic && isByteTrafficMetric(m.module_name, m.unit, card.title);
+            const effectiveTraffic = (card.use_raw !== true) && autoConvert && isTraffic;
+            const bitVal = (effectiveTraffic && isByte) ? (numericVal * 8) : numericVal;
+
+            let displayVal = '';
+            if (effectiveTraffic) {
+                displayVal = formatBitsRate(bitVal);
+            } else if (card.use_raw) {
+                displayVal = (numericVal % 1 === 0 ? numericVal : numericVal.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+            } else {
+                displayVal = formatHumanMetric(numericVal, m.unit, false, m.module_name, card.title);
+            }
+
             combinedHistory.push({
                 utimestamp: h.utimestamp,
                 time: h.time,
-                agent_alias: m.agent_alias,
-                module_name: m.module_name,
+                agent_alias: m.agent_alias || '',
+                module_name: m.module_name || '',
                 val: h.val,
-                unit: m.unit
+                numericVal: numericVal,
+                bitVal: bitVal,
+                displayVal: displayVal,
+                isTraffic: effectiveTraffic,
+                unit: m.unit || ''
             });
         }
     });
 
-    combinedHistory.sort((a, b) => b.utimestamp - a.utimestamp);
-
-    const card = dashboardCards.find(c => c.id === cardId);
-    if (!card) return;
-    const chartH = Math.max(120, (parseInt(card.height) || 200) - 90);
-
-    let tableHtml = '';
-    if (combinedHistory.length === 0) {
-        tableHtml = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:${chartH}px; color:#bdc3c7; font-size:11px; border:1px solid #e2e8f0; border-radius:6px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">history</span>No History Data</div>`;
-        container.innerHTML = `<div style="display:flex; flex-direction:column; height:100%;">${tableHtml}</div>`;
-        return;
+    // Initialize or read sorting preference
+    window.widgetHistorySort = window.widgetHistorySort || {};
+    if (!window.widgetHistorySort[cardId]) {
+        const initSort = card.history_sort || 'time_desc';
+        const parts = initSort.split('_');
+        window.widgetHistorySort[cardId] = {
+            col: parts[0] || 'time',
+            order: parts[1] || 'desc'
+        };
     }
+    const currentSort = window.widgetHistorySort[cardId];
 
-    const limit = parseInt(card.limit) || 20;
-    const pageSize = (limit === 0) ? 20 : limit;
+    // Sort data according to current sort state (supports DESC highest value first)
+    combinedHistory.sort((a, b) => {
+        let diff = 0;
+        if (currentSort.col === 'val') {
+            const vA = a.isTraffic ? a.bitVal : a.numericVal;
+            const vB = b.isTraffic ? b.bitVal : b.numericVal;
+            diff = vA - vB;
+        } else if (currentSort.col === 'time') {
+            diff = a.utimestamp - b.utimestamp;
+        } else if (currentSort.col === 'agent') {
+            diff = (a.agent_alias || '').localeCompare(b.agent_alias || '', undefined, { numeric: true, sensitivity: 'base' });
+        } else if (currentSort.col === 'mod') {
+            diff = (a.module_name || '').localeCompare(b.module_name || '', undefined, { numeric: true, sensitivity: 'base' });
+        }
+        return (currentSort.order === 'desc') ? -diff : diff;
+    });
+
+    const limit = parseInt(card.limit) || 15;
+    const pageSize = (limit === 0) ? 15 : limit;
     const totalPages = Math.ceil(combinedHistory.length / pageSize) || 1;
 
     let currentPage = cardPages[cardId] || 1;
     if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
     cardPages[cardId] = currentPage;
 
     const startIdx = (currentPage - 1) * pageSize;
     const endIdx = Math.min(startIdx + pageSize, combinedHistory.length);
     const paginatedHistory = combinedHistory.slice(startIdx, endIdx);
 
-    tableHtml = `
-        <div class="table-scroll-wrapper" style="overflow-y:auto; max-height:${chartH}px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
+    // Height calculation: if card.height is specified, respect it.
+    // If auto/empty, size comfortably to fit pageSize rows up to 650px without artificial 2-row scrollbar.
+    let tableHeightStyle = '';
+    if (card.height && parseInt(card.height) > 0) {
+        tableHeightStyle = `max-height: ${Math.max(120, parseInt(card.height) - 90)}px; overflow-y: auto;`;
+    } else {
+        const estimatedHeight = Math.min(650, Math.max(200, (pageSize * 38) + 45));
+        tableHeightStyle = `max-height: ${estimatedHeight}px; overflow-y: auto;`;
+    }
+
+    if (combinedHistory.length === 0) {
+        container.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:160px; color:#bdc3c7; font-size:11px; border:1px solid #e2e8f0; border-radius:6px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">history</span>No History Data</div>`;
+        return;
+    }
+
+    const getSortIcon = (col) => {
+        if (currentSort.col === col) {
+            return currentSort.order === 'desc'
+                ? '<span style="font-size:11px; margin-left:4px; color:#0284c7; display:inline-block;">▼</span>'
+                : '<span style="font-size:11px; margin-left:4px; color:#0284c7; display:inline-block;">▲</span>';
+        }
+        return '<span style="font-size:11px; margin-left:4px; color:#cbd5e1; display:inline-block;">⇅</span>';
+    };
+
+    const tableHtml = `
+        <div class="table-scroll-wrapper" style="${tableHeightStyle} border: 1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
             <table class="table-pfms" style="margin:0; font-size:11px; width:100%;">
-                <thead>
-                    <tr style="position:sticky; top:0; background:#f8fafc; z-index:1; box-shadow: 0 1px 0 #e2e8f0;">
-                        <th style="padding:8px 12px; text-align:left; font-weight:600; color:#475569;">Timestamp</th>
-                        <th style="padding:8px 12px; text-align:left; font-weight:600; color:#475569;">Agent Name</th>
-                        <th style="padding:8px 12px; text-align:left; font-weight:600; color:#475569;">Module Name</th>
-                        <th style="padding:8px 12px; text-align:right; font-weight:600; color:#475569;">Value</th>
+                <thead style="position:sticky; top:0; background:#f8fafc; z-index:2; box-shadow: 0 1px 0 #e2e8f0;">
+                    <tr>
+                        <th onclick="toggleHistorySort('${cardId}', 'time')" title="Click to sort by Timestamp" style="padding:9px 12px; text-align:left; font-weight:600; color:#475569; cursor:pointer; user-select:none; white-space:nowrap;">
+                            TIMESTAMP ${getSortIcon('time')}
+                        </th>
+                        <th onclick="toggleHistorySort('${cardId}', 'agent')" title="Click to sort by Agent Name" style="padding:9px 12px; text-align:left; font-weight:600; color:#475569; cursor:pointer; user-select:none; white-space:nowrap;">
+                            AGENT NAME ${getSortIcon('agent')}
+                        </th>
+                        <th onclick="toggleHistorySort('${cardId}', 'mod')" title="Click to sort by Module Name" style="padding:9px 12px; text-align:left; font-weight:600; color:#475569; cursor:pointer; user-select:none; white-space:nowrap;">
+                            MODULE NAME ${getSortIcon('mod')}
+                        </th>
+                        <th onclick="toggleHistorySort('${cardId}', 'val')" title="Click to sort by Highest / Lowest Value" style="padding:9px 12px; text-align:right; font-weight:600; color:#475569; cursor:pointer; user-select:none; white-space:nowrap;">
+                            VALUE ${getSortIcon('val')}
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${paginatedHistory.map(h => {
-                        let valNum = parseFloat(h.val);
-                        let displayVal = isNaN(valNum) ? h.val : ((valNum % 1 === 0) ? valNum : valNum.toFixed(2));
-                        let unitStr = h.unit ? ` ${h.unit}` : '';
-                        return `
-                            <tr>
-                                <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${h.time}</td>
-                                <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.agent_alias}</td>
-                                <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.module_name}</td>
-                                <td style="padding:8px 12px; text-align:right; font-weight:600; color:#1e293b; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${displayVal}${unitStr}</td>
-                            </tr>
-                        `;
-                    }).join('')}
+                    ${paginatedHistory.map(h => `
+                        <tr>
+                            <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${h.time}</td>
+                            <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.agent_alias}</td>
+                            <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.module_name}</td>
+                            <td style="padding:8px 12px; text-align:right; font-weight:600; color:#0f172a; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${h.displayVal}</td>
+                        </tr>
+                    `).join('')}
                 </tbody>
             </table>
         </div>
     `;
 
-    let paginationHtml = '';
-    if (totalPages > 1) {
-        paginationHtml = `
-            <div class="pagination-container" style="margin-top: 8px;">
-                <div style="font-size:11px; font-weight: normal; color:#7f8c8d;">Showing ${startIdx + 1} to ${endIdx} of ${combinedHistory.length} Entries</div>
-                <div style="display:flex; gap:10px;">
-                    <button class="pagination-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="changeHistoryWidgetPage('${cardId}', -1)">Prev</button>
-                    <span style="font-size:12px; font-weight: normal; align-self:center;">Page ${currentPage} / ${totalPages}</span>
-                    <button class="pagination-btn" ${currentPage === totalPages ? 'disabled' : ''} onclick="changeHistoryWidgetPage('${cardId}', 1)">Next</button>
-                </div>
-            </div>
-        `;
+    const limitOptions = [5, 10, 15, 20, 25, 50, 100];
+    if (!limitOptions.includes(pageSize)) {
+        limitOptions.push(pageSize);
+        limitOptions.sort((a, b) => a - b);
     }
+
+    const paginationHtml = `
+        <div class="pagination-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top: 8px; padding-top:4px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:11px; color:#64748b;">Show:</span>
+                <select class="form-control-fix" style="width:auto; height:26px; padding:2px 8px; font-size:11px; margin:0; border-radius:4px; border:1px solid #cbd5e1; background:#fff; cursor:pointer;" onchange="changeHistoryWidgetLimit('${cardId}', this.value)">
+                    ${limitOptions.map(n => `<option value="${n}" ${pageSize === n ? 'selected' : ''}>${n}</option>`).join('')}
+                </select>
+                <span style="font-size:11px; font-weight: normal; color:#64748b;">Showing ${startIdx + 1} to ${endIdx} of ${combinedHistory.length} Entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <button class="pagination-btn" ${currentPage === 1 ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''} onclick="changeHistoryWidgetPage('${cardId}', -1)">Prev</button>
+                <span style="font-size:11px; font-weight: 600; align-self:center; color:#334155;">Page ${currentPage} / ${totalPages}</span>
+                <button class="pagination-btn" ${currentPage === totalPages ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''} onclick="changeHistoryWidgetPage('${cardId}', 1)">Next</button>
+            </div>
+        </div>
+    `;
 
     container.innerHTML = `
         <div style="display:flex; flex-direction:column; height:100%;">
@@ -2916,6 +3009,35 @@ function renderHistoryTableWidget(cardId, tableData, historyData) {
             ${paginationHtml}
         </div>
     `;
+}
+
+function toggleHistorySort(cardId, col) {
+    window.widgetHistorySort = window.widgetHistorySort || {};
+    const current = window.widgetHistorySort[cardId] || { col: 'time', order: 'desc' };
+    if (current.col === col) {
+        current.order = (current.order === 'desc') ? 'asc' : 'desc';
+    } else {
+        current.col = col;
+        current.order = (col === 'val' || col === 'time') ? 'desc' : 'asc';
+    }
+    window.widgetHistorySort[cardId] = current;
+    cardPages[cardId] = 1;
+    const store = window.widgetHistoryStores[cardId];
+    if (store) {
+        renderHistoryTableWidget(cardId, store.table, store.history);
+    }
+}
+
+function changeHistoryWidgetLimit(cardId, newLimit) {
+    const card = dashboardCards.find(c => c.id === cardId);
+    if (card) {
+        card.limit = parseInt(newLimit) || 15;
+    }
+    cardPages[cardId] = 1;
+    const store = window.widgetHistoryStores[cardId];
+    if (store) {
+        renderHistoryTableWidget(cardId, store.table, store.history);
+    }
 }
 
 function changeHistoryWidgetPage(cardId, direction) {
@@ -3308,6 +3430,8 @@ function toggleViewTypeOptions() {
     const wrap = document.getElementById('wrap_chart_options');
     const wrapShowStats = document.getElementById('wrap_show_stats');
     const wrapSingleValue = document.getElementById('wrap_single_value_options');
+    const wrapHistory = document.getElementById('wrap_history_table_options');
+    const wrapColumns = document.getElementById('wrap_columns_select');
     
     if (vt === 'pie' || vt === 'donut') {
         wrap.style.display = 'block';
@@ -3315,10 +3439,16 @@ function toggleViewTypeOptions() {
         wrap.style.display = 'none';
     }
 
-    if (vt === 'single_value') {
-        if (wrapSingleValue) wrapSingleValue.style.display = 'block';
-    } else {
-        if (wrapSingleValue) wrapSingleValue.style.display = 'none';
+    if (wrapSingleValue) {
+        wrapSingleValue.style.display = (vt === 'single_value') ? 'block' : 'none';
+    }
+
+    if (wrapHistory) {
+        wrapHistory.style.display = (vt === 'history_table') ? 'block' : 'none';
+    }
+
+    if (wrapColumns) {
+        wrapColumns.style.display = (vt === 'table') ? 'block' : 'none';
     }
 
     const wrapVisibleStats = document.getElementById('wrap_visible_stats');
@@ -3370,6 +3500,7 @@ async function openBuilder() {
     document.getElementById('b_stat_font_color_hex').value = '';
     if (document.getElementById('b_auto_convert_traffic')) document.getElementById('b_auto_convert_traffic').checked = true;
     if (document.getElementById('b_show_module_name')) document.getElementById('b_show_module_name').value = '1';
+    if (document.getElementById('b_history_sort')) document.getElementById('b_history_sort').value = 'time_desc';
     toggleViewTypeOptions();
     document.getElementById('inner_search').value = '';
     document.getElementById('sel_count').innerText = "0 Selected";
@@ -3430,6 +3561,9 @@ async function openEdit(id) {
     document.getElementById('b_chart_font_size').value = c.chart_font_size || '11';
     if (document.getElementById('b_show_module_name')) {
         document.getElementById('b_show_module_name').value = (c.show_module_name !== undefined) ? String(c.show_module_name) : '1';
+    }
+    if (document.getElementById('b_history_sort')) {
+        document.getElementById('b_history_sort').value = c.history_sort || 'time_desc';
     }
     toggleViewTypeOptions();
 
@@ -3497,6 +3631,7 @@ function saveWidget() {
         visible_stats: visStats,
         show_module_name: document.getElementById('b_show_module_name') ? parseInt(document.getElementById('b_show_module_name').value) : 1,
         visible_columns: Array.from(document.querySelectorAll('.col-visibility-chk:checked')).map(el => el.value),
+        history_sort: document.getElementById('b_history_sort') ? document.getElementById('b_history_sort').value : 'time_desc',
         manual_ids: selectedIds.join(',')
     };
 

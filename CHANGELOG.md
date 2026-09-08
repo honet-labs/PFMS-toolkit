@@ -8,6 +8,12 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - Memperbaiki masalah warna grafik dan legend chip yang berubah-ubah (*color jitter/swapping*) pada setiap auto-refresh atau reload halaman.
   - Mengubah sorting modul pada backend dan frontend grafik dari `last_contact DESC` (yang menyebabkan urutan teracak-acak akibat selisih detik polling SNMP) menjadi pengurutan deterministik alami (*natural alphanumeric order*) berdasarkan nama Agent dan Modul.
   - Memperluas palet warna grafik menjadi 36 warna modern bergradasi kontras tinggi dan menambahkan session color mapping (`window.__metricChartColorMap` & `window.__dynamicChartColorMap`) sehingga setiap interface/modul selalu mendapatkan warna yang identik dan konsisten di setiap refresh.
+- **History Table View Pagination Limit & DESC Value Sorting:**
+  - Mengatasi masalah tampilan baris History Table yang sebelumnya terkungkung pada tinggi tetap sehingga hanya memunculkan 2 baris (*squished 2 rows*). Container tabel kini otomatis menyesuaikan tinggi baris secara natural berdasarkan limit yang ditentukan.
+  - Menambahkan dropdown pemilihan limit baris per halaman langsung pada pagination bar tabel (`Show: 5 | 10 | 15 | 20 | 25 | 50 | 100`) serta opsi input `Rows Per Page (Limit)` pada builder modal widget.
+  - Menambahkan fitur pengurutan data (**Sort By**): mendukung pengurutan **Highest Value First (DESC)** untuk memunculkan nilai modul tertinggi di posisi paling atas, serta pengurutan Lowest Value (ASC), Latest Timestamp (DESC), Oldest Timestamp (ASC), Agent Name, dan Module Name.
+  - Membuat seluruh header kolom tabel (`TIMESTAMP`, `AGENT NAME`, `MODULE NAME`, `VALUE`) interaktif dan dapat di-klik untuk *instant toggle sorting* (ASC / DESC) dilengkapi indikator panah status pengurutan.
+  - Mengintegrasikan konversi satuan traffic otomatis (bps/Kbps/Mbps/Gbps) pada nilai history table view.
 - **Traffic Auto-Convert & Bit-Rate Units Enforcement (Mbps vs Mbytes/s):**
   - Mengatasi kemunculan satuan `Mbytes/s` pada sumbu Y dan angka raw byte pada popup tooltip grafik.
   - Memastikan seluruh modul traffic jaringan (seperti `ifInOctets`, `ifOutOctets`, modul bertipe rate byte/s atau octet) secara mutlak dikonversi ke satuan standar bandwidth bit-rate jaringan (**`bps`**, **`Kbps`**, **`Mbps`**, **`Gbps`**) dengan pengali byte-ke-bit ($8\times$).

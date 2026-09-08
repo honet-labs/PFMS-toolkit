@@ -2600,41 +2600,106 @@ function generateSummaryPanelHtml(p, modules) {
                 <div id="chart_${p.id}" style="width:100%; height:100%;"></div>
             </div>`;
     } else if (p.type === 'history_table') {
+        const autoConvert = (p.auto_convert_traffic !== undefined)
+            ? (p.auto_convert_traffic === true || p.auto_convert_traffic === 1 || p.auto_convert_traffic === '1' || p.auto_convert_traffic === 'true')
+            : true;
+
         let combinedHistory = [];
         modules.forEach(m => {
             const history = m.history || [];
+            const isTraffic = isTrafficMetric(m.module_name, m.unit, p.title);
+            const isByte = isTraffic && isByteTrafficMetric(m.module_name, m.unit, p.title);
+            const effectiveTraffic = (p.use_raw !== true) && autoConvert && isTraffic;
+
             history.forEach(h => {
+                let valNum = parseFloat(h.val);
+                let numericVal = isNaN(valNum) ? 0 : valNum;
+                let bitVal = (effectiveTraffic && isByte) ? (numericVal * 8) : numericVal;
+                let displayVal = '';
+
+                if (effectiveTraffic) {
+                    displayVal = formatBitsRate(bitVal);
+                } else if (p.use_raw) {
+                    displayVal = (numericVal % 1 === 0 ? numericVal : numericVal.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+                } else {
+                    displayVal = formatHumanMetric(numericVal, m.unit, false, m.module_name, p.title);
+                }
+
                 combinedHistory.push({
                     ts: h.ts,
                     lbl: h.lbl,
-                    agent_name: m.agent_name,
-                    module_name: m.module_name,
+                    agent_name: m.agent_name || '',
+                    module_name: m.module_name || '',
                     val: h.val,
-                    unit: m.unit
+                    numericVal: numericVal,
+                    bitVal: bitVal,
+                    displayVal: displayVal,
+                    isTraffic: effectiveTraffic,
+                    unit: m.unit || ''
                 });
             });
         });
 
-        combinedHistory.sort((a, b) => b.ts - a.ts);
+        window.dynamicHistorySort = window.dynamicHistorySort || {};
+        if (!window.dynamicHistorySort[p.id]) {
+            const initSort = p.history_sort || 'time_desc';
+            const parts = initSort.split('_');
+            window.dynamicHistorySort[p.id] = {
+                col: parts[0] || 'time',
+                order: parts[1] || 'desc'
+            };
+        }
+        const currentSort = window.dynamicHistorySort[p.id];
+
+        combinedHistory.sort((a, b) => {
+            let diff = 0;
+            if (currentSort.col === 'val') {
+                const vA = a.isTraffic ? a.bitVal : a.numericVal;
+                const vB = b.isTraffic ? b.bitVal : b.numericVal;
+                diff = vA - vB;
+            } else if (currentSort.col === 'time') {
+                diff = a.ts - b.ts;
+            } else if (currentSort.col === 'agent') {
+                diff = (a.agent_name || '').localeCompare(b.agent_name || '', undefined, { numeric: true, sensitivity: 'base' });
+            } else if (currentSort.col === 'mod') {
+                diff = (a.module_name || '').localeCompare(b.module_name || '', undefined, { numeric: true, sensitivity: 'base' });
+            }
+            return (currentSort.order === 'desc') ? -diff : diff;
+        });
         
-        const limit = parseInt(p.row_limit) || 200;
+        const limit = parseInt(p.row_limit) || 15;
         const totalItems = combinedHistory.length;
         const totalPages = Math.ceil(totalItems / limit) || 1;
         
         window.tableCurrentPages = window.tableCurrentPages || {};
         const currentPage = window.tableCurrentPages[p.id] || 1;
-        const actualPage = Math.min(currentPage, totalPages);
+        const actualPage = Math.min(Math.max(1, currentPage), totalPages);
         window.tableCurrentPages[p.id] = actualPage;
         
         const startIdx = (actualPage - 1) * limit;
         const endIdx = Math.min(startIdx + limit, totalItems);
         const paginatedHistory = combinedHistory.slice(startIdx, endIdx);
 
-        const chartH = Math.max(150, (parseInt(p.height) || 200) - 90);
+        let tableHeightStyle = '';
+        if (p.height && parseInt(p.height) > 0) {
+            tableHeightStyle = `max-height: ${Math.max(120, parseInt(p.height) - 90)}px; overflow-y: auto;`;
+        } else {
+            const estimatedHeight = Math.min(650, Math.max(200, (limit * 38) + 45));
+            tableHeightStyle = `max-height: ${estimatedHeight}px; overflow-y: auto;`;
+        }
 
         if (combinedHistory.length === 0) {
-            content = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:${chartH}px; color:#bdc3c7; font-size:11px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">history</span>No History Data</div>`;
+            content = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:160px; color:#bdc3c7; font-size:11px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">history</span>No History Data</div>`;
         } else {
+            const getSortIcon = (col) => {
+                if (currentSort.col === col) {
+                    return currentSort.order === 'desc'
+                        ? '<span style="font-size:11px; margin-left:4px; color:#0284c7; display:inline-block;">▼</span>'
+                        : '<span style="font-size:11px; margin-left:4px; color:#0284c7; display:inline-block;">▲</span>';
+                }
+                return '<span style="font-size:11px; margin-left:4px; color:#cbd5e1; display:inline-block;">⇅</span>';
+            };
+
             let paginationHtml = '';
             if (totalPages > 1) {
                 paginationHtml = `
@@ -2650,30 +2715,33 @@ function generateSummaryPanelHtml(p, modules) {
             }
 
             content = `
-                <div class="table-scroll-wrapper" style="overflow-y:auto; max-height:${chartH}px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
+                <div class="table-scroll-wrapper" style="${tableHeightStyle} border: 1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
                     <table class="table-pfms" style="margin:0; font-size:11px; width:100%;">
                         <thead>
-                            <tr style="position:sticky; top:0; background:#f8fafc; z-index:1; box-shadow: 0 1px 0 #e2e8f0;">
-                                <th style="padding:8px 12px; text-align:left; font-weight:600; color:#475569;">Timestamp</th>
-                                <th style="padding:8px 12px; text-align:left; font-weight:600; color:#475569;">Agent Name</th>
-                                <th style="padding:8px 12px; text-align:left; font-weight:600; color:#475569;">Module Name</th>
-                                <th style="padding:8px 12px; text-align:right; font-weight:600; color:#475569;">Value</th>
+                            <tr style="position:sticky; top:0; background:#f8fafc; z-index:2; box-shadow: 0 1px 0 #e2e8f0;">
+                                <th onclick="toggleDynamicHistorySort('${p.id}', 'time')" title="Click to sort by Timestamp" style="padding:8px 12px; text-align:left; font-weight:600; color:#475569; cursor:pointer; user-select:none; white-space:nowrap;">
+                                    TIMESTAMP ${getSortIcon('time')}
+                                </th>
+                                <th onclick="toggleDynamicHistorySort('${p.id}', 'agent')" title="Click to sort by Agent Name" style="padding:8px 12px; text-align:left; font-weight:600; color:#475569; cursor:pointer; user-select:none; white-space:nowrap;">
+                                    AGENT NAME ${getSortIcon('agent')}
+                                </th>
+                                <th onclick="toggleDynamicHistorySort('${p.id}', 'mod')" title="Click to sort by Module Name" style="padding:8px 12px; text-align:left; font-weight:600; color:#475569; cursor:pointer; user-select:none; white-space:nowrap;">
+                                    MODULE NAME ${getSortIcon('mod')}
+                                </th>
+                                <th onclick="toggleDynamicHistorySort('${p.id}', 'val')" title="Click to sort by Highest / Lowest Value" style="padding:8px 12px; text-align:right; font-weight:600; color:#475569; cursor:pointer; user-select:none; white-space:nowrap;">
+                                    VALUE ${getSortIcon('val')}
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${paginatedHistory.map(h => {
-                                let valNum = parseFloat(h.val);
-                                let displayVal = isNaN(valNum) ? h.val : ((valNum % 1 === 0) ? valNum : valNum.toFixed(2));
-                                let unitStr = h.unit ? ` ${h.unit}` : '';
-                                return `
-                                    <tr>
-                                        <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${h.lbl}</td>
-                                        <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.agent_name}</td>
-                                        <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.module_name}</td>
-                                        <td style="padding:8px 12px; text-align:right; font-weight:600; color:#1e293b; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${displayVal}${unitStr}</td>
-                                    </tr>
-                                `;
-                            }).join('')}
+                            ${paginatedHistory.map(h => `
+                                <tr>
+                                    <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${h.lbl}</td>
+                                    <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.agent_name}</td>
+                                    <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.module_name}</td>
+                                    <td style="padding:8px 12px; text-align:right; font-weight:600; color:#0f172a; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${h.displayVal}</td>
+                                </tr>
+                            `).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -3433,6 +3501,33 @@ function changeTablePage(panelId, newPage) {
                 activeModules = activeModules.filter(m => !p.excluded.map(String).includes(String(m.id)));
             }
             activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
+            wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
+            setTimeout(resizeAllGridItems, 50);
+        }
+    }
+}
+
+function toggleDynamicHistorySort(panelId, col) {
+    window.dynamicHistorySort = window.dynamicHistorySort || {};
+    const current = window.dynamicHistorySort[panelId] || { col: 'time', order: 'desc' };
+    if (current.col === col) {
+        current.order = (current.order === 'desc') ? 'asc' : 'desc';
+    } else {
+        current.col = col;
+        current.order = (col === 'val' || col === 'time') ? 'desc' : 'asc';
+    }
+    window.dynamicHistorySort[panelId] = current;
+    window.tableCurrentPages = window.tableCurrentPages || {};
+    window.tableCurrentPages[panelId] = 1;
+    
+    const wrapper = document.getElementById(`wrapper_p_${panelId}`);
+    if (wrapper && lastFetchedData && lastFetchedData[panelId]) {
+        const p = masterDashboards.find(d => d.id === currentDashId).panels.find(pl => pl.id === panelId);
+        if (p) {
+            let activeModules = lastFetchedData[panelId].modules || [];
+            if (!showHiddenPanels && p.excluded) {
+                activeModules = activeModules.filter(m => !p.excluded.map(String).includes(String(m.id)));
+            }
             wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             setTimeout(resizeAllGridItems, 50);
         }
