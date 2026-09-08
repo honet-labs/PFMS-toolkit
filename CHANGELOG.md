@@ -36,6 +36,12 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - Memastikan hanya agen asli yang terdeteksi di database Pandora FMS yang didaftarkan ke daftar dashboard Route Parser.
   - Memfilter dan membersihkan entri demo lama secara otomatis dari file konfigurasi saat halaman dimuat.
   - Menambahkan multi-path fallback pada `load_route_dashboards()` dan `save_route_dashboards()` (ke direktori `temp`) serta menginisialisasi `route_dashboards.json` di repositori agar operasi hapus/simpan dashboard tidak terhalang masalah izin tulis (*permissions*) direktori Linux/Apache.
+- **Route Parser Intelligent Auto-Scanning & Agent Sync:**
+  - Menambahkan fitur **Auto Scanning** agen: sistem secara otomatis mendeteksi seluruh agen di Pandora FMS yang memiliki modul `RouteStep%`, `RouteStepTarget%`, `RouteTarget%`, `RouteHop%`, atau `Route_%`.
+  - Menambahkan tombol **Auto Scan Agents** pada toolbar header lengkap dengan status animasi scanning dan notifikasi toast hasil pemindaian.
+  - Mengotomatiskan sinkronisasi pendaftaran dashboard pada saat daftar dashboard kosong atau saat tombol *Auto Scan* ditekan, sehingga agen baru langsung terdaftar tanpa konfigurasi manual.
+  - Menambahkan deteksi IP sumber otomatis (*auto-detect agent IP*) dari modul hop pertama (`RouteStep_<ip>`) jika kolom `direccion` pada agen bernilai kosong di database.
+  - Memperbarui tampilan state kosong (*empty state*) dengan tombol aksi cepat *Auto Scan Agents Sekarang*.
 
 ## [2.5] - 2026-08-30 (Route Parser Auto-Refresh, Embed Live Polling & Data Consistency Fix)
 ### Fixed

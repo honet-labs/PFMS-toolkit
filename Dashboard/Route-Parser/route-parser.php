@@ -321,23 +321,52 @@ function save_route_dashboards(string $file, array $dashboards): bool {
 }
 
 // --- 3. DISCOVER AGENTS WITH ROUTEPARSER MODULES ---
-$available_agents = [];
-if (isset($pdo) && $pdo instanceof PDO) {
+function discover_route_agents(PDO $pdo): array {
     try {
         $sql = "SELECT DISTINCT a.id_agente, a.nombre, a.alias, a.direccion, COUNT(tm.id_agente_modulo) as route_modules_count
                 FROM tagente a
                 JOIN tagente_modulo tm ON tm.id_agente = a.id_agente
                 WHERE a.disabled = 0 
-                  AND (tm.nombre LIKE 'RouteStep%' OR tm.nombre LIKE 'RouteTarget%')
+                  AND (tm.disabled = 0 OR tm.disabled IS NULL)
+                  AND (
+                      tm.nombre LIKE 'RouteStep%' 
+                      OR tm.nombre LIKE 'RouteTarget%' 
+                      OR tm.nombre LIKE 'RouteStepTarget%' 
+                      OR tm.nombre LIKE 'RouteHop%' 
+                      OR tm.nombre LIKE 'Route_%'
+                      OR tm.nombre LIKE '%RouteStep%'
+                      OR tm.nombre LIKE '%RouteTarget%'
+                  )
                 GROUP BY a.id_agente, a.nombre, a.alias, a.direccion
                 ORDER BY a.alias ASC";
         $stmt = $pdo->query($sql);
-        if ($stmt) {
-            $available_agents = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        }
+        return $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
     } catch (Throwable $e) {
         error_log("Route Parser agent discovery error: " . $e->getMessage());
+        return [];
     }
+}
+
+function auto_detect_agent_ip(PDO $pdo, int $agent_id, ?string $current_ip): string {
+    $clean_ip = trim((string)$current_ip);
+    if (!empty($clean_ip)) return $clean_ip;
+
+    try {
+        $stStep = $pdo->prepare("SELECT nombre FROM tagente_modulo WHERE id_agente = ? AND nombre LIKE 'RouteStep_%' AND nombre NOT LIKE 'RouteStepTarget_%' ORDER BY id_agente_modulo ASC LIMIT 1");
+        $stStep->execute([$agent_id]);
+        $row = $stStep->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $extracted = preg_replace('/^RouteStep_/i', '', $row['nombre']);
+            if (!empty($extracted)) return trim($extracted);
+        }
+    } catch (Throwable $e) {}
+
+    return '172.17.8.189';
+}
+
+$available_agents = [];
+if (isset($pdo) && $pdo instanceof PDO) {
+    $available_agents = discover_route_agents($pdo);
 }
 
 // All agents fallback for creation modal
@@ -349,7 +378,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
     } catch (Throwable $e) {}
 }
 
-// Load existing dashboards or initialize defaults
+// Load existing dashboards
 $raw_dashboards = load_route_dashboards($CONFIG_FILE);
 $dashboards = [];
 $seen_agent_dash = [];
@@ -370,17 +399,74 @@ if (count($dashboards) !== count($raw_dashboards)) {
     save_route_dashboards($CONFIG_FILE, $dashboards);
 }
 
-if (empty($dashboards) && !file_exists($CONFIG_FILE)) {
-    $seeded = [];
-    if (!empty($available_agents)) {
-        foreach ($available_agents as $ag) {
+// If no dashboards configured, auto-seed from available discovered agents
+if (empty($dashboards) && !empty($available_agents)) {
+    foreach ($available_agents as $ag) {
+        $ag_name = pretty_text($ag['alias'] ?: $ag['nombre']);
+        $aid = (int)$ag['id_agente'];
+        $src_ip = (isset($pdo) && $pdo instanceof PDO) ? auto_detect_agent_ip($pdo, $aid, $ag['direccion']) : ($ag['direccion'] ?: '172.17.8.189');
+
+        $dashboards[] = [
+            'id' => 'rp_' . bin2hex(random_bytes(6)),
+            'name' => 'Route Path - ' . $ag_name,
+            'description' => 'Route parser topology monitoring for agent ' . $ag_name . ' (' . $src_ip . ')',
+            'agent_id' => $aid,
+            'source_ip' => $src_ip,
+            'warn_threshold' => 10.0,
+            'crit_threshold' => 50.0,
+            'default_range' => '1d',
+            'auto_refresh' => '5m',
+            'created_at' => time(),
+            'updated_at' => time()
+        ];
+        $seen_agent_dash[$aid] = true;
+    }
+    if (!empty($dashboards)) {
+        save_route_dashboards($CONFIG_FILE, $dashboards);
+    }
+}
+
+// --- 4. AJAX API ENDPOINTS ---
+$api = $_GET['api'] ?? '';
+
+if ($api === 'auto_scan') {
+    if (ob_get_level() > 0) ob_clean();
+    header('Content-Type: application/json');
+
+    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!empty($csrf_token) && $client_token !== $csrf_token) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Please refresh page.']);
+        exit;
+    }
+
+    if (!isset($pdo) || !($pdo instanceof PDO)) {
+        echo json_encode(['ok' => false, 'error' => 'Database connection not available.']);
+        exit;
+    }
+
+    $discovered = discover_route_agents($pdo);
+    $existing_agent_ids = [];
+    foreach ($dashboards as $d) {
+        if (!empty($d['is_demo']) || ($d['id'] ?? '') === 'rp_demo_core_gateway') continue;
+        $aid = (int)($d['agent_id'] ?? 0);
+        if ($aid > 0) $existing_agent_ids[$aid] = true;
+    }
+
+    $new_added = 0;
+    foreach ($discovered as $ag) {
+        $aid = (int)$ag['id_agente'];
+        if ($aid <= 0) continue;
+
+        if (!isset($existing_agent_ids[$aid])) {
             $ag_name = pretty_text($ag['alias'] ?: $ag['nombre']);
-            $seeded[] = [
+            $src_ip = auto_detect_agent_ip($pdo, $aid, $ag['direccion']);
+
+            $dashboards[] = [
                 'id' => 'rp_' . bin2hex(random_bytes(6)),
                 'name' => 'Route Path - ' . $ag_name,
-                'description' => 'Route parser topology monitoring for agent ' . $ag_name . ' (' . ($ag['direccion'] ?: 'N/A') . ')',
-                'agent_id' => (int)$ag['id_agente'],
-                'source_ip' => $ag['direccion'] ?: '172.17.8.96',
+                'description' => 'Route parser topology monitoring for agent ' . $ag_name . ' (' . $src_ip . ')',
+                'agent_id' => $aid,
+                'source_ip' => $src_ip,
                 'warn_threshold' => 10.0,
                 'crit_threshold' => 50.0,
                 'default_range' => '1d',
@@ -388,17 +474,23 @@ if (empty($dashboards) && !file_exists($CONFIG_FILE)) {
                 'created_at' => time(),
                 'updated_at' => time()
             ];
+            $existing_agent_ids[$aid] = true;
+            $new_added++;
         }
     }
-    
-    if (!empty($seeded)) {
-        save_route_dashboards($CONFIG_FILE, $seeded);
-        $dashboards = $seeded;
-    }
-}
 
-// --- 4. AJAX API ENDPOINTS ---
-$api = $_GET['api'] ?? '';
+    if ($new_added > 0 || empty($dashboards)) {
+        save_route_dashboards($CONFIG_FILE, $dashboards);
+    }
+
+    echo json_encode([
+        'ok' => true,
+        'scanned' => count($discovered),
+        'added' => $new_added,
+        'message' => "Auto scan selesai: Ditemukan " . count($discovered) . " agen ($new_added baru ditambahkan)."
+    ]);
+    exit;
+}
 
 if ($api === 'get_realtime_data') {
     if (ob_get_level() > 0) ob_clean();
@@ -1349,12 +1441,17 @@ if (!$current_dashboard):
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            gap: 6px;
             transition: 0.2s;
             text-decoration: none;
         }
         .btn-secondary-custom:hover {
             background: #f4f6f8;
             color: #0b1a26 !important;
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
         }
 
         /* Toast */
@@ -1394,6 +1491,10 @@ if (!$current_dashboard):
 
         <div class="top-controls">
             <input type="text" id="listSearch" class="list-search-box" placeholder="Search dashboards..." onkeyup="filterTable()">
+            <button class="btn-secondary-custom" id="btnAutoScan" onclick="triggerAutoScan()" title="Auto Scan & Sync Agents with RouteStep / RouteTarget modules">
+                <span class="material-symbols-outlined" style="font-size:18px;" id="iconAutoScan">radar</span>
+                <span id="textAutoScan">Auto Scan Agents</span>
+            </button>
             <button class="btn-apply" onclick="openAddRouteModal()">
                 <span class="material-symbols-outlined" style="font-size:18px;">add</span>
                 Add Route Path
@@ -1420,8 +1521,21 @@ if (!$current_dashboard):
                 <tbody>
                     <?php if (empty($dashboards)): ?>
                         <tr>
-                            <td colspan="5" style="text-align:center; padding:30px; color:#94a3b8;">
-                                No route dashboards configured. Click "+ Create Dashboard" above to start.
+                            <td colspan="5" style="text-align:center; padding:45px 20px; color:#64748b;">
+                                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;">
+                                    <span class="material-symbols-outlined" style="font-size:48px; color:#94a3b8;">radar</span>
+                                    <div style="font-size:15px; font-weight:600; color:#334155;">Belum ada Route Parser Dashboard yang dikonfigurasi</div>
+                                    <div style="font-size:13px; color:#94a3b8; max-width:480px;">Sistem dapat memindai otomatis seluruh agen di Pandora FMS yang memiliki modul RouteStep dan RouteTarget.</div>
+                                    <div style="display:flex; gap:10px; margin-top:8px;">
+                                        <button class="btn-apply" onclick="triggerAutoScan()">
+                                            <span class="material-symbols-outlined" style="font-size:18px;">radar</span>
+                                            Auto Scan Agents Sekarang
+                                        </button>
+                                        <button class="btn-secondary-custom" onclick="openCreateModal()">
+                                            Setup Manual
+                                        </button>
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                     <?php else: ?>
@@ -1893,6 +2007,53 @@ if (!$current_dashboard):
                 }
             } catch (err) {
                 alert('Network error deleting dashboard: ' + err.message);
+            }
+        }
+
+        async function triggerAutoScan() {
+            const btn = document.getElementById('btnAutoScan');
+            const icon = document.getElementById('iconAutoScan');
+            const text = document.getElementById('textAutoScan');
+            
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.7';
+            }
+            if (icon) {
+                icon.style.animation = 'spin 1s linear infinite';
+            }
+            if (text) {
+                text.textContent = 'Scanning...';
+            }
+
+            try {
+                const res = await fetch('?page=' + encodeURIComponent('<?= $portal_page_param ?>') + '&api=auto_scan', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF_TOKEN
+                    }
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    const msg = json.added > 0 
+                        ? `Auto Scan Selesai! Ditemukan ${json.scanned} agen (${json.added} dashboard baru ditambahkan).`
+                        : `Auto Scan Selesai! Ditemukan ${json.scanned} agen dengan modul rute.`;
+                    showToast(msg);
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
+                } else {
+                    alert('Gagal auto scan: ' + (json.error || 'Unknown error'));
+                    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+                    if (icon) icon.style.animation = '';
+                    if (text) text.textContent = 'Auto Scan Agents';
+                }
+            } catch (err) {
+                alert('Network error saat auto scan: ' + err.message);
+                if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+                if (icon) icon.style.animation = '';
+                if (text) text.textContent = 'Auto Scan Agents';
             }
         }
     </script>
