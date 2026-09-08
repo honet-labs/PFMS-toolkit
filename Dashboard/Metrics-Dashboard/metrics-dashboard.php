@@ -1568,25 +1568,22 @@ let currentDetailModuleTitle = '';
 let currentDetailViewType = '';
 
 function isTrafficMetric(moduleName = '', rawUnit = '', cardTitle = '') {
-    const u = (rawUnit || '').trim().toLowerCase();
+    const u = (rawUnit || '').replace(/\s+/g, ' ').trim().toLowerCase();
     const m = (moduleName || '').toLowerCase();
     const t = (cardTitle || '').toLowerCase();
 
-    if (u === 'bytes/s' || u === 'b/s' || u === 'byte/s' || u === 'bytes/sec' || u === 'b/sec' ||
-        u === 'bps' || u === 'bit/s' || u === 'bits/s' || u === 'bits' ||
-        u === 'kbps' || u === 'mbps' || u === 'gbps') {
+    // Any unit indicating bytes/second, bits/second, octets, etc.
+    if (u.includes('byte') || u.includes('bit') || u.includes('bps') || u.includes('b/s') || u.includes('octet') || u === 'b') {
         return true;
     }
-    if (u === 'bytes' || u === 'b' || u === '') {
-        if (m.includes('octet') || m.includes('traffic') || m.includes('download') || m.includes('upload') ||
-            m.includes('bandwidth') || m.includes('ifin') || m.includes('ifout') || m.includes('ifhc') ||
-            m.includes('ether') || m.includes('eth') || m.includes('port') ||
-            t.includes('traffic') || t.includes('bandwidth') || t.includes('download') || t.includes('upload')) {
-            return true;
-        }
+    // Any module name related to network traffic / interfaces
+    if (m.includes('octet') || m.includes('traffic') || m.includes('download') || m.includes('upload') ||
+        m.includes('bandwidth') || m.includes('ifin') || m.includes('ifout') || m.includes('ifhc') ||
+        m.includes('ether') || m.includes('eth') || m.includes('port') || m.includes('rx') || m.includes('tx')) {
+        return true;
     }
-    if (m.includes('ifinoctets') || m.includes('ifoutoctets') || m.includes('ifhcinoctets') || m.includes('ifhcoutoctets') ||
-        m.includes('traffic in') || m.includes('traffic out') || m.includes('traffic_in') || m.includes('traffic_out')) {
+    // Any card title related to traffic
+    if (t.includes('traffic') || t.includes('bandwidth') || t.includes('download') || t.includes('upload') || t.includes('interface')) {
         return true;
     }
     return false;
@@ -1594,8 +1591,13 @@ function isTrafficMetric(moduleName = '', rawUnit = '', cardTitle = '') {
 
 function isByteTrafficMetric(moduleName = '', rawUnit = '', cardTitle = '') {
     if (!isTrafficMetric(moduleName, rawUnit, cardTitle)) return false;
-    const u = (rawUnit || '').trim().toLowerCase();
-    return (u === 'bytes/s' || u === 'b/s' || u === 'byte/s' || u === 'bytes/sec' || u === 'b/sec' || u === 'bytes' || u === 'b' || u === '');
+    const u = (rawUnit || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    // If unit explicitly says bits (bps, bit/s, kbps, mbps, gbps), it's already bit rate
+    if (u.includes('bit') || u === 'bps' || u === 'kbps' || u === 'mbps' || u === 'gbps') {
+        return false;
+    }
+    // All other traffic metrics (bytes/s, B/s, bytes, octets, ifInOctets, ifOutOctets, etc.) are in bytes and need 8x multiplier
+    return true;
 }
 
 function formatBitsRate(bits) {
@@ -1620,14 +1622,14 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true, moduleName =
     const isTraffic = isTrafficMetric(moduleName, unit, cardTitle);
 
     if (num === 0) {
-        if (autoConvertTraffic && isTraffic) {
+        if (autoConvertTraffic !== false && isTraffic) {
             return '0 bps';
         }
         return unit ? `0 ${unit}` : '0';
     }
 
     // 1. Network Traffic Rate -> Convert Byte rate to bit rate (* 8) and format as bps/Kbps/Mbps/Gbps
-    if (autoConvertTraffic && isTraffic) {
+    if (autoConvertTraffic !== false && isTraffic) {
         let bits = isByteTrafficMetric(moduleName, unit, cardTitle) ? (num * 8) : num;
         if (uLower === 'kbps') bits = num * 1000;
         if (uLower === 'mbps') bits = num * 1000000;
@@ -4124,7 +4126,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 return found ? found.time : '';
             });
 
-            const cardIsTraffic = autoConvert && targetData.some(m => isTrafficMetric(m.module_name, m.unit, card.title));
+            const cardIsTraffic = (card.use_raw !== true) && targetData.some(m => isTrafficMetric(m.module_name, m.unit, card.title));
             const commonUnit = targetData.length > 0 ? (targetData[0].unit || '').trim() : '';
 
             const seriesData = targetData.map((m, idx) => {
@@ -4200,7 +4202,15 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         sortedParams.forEach(p => {
                             const mod = targetData[p.seriesIndex];
                             const unitStr = (mod && mod.unit) ? mod.unit : '';
-                            const displayVal = cardIsTraffic ? formatBitsRate(p.value) : formatHumanMetric(p.value, unitStr, autoConvert, mod ? mod.module_name : '', card.title);
+                            const modIsTraffic = cardIsTraffic || isTrafficMetric(mod ? mod.module_name : p.seriesName, unitStr, card.title);
+                            let displayVal;
+                            if (modIsTraffic) {
+                                const isByte = isByteTrafficMetric(mod ? mod.module_name : p.seriesName, unitStr, card.title);
+                                const bits = (cardIsTraffic && isByte) ? p.value : (isByte ? p.value * 8 : p.value);
+                                displayVal = formatBitsRate(bits);
+                            } else {
+                                displayVal = formatHumanMetric(p.value, unitStr, true, mod ? mod.module_name : '', card.title);
+                            }
                             html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
                                 <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
                                 <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
@@ -4220,20 +4230,21 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         fontSize: Math.max(8, chartFontSize - 2), 
                         color: '#64748b',
                         formatter: function(value) {
-                            if (cardIsTraffic) {
+                            const u = (commonUnit || '').toLowerCase();
+                            const isTrafficUnit = cardIsTraffic || u.includes('byte') || u.includes('b/s') || u.includes('bit') || u.includes('bps') || u.includes('octet');
+                            if (isTrafficUnit) {
                                 if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
                                 if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
                                 if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
                                 return value.toFixed(0) + ' bps';
                             }
-                            const u = commonUnit;
-                            if (u === '%') return value.toFixed(0) + '%';
-                            if (u === 'ms') return value.toFixed(0) + ' ms';
-                            if (u === 'dBm') return value.toFixed(1) + ' dBm';
-                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (u ? ' G' + u : 'G');
-                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (u ? ' M' + u : 'M');
-                            if (value >= 1000) return (value / 1000).toFixed(1) + (u ? ' k' + u : 'k');
-                            return value + (u ? ' ' + u : '');
+                            if (commonUnit === '%') return value.toFixed(0) + '%';
+                            if (commonUnit === 'ms') return value.toFixed(0) + ' ms';
+                            if (commonUnit === 'dBm') return value.toFixed(1) + ' dBm';
+                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (commonUnit ? ' G' + commonUnit : 'G');
+                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (commonUnit ? ' M' + commonUnit : 'M');
+                            if (value >= 1000) return (value / 1000).toFixed(1) + (commonUnit ? ' k' + commonUnit : 'k');
+                            return value + (commonUnit ? ' ' + commonUnit : '');
                         }
                     } 
                 },
@@ -4250,7 +4261,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             const uniqueAgents = [...new Set(processedData.map(r => r.agent_alias))].sort((a, b) => (a || '').localeCompare(b || '', undefined, { numeric: true, sensitivity: 'base' }));
             const uniqueModules = [...new Set(processedData.map(r => r.module_name))].sort((a, b) => (a || '').localeCompare(b || '', undefined, { numeric: true, sensitivity: 'base' }));
 
-            const cardIsTraffic = autoConvert && processedData.some(m => isTrafficMetric(m.module_name, m.unit, card.title));
+            const cardIsTraffic = (card.use_raw !== true) && processedData.some(m => isTrafficMetric(m.module_name, m.unit, card.title));
             const commonUnit = processedData.length > 0 ? (processedData[0].unit || '').trim() : '';
 
             const seriesData = uniqueModules.map((moduleName, idx) => {
@@ -4318,9 +4329,15 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         sortedParams.forEach(p => {
                             const foundMod = processedData.find(r => r.module_name === p.seriesName);
                             const unitStr = (foundMod && foundMod.unit) ? foundMod.unit : '';
-                            const displayVal = cardIsTraffic 
-                                ? formatBitsRate(p.value) 
-                                : formatHumanMetric(p.value, unitStr, autoConvert, foundMod ? foundMod.module_name : '', card.title);
+                            const modIsTraffic = cardIsTraffic || isTrafficMetric(foundMod ? foundMod.module_name : p.seriesName, unitStr, card.title);
+                            let displayVal;
+                            if (modIsTraffic) {
+                                const isByte = isByteTrafficMetric(foundMod ? foundMod.module_name : p.seriesName, unitStr, card.title);
+                                const bits = (cardIsTraffic && isByte) ? p.value : (isByte ? p.value * 8 : p.value);
+                                displayVal = formatBitsRate(bits);
+                            } else {
+                                displayVal = formatHumanMetric(p.value, unitStr, true, foundMod ? foundMod.module_name : '', card.title);
+                            }
                             html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
                                 <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
                                 <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
@@ -4340,20 +4357,21 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         fontSize: Math.max(8, chartFontSize - 2), 
                         color: '#64748b',
                         formatter: function(value) {
-                            if (cardIsTraffic) {
+                            const u = (commonUnit || '').toLowerCase();
+                            const isTrafficUnit = cardIsTraffic || u.includes('byte') || u.includes('b/s') || u.includes('bit') || u.includes('bps') || u.includes('octet');
+                            if (isTrafficUnit) {
                                 if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
                                 if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
                                 if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
                                 return value.toFixed(0) + ' bps';
                             }
-                            const u = commonUnit;
-                            if (u === '%') return value.toFixed(0) + '%';
-                            if (u === 'ms') return value.toFixed(0) + ' ms';
-                            if (u === 'dBm') return value.toFixed(1) + ' dBm';
-                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (u ? ' G' + u : 'G');
-                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (u ? ' M' + u : 'M');
-                            if (value >= 1000) return (value / 1000).toFixed(1) + (u ? ' k' + u : 'k');
-                            return value + (u ? ' ' + u : '');
+                            if (commonUnit === '%') return value.toFixed(0) + '%';
+                            if (commonUnit === 'ms') return value.toFixed(0) + ' ms';
+                            if (commonUnit === 'dBm') return value.toFixed(1) + ' dBm';
+                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (commonUnit ? ' G' + commonUnit : 'G');
+                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (commonUnit ? ' M' + commonUnit : 'M');
+                            if (value >= 1000) return (value / 1000).toFixed(1) + (commonUnit ? ' k' + commonUnit : 'k');
+                            return value + (commonUnit ? ' ' + commonUnit : '');
                         }
                     } 
                 },

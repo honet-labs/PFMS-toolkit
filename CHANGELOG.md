@@ -8,11 +8,11 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - Memperbaiki masalah warna grafik dan legend chip yang berubah-ubah (*color jitter/swapping*) pada setiap auto-refresh atau reload halaman.
   - Mengubah sorting modul pada backend dan frontend grafik dari `last_contact DESC` (yang menyebabkan urutan teracak-acak akibat selisih detik polling SNMP) menjadi pengurutan deterministik alami (*natural alphanumeric order*) berdasarkan nama Agent dan Modul.
   - Memperluas palet warna grafik menjadi 36 warna modern bergradasi kontras tinggi dan menambahkan session color mapping (`window.__metricChartColorMap` & `window.__dynamicChartColorMap`) sehingga setiap interface/modul selalu mendapatkan warna yang identik dan konsisten di setiap refresh.
-- **Traffic Auto-Convert & Dynamic Chart Unit Labels:**
-  - Menambahkan deteksi otomatis modul traffic jaringan (`ifInOctets`, `ifOutOctets`, dll.) pada Metrics Dashboard & Dynamic Dashboard.
-  - Mengonversi data traffic berbasis Byte ke Bit rate ($\times 8$) secara otomatis sehingga $125.000\text{ bytes/s}$ tepat terplot dan tampil sebagai **$1.00\text{ Mbps}$** (dan $10.860.961\text{ bytes/s}$ tampil sebagai **$86.89\text{ Mbps}$**).
-  - Memperbaiki label sumbu Y grafik ECharts agar dinamis dan menampilkan satuan nyata (**`bps`**, **`Kbps`**, **`Mbps`**, **`Gbps`**, **`ms`**, **`%`**, **`dBm`**), menghilangkan notasi `M` atau `G` gundul yang membingungkan.
-  - Sinkronisasi ketinggian grafik, skala sumbu Y, dan nilai popup tooltip secara 100% konsisten.
+- **Traffic Auto-Convert & Bit-Rate Units Enforcement (Mbps vs Mbytes/s):**
+  - Mengatasi kemunculan satuan `Mbytes/s` pada sumbu Y dan angka raw byte pada popup tooltip grafik.
+  - Memastikan seluruh modul traffic jaringan (seperti `ifInOctets`, `ifOutOctets`, modul bertipe rate byte/s atau octet) secara mutlak dikonversi ke satuan standar bandwidth bit-rate jaringan (**`bps`**, **`Kbps`**, **`Mbps`**, **`Gbps`**) dengan pengali byte-ke-bit ($8\times$).
+  - Memperbaiki logika deteksi `cardIsTraffic` dan formatter sumbu Y sehingga tidak akan pernah lagi memunculkan label `Mbytes/s`, melainkan selalu `Mbps` atau `Gbps`.
+  - Sinkronisasi ketinggian grafik, skala sumbu Y, dan nilai popup tooltip secara 100% konsisten pada Metrics Dashboard maupun Dynamic Dashboard.
 - **Traffic Dashboard 500 Internal Server Error & Empty Dashboard Fix:**
   - Memperbaiki fatal error `TypeError` pada decoding JSON konfigurasi dashboard baru saat bernilai `null` dengan menambahkan validasi `is_array($config)`.
   - Mengubah penanganan error backend dari `catch (Exception $e)` menjadi `catch (Throwable $e)` agar menangkap seluruh tipe engine Error dan mencegah respons HTTP 500.
