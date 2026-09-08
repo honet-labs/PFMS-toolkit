@@ -31,6 +31,11 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - Menambahkan ekspansi sub-grup hierarkis rekursif pada `?api=data` dan `?api=agents` sehingga antarmuka pada agen yang berada di sub-grup / anak grup terdeteksi dengan tepat.
   - Menambahkan pesan informatif yang ramah ketika tidak ada antarmuka yang cocok dengan filter atau konfigurasi node yang dipilih.
   - Mengatur `traffic-interface.php` sebagai alias forwarder dan memperbarui `portal_config.json`.
+- **Route Parser Demo Reference Elimination & Storage Fallback:**
+  - Menghapus pembuatan otomatis (*hardcoded auto-seeding*) dashboard demo `Core Gateway Path (Demo Reference)` yang sebelumnya selalu muncul kembali saat halaman di-refresh meskipun sudah dihapus oleh user.
+  - Memastikan hanya agen asli yang terdeteksi di database Pandora FMS yang didaftarkan ke daftar dashboard Route Parser.
+  - Memfilter dan membersihkan entri demo lama secara otomatis dari file konfigurasi saat halaman dimuat.
+  - Menambahkan multi-path fallback pada `load_route_dashboards()` dan `save_route_dashboards()` (ke direktori `temp`) serta menginisialisasi `route_dashboards.json` di repositori agar operasi hapus/simpan dashboard tidak terhalang masalah izin tulis (*permissions*) direktori Linux/Apache.
 
 ## [2.5] - 2026-08-30 (Route Parser Auto-Refresh, Embed Live Polling & Data Consistency Fix)
 ### Fixed

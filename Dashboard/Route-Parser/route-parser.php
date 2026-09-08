@@ -64,8 +64,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 // File Storage for Dashboards
 $CONFIG_FILE = __DIR__ . '/route_dashboards.json';
 $temp_dir = __DIR__ . '/../../temp';
-if (!is_writable(__DIR__) && is_dir($temp_dir) && is_writable($temp_dir)) {
-    $CONFIG_FILE = $temp_dir . '/route_dashboards.json';
+if (!file_exists($CONFIG_FILE)) {
+    if (file_exists($temp_dir . '/route_dashboards.json')) {
+        $CONFIG_FILE = $temp_dir . '/route_dashboards.json';
+    } elseif (!is_writable(__DIR__) && is_dir($temp_dir) && is_writable($temp_dir)) {
+        $CONFIG_FILE = $temp_dir . '/route_dashboards.json';
+    }
 }
 
 if (!function_exists('h')) {
@@ -283,16 +287,37 @@ function build_route_topology(array $modules_raw, array $stats_by_module, string
 }
 
 function load_route_dashboards(string $file): array {
-    if (!file_exists($file)) return [];
-    $raw = @file_get_contents($file);
-    if (!$raw) return [];
-    $data = json_decode($raw, true);
-    return is_array($data) ? $data : [];
+    $candidates = array_unique([$file, __DIR__ . '/route_dashboards.json', dirname(__DIR__, 2) . '/temp/route_dashboards.json']);
+    foreach ($candidates as $f) {
+        if (file_exists($f)) {
+            $raw = @file_get_contents($f);
+            if ($raw) {
+                $data = json_decode($raw, true);
+                if (is_array($data)) return $data;
+            }
+        }
+    }
+    return [];
 }
 
 function save_route_dashboards(string $file, array $dashboards): bool {
     $json = json_encode(array_values($dashboards), JSON_PRETTY_PRINT);
-    return @file_put_contents($file, $json) !== false;
+    $res = @file_put_contents($file, $json);
+    if ($res !== false) {
+        $temp_file = dirname(__DIR__, 2) . '/temp/route_dashboards.json';
+        if ($file !== $temp_file && file_exists(dirname($temp_file))) {
+            @file_put_contents($temp_file, $json);
+        }
+        return true;
+    }
+    // Fallback: try temp dir if primary file path failed
+    $temp_file = dirname(__DIR__, 2) . '/temp/route_dashboards.json';
+    if ($file !== $temp_file) {
+        if (!is_dir(dirname($temp_file))) @mkdir(dirname($temp_file), 0777, true);
+        $res2 = @file_put_contents($temp_file, $json);
+        if ($res2 !== false) return true;
+    }
+    return false;
 }
 
 // --- 3. DISCOVER AGENTS WITH ROUTEPARSER MODULES ---
@@ -330,8 +355,7 @@ $dashboards = [];
 $seen_agent_dash = [];
 
 foreach ($raw_dashboards as $d) {
-    if (!empty($d['is_demo'])) {
-        $dashboards[] = $d;
+    if (!empty($d['is_demo']) || ($d['id'] ?? '') === 'rp_demo_core_gateway') {
         continue;
     }
     $aid = (int)($d['agent_id'] ?? 0);
@@ -342,11 +366,11 @@ foreach ($raw_dashboards as $d) {
         $dashboards[] = $d;
     }
 }
-if (!empty($raw_dashboards) && count($dashboards) !== count($raw_dashboards)) {
+if (count($dashboards) !== count($raw_dashboards)) {
     save_route_dashboards($CONFIG_FILE, $dashboards);
 }
 
-if (empty($dashboards)) {
+if (empty($dashboards) && !file_exists($CONFIG_FILE)) {
     $seeded = [];
     if (!empty($available_agents)) {
         foreach ($available_agents as $ag) {
@@ -367,24 +391,10 @@ if (empty($dashboards)) {
         }
     }
     
-    // Always include a high-fidelity Demo / Reference Dashboard
-    $seeded[] = [
-        'id' => 'rp_demo_core_gateway',
-        'name' => 'Core Gateway Path (Demo Reference)',
-        'description' => 'Reference network path topology demonstrating multi-hop branching to targets 10.10.5.81 and 10.10.6.220',
-        'agent_id' => 1,
-        'source_ip' => '172.17.8.96',
-        'warn_threshold' => 10.0,
-        'crit_threshold' => 50.0,
-        'default_range' => '1d',
-        'auto_refresh' => '5m',
-        'is_demo' => true,
-        'created_at' => time(),
-        'updated_at' => time()
-    ];
-
-    save_route_dashboards($CONFIG_FILE, $seeded);
-    $dashboards = $seeded;
+    if (!empty($seeded)) {
+        save_route_dashboards($CONFIG_FILE, $seeded);
+        $dashboards = $seeded;
+    }
 }
 
 // --- 4. AJAX API ENDPOINTS ---
