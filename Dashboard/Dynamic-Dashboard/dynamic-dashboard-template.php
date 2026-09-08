@@ -2704,13 +2704,7 @@ function generateSummaryPanelHtml(p, modules) {
             if (totalPages > 1) {
                 paginationHtml = `
                     <div class="pagination-container-dyn" style="display:flex; justify-content:space-between; align-items:center; padding:10px 15px; border-top:1px solid #f0f3f5; font-size:11px; color:#64748b; background:#fff; margin-top:8px;">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <label style="display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#334155; margin:0; cursor:pointer; user-select:none; background:#f8fafc; padding:3px 8px; border-radius:4px; border:1px solid #e2e8f0;" title="Toggle Convert Traffic (Mbps / bps) vs Raw (bytes/s)">
-                                <input type="checkbox" ${autoConvert ? 'checked' : ''} onchange="toggleDynamicHistoryTrafficConvert('${p.id}', this.checked)" style="width:14px; height:14px; margin:0; cursor:pointer;">
-                                <span style="font-weight:600; color:${autoConvert ? '#0284c7' : '#64748b'};">Convert (Mbps)</span>
-                            </label>
-                            <div>Showing ${startIdx + 1} to ${endIdx} of ${totalItems} Entries</div>
-                        </div>
+                        <div>Showing ${startIdx + 1} to ${endIdx} of ${totalItems} Entries</div>
                         <div style="display:flex; gap:10px;">
                             <button class="pagination-btn-dyn" style="padding:4px 8px; border:1px solid #dce1e5; border-radius:4px; background:#fff; cursor:pointer; font-size:11px; color:#475569;" ${actualPage === 1 ? 'disabled style="opacity:0.5; cursor:default;"' : `onclick="changeTablePage('${p.id}', ${actualPage - 1})"`}>Prev</button>
                             <span style="font-size:11px; font-weight: 600; align-self:center; color:#475569;">Page ${actualPage} / ${totalPages}</span>
@@ -3537,22 +3531,6 @@ function toggleDynamicHistorySort(panelId, col) {
             wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             setTimeout(resizeAllGridItems, 50);
         }
-    }
-}
-
-function toggleDynamicHistoryTrafficConvert(panelId, isChecked) {
-    const p = masterDashboards.find(d => d.id === currentDashId).panels.find(pl => pl.id === panelId);
-    if (p) {
-        p.auto_convert_traffic = isChecked;
-    }
-    const wrapper = document.getElementById(`wrapper_p_${panelId}`);
-    if (wrapper && lastFetchedData && lastFetchedData[panelId]) {
-        let activeModules = lastFetchedData[panelId].modules || [];
-        if (!showHiddenPanels && p.excluded) {
-            activeModules = activeModules.filter(m => !p.excluded.map(String).includes(String(m.id)));
-        }
-        wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
-        setTimeout(resizeAllGridItems, 50);
     }
 }
 

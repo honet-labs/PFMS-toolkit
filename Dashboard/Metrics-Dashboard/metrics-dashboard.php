@@ -1293,24 +1293,15 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         </div>
 
         <div class="form-group" id="wrap_history_table_options" style="display:none;">
-            <div style="margin-bottom:12px;">
-                <label style="font-weight:600; margin-bottom:6px; display:block;">History Table Sort Order (Urutan Data)</label>
-                <select id="b_history_sort" class="form-control-fix">
-                    <option value="val_desc">Highest Value First / Nilai Tertinggi (DESC)</option>
-                    <option value="val_asc">Lowest Value First / Nilai Terendah (ASC)</option>
-                    <option value="time_desc" selected>Newest Timestamp / Waktu Terbaru (DESC)</option>
-                    <option value="time_asc">Oldest Timestamp / Waktu Terlama (ASC)</option>
-                    <option value="agent_asc">Agent Name (A-Z)</option>
-                    <option value="mod_asc">Module Name (A-Z)</option>
-                </select>
-            </div>
-            <div style="margin-bottom:8px; background:#f8fafc; padding:10px 14px; border:1px solid #e2e8f0; border-radius:6px;">
-                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:500; color:#334155; margin:0;">
-                    <input type="checkbox" id="b_history_auto_convert_traffic" checked style="width:16px; height:16px; margin:0;" onchange="if(document.getElementById('b_auto_convert_traffic')) document.getElementById('b_auto_convert_traffic').checked = this.checked;">
-                    Enable Traffic Conversion to Mbps / Kbps / bps (On/Off)
-                </label>
-                <div style="font-size:11px; color:#64748b; margin-top:4px; margin-left:24px;">Jika di-uncheck, nilai akan ditampilkan dalam satuan aslinya (misal: bytes/s).</div>
-            </div>
+            <label style="font-weight:600; margin-bottom:6px; display:block;">History Table Sort Order (Urutan Data)</label>
+            <select id="b_history_sort" class="form-control-fix">
+                <option value="val_desc">Highest Value First / Nilai Tertinggi (DESC)</option>
+                <option value="val_asc">Lowest Value First / Nilai Terendah (ASC)</option>
+                <option value="time_desc" selected>Newest Timestamp / Waktu Terbaru (DESC)</option>
+                <option value="time_asc">Oldest Timestamp / Waktu Terlama (ASC)</option>
+                <option value="agent_asc">Agent Name (A-Z)</option>
+                <option value="mod_asc">Module Name (A-Z)</option>
+            </select>
         </div>
 
         <div class="form-group"><label>Filter By Group</label><select id="b_group" class="form-control-fix" onchange="toggleManualSelector(); refreshBuilderModuleList();"></select></div>
@@ -2997,17 +2988,11 @@ function renderHistoryTableWidget(cardId, tableData, historyData) {
 
     const paginationHtml = `
         <div class="pagination-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top: 8px; padding-top:4px;">
-            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px;">
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="font-size:11px; color:#64748b;">Show:</span>
-                    <select class="form-control-fix" style="width:auto; height:26px; padding:2px 8px; font-size:11px; margin:0; border-radius:4px; border:1px solid #cbd5e1; background:#fff; cursor:pointer;" onchange="changeHistoryWidgetLimit('${cardId}', this.value)">
-                        ${limitOptions.map(n => `<option value="${n}" ${pageSize === n ? 'selected' : ''}>${n}</option>`).join('')}
-                    </select>
-                </div>
-                <label style="display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#334155; margin:0; cursor:pointer; user-select:none; background:#f8fafc; padding:3px 8px; border-radius:4px; border:1px solid #e2e8f0;" title="Toggle Convert Traffic (Mbps / bps) vs Raw (bytes/s)">
-                    <input type="checkbox" ${autoConvert ? 'checked' : ''} onchange="toggleHistoryTrafficConvert('${cardId}', this.checked)" style="width:14px; height:14px; margin:0; cursor:pointer;">
-                    <span style="font-weight:600; color:${autoConvert ? '#0284c7' : '#64748b'};">Convert (Mbps)</span>
-                </label>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:11px; color:#64748b;">Show:</span>
+                <select class="form-control-fix" style="width:auto; height:26px; padding:2px 8px; font-size:11px; margin:0; border-radius:4px; border:1px solid #cbd5e1; background:#fff; cursor:pointer;" onchange="changeHistoryWidgetLimit('${cardId}', this.value)">
+                    ${limitOptions.map(n => `<option value="${n}" ${pageSize === n ? 'selected' : ''}>${n}</option>`).join('')}
+                </select>
                 <span style="font-size:11px; font-weight: normal; color:#64748b;">Showing ${startIdx + 1} to ${endIdx} of ${combinedHistory.length} Entries</span>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -3024,17 +3009,6 @@ function renderHistoryTableWidget(cardId, tableData, historyData) {
             ${paginationHtml}
         </div>
     `;
-}
-
-function toggleHistoryTrafficConvert(cardId, isChecked) {
-    const card = dashboardCards.find(c => c.id === cardId);
-    if (card) {
-        card.auto_convert_traffic = isChecked;
-    }
-    const store = window.widgetHistoryStores[cardId];
-    if (store) {
-        renderHistoryTableWidget(cardId, store.table, store.history);
-    }
 }
 
 function toggleHistorySort(cardId, col) {
@@ -3591,12 +3565,6 @@ async function openEdit(id) {
     if (document.getElementById('b_history_sort')) {
         document.getElementById('b_history_sort').value = c.history_sort || 'time_desc';
     }
-    if (document.getElementById('b_history_auto_convert_traffic')) {
-        const isAuto = (c.auto_convert_traffic !== undefined)
-            ? (c.auto_convert_traffic === true || c.auto_convert_traffic === 1 || c.auto_convert_traffic === '1' || c.auto_convert_traffic === 'true')
-            : true;
-        document.getElementById('b_history_auto_convert_traffic').checked = isAuto;
-    }
     toggleViewTypeOptions();
 
     const mType = c.match_type || 'contains';
@@ -3639,10 +3607,7 @@ function saveWidget() {
         visStats.push('total', 'normal', 'warning', 'critical', 'unknown', 'not_init');
     }
 
-    let autoConvertTraffic = document.getElementById('b_auto_convert_traffic') ? document.getElementById('b_auto_convert_traffic').checked : true;
-    if (document.getElementById('b_view_type').value === 'history_table' && document.getElementById('b_history_auto_convert_traffic')) {
-        autoConvertTraffic = document.getElementById('b_history_auto_convert_traffic').checked;
-    }
+    const autoConvertTraffic = document.getElementById('b_auto_convert_traffic') ? document.getElementById('b_auto_convert_traffic').checked : true;
 
     const card = {
         id: editingCardId || 'c'+Date.now(),
