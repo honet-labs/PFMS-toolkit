@@ -633,13 +633,25 @@ if ($api === 'card_data' && $db_status) {
             } catch (Throwable $e) {}
         }
 
-        // Sort tableData DESC by utimestamp
-        usort($tableData, function($a, $b) {
-            $tsA = (int)$a['last_contact'];
-            $tsB = (int)$b['last_contact'];
-            if ($tsA === $tsB) return 0;
-            return ($tsA > $tsB) ? -1 : 1;
-        });
+        // For charts / history queries, sort deterministically by agent alias and module name
+        // This guarantees the exact same subset of modules is selected on every refresh,
+        // preventing wild color shifts and module bouncing due to minor SNMP timestamp variations.
+        $isChart = (isset($_GET['history']) && $_GET['history'] === '1') || (isset($_GET['view_type']) && in_array($_GET['view_type'], ['line', 'area', 'bar', 'history_table', 'single_value']));
+        if ($isChart) {
+            usort($tableData, function($a, $b) {
+                $cmp = strnatcasecmp($a['agent_alias'] ?? '', $b['agent_alias'] ?? '');
+                if ($cmp !== 0) return $cmp;
+                return strnatcasecmp($a['module_name'] ?? '', $b['module_name'] ?? '');
+            });
+        } else {
+            // Sort tableData DESC by utimestamp for standard tabular views
+            usort($tableData, function($a, $b) {
+                $tsA = (int)$a['last_contact'];
+                $tsB = (int)$b['last_contact'];
+                if ($tsA === $tsB) return 0;
+                return ($tsA > $tsB) ? -1 : 1;
+            });
+        }
 
         $historyData = [];
         if (!empty($tableData) && isset($_GET['history']) && $_GET['history'] === '1') {
@@ -1555,7 +1567,48 @@ let currentDetailModuleId = null;
 let currentDetailModuleTitle = '';
 let currentDetailViewType = '';
 
-function formatHumanMetric(val, rawUnit, autoConvertTraffic = true) {
+function isTrafficMetric(moduleName = '', rawUnit = '', cardTitle = '') {
+    const u = (rawUnit || '').trim().toLowerCase();
+    const m = (moduleName || '').toLowerCase();
+    const t = (cardTitle || '').toLowerCase();
+
+    if (u === 'bytes/s' || u === 'b/s' || u === 'byte/s' || u === 'bytes/sec' || u === 'b/sec' ||
+        u === 'bps' || u === 'bit/s' || u === 'bits/s' || u === 'bits' ||
+        u === 'kbps' || u === 'mbps' || u === 'gbps') {
+        return true;
+    }
+    if (u === 'bytes' || u === 'b' || u === '') {
+        if (m.includes('octet') || m.includes('traffic') || m.includes('download') || m.includes('upload') ||
+            m.includes('bandwidth') || m.includes('ifin') || m.includes('ifout') || m.includes('ifhc') ||
+            m.includes('ether') || m.includes('eth') || m.includes('port') ||
+            t.includes('traffic') || t.includes('bandwidth') || t.includes('download') || t.includes('upload')) {
+            return true;
+        }
+    }
+    if (m.includes('ifinoctets') || m.includes('ifoutoctets') || m.includes('ifhcinoctets') || m.includes('ifhcoutoctets') ||
+        m.includes('traffic in') || m.includes('traffic out') || m.includes('traffic_in') || m.includes('traffic_out')) {
+        return true;
+    }
+    return false;
+}
+
+function isByteTrafficMetric(moduleName = '', rawUnit = '', cardTitle = '') {
+    if (!isTrafficMetric(moduleName, rawUnit, cardTitle)) return false;
+    const u = (rawUnit || '').trim().toLowerCase();
+    return (u === 'bytes/s' || u === 'b/s' || u === 'byte/s' || u === 'bytes/sec' || u === 'b/sec' || u === 'bytes' || u === 'b' || u === '');
+}
+
+function formatBitsRate(bits) {
+    if (bits === null || bits === undefined || bits === '' || isNaN(bits) || bits === '-') return '-';
+    const b = parseFloat(bits);
+    const abs = Math.abs(b);
+    if (abs >= 1000000000) return (b / 1000000000).toFixed(2) + ' Gbps';
+    if (abs >= 1000000) return (b / 1000000).toFixed(2) + ' Mbps';
+    if (abs >= 1000) return (b / 1000).toFixed(2) + ' Kbps';
+    return (b % 1 === 0 ? b : b.toFixed(2)) + ' bps';
+}
+
+function formatHumanMetric(val, rawUnit, autoConvertTraffic = true, moduleName = '', cardTitle = '') {
     if (val === null || val === undefined || val === '' || isNaN(val) || val === '-') {
         return '-';
     }
@@ -1564,29 +1617,22 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true) {
 
     const unit = (rawUnit || '').trim();
     const uLower = unit.toLowerCase();
+    const isTraffic = isTrafficMetric(moduleName, unit, cardTitle);
 
     if (num === 0) {
-        if (autoConvertTraffic && (uLower.includes('byte') || uLower.includes('bit') || uLower === 'b/s' || uLower === 'bps')) {
+        if (autoConvertTraffic && isTraffic) {
             return '0 bps';
         }
         return unit ? `0 ${unit}` : '0';
     }
 
-    // 1. Network Traffic Rate (bytes/s, B/s, byte/s, bps, bit/s, bits/s, bits) -> Convert to bps, Kbps, Mbps, Gbps ONLY if autoConvertTraffic is true
-    if (autoConvertTraffic && (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s' || uLower === 'bps' || uLower === 'bit/s' || uLower === 'bits/s' || uLower === 'bits')) {
-        const isByteRate = (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s');
-        const bits = isByteRate ? (num * 8) : num;
-        const absBits = Math.abs(bits);
-
-        if (absBits >= 1000000000) { // 1 Gbps
-            return (bits / 1000000000).toFixed(2) + ' Gbps';
-        } else if (absBits >= 1000000) { // 1 Mbps
-            return (bits / 1000000).toFixed(2) + ' Mbps';
-        } else if (absBits >= 1000) { // 1 Kbps
-            return (bits / 1000).toFixed(2) + ' Kbps';
-        } else {
-            return (bits % 1 === 0 ? bits : bits.toFixed(2)) + ' bps';
-        }
+    // 1. Network Traffic Rate -> Convert Byte rate to bit rate (* 8) and format as bps/Kbps/Mbps/Gbps
+    if (autoConvertTraffic && isTraffic) {
+        let bits = isByteTrafficMetric(moduleName, unit, cardTitle) ? (num * 8) : num;
+        if (uLower === 'kbps') bits = num * 1000;
+        if (uLower === 'mbps') bits = num * 1000000;
+        if (uLower === 'gbps') bits = num * 1000000000;
+        return formatBitsRate(bits);
     }
 
     // 2. Storage / Memory (bytes, B without /s)
@@ -1613,7 +1659,12 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true) {
         return (num % 1 === 0 ? num : num.toFixed(2)) + ' ' + unit;
     }
 
-    // 5. General numbers (or when autoConvertTraffic is false)
+    // 5. Optical / dBm
+    if (uLower === 'dbm') {
+        return (num % 1 === 0 ? num : num.toFixed(2)) + ' dBm';
+    }
+
+    // 6. General numbers (or when autoConvertTraffic is false)
     const formatted = (num % 1 === 0) ? num.toLocaleString() : num.toFixed(2);
     return unit ? `${formatted} ${unit}` : formatted;
 }
@@ -1741,7 +1792,12 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                 }
                 return row.waktu;
             });
-            const dataset = data.map(row => parseFloat(row.datos));
+            const isTraffic = isTrafficMetric(title, unit);
+            const isByte = isByteTrafficMetric(title, unit);
+            const dataset = data.map(row => {
+                const val = parseFloat(row.datos);
+                return (isTraffic && isByte) ? (val * 8) : val;
+            });
             
             const chartDom = document.getElementById('nativeModuleDetailChart');
             if (chartDom) {
@@ -1759,7 +1815,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                             if (!params || params.length === 0) return '';
                             let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
                             params.forEach(p => {
-                                const displayVal = formatHumanMetric(p.value, unit);
+                                const displayVal = isTraffic ? formatBitsRate(p.value) : formatHumanMetric(p.value, unit, true, title);
                                 html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin:2px 0;">
                                     <span>${p.marker} ${p.seriesName}</span>
                                     <span style="font-weight:600; color:#fff;">${displayVal}</span>
@@ -1770,7 +1826,30 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                     },
                     grid: { left: 5, right: 15, top: 15, bottom: 25, containLabel: true },
                     xAxis: { type: 'category', boundaryGap: false, data: labels, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
-                    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { fontSize: 10, color: '#64748b' } },
+                    yAxis: { 
+                        type: 'value', 
+                        splitLine: { lineStyle: { color: '#f1f5f9' } }, 
+                        axisLabel: { 
+                            fontSize: 10, 
+                            color: '#64748b',
+                            formatter: function(value) {
+                                if (isTraffic) {
+                                    if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
+                                    if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
+                                    if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
+                                    return value.toFixed(0) + ' bps';
+                                }
+                                const u = (unit || '').trim();
+                                if (u === '%') return value.toFixed(0) + '%';
+                                if (u === 'ms') return value.toFixed(0) + ' ms';
+                                if (u === 'dBm') return value.toFixed(1) + ' dBm';
+                                if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (u ? ' G' + u : 'G');
+                                if (value >= 1000000) return (value / 1000000).toFixed(1) + (u ? ' M' + u : 'M');
+                                if (value >= 1000) return (value / 1000).toFixed(1) + (u ? ' k' + u : 'k');
+                                return value + (u ? ' ' + u : '');
+                            }
+                        } 
+                    },
                     series: [{
                         name: title,
                         type: 'line',
@@ -1852,12 +1931,21 @@ const getStatusObj = (estado) => {
     }
 };
 
-const formatValue = (val, unit, useRaw) => {
+const formatValue = (val, unit, useRaw, moduleName = '', cardTitle = '') => {
     if (useRaw || isNaN(parseFloat(val))) return val;
     const v = parseFloat(val);
     const u = (unit || '').toUpperCase().trim();
     
-    // Format Bytes
+    // Check if network traffic
+    if (isTrafficMetric(moduleName, unit, cardTitle)) {
+        let bits = isByteTrafficMetric(moduleName, unit, cardTitle) ? (v * 8) : v;
+        if (u === 'KBPS') bits = v * 1000;
+        if (u === 'MBPS') bits = v * 1000000;
+        if (u === 'GBPS') bits = v * 1000000000;
+        return formatBitsRate(bits);
+    }
+    
+    // Format Storage Bytes (non-traffic)
     if (u === 'B' || u === 'BYTES') {
         if (v >= 1125899906842624) return (v / 1125899906842624).toFixed(2) + ' PB';
         if (v >= 1099511627776) return (v / 1099511627776).toFixed(2) + ' TB';
@@ -2656,7 +2744,7 @@ function renderTablePage(cardId) {
             }
             if (visibleCols.includes('status')) {
                 const rawValStr = String(r.current_value || '');
-                const cleanValStr = String(formatValue(r.current_value, r.unit, card.use_raw) ?? '');
+                const cleanValStr = String(formatValue(r.current_value, r.unit, card.use_raw, r.module_name, card.title) ?? '');
                 if (cleanValStr.length > 45 || cleanValStr.includes('|') || cleanValStr.includes('\n')) {
                     rowHtml += `<td style="text-align:center; white-space: nowrap;">
                         <button class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important; cursor:pointer; font-weight:600; display:inline-block; border-radius:4px; transition: opacity 0.2s; white-space: nowrap; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;" 
@@ -3953,8 +4041,14 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
     ];
     
     const borders = [
-        '#004d40', '#1976d2', '#d32f2f', '#f57c00', '#7b1fa2',
-        '#009688', '#fbc02d', '#616161', '#e91e63', '#8d6e63'
+        '#0284c7', '#16a34a', '#dc2626', '#d97706', '#7c3aed',
+        '#0d9488', '#e11d48', '#2563eb', '#ca8a04', '#9333ea',
+        '#059669', '#ea580c', '#64748b', '#db2777', '#0891b2',
+        '#4f46e5', '#65a30d', '#c026d3', '#b45309', '#0369a1',
+        '#4338ca', '#be123c', '#15803d', '#b91c1c', '#6d28d9',
+        '#0f766e', '#a16207', '#334155', '#86198f', '#1e40af',
+        '#047857', '#c2410c', '#475569', '#a21caf', '#0e7490',
+        '#854d0e'
     ];
 
     const elegantTooltipConfig = {
@@ -4010,10 +4104,19 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             }]
         });
     } else {
+        if (!window.__metricChartColorMap) window.__metricChartColorMap = {};
+
         if (history && history.length > 0) {
             const historyModIds = [...new Set(history.map(h => String(h.id_mod)))];
             const activeData = data.filter(m => historyModIds.includes(String(m.id_agente_modulo)));
             const targetData = activeData.length > 0 ? activeData : data.slice(0, chartLimit > 0 ? chartLimit : 25);
+
+            // Deterministic natural sorting so that module order and colors never shift across refreshes
+            targetData.sort((a, b) => {
+                const nameA = `${a.agent_alias || ''} - ${a.module_name || ''}`;
+                const nameB = `${b.agent_alias || ''} - ${b.module_name || ''}`;
+                return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+            });
 
             const uniqueTimestamps = [...new Set(history.map(h => h.utimestamp))].sort((a, b) => a - b);
             const labels = uniqueTimestamps.map(ts => {
@@ -4021,10 +4124,19 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 return found ? found.time : '';
             });
 
+            const cardIsTraffic = autoConvert && targetData.some(m => isTrafficMetric(m.module_name, m.unit, card.title));
+            const commonUnit = targetData.length > 0 ? (targetData[0].unit || '').trim() : '';
+
             const seriesData = targetData.map((m, idx) => {
-                const color = borders[idx % borders.length];
+                const seriesKey = `${m.agent_alias} - ${m.module_name}`;
+                if (!window.__metricChartColorMap[seriesKey]) {
+                    window.__metricChartColorMap[seriesKey] = borders[idx % borders.length];
+                }
+                const color = window.__metricChartColorMap[seriesKey];
                 const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
                 modHist.sort((a, b) => a.utimestamp - b.utimestamp);
+
+                const isByte = cardIsTraffic && isByteTrafficMetric(m.module_name, m.unit, card.title);
 
                 let lastVal = (modHist.length > 0 && modHist[0].val !== null && modHist[0].val !== undefined) ? modHist[0].val : null;
                 const dataPoints = uniqueTimestamps.map(ts => {
@@ -4032,11 +4144,14 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                     if (h !== undefined && h.val !== undefined && h.val !== null) {
                         lastVal = (typeof h.val === 'number') ? h.val : parseFloat(h.val);
                     }
-                    return (lastVal !== null && !isNaN(lastVal)) ? lastVal : null;
+                    if (lastVal !== null && !isNaN(lastVal)) {
+                        return isByte ? (lastVal * 8) : lastVal;
+                    }
+                    return null;
                 });
 
                 return {
-                    name: `${m.agent_alias} - ${m.module_name}`,
+                    name: seriesKey,
                     type: (viewType === 'line' || viewType === 'area') ? 'line' : 'bar',
                     data: dataPoints,
                     itemStyle: { color: color },
@@ -4051,7 +4166,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             const legendEl = document.getElementById(`chart_legend_${cardId}`);
             if (legendEl) {
                 legendEl.innerHTML = seriesData.map((s, idx) => {
-                    const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
+                    const color = s.itemStyle ? s.itemStyle.color : (window.__metricChartColorMap[s.name] || borders[idx % borders.length]);
                     const safeName = s.name.replace(/"/g, '&quot;');
                     return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFontSize - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleEchartsLegend('${cardId}', this)" onmouseenter="highlightEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
                         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
@@ -4085,7 +4200,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         sortedParams.forEach(p => {
                             const mod = targetData[p.seriesIndex];
                             const unitStr = (mod && mod.unit) ? mod.unit : '';
-                            const displayVal = formatHumanMetric(p.value, unitStr, autoConvert);
+                            const displayVal = cardIsTraffic ? formatBitsRate(p.value) : formatHumanMetric(p.value, unitStr, autoConvert, mod ? mod.module_name : '', card.title);
                             html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
                                 <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
                                 <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
@@ -4105,10 +4220,20 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         fontSize: Math.max(8, chartFontSize - 2), 
                         color: '#64748b',
                         formatter: function(value) {
-                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + 'G';
-                            if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
-                            if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
-                            return value;
+                            if (cardIsTraffic) {
+                                if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
+                                if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
+                                if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
+                                return value.toFixed(0) + ' bps';
+                            }
+                            const u = commonUnit;
+                            if (u === '%') return value.toFixed(0) + '%';
+                            if (u === 'ms') return value.toFixed(0) + ' ms';
+                            if (u === 'dBm') return value.toFixed(1) + ' dBm';
+                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (u ? ' G' + u : 'G');
+                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (u ? ' M' + u : 'M');
+                            if (value >= 1000) return (value / 1000).toFixed(1) + (u ? ' k' + u : 'k');
+                            return value + (u ? ' ' + u : '');
                         }
                     } 
                 },
@@ -4122,14 +4247,25 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             }, 50);
         } else {
             const processedData = [...data];
-            const uniqueAgents = [...new Set(processedData.map(r => r.agent_alias))];
-            const uniqueModules = [...new Set(processedData.map(r => r.module_name))];
+            const uniqueAgents = [...new Set(processedData.map(r => r.agent_alias))].sort((a, b) => (a || '').localeCompare(b || '', undefined, { numeric: true, sensitivity: 'base' }));
+            const uniqueModules = [...new Set(processedData.map(r => r.module_name))].sort((a, b) => (a || '').localeCompare(b || '', undefined, { numeric: true, sensitivity: 'base' }));
+
+            const cardIsTraffic = autoConvert && processedData.some(m => isTrafficMetric(m.module_name, m.unit, card.title));
+            const commonUnit = processedData.length > 0 ? (processedData[0].unit || '').trim() : '';
 
             const seriesData = uniqueModules.map((moduleName, idx) => {
-                const color = borders[idx % borders.length];
+                if (!window.__metricChartColorMap[moduleName]) {
+                    window.__metricChartColorMap[moduleName] = borders[idx % borders.length];
+                }
+                const color = window.__metricChartColorMap[moduleName];
+                const sampleMod = processedData.find(r => r.module_name === moduleName);
+                const isByte = cardIsTraffic && isByteTrafficMetric(moduleName, sampleMod ? sampleMod.unit : '', card.title);
+
                 const modData = uniqueAgents.map(agentAlias => {
                     const found = processedData.find(r => r.agent_alias === agentAlias && r.module_name === moduleName);
-                    return found ? (parseFloat(found.current_value) || 0) : null;
+                    if (!found) return null;
+                    const val = parseFloat(found.current_value) || 0;
+                    return isByte ? (val * 8) : val;
                 });
 
                 return {
@@ -4148,7 +4284,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             const legendEl = document.getElementById(`chart_legend_${cardId}`);
             if (legendEl) {
                 legendEl.innerHTML = seriesData.map((s, idx) => {
-                    const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
+                    const color = s.itemStyle ? s.itemStyle.color : (window.__metricChartColorMap[s.name] || borders[idx % borders.length]);
                     const safeName = s.name.replace(/"/g, '&quot;');
                     return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFontSize - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleEchartsLegend('${cardId}', this)" onmouseenter="highlightEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayEchartsSeries('${cardId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
                         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
@@ -4182,7 +4318,9 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         sortedParams.forEach(p => {
                             const foundMod = processedData.find(r => r.module_name === p.seriesName);
                             const unitStr = (foundMod && foundMod.unit) ? foundMod.unit : '';
-                            const displayVal = formatHumanMetric(p.value, unitStr, autoConvert);
+                            const displayVal = cardIsTraffic 
+                                ? formatBitsRate(p.value) 
+                                : formatHumanMetric(p.value, unitStr, autoConvert, foundMod ? foundMod.module_name : '', card.title);
                             html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
                                 <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${p.marker} ${p.seriesName}</span>
                                 <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
@@ -4195,7 +4333,30 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 legend: { show: false, data: seriesData.map(s => s.name) },
                 grid: { left: 8, right: 15, top: 12, bottom: 28, containLabel: true },
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: uniqueAgents, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
-                yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' } },
+                yAxis: { 
+                    type: 'value', 
+                    splitLine: { lineStyle: { color: '#f0f3f5' } }, 
+                    axisLabel: { 
+                        fontSize: Math.max(8, chartFontSize - 2), 
+                        color: '#64748b',
+                        formatter: function(value) {
+                            if (cardIsTraffic) {
+                                if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
+                                if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
+                                if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
+                                return value.toFixed(0) + ' bps';
+                            }
+                            const u = commonUnit;
+                            if (u === '%') return value.toFixed(0) + '%';
+                            if (u === 'ms') return value.toFixed(0) + ' ms';
+                            if (u === 'dBm') return value.toFixed(1) + ' dBm';
+                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (u ? ' G' + u : 'G');
+                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (u ? ' M' + u : 'M');
+                            if (value >= 1000) return (value / 1000).toFixed(1) + (u ? ' k' + u : 'k');
+                            return value + (u ? ' ' + u : '');
+                        }
+                    } 
+                },
                 series: seriesData
             });
 

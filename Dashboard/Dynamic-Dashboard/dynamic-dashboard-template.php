@@ -475,10 +475,15 @@ if ($api === 'bulk_panel_data') {
                     }
                 }
             }
-            // Ensure unique modules
+            // Ensure unique modules and sort deterministically
             $temp = [];
             foreach($modulesFound as $m) { $temp[$m['id_agente_modulo']] = $m; }
             $modulesFound = array_values($temp);
+            usort($modulesFound, function($a, $b) {
+                $cmp = strnatcasecmp($a['agent_name'] ?? '', $b['agent_name'] ?? '');
+                if ($cmp !== 0) return $cmp;
+                return strnatcasecmp($a['nombre'] ?? '', $b['nombre'] ?? '');
+            });
 
             if (count($modulesFound) === 0) {
                 $results[$pId] = ['found' => false, 'modules' => []];
@@ -1420,7 +1425,48 @@ let currentDetailModuleId = null;
 let currentDetailModuleTitle = '';
 let currentDetailViewType = '';
 
-function formatHumanMetric(val, rawUnit, autoConvertTraffic = true) {
+function isTrafficMetric(moduleName = '', rawUnit = '', cardTitle = '') {
+    const u = (rawUnit || '').trim().toLowerCase();
+    const m = (moduleName || '').toLowerCase();
+    const t = (cardTitle || '').toLowerCase();
+
+    if (u === 'bytes/s' || u === 'b/s' || u === 'byte/s' || u === 'bytes/sec' || u === 'b/sec' ||
+        u === 'bps' || u === 'bit/s' || u === 'bits/s' || u === 'bits' ||
+        u === 'kbps' || u === 'mbps' || u === 'gbps') {
+        return true;
+    }
+    if (u === 'bytes' || u === 'b' || u === '') {
+        if (m.includes('octet') || m.includes('traffic') || m.includes('download') || m.includes('upload') ||
+            m.includes('bandwidth') || m.includes('ifin') || m.includes('ifout') || m.includes('ifhc') ||
+            m.includes('ether') || m.includes('eth') || m.includes('port') ||
+            t.includes('traffic') || t.includes('bandwidth') || t.includes('download') || t.includes('upload')) {
+            return true;
+        }
+    }
+    if (m.includes('ifinoctets') || m.includes('ifoutoctets') || m.includes('ifhcinoctets') || m.includes('ifhcoutoctets') ||
+        m.includes('traffic in') || m.includes('traffic out') || m.includes('traffic_in') || m.includes('traffic_out')) {
+        return true;
+    }
+    return false;
+}
+
+function isByteTrafficMetric(moduleName = '', rawUnit = '', cardTitle = '') {
+    if (!isTrafficMetric(moduleName, rawUnit, cardTitle)) return false;
+    const u = (rawUnit || '').trim().toLowerCase();
+    return (u === 'bytes/s' || u === 'b/s' || u === 'byte/s' || u === 'bytes/sec' || u === 'b/sec' || u === 'bytes' || u === 'b' || u === '');
+}
+
+function formatBitsRate(bits) {
+    if (bits === null || bits === undefined || bits === '' || isNaN(bits) || bits === '-') return '-';
+    const b = parseFloat(bits);
+    const abs = Math.abs(b);
+    if (abs >= 1000000000) return (b / 1000000000).toFixed(2) + ' Gbps';
+    if (abs >= 1000000) return (b / 1000000).toFixed(2) + ' Mbps';
+    if (abs >= 1000) return (b / 1000).toFixed(2) + ' Kbps';
+    return (b % 1 === 0 ? b : b.toFixed(2)) + ' bps';
+}
+
+function formatHumanMetric(val, rawUnit, autoConvertTraffic = true, moduleName = '', cardTitle = '') {
     if (val === null || val === undefined || val === '' || isNaN(val) || val === '-') {
         return '-';
     }
@@ -1429,29 +1475,22 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true) {
 
     const unit = (rawUnit || '').trim();
     const uLower = unit.toLowerCase();
+    const isTraffic = isTrafficMetric(moduleName, unit, cardTitle);
 
     if (num === 0) {
-        if (autoConvertTraffic && (uLower.includes('byte') || uLower.includes('bit') || uLower === 'b/s' || uLower === 'bps')) {
+        if (autoConvertTraffic && isTraffic) {
             return '0 bps';
         }
         return unit ? `0 ${unit}` : '0';
     }
 
-    // 1. Network Traffic Rate (bytes/s, B/s, byte/s, bps, bit/s, bits/s, bits) -> Convert to bps, Kbps, Mbps, Gbps ONLY if autoConvertTraffic is true
-    if (autoConvertTraffic && (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s' || uLower === 'bps' || uLower === 'bit/s' || uLower === 'bits/s' || uLower === 'bits')) {
-        const isByteRate = (uLower === 'bytes/s' || uLower === 'b/s' || uLower === 'byte/s');
-        const bits = isByteRate ? (num * 8) : num;
-        const absBits = Math.abs(bits);
-
-        if (absBits >= 1000000000) { // 1 Gbps
-            return (bits / 1000000000).toFixed(2) + ' Gbps';
-        } else if (absBits >= 1000000) { // 1 Mbps
-            return (bits / 1000000).toFixed(2) + ' Mbps';
-        } else if (absBits >= 1000) { // 1 Kbps
-            return (bits / 1000).toFixed(2) + ' Kbps';
-        } else {
-            return (bits % 1 === 0 ? bits : bits.toFixed(2)) + ' bps';
-        }
+    // 1. Network Traffic Rate -> Convert Byte rate to bit rate (* 8) and format as bps/Kbps/Mbps/Gbps
+    if (autoConvertTraffic && isTraffic) {
+        let bits = isByteTrafficMetric(moduleName, unit, cardTitle) ? (num * 8) : num;
+        if (uLower === 'kbps') bits = num * 1000;
+        if (uLower === 'mbps') bits = num * 1000000;
+        if (uLower === 'gbps') bits = num * 1000000000;
+        return formatBitsRate(bits);
     }
 
     // 2. Storage / Memory (bytes, B without /s)
@@ -1478,7 +1517,12 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true) {
         return (num % 1 === 0 ? num : num.toFixed(2)) + ' ' + unit;
     }
 
-    // 5. General numbers (or when autoConvertTraffic is false)
+    // 5. Optical / dBm
+    if (uLower === 'dbm') {
+        return (num % 1 === 0 ? num : num.toFixed(2)) + ' dBm';
+    }
+
+    // 6. General numbers (or when autoConvertTraffic is false)
     const formatted = (num % 1 === 0) ? num.toLocaleString() : num.toFixed(2);
     return unit ? `${formatted} ${unit}` : formatted;
 }
@@ -2721,7 +2765,15 @@ function refreshCurrentNodeData() {
             if (!showHiddenPanels && p.excluded) {
                 activeModules = activeModules.filter(m => !p.excluded.map(String).includes(String(m.id)));
             }
-            activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
+            if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
+                activeModules.sort((a, b) => {
+                    const nameA = `${a.agent_name || ''} - ${a.module_name || ''}`;
+                    const nameB = `${b.agent_name || ''} - ${b.module_name || ''}`;
+                    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+                });
+            } else {
+                activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
+            }
 
             if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table'].includes(p.type)) {
                 wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
@@ -2740,7 +2792,14 @@ function refreshCurrentNodeData() {
                 'rgba(0, 150, 136, 0.75)', 'rgba(251, 192, 45, 0.75)', 'rgba(97, 97, 97, 0.75)', 'rgba(233, 30, 99, 0.75)', 'rgba(141, 110, 99, 0.75)'
             ];
             const borders = [
-                '#004d40', '#1976d2', '#d32f2f', '#f57c00', '#7b1fa2', '#009688', '#fbc02d', '#616161', '#e91e63', '#8d6e63'
+                '#0284c7', '#16a34a', '#dc2626', '#d97706', '#7c3aed',
+                '#0d9488', '#e11d48', '#2563eb', '#ca8a04', '#9333ea',
+                '#059669', '#ea580c', '#64748b', '#db2777', '#0891b2',
+                '#4f46e5', '#65a30d', '#c026d3', '#b45309', '#0369a1',
+                '#4338ca', '#be123c', '#15803d', '#b91c1c', '#6d28d9',
+                '#0f766e', '#a16207', '#334155', '#86198f', '#1e40af',
+                '#047857', '#c2410c', '#475569', '#a21caf', '#0e7490',
+                '#854d0e'
             ];
 
             const chartFs = p.chart_font_size ? parseInt(p.chart_font_size) : 10;
@@ -2818,8 +2877,20 @@ function refreshCurrentNodeData() {
                         return '';
                     });
 
+                    const autoConvert = (p.auto_convert_traffic !== undefined)
+                        ? (p.auto_convert_traffic === true || p.auto_convert_traffic === 1 || p.auto_convert_traffic === '1' || p.auto_convert_traffic === 'true')
+                        : true;
+                    const cardIsTraffic = autoConvert && activeModules.some(m => isTrafficMetric(m.module_name, m.unit, p.title));
+                    const commonUnit = activeModules.length > 0 ? (activeModules[0].unit || '').trim() : '';
+
+                    if (!window.__dynamicChartColorMap) window.__dynamicChartColorMap = {};
                     const seriesData = activeModules.map((m, idx) => {
-                        const color = borders[idx % borders.length];
+                        const seriesKey = `${m.agent_name} - ${m.module_name}`;
+                        if (!window.__dynamicChartColorMap[seriesKey]) {
+                            window.__dynamicChartColorMap[seriesKey] = borders[idx % borders.length];
+                        }
+                        const color = window.__dynamicChartColorMap[seriesKey];
+                        const isByte = cardIsTraffic && isByteTrafficMetric(m.module_name, m.unit, p.title);
                         const historyMap = {};
                         (m.history || []).forEach(h => {
                             if (h.ts !== undefined) {
@@ -2830,11 +2901,14 @@ function refreshCurrentNodeData() {
                         let lastVal = null;
                         const data = uniqueTimestamps.map(ts => {
                             if (historyMap[ts] !== undefined) lastVal = historyMap[ts];
-                            return lastVal;
+                            if (lastVal !== null && !isNaN(lastVal)) {
+                                return isByte ? (Number(lastVal) * 8) : lastVal;
+                            }
+                            return null;
                         });
 
                         return {
-                            name: `${m.agent_name} - ${m.module_name}`,
+                            name: seriesKey,
                             type: p.type === 'bar' ? 'bar' : 'line',
                             data: data,
                             itemStyle: { color: color },
@@ -2853,7 +2927,7 @@ function refreshCurrentNodeData() {
                         const legendEl = document.getElementById(`chart_legend_${uniqueId}`);
                         if (legendEl && seriesData.length > 0) {
                             legendEl.innerHTML = seriesData.map((s, idx) => {
-                                const color = s.itemStyle ? s.itemStyle.color : (borders[idx % borders.length] || '#004d40');
+                                const color = s.itemStyle ? s.itemStyle.color : (window.__dynamicChartColorMap[s.name] || borders[idx % borders.length]);
                                 const safeName = s.name.replace(/"/g, '&quot;');
                                 return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleDynamicEchartsLegend('${uniqueId}', this)" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
                                     <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
@@ -2884,13 +2958,12 @@ function refreshCurrentNodeData() {
 
                                     let html = `<div style="font-weight:600; color:#fff; margin-bottom:4px; font-size:11px; border-bottom:1px solid #334155; padding-bottom:3px;">${params[0].name || ''}</div>`;
                                     html += `<div style="max-height:320px; overflow-y:auto; padding-right:4px;">`;
-                                    const autoConvert = (p.auto_convert_traffic !== undefined)
-                                        ? (p.auto_convert_traffic === true || p.auto_convert_traffic === 1 || p.auto_convert_traffic === '1' || p.auto_convert_traffic === 'true')
-                                        : true;
                                     sortedParams.forEach(sp => {
                                         const mod = activeModules[sp.seriesIndex];
                                         const unitStr = (mod && mod.unit) ? mod.unit : '';
-                                        const displayVal = formatHumanMetric(sp.value, unitStr, autoConvert);
+                                        const displayVal = cardIsTraffic 
+                                            ? formatBitsRate(sp.value) 
+                                            : formatHumanMetric(sp.value, unitStr, autoConvert, mod ? mod.module_name : '', p.title);
                                         html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
                                             <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${sp.marker} ${sp.seriesName}</span>
                                             <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
@@ -2903,7 +2976,31 @@ function refreshCurrentNodeData() {
                             legend: { show: false, data: seriesData.map(s => s.name) },
                             grid: { left: 8, right: 15, top: 12, bottom: p.show_time ? 28 : 10, containLabel: true },
                             xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: labels, show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
-                            yAxis: { type: 'value', max: p.force_100 ? 100 : null, splitLine: { lineStyle: { color: '#f0f3f5' } }, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' } },
+                            yAxis: { 
+                                type: 'value', 
+                                max: p.force_100 ? 100 : null, 
+                                splitLine: { lineStyle: { color: '#f0f3f5' } }, 
+                                axisLabel: { 
+                                    fontSize: Math.max(8, chartFs - 2), 
+                                    color: '#64748b',
+                                    formatter: function(value) {
+                                        if (cardIsTraffic) {
+                                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
+                                            if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
+                                            if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
+                                            return value.toFixed(0) + ' bps';
+                                        }
+                                        const u = commonUnit;
+                                        if (u === '%') return value.toFixed(0) + '%';
+                                        if (u === 'ms') return value.toFixed(0) + ' ms';
+                                        if (u === 'dBm') return value.toFixed(1) + ' dBm';
+                                        if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (u ? ' G' + u : 'G');
+                                        if (value >= 1000000) return (value / 1000000).toFixed(1) + (u ? ' M' + u : 'M');
+                                        if (value >= 1000) return (value / 1000).toFixed(1) + (u ? ' k' + u : 'k');
+                                        return value + (u ? ' ' + u : '');
+                                    }
+                                } 
+                            },
                             series: seriesData
                         });
 
