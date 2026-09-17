@@ -68,26 +68,76 @@ $pandora_base = $PANDORA_BASE_URL;
 
 $is_standalone = isset($_GET['standalone']) || isset($_GET['embed']);
 if (empty($user_id) && !$is_standalone) {
+    if (!empty($_GET['api'])) {
+        while (ob_get_level() > 0) ob_end_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'error' => 'Session expired. Please refresh the page.']);
+        exit;
+    }
     header("Location: " . ($pandora_base ?: '') . "/index.php");
     exit;
 }
 
 $portal_page_param = $_GET['page'] ?? 'Dashboard/Topology-Network/topology-network.php';
 $DASHBOARD_FILE = __DIR__ . '/topology_dashboards.json';
-$temp_dir = dirname(__DIR__, 2) . '/temp';
-if (!file_exists($DASHBOARD_FILE)) {
-    if (file_exists($temp_dir . '/topology_dashboards.json')) {
-        $DASHBOARD_FILE = $temp_dir . '/topology_dashboards.json';
-    } elseif (!is_writable(__DIR__) && is_dir($temp_dir) && is_writable($temp_dir)) {
-        $DASHBOARD_FILE = $temp_dir . '/topology_dashboards.json';
-    }
+
+// Helper to get all candidate storage paths
+function get_topology_storage_candidates(): array {
+    $temp_dir = dirname(__DIR__, 2) . '/temp';
+    $sys_temp = sys_get_temp_dir();
+    return array_values(array_unique([
+        __DIR__ . '/topology_dashboards.json',
+        $temp_dir . '/topology_dashboards.json',
+        $sys_temp . '/pfms_topology_dashboards.json'
+    ]));
 }
 
-// Helper: load dashboards
-function load_topology_dashboards(string $file): array {
-    $candidates = array_unique([$file, __DIR__ . '/topology_dashboards.json', dirname(__DIR__, 2) . '/temp/topology_dashboards.json']);
+// Helper: load dashboards (always load the NEWEST file with valid data, prioritizing files that contain user-created dashboards)
+function load_topology_dashboards(string $file = ''): array {
+    $candidates = get_topology_storage_candidates();
+    if (!empty($file) && !in_array($file, $candidates)) {
+        array_unshift($candidates, $file);
+    }
+
+    $best_score = -1;
+    $best_data = null;
+
     foreach ($candidates as $f) {
-        if (file_exists($f)) {
+        if (file_exists($f) && is_readable($f)) {
+            $raw = @file_get_contents($f);
+            if ($raw) {
+                $data = json_decode((string)$raw, true);
+                if (is_array($data) && !empty($data)) {
+                    $mtime = @filemtime($f) ?: 0;
+                    $has_custom = false;
+                    if (count($data) > 1) {
+                        $has_custom = true;
+                    } else {
+                        foreach ($data as $item) {
+                            if (isset($item['id']) && $item['id'] !== 'core-infra-01') {
+                                $has_custom = true;
+                                break;
+                            }
+                        }
+                    }
+                    // Candidates with custom dashboards get high priority so stale git files never shadow them
+                    $score = ($has_custom ? 10000000000 : 0) + $mtime;
+                    if ($score > $best_score) {
+                        $best_score = $score;
+                        $best_data = $data;
+                    }
+                }
+            }
+        }
+    }
+
+    if ($best_data !== null) {
+        return $best_data;
+    }
+
+    // Fallback: if no non-empty data found, return whatever is valid
+    foreach ($candidates as $f) {
+        if (file_exists($f) && is_readable($f)) {
             $raw = @file_get_contents($f);
             if ($raw) {
                 $data = json_decode((string)$raw, true);
@@ -95,28 +145,38 @@ function load_topology_dashboards(string $file): array {
             }
         }
     }
+
     return [];
 }
 
-// Helper: save dashboards
+// Helper: save dashboards (write to all writable locations so permissions never lose data)
 function save_topology_dashboards(string $file, array $data): bool {
     $json = json_encode(array_values($data), JSON_PRETTY_PRINT);
-    $res = @file_put_contents($file, $json);
-    if ($res !== false) {
-        $temp_file = dirname(__DIR__, 2) . '/temp/topology_dashboards.json';
-        if ($file !== $temp_file && file_exists(dirname($temp_file))) {
-            @file_put_contents($temp_file, $json);
+    $candidates = get_topology_storage_candidates();
+    if (!empty($file) && !in_array($file, $candidates)) {
+        array_unshift($candidates, $file);
+    }
+
+    $saved_count = 0;
+
+    foreach ($candidates as $f) {
+        $dir = dirname($f);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
         }
-        return true;
+
+        if (file_exists($f) && !is_writable($f)) {
+            @chmod($f, 0666);
+        }
+
+        $res = @file_put_contents($f, $json);
+        if ($res !== false) {
+            @touch($f); // Guarantee latest timestamp
+            $saved_count++;
+        }
     }
-    // Fallback to temp if primary dir is not writable (e.g. Linux www-data permissions)
-    $temp_file = dirname(__DIR__, 2) . '/temp/topology_dashboards.json';
-    if ($file !== $temp_file) {
-        if (!is_dir(dirname($temp_file))) @mkdir(dirname($temp_file), 0777, true);
-        $res2 = @file_put_contents($temp_file, $json);
-        if ($res2 !== false) return true;
-    }
-    return false;
+
+    return $saved_count > 0;
 }
 
 // =====================================================================
@@ -518,7 +578,9 @@ class TopologyDeviceClassifier {
 $api = $_GET['api'] ?? '';
 
 if (!empty($api)) {
-    ob_clean();
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     http_response_code(200);
@@ -526,7 +588,7 @@ if (!empty($api)) {
     // 1. API: LIST DASHBOARDS
     if ($api === 'list_dashboards') {
         $dashboards = load_topology_dashboards($DASHBOARD_FILE);
-        echo json_encode(['ok' => true, 'dashboards' => $dashboards]);
+        echo json_encode(['ok' => true, 'dashboards' => array_values($dashboards)]);
         exit;
     }
 
@@ -582,13 +644,19 @@ if (!empty($api)) {
                     $d['group_id'] = $group_id;
                     $d['group_name'] = pretty_text($group_name);
                     $d['layout'] = $layout;
-                    if (isset($input['device_ids'])) $d['device_ids'] = $device_ids;
+                    if (isset($input['device_ids'])) {
+                        $d['device_ids'] = $device_ids;
+                        $d['node_count'] = count($device_ids);
+                    } else {
+                        $d['node_count'] = isset($d['device_ids']) && is_array($d['device_ids']) ? count($d['device_ids']) : 0;
+                    }
                     $d['is_demo'] = false;
                     $d['updated_at'] = $now;
                     $found = true;
                     break;
                 }
             }
+            unset($d); // Prevent PHP reference retention
             if (!$found) {
                 $dashboards[] = [
                     'id' => $id,
@@ -642,6 +710,7 @@ if (!empty($api)) {
                 break;
             }
         }
+        unset($d); // Prevent PHP reference retention
         if ($found) {
             save_topology_dashboards($DASHBOARD_FILE, $dashboards);
             echo json_encode(['ok' => true, 'device_ids' => $device_ids, 'count' => count($device_ids)]);
@@ -2112,7 +2181,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <!-- ========================================================================= -->
     <script>
         const CSRF_TOKEN = <?= json_encode($csrf_token) ?>;
-        const API_URL = 'topology-network.php';
         const IMAGES_URL = <?= json_encode(rtrim($PANDORA_BASE_URL, '/') . '/images/') ?>;
         let allDashboards = <?= json_encode($dashboards) ?>;
         let activeDashId = <?= json_encode($selected_dash_id) ?>;
@@ -2122,6 +2190,25 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         let availableAgents = [];
         let selectedAgentIds = new Set();
         let currentInspectedAgent = null;
+
+        // Dynamic API URL resolver for Pandora FMS portal router or standalone mode
+        function getApiUrl(apiName, extraParams = {}) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('api', apiName);
+            if (apiName !== 'get_topology_data' && apiName !== 'save_dashboard_devices') {
+                url.searchParams.delete('dashboard_id');
+                url.searchParams.delete('group_id');
+            }
+            url.hash = '';
+            for (const [k, v] of Object.entries(extraParams)) {
+                if (v !== null && v !== undefined && v !== '') {
+                    url.searchParams.set(k, String(v));
+                } else {
+                    url.searchParams.delete(k);
+                }
+            }
+            return url.toString();
+        }
 
         // Universal Client-Side Text Sanitizer: strips any raw entity remnants
         function cleanText(str) {
@@ -2355,13 +2442,14 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             clearModalAlert();
 
             try {
-                const res = await fetch(`${API_URL}?api=save_dashboard`, {
+                const res = await fetch(getApiUrl('save_dashboard'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-Token': CSRF_TOKEN
                     },
                     body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
                         id: id,
                         name: cleanText(name),
                         description: cleanText(desc),
@@ -2372,20 +2460,31 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         is_demo: false
                     })
                 });
+
+                if (!res.ok && res.status !== 200) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
+
                 const data = await res.json();
                 if (data.ok) {
                     closeModal();
                     showToast(id ? 'Dashboard updated successfully' : 'Dashboard created successfully', 'success');
-                    // Reload Dashboards
-                    const listRes = await fetch(`${API_URL}?api=list_dashboards`);
-                    const listData = await listRes.json();
-                    if (listData.ok) {
-                        allDashboards = listData.dashboards;
+
+                    // Directly update dashboard list from backend response
+                    if (Array.isArray(data.dashboards)) {
+                        allDashboards = data.dashboards;
                         renderDashboardTable(allDashboards);
-                        // If created new, open immediately
-                        if (!id && data.id) {
-                            openDashboard(data.id);
-                        }
+                    }
+
+                    // If updating current active dashboard, update title
+                    if (id && activeDashId === id) {
+                        const titleEl = document.getElementById('canvasTitleText');
+                        if (titleEl) titleEl.innerText = cleanText(name);
+                    }
+
+                    // If created new, open immediately
+                    if (!id && data.id) {
+                        openDashboard(data.id);
                     }
                 } else {
                     showModalAlert('Error saving dashboard: ' + (data.error || 'Unknown error'));
@@ -2406,12 +2505,27 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             }
 
             try {
-                const res = await fetch(`${API_URL}?api=delete_dashboard&id=${encodeURIComponent(id)}`, {
-                    headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                const res = await fetch(getApiUrl('delete_dashboard', { id: id }), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
+                        id: id
+                    })
                 });
+                if (!res.ok && res.status !== 200) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
                 if (data.ok) {
-                    allDashboards = allDashboards.filter(x => x.id !== id);
+                    if (Array.isArray(data.dashboards)) {
+                        allDashboards = data.dashboards;
+                    } else {
+                        allDashboards = allDashboards.filter(x => x.id !== id);
+                    }
                     renderDashboardTable(allDashboards);
                     showToast(`Dashboard "${name}" deleted`, 'success');
                     if (activeDashId === id) {
@@ -2428,7 +2542,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         // --- 4. LOAD AGENT GROUPS ---
         async function loadAgentGroups() {
             try {
-                const res = await fetch(`${API_URL}?api=get_groups`);
+                const res = await fetch(getApiUrl('get_groups'));
+                if (!res.ok && res.status !== 200) return;
                 const data = await res.json();
                 if (data.ok && Array.isArray(data.groups)) {
                     const groupOptions = data.groups.map(g => {
@@ -2467,11 +2582,14 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         async function loadTopologyData(dashId, customGroupId = null) {
             showLoading(true);
             try {
-                let url = `${API_URL}?api=get_topology_data&dashboard_id=${encodeURIComponent(dashId || '')}`;
+                const extra = { dashboard_id: dashId || '' };
                 if (customGroupId !== null) {
-                    url += `&group_id=${customGroupId}`;
+                    extra.group_id = customGroupId;
                 }
-                const res = await fetch(url);
+                const res = await fetch(getApiUrl('get_topology_data', extra));
+                if (!res.ok && res.status !== 200) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
                 showLoading(false);
 
@@ -2683,7 +2801,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             // Fetch available agents from backend
             showLoading(true);
             try {
-                const res = await fetch(`${API_URL}?api=get_available_agents`);
+                const res = await fetch(getApiUrl('get_available_agents'));
+                if (!res.ok && res.status !== 200) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
                 showLoading(false);
 
@@ -2824,17 +2945,21 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const deviceArray = Array.from(selectedAgentIds);
 
             try {
-                const res = await fetch(`${API_URL}?api=save_dashboard_devices`, {
+                const res = await fetch(getApiUrl('save_dashboard_devices'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-Token': CSRF_TOKEN
                     },
                     body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
                         dashboard_id: activeDashId,
                         device_ids: deviceArray
                     })
                 });
+                if (!res.ok && res.status !== 200) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
                 if (data.ok) {
                     // Update in local array
@@ -2879,17 +3004,21 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const updatedList = currentList.filter(id => id !== aid);
 
             try {
-                const res = await fetch(`${API_URL}?api=save_dashboard_devices`, {
+                const res = await fetch(getApiUrl('save_dashboard_devices'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-Token': CSRF_TOKEN
                     },
                     body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
                         dashboard_id: activeDashId,
                         device_ids: updatedList
                     })
                 });
+                if (!res.ok && res.status !== 200) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
                 if (data.ok) {
                     if (currentDash) {
