@@ -325,17 +325,37 @@ class TopologyDeviceClassifier {
 
     public static function getIconUrl(string $base_url, array $agent, string $role): string {
         $imgDir = rtrim($base_url, '/') . '/images/';
-        
-        // 1. Check if agent has configured os_icon from tagente/tconfig_os
+        $roles = self::getRoles();
+
+        // 1. Dedicated network infrastructure and hardware roles MUST always use their designated official icon.
+        // This prevents SNMP routers and switches from showing generic equalizer/sound-wave icons (other-OS@os.svg).
+        $infraRoles = [
+            self::ROLE_ROUTER,
+            self::ROLE_SWITCH,
+            self::ROLE_FIREWALL,
+            self::ROLE_STORAGE,
+            self::ROLE_DATABASE,
+            self::ROLE_VCENTER,
+            self::ROLE_CLUSTER,
+            self::ROLE_DATACENTER
+        ];
+
+        if (in_array($role, $infraRoles, true)) {
+            $iconFile = $roles[$role]['icon_file'] ?? 'devices.svg';
+            return $imgDir . $iconFile;
+        }
+
+        // 2. For compute/server/workstation/VM agents, check if there is a specific, known OS icon
         if (!empty($agent['os_icon'])) {
             $rawIcon = trim((string)$agent['os_icon']);
-            if (preg_match('/^[a-zA-Z0-9_\-\.@]+\.(svg|png|gif|jpg)$/i', $rawIcon)) {
+            // Exclude generic "Other" / placeholder icons that look like sound waves or generic devices
+            $isGenericOs = preg_match('/(other|unknown|generic|default|sound)/i', $rawIcon);
+            if (!$isGenericOs && preg_match('/^[a-zA-Z0-9_\-\.@]+\.(svg|png|gif|jpg)$/i', $rawIcon)) {
                 return $imgDir . $rawIcon;
             }
         }
-        
-        // 2. Map role to official Pandora FMS image in /var/www/html/pandora_console/images/
-        $roles = self::getRoles();
+
+        // 3. Fallback to role icon
         $iconFile = $roles[$role]['icon_file'] ?? 'devices.svg';
         return $imgDir . $iconFile;
     }
@@ -377,13 +397,13 @@ class TopologyDeviceClassifier {
         if (preg_match('/(vm-|srv-vm|vhost|virtual machine|win-vm|docker|k8s)/i', $haystack)) {
             return self::ROLE_VM;
         }
-        if (preg_match('/(firewall|fortinet|palo alto|pfsense|opnsense|checkpoint)/i', $haystack)) {
+        if (preg_match('/(^|[\-_\s])(firewall|forti|fortigate|palo|paloalto|palo-alto|pfsense|opnsense|checkpoint|sophos|asa|fw)([\-_\s0-9]|$)/i', $haystack)) {
             return self::ROLE_FIREWALL;
         }
-        if (preg_match('/(router|gateway|mikrotik|cisco crs|edge-router|rtr-)/i', $haystack)) {
+        if (preg_match('/(^|[\-_\s])(rtr|router|gateway|gw|edge-router)([\-_\s0-9]|$)/i', $haystack) || preg_match('/(routeros|mikrotik.*router|cisco crs)/i', $haystack)) {
             return self::ROLE_ROUTER;
         }
-        if (preg_match('/(switch|sw-|leaf|spine|cisco catalyst|nexus|arista|mtk-sw)/i', $haystack)) {
+        if (preg_match('/(^|[\-_\s])(sw|switch|mtk-sw|csw|dsw|asw|dist-sw|core-sw|acc-sw|leaf|spine)([\-_\s0-9]|$)/i', $haystack) || preg_match('/(cisco catalyst|nexus|arista|switchos|mikrotik.*sw)/i', $haystack)) {
             return self::ROLE_SWITCH;
         }
 
@@ -734,6 +754,207 @@ if (!empty($api)) {
         exit;
     }
 
+    // API: SAVE TOPOLOGY EDGE (Connect 2 devices)
+    if ($api === 'save_topology_edge') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
+        if (!empty($csrf_token) && !empty($client_token) && $client_token !== $csrf_token) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
+            exit;
+        }
+
+        $dash_id = trim((string)($input['dashboard_id'] ?? ''));
+        $source = trim((string)($input['source'] ?? ''));
+        $target = trim((string)($input['target'] ?? ''));
+        $label = trim((string)($input['label'] ?? ''));
+        $status = trim((string)($input['status'] ?? 'active'));
+
+        if (empty($dash_id) || empty($source) || empty($target) || $source === $target) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid source or target node.']);
+            exit;
+        }
+
+        $dashboards = load_topology_dashboards($DASHBOARD_FILE);
+        $found = false;
+        $new_edge = null;
+
+        foreach ($dashboards as &$d) {
+            if ($d['id'] === $dash_id) {
+                if (!isset($d['custom_edges']) || !is_array($d['custom_edges'])) {
+                    $d['custom_edges'] = [];
+                }
+                
+                // Check if already exists (in either direction)
+                $exists = false;
+                foreach ($d['custom_edges'] as $ce) {
+                    if (($ce['source'] === $source && $ce['target'] === $target) ||
+                        ($ce['source'] === $target && $ce['target'] === $source)) {
+                        $exists = true;
+                        $new_edge = $ce;
+                        break;
+                    }
+                }
+
+                if (!$exists) {
+                    $edge_id = 'custom-' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $source) . '-' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $target);
+                    $new_edge = [
+                        'id' => $edge_id,
+                        'source' => $source,
+                        'target' => $target,
+                        'label' => pretty_text($label),
+                        'status' => in_array($status, ['active', 'warning', 'critical']) ? $status : 'active',
+                        'is_custom' => true,
+                        'created_at' => date('Y-m-d H:i:s')
+                    ];
+                    $d['custom_edges'][] = $new_edge;
+                }
+
+                // If this edge was previously recorded in deleted_edges, un-delete it
+                if (!empty($d['deleted_edges']) && is_array($d['deleted_edges'])) {
+                    $d['deleted_edges'] = array_values(array_filter($d['deleted_edges'], function($k) use ($source, $target) {
+                        return $k !== "$source->$target" && $k !== "$target->$source";
+                    }));
+                }
+
+                $d['updated_at'] = date('Y-m-d H:i:s');
+                $found = true;
+                break;
+            }
+        }
+        unset($d);
+
+        if ($found) {
+            save_topology_dashboards($DASHBOARD_FILE, $dashboards);
+            echo json_encode(['ok' => true, 'edge' => $new_edge]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard not found']);
+        }
+        exit;
+    }
+
+    // API: DELETE TOPOLOGY EDGE (Disconnect 2 devices)
+    if ($api === 'delete_topology_edge') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
+        if (!empty($csrf_token) && !empty($client_token) && $client_token !== $csrf_token) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
+            exit;
+        }
+
+        $dash_id = trim((string)($input['dashboard_id'] ?? ''));
+        $source = trim((string)($input['source'] ?? ''));
+        $target = trim((string)($input['target'] ?? ''));
+        $edge_id = trim((string)($input['edge_id'] ?? ''));
+
+        if (empty($dash_id)) {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard ID required']);
+            exit;
+        }
+
+        $dashboards = load_topology_dashboards($DASHBOARD_FILE);
+        $found = false;
+
+        foreach ($dashboards as &$d) {
+            if ($d['id'] === $dash_id) {
+                if (!isset($d['custom_edges']) || !is_array($d['custom_edges'])) {
+                    $d['custom_edges'] = [];
+                }
+                if (!isset($d['deleted_edges']) || !is_array($d['deleted_edges'])) {
+                    $d['deleted_edges'] = [];
+                }
+
+                // Filter out matching custom edge
+                $d['custom_edges'] = array_values(array_filter($d['custom_edges'], function($ce) use ($source, $target, $edge_id) {
+                    if (!empty($edge_id) && ($ce['id'] ?? '') === $edge_id) return false;
+                    if (!empty($source) && !empty($target)) {
+                        if (($ce['source'] === $source && $ce['target'] === $target) ||
+                            ($ce['source'] === $target && $ce['target'] === $source)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }));
+
+                // Record in deleted_edges in case it was a parent hierarchy link
+                if (!empty($source) && !empty($target)) {
+                    $d['deleted_edges'][] = "$source->$target";
+                    $d['deleted_edges'][] = "$target->$source";
+                    $d['deleted_edges'] = array_values(array_unique($d['deleted_edges']));
+                }
+
+                $d['updated_at'] = date('Y-m-d H:i:s');
+                $found = true;
+                break;
+            }
+        }
+        unset($d);
+
+        if ($found) {
+            save_topology_dashboards($DASHBOARD_FILE, $dashboards);
+            echo json_encode(['ok' => true]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard not found']);
+        }
+        exit;
+    }
+
+    // API: SAVE DEVICE ROLE OVERRIDE (Customize icon/role per device)
+    if ($api === 'save_device_role') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
+        if (!empty($csrf_token) && !empty($client_token) && $client_token !== $csrf_token) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
+            exit;
+        }
+
+        $dash_id = trim((string)($input['dashboard_id'] ?? ''));
+        $agent_id = (int)($input['agent_id'] ?? 0);
+        $role = trim((string)($input['role'] ?? ''));
+
+        if (empty($dash_id) || $agent_id <= 0 || empty($role)) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid parameters']);
+            exit;
+        }
+
+        $roles = TopologyDeviceClassifier::getRoles();
+        if (!isset($roles[$role])) {
+            echo json_encode(['ok' => false, 'error' => 'Unknown role']);
+            exit;
+        }
+
+        $dashboards = load_topology_dashboards($DASHBOARD_FILE);
+        $found = false;
+
+        foreach ($dashboards as &$d) {
+            if ($d['id'] === $dash_id) {
+                if (!isset($d['role_overrides']) || !is_array($d['role_overrides'])) {
+                    $d['role_overrides'] = [];
+                }
+                $d['role_overrides'][$agent_id] = $role;
+                $d['updated_at'] = date('Y-m-d H:i:s');
+                $found = true;
+                break;
+            }
+        }
+        unset($d);
+
+        if ($found) {
+            save_topology_dashboards($DASHBOARD_FILE, $dashboards);
+            $dummyAgent = ['id_agente' => $agent_id, 'os_icon' => ''];
+            $newIconUrl = TopologyDeviceClassifier::getIconUrl($PANDORA_BASE_URL, $dummyAgent, $role);
+            echo json_encode([
+                'ok' => true,
+                'agent_id' => $agent_id,
+                'role' => $role,
+                'category' => $roles[$role]['category'],
+                'icon_url' => $newIconUrl
+            ]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard not found']);
+        }
+        exit;
+    }
+
     // 4. API: GET AVAILABLE AGENTS FOR DEVICE PICKER
     if ($api === 'get_available_agents') {
         try {
@@ -1039,11 +1260,15 @@ if (!empty($api)) {
             $nodes = [];
             $agent_map = [];
             $role_meta = TopologyDeviceClassifier::getRoles();
+            $role_overrides = isset($current_dash['role_overrides']) && is_array($current_dash['role_overrides']) ? $current_dash['role_overrides'] : [];
+            $deleted_edges = isset($current_dash['deleted_edges']) && is_array($current_dash['deleted_edges']) ? array_flip($current_dash['deleted_edges']) : [];
+            $custom_edges = isset($current_dash['custom_edges']) && is_array($current_dash['custom_edges']) ? $current_dash['custom_edges'] : [];
 
             foreach ($agents as $a) {
                 $aid = (int)$a['id_agente'];
                 $node_id = 'agent-' . $aid;
-                $role = TopologyDeviceClassifier::classifyAgent($a);
+                $manualRole = $role_overrides[$aid] ?? null;
+                $role = TopologyDeviceClassifier::classifyAgent($a, $manualRole);
                 $icon_url = TopologyDeviceClassifier::getIconUrl($PANDORA_BASE_URL, $a, $role);
                 $stInfo = $statuses[$aid] ?? ['state' => 0, 'count' => 0];
 
@@ -1078,23 +1303,56 @@ if (!empty($api)) {
                 $agent_map[$aid] = $node_id;
             }
 
-            // Derive edges STRICTLY from real Pandora FMS agent parent hierarchy (tagente.id_parent)
-            // NO fake backbone or random synthetic links are EVER generated!
+            $node_id_set = array_fill_keys(array_column($nodes, 'id'), true);
+
+            // Derive edges from real Pandora FMS agent parent hierarchy + user custom connections
             $edges = [];
             $edge_keys = [];
 
+            // 1. Real parent hierarchy links from tagente.id_parent (unless user explicitly deleted)
             foreach ($nodes as $n) {
                 $pid = $n['parent_id'];
                 if ($pid > 0 && isset($agent_map[$pid])) {
                     $src = $agent_map[$pid];
                     $tgt = $n['id'];
-                    $k = $src . '->' . $tgt;
-                    if (!isset($edge_keys[$k])) {
-                        $edge_keys[$k] = true;
+                    $k1 = $src . '->' . $tgt;
+                    $k2 = $tgt . '->' . $src;
+                    if (!isset($deleted_edges[$k1]) && !isset($deleted_edges[$k2])) {
+                        if (!isset($edge_keys[$k1]) && !isset($edge_keys[$k2])) {
+                            $edge_keys[$k1] = true;
+                            $edges[] = [
+                                'id' => 'parent-' . $src . '-' . $tgt,
+                                'source' => $src,
+                                'target' => $tgt,
+                                'label' => '',
+                                'status' => $n['status'] === 'critical' ? 'critical' : ($n['status'] === 'warning' ? 'warning' : 'active'),
+                                'is_custom' => false
+                            ];
+                        }
+                    }
+                }
+            }
+
+            // 2. Custom user-defined edges connecting agents
+            foreach ($custom_edges as $ce) {
+                $cSrc = (string)($ce['source'] ?? '');
+                $cTgt = (string)($ce['target'] ?? '');
+                if (is_numeric($cSrc)) $cSrc = 'agent-' . $cSrc;
+                if (is_numeric($cTgt)) $cTgt = 'agent-' . $cTgt;
+
+                if (isset($node_id_set[$cSrc]) && isset($node_id_set[$cTgt]) && $cSrc !== $cTgt) {
+                    $k1 = $cSrc . '->' . $cTgt;
+                    $k2 = $cTgt . '->' . $cSrc;
+                    if (!isset($edge_keys[$k1]) && !isset($edge_keys[$k2])) {
+                        $edge_keys[$k1] = true;
+                        $edgeId = !empty($ce['id']) ? $ce['id'] : ('custom-' . $cSrc . '-' . $cTgt);
                         $edges[] = [
-                            'source' => $src,
-                            'target' => $tgt,
-                            'status' => $n['status'] === 'critical' ? 'critical' : ($n['status'] === 'warning' ? 'warning' : 'active')
+                            'id' => $edgeId,
+                            'source' => $cSrc,
+                            'target' => $cTgt,
+                            'label' => pretty_text($ce['label'] ?? ''),
+                            'status' => $ce['status'] ?? 'active',
+                            'is_custom' => true
                         ];
                     }
                 }
@@ -1641,6 +1899,94 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         .metric-label { color: var(--text-muted); font-weight: 500; }
         .metric-val { font-weight: 600; color: var(--text-dark); }
 
+        /* CONNECT MODE & LINK MANAGEMENT */
+        .btn-secondary-custom.active-connect {
+            background: #059669 !important;
+            color: #ffffff !important;
+            border-color: #047857 !important;
+            box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.35) !important;
+        }
+        .connect-banner {
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            background: #0f172a;
+            color: #ffffff;
+            padding: 8px 18px;
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            font-size: 13px;
+            border: 1px solid rgba(255,255,255,0.15);
+            animation: modalPop 0.2s ease-out;
+        }
+        .connect-banner-content {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .connect-pulse {
+            color: #22c55e;
+            animation: pulseGlow 1.5s infinite;
+        }
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.15); }
+        }
+        .btn-cancel-connect {
+            background: rgba(255,255,255,0.15);
+            color: #ffffff;
+            border: none;
+            border-radius: 20px;
+            padding: 3px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: background 0.15s;
+        }
+        .btn-cancel-connect:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .link-peer-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        .link-peer-info {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .btn-del-link {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+        }
+        .btn-del-link:hover {
+            color: #ef4444;
+            background: #fee2e2;
+        }
+
         /* MODAL STYLES */
         .modal-overlay {
             position: fixed;
@@ -2000,6 +2346,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     Add Devices
                 </button>
 
+                <!-- Connect Devices Button (Interactive Edge Connection) -->
+                <button class="btn-secondary-custom" id="btnConnectMode" onclick="toggleConnectMode()" style="height:34px; padding:0 14px; font-size:13px;" title="Connect two devices by clicking them sequentially">
+                    <span class="material-symbols-outlined" id="connectModeIcon" style="font-size:18px;">share</span>
+                    <span id="connectModeLabel">Connect Devices</span>
+                </button>
+
                 <!-- Group Filter dropdown (cleaned of &#x20;) -->
                 <select id="canvasGroupSelect" class="form-control-custom" style="width:240px;" onchange="onCanvasGroupChange(this.value)">
                     <option value="0">All Agent Groups</option>
@@ -2033,6 +2385,17 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         <main class="canvas-wrapper">
             <div id="cyCanvas"></div>
 
+            <!-- Connect Mode Floating Banner -->
+            <div id="connectModeBanner" class="connect-banner d-none">
+                <div class="connect-banner-content">
+                    <span class="material-symbols-outlined connect-pulse">cable</span>
+                    <span id="connectBannerText"><strong>Connect Mode:</strong> Click the first device (Source)...</span>
+                </div>
+                <button type="button" class="btn-cancel-connect" onclick="exitConnectMode()">
+                    <span class="material-symbols-outlined" style="font-size:14px;">close</span> Cancel
+                </button>
+            </div>
+
             <div id="canvasEmptyState" class="canvas-empty-state d-none">
                 <div class="empty-state-card">
                     <span class="material-symbols-outlined empty-icon">hub</span>
@@ -2059,7 +2422,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         <aside id="inspectorDrawer" class="inspector-drawer">
             <div class="inspector-header">
-                <h3 class="inspector-title">
+                <h3 class="inspector-title" id="drawerHeaderTitle">
                     <span class="material-symbols-outlined" style="color:var(--brand-green);">info</span>
                     Device Inspector
                 </h3>
@@ -2067,43 +2430,132 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
+            
             <div class="inspector-body">
-                <div class="node-hero">
-                    <div class="node-hero-icon" id="drawerHeroIcon" style="background:#ffffff; border:1px solid var(--border-color); padding:4px;">
-                        <img id="drawerIconImg" src="" style="width:32px; height:32px; object-fit:contain;" alt="Device Icon">
+                <!-- 1. NODE / AGENT INSPECTOR VIEW -->
+                <div id="drawerNodeContent">
+                    <div class="node-hero">
+                        <div class="node-hero-icon" id="drawerHeroIcon" style="background:#ffffff; border:1px solid var(--border-color); padding:4px;">
+                            <img id="drawerIconImg" src="" style="width:32px; height:32px; object-fit:contain;" alt="Device Icon">
+                        </div>
+                        <div class="node-hero-info">
+                            <h4 id="drawerNodeName">Node Name</h4>
+                            <p id="drawerRoleTitle">Role</p>
+                        </div>
                     </div>
-                    <div class="node-hero-info">
-                        <h4 id="drawerNodeName">Node Name</h4>
-                        <p id="drawerRoleTitle">Role</p>
+
+                    <div class="metric-row">
+                        <span class="metric-label">Status Health</span>
+                        <span class="metric-val" id="drawerStatusBadge"><span class="badge-pill badge-ok">Normal</span></span>
+                    </div>
+
+                    <!-- Role Switcher -->
+                    <div class="metric-row">
+                        <span class="metric-label">Device Role</span>
+                        <select id="drawerRoleSelect" class="form-control-custom" style="width:145px; height:28px; padding:2px 8px; font-size:12px;" onchange="changeInspectedDeviceRole(this.value)">
+                            <option value="router">Router</option>
+                            <option value="switch">Switch</option>
+                            <option value="firewall">Firewall</option>
+                            <option value="server">Host Server</option>
+                            <option value="workstation">Workstation/PC</option>
+                            <option value="storage">Storage</option>
+                            <option value="database">Database</option>
+                            <option value="vm">Virtual Machine</option>
+                            <option value="hypervisor">Hypervisor</option>
+                            <option value="cluster">Cluster</option>
+                            <option value="datacenter">Datacenter</option>
+                        </select>
+                    </div>
+
+                    <div class="metric-row">
+                        <span class="metric-label">IP Address</span>
+                        <span class="metric-val" id="drawerIp">0.0.0.0</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Agent Group</span>
+                        <span class="metric-val" id="drawerGroup">Infrastructure</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Operating System</span>
+                        <span class="metric-val" id="drawerOs">Unknown</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Active Alerts</span>
+                        <span class="metric-val" id="drawerAlertCount">0</span>
+                    </div>
+
+                    <!-- Connected Links Section -->
+                    <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border-color);">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                            <span style="font-size:12px; font-weight:700; color:var(--text-dark); text-transform:uppercase; letter-spacing:0.5px;">Connected Links</span>
+                            <span id="drawerConnectedLinksBadge" class="badge-pill badge-ok" style="font-size:10px; padding:2px 8px;">0 links</span>
+                        </div>
+                        <div id="drawerConnectedLinksList" style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; margin-bottom:10px;">
+                            <!-- Populated dynamically with connected link pills and delete buttons -->
+                        </div>
+                        
+                        <button type="button" class="btn-secondary-custom" id="btnOpenConnectSection" onclick="toggleDrawerConnectSection()" style="width:100%; justify-content:center; font-size:12px; height:30px;">
+                            <span class="material-symbols-outlined" style="font-size:16px;">add_link</span>
+                            Connect to Device...
+                        </button>
+                        
+                        <div id="drawerConnectBox" style="display:none; margin-top:8px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;">
+                            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;">Target Device</label>
+                            <select id="drawerTargetDeviceSelect" class="form-control-custom" style="width:100%; height:30px; font-size:12px; margin-bottom:8px;">
+                                <!-- Populated with other devices in canvas -->
+                            </select>
+                            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;">Link Label (Optional)</label>
+                            <input type="text" id="drawerLinkLabelInput" class="form-control-custom" placeholder="e.g. 10G Trunk, eth0, Uplink" style="width:100%; height:30px; font-size:12px; margin-bottom:10px;">
+                            <button type="button" class="btn-apply" onclick="connectFromDrawer()" style="width:100%; justify-content:center; height:30px; font-size:12px;">
+                                <span class="material-symbols-outlined" style="font-size:16px;">cable</span>
+                                Establish Link
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                        <button type="button" class="btn-secondary-custom" id="btnRemoveFromDashboard" onclick="removeCurrentDeviceFromDashboard()" style="width:100%; justify-content:center; color:#dc2626; border-color:#fecaca;">
+                            <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
+                            Remove from Dashboard
+                        </button>
                     </div>
                 </div>
 
-                <div class="metric-row">
-                    <span class="metric-label">Status Health</span>
-                    <span class="metric-val" id="drawerStatusBadge"><span class="badge-pill badge-ok">Normal</span></span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">IP Address</span>
-                    <span class="metric-val" id="drawerIp">0.0.0.0</span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">Agent Group</span>
-                    <span class="metric-val" id="drawerGroup">Infrastructure</span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">Operating System</span>
-                    <span class="metric-val" id="drawerOs">Unknown</span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">Active Alerts</span>
-                    <span class="metric-val" id="drawerAlertCount">0</span>
-                </div>
+                <!-- 2. EDGE / CONNECTION INSPECTOR VIEW -->
+                <div id="drawerEdgeContent" style="display:none;">
+                    <div style="padding:14px; background:#f8fafc; border-radius:8px; border:1px solid var(--border-color); margin-bottom:16px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                            <span style="font-size:11px; font-weight:700; color:var(--brand-green); text-transform:uppercase;">Topology Link</span>
+                            <span id="drawerEdgeTypeBadge" class="badge-pill badge-ok">Active Link</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                            <div style="flex:1; text-align:center; padding:8px; background:#ffffff; border:1px solid var(--border-color); border-radius:6px;">
+                                <span class="material-symbols-outlined" style="color:var(--primary-navy); font-size:22px; display:block;">hub</span>
+                                <strong id="drawerEdgeSrcName" style="font-size:11px; display:block; word-break:break-all;">Source</strong>
+                            </div>
+                            <span class="material-symbols-outlined" style="color:#94a3b8; font-size:18px;">sync_alt</span>
+                            <div style="flex:1; text-align:center; padding:8px; background:#ffffff; border:1px solid var(--border-color); border-radius:6px;">
+                                <span class="material-symbols-outlined" style="color:var(--primary-navy); font-size:22px; display:block;">dns</span>
+                                <strong id="drawerEdgeTgtName" style="font-size:11px; display:block; word-break:break-all;">Target</strong>
+                            </div>
+                        </div>
+                    </div>
 
-                <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-                    <button type="button" class="btn-secondary-custom" id="btnRemoveFromDashboard" onclick="removeCurrentDeviceFromDashboard()" style="width:100%; justify-content:center; color:#dc2626; border-color:#fecaca;">
-                        <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
-                        Remove from Dashboard
-                    </button>
+                    <div class="metric-row">
+                        <span class="metric-label">Link Label</span>
+                        <span class="metric-val" id="drawerEdgeLabel">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Link Status</span>
+                        <span class="metric-val" id="drawerEdgeStatus"><span class="badge-pill badge-ok">Active</span></span>
+                    </div>
+
+                    <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border-color);">
+                        <button type="button" class="btn-secondary-custom" id="btnDeleteSelectedEdge" onclick="deleteCurrentInspectedEdge()" style="width:100%; justify-content:center; color:#dc2626; border-color:#fecaca;">
+                            <span class="material-symbols-outlined" style="font-size:18px;">link_off</span>
+                            Delete Connection Link
+                        </button>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -2701,16 +3153,18 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             // Active node ids set
             const activeNodeIds = new Set(elements.map(e => e.data.id));
 
-            // Edge elements strictly from real parent links
+            // Edge elements strictly from real parent links & user custom links
             (data.edges || []).forEach((e, idx) => {
                 if (activeNodeIds.has(e.source) && activeNodeIds.has(e.target)) {
                     elements.push({
                         group: 'edges',
                         data: {
-                            id: 'edge-' + idx,
+                            id: e.id || ('edge-' + idx),
                             source: e.source,
                             target: e.target,
-                            status: e.status || 'active'
+                            label: cleanText(e.label || ''),
+                            status: e.status || 'active',
+                            is_custom: e.is_custom !== undefined ? e.is_custom : true
                         }
                     });
                 }
@@ -2792,14 +3246,44 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         }
                     },
                     {
+                        selector: 'node.connect-source',
+                        style: {
+                            'border-color': '#2563eb',
+                            'border-width': 5,
+                            'shadow-blur': 22,
+                            'shadow-color': 'rgba(37, 99, 235, 0.7)',
+                            'shadow-opacity': 1
+                        }
+                    },
+                    {
                         selector: 'edge',
                         style: {
-                            'width': 2,
-                            'line-color': '#cbd5e1',
+                            'width': 2.5,
+                            'line-color': '#94a3b8',
                             'curve-style': 'bezier',
                             'target-arrow-shape': 'triangle',
-                            'target-arrow-color': '#cbd5e1',
-                            'arrow-scale': 0.8
+                            'target-arrow-color': '#94a3b8',
+                            'arrow-scale': 0.85,
+                            'label': 'data(label)',
+                            'font-family': 'Inter, sans-serif',
+                            'font-size': 10,
+                            'font-weight': 600,
+                            'color': '#475569',
+                            'text-background-opacity': 0.9,
+                            'text-background-color': '#ffffff',
+                            'text-background-padding': 3,
+                            'text-background-shape': 'roundrectangle',
+                            'text-border-opacity': 0.5,
+                            'text-border-width': 1,
+                            'text-border-color': '#cbd5e1'
+                        }
+                    },
+                    {
+                        selector: 'edge:selected',
+                        style: {
+                            'width': 4,
+                            'line-color': '#2563eb',
+                            'target-arrow-color': '#2563eb'
                         }
                     },
                     {
@@ -2808,14 +3292,15 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                             'line-color': '#ef4444',
                             'target-arrow-color': '#ef4444',
                             'line-style': 'dashed',
-                            'width': 2.5
+                            'width': 3
                         }
                     },
                     {
                         selector: 'edge[status = "warning"]',
                         style: {
                             'line-color': '#f59e0b',
-                            'target-arrow-color': '#f59e0b'
+                            'target-arrow-color': '#f59e0b',
+                            'width': 2.5
                         }
                     }
                 ],
@@ -2829,15 +3314,32 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 }
             });
 
-            // Node Click Event -> Open Inspector Drawer
+            // Node Click Event
             cy.on('tap', 'node', function(evt) {
                 const node = evt.target;
+                if (isConnectMode) {
+                    handleConnectNodeClick(node);
+                    return;
+                }
                 openInspector(node.data());
+            });
+
+            // Edge Click Event -> Open Edge Inspector
+            cy.on('tap', 'edge', function(evt) {
+                const edge = evt.target;
+                if (isConnectMode) return;
+                openEdgeInspector(edge);
             });
 
             // Canvas Click Event -> Close Inspector if background tapped
             cy.on('tap', function(evt) {
                 if (evt.target === cy) {
+                    if (isConnectMode && connectSourceNode) {
+                        connectSourceNode.removeClass('connect-source');
+                        connectSourceNode = null;
+                        updateConnectBanner();
+                        return;
+                    }
                     closeInspector();
                 }
             });
@@ -3146,14 +3648,349 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             }
         }
 
+        // --- CONNECT MODE & LINK MANAGEMENT ---
+        let isConnectMode = false;
+        let connectSourceNode = null;
+        let currentInspectedEdge = null;
+
+        function toggleConnectMode() {
+            if (isConnectMode) {
+                exitConnectMode();
+            } else {
+                enterConnectMode();
+            }
+        }
+
+        function enterConnectMode() {
+            if (!cy) return;
+            isConnectMode = true;
+            connectSourceNode = null;
+            const btn = document.getElementById('btnConnectMode');
+            if (btn) btn.classList.add('active-connect');
+            const lbl = document.getElementById('connectModeLabel');
+            if (lbl) lbl.innerText = 'Connecting...';
+            const banner = document.getElementById('connectModeBanner');
+            if (banner) banner.classList.remove('d-none');
+            updateConnectBanner();
+            closeInspector();
+        }
+
+        function exitConnectMode() {
+            isConnectMode = false;
+            if (connectSourceNode) {
+                connectSourceNode.removeClass('connect-source');
+                connectSourceNode = null;
+            }
+            const btn = document.getElementById('btnConnectMode');
+            if (btn) btn.classList.remove('active-connect');
+            const lbl = document.getElementById('connectModeLabel');
+            if (lbl) lbl.innerText = 'Connect Devices';
+            const banner = document.getElementById('connectModeBanner');
+            if (banner) banner.classList.add('d-none');
+        }
+
+        function updateConnectBanner() {
+            const textEl = document.getElementById('connectBannerText');
+            if (!textEl) return;
+            if (!connectSourceNode) {
+                textEl.innerHTML = '<strong>Connect Mode:</strong> Click the first device (Source)...';
+            } else {
+                const srcName = escapeHtml(connectSourceNode.data('label') || 'Device');
+                textEl.innerHTML = `<strong>Source: ${srcName}</strong>. Now click the second device (Target)...`;
+            }
+        }
+
+        function handleConnectNodeClick(node) {
+            if (!connectSourceNode) {
+                connectSourceNode = node;
+                node.addClass('connect-source');
+                updateConnectBanner();
+                showToast(`Source selected: ${node.data('label')}. Now click target device.`, 'info');
+            } else if (connectSourceNode.id() === node.id()) {
+                node.removeClass('connect-source');
+                connectSourceNode = null;
+                updateConnectBanner();
+                showToast('Deselected source device', 'info');
+            } else {
+                const srcNode = connectSourceNode;
+                const tgtNode = node;
+                srcNode.removeClass('connect-source');
+                connectSourceNode = null;
+                updateConnectBanner();
+                establishDeviceConnection(srcNode.id(), tgtNode.id(), srcNode.data('label'), tgtNode.data('label'));
+            }
+        }
+
+        async function establishDeviceConnection(sourceId, targetId, srcName = '', tgtName = '', label = '') {
+            if (!cy || !activeDashId) return;
+            if (sourceId === targetId) return;
+
+            // Check if link already exists in cy
+            const existing = cy.edges().filter(e => 
+                (e.data('source') === sourceId && e.data('target') === targetId) ||
+                (e.data('source') === targetId && e.data('target') === sourceId)
+            );
+            if (existing.length > 0) {
+                showToast(`Already connected: ${srcName || sourceId} ── ${tgtName || targetId}`, 'warning');
+                return;
+            }
+
+            const edgeId = 'custom-' + sourceId.replace(/[^a-zA-Z0-9_\-]/g, '') + '-' + targetId.replace(/[^a-zA-Z0-9_\-]/g, '');
+
+            // Add instantly to Cytoscape for snappy UX
+            cy.add({
+                group: 'edges',
+                data: {
+                    id: edgeId,
+                    source: sourceId,
+                    target: targetId,
+                    label: cleanText(label),
+                    status: 'active',
+                    is_custom: true
+                }
+            });
+
+            showToast(`Connected ${srcName || sourceId} ─── ${tgtName || targetId}`, 'success');
+
+            // Persist to backend
+            try {
+                const res = await fetch(getApiUrl('save_topology_edge'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
+                        dashboard_id: activeDashId,
+                        source: sourceId,
+                        target: targetId,
+                        label: label
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    if (rawTopologyData && Array.isArray(rawTopologyData.edges)) {
+                        rawTopologyData.edges.push({
+                            id: edgeId,
+                            source: sourceId,
+                            target: targetId,
+                            label: label,
+                            status: 'active',
+                            is_custom: true
+                        });
+                    }
+                    // If node inspector is open for one of the endpoints, refresh links list
+                    if (currentInspectedAgent && (currentInspectedAgent.id === sourceId || currentInspectedAgent.id === targetId)) {
+                        renderDrawerConnectedLinks(currentInspectedAgent.id);
+                    }
+                } else {
+                    showToast('Warning: Link could not be saved to server: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (err) {
+                showToast('Network error while saving link: ' + err.message, 'error');
+            }
+        }
+
+        async function deleteEdgeById(edgeId) {
+            if (!cy || !activeDashId) return;
+            const edge = cy.getElementById(edgeId);
+            if (!edge || edge.length === 0) return;
+
+            const edgeData = edge.data();
+            const srcId = edgeData.source;
+            const tgtId = edgeData.target;
+            const srcNode = cy.getElementById(srcId);
+            const tgtNode = cy.getElementById(tgtId);
+            const srcName = srcNode.length > 0 ? srcNode.data('label') : srcId;
+            const tgtName = tgtNode.length > 0 ? tgtNode.data('label') : tgtId;
+
+            if (!confirm(`Delete connection link between "${srcName}" and "${tgtName}"?`)) return;
+
+            try {
+                const res = await fetch(getApiUrl('delete_topology_edge'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
+                        dashboard_id: activeDashId,
+                        edge_id: edgeId,
+                        source: srcId,
+                        target: tgtId
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    cy.remove(edge);
+                    showToast(`Deleted link between ${srcName} and ${tgtName}`, 'success');
+                    if (rawTopologyData && Array.isArray(rawTopologyData.edges)) {
+                        rawTopologyData.edges = rawTopologyData.edges.filter(e => 
+                            e.id !== edgeId && !(e.source === srcId && e.target === tgtId) && !(e.source === tgtId && e.target === srcId)
+                        );
+                    }
+                    if (currentInspectedAgent) {
+                        renderDrawerConnectedLinks(currentInspectedAgent.id);
+                    } else {
+                        closeInspector();
+                    }
+                } else {
+                    alert('Failed to delete link: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error while deleting link: ' + err.message);
+            }
+        }
+
+        async function deleteCurrentInspectedEdge() {
+            if (!currentInspectedEdge) return;
+            const edgeId = currentInspectedEdge.id();
+            await deleteEdgeById(edgeId);
+        }
+
+        function renderDrawerConnectedLinks(nodeId) {
+            const listEl = document.getElementById('drawerConnectedLinksList');
+            const badgeEl = document.getElementById('drawerConnectedLinksBadge');
+            if (!listEl || !cy) return;
+
+            const node = cy.getElementById(nodeId);
+            if (!node || node.length === 0) return;
+
+            const connectedEdges = node.connectedEdges();
+            if (badgeEl) badgeEl.innerText = `${connectedEdges.length} link${connectedEdges.length === 1 ? '' : 's'}`;
+
+            if (connectedEdges.length === 0) {
+                listEl.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style:italic; padding:4px 0;">No active links connected to this device.</div>';
+                return;
+            }
+
+            let html = '';
+            connectedEdges.forEach(edge => {
+                const isSource = edge.data('source') === nodeId;
+                const peerId = isSource ? edge.data('target') : edge.data('source');
+                const peerNode = cy.getElementById(peerId);
+                const peerName = peerNode.length > 0 ? escapeHtml(peerNode.data('label')) : peerId;
+                const peerIcon = peerNode.length > 0 ? peerNode.data('icon_url') : (IMAGES_URL + 'devices.svg');
+                const edgeLabel = escapeHtml(edge.data('label') || '');
+                const edgeStatus = edge.data('status') || 'active';
+                const statusColor = edgeStatus === 'critical' ? '#ef4444' : (edgeStatus === 'warning' ? '#f59e0b' : '#10b981');
+
+                html += `
+                    <div class="link-peer-item">
+                        <div class="link-peer-info">
+                            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${statusColor}; flex-shrink:0;"></span>
+                            <img src="${peerIcon}" style="width:16px; height:16px; object-fit:contain; flex-shrink:0;" alt="">
+                            <strong style="color:var(--text-dark);">${peerName}</strong>
+                            ${edgeLabel ? `<span style="color:var(--text-muted); font-size:11px;">(${edgeLabel})</span>` : ''}
+                        </div>
+                        <button type="button" class="btn-del-link" onclick="deleteEdgeById('${edge.id()}')" title="Delete this connection">
+                            <span class="material-symbols-outlined" style="font-size:16px;">delete</span>
+                        </button>
+                    </div>
+                `;
+            });
+
+            listEl.innerHTML = html;
+        }
+
+        function toggleDrawerConnectSection() {
+            const box = document.getElementById('drawerConnectBox');
+            if (!box) return;
+            const isHidden = box.style.display === 'none';
+            box.style.display = isHidden ? 'block' : 'none';
+
+            if (isHidden && currentInspectedAgent && cy) {
+                // Populate target dropdown with all other nodes in canvas
+                const select = document.getElementById('drawerTargetDeviceSelect');
+                if (select) {
+                    const otherNodes = cy.nodes().filter(n => n.id() !== currentInspectedAgent.id);
+                    select.innerHTML = otherNodes.map(n => {
+                        return `<option value="${n.id()}">${escapeHtml(n.data('label'))} (${n.data('ip') || '-'})</option>`;
+                    }).join('');
+                }
+            }
+        }
+
+        function connectFromDrawer() {
+            if (!currentInspectedAgent || !cy) return;
+            const select = document.getElementById('drawerTargetDeviceSelect');
+            const labelInput = document.getElementById('drawerLinkLabelInput');
+            if (!select || !select.value) return;
+
+            const targetId = select.value;
+            const label = labelInput ? labelInput.value.trim() : '';
+            const tgtNode = cy.getElementById(targetId);
+            const tgtName = tgtNode.length > 0 ? tgtNode.data('label') : targetId;
+
+            establishDeviceConnection(currentInspectedAgent.id, targetId, currentInspectedAgent.label, tgtName, label);
+
+            if (labelInput) labelInput.value = '';
+            const box = document.getElementById('drawerConnectBox');
+            if (box) box.style.display = 'none';
+        }
+
+        async function changeInspectedDeviceRole(newRole) {
+            if (!currentInspectedAgent || !currentInspectedAgent.agent_id || !activeDashId || !cy) return;
+            const aid = parseInt(currentInspectedAgent.agent_id);
+            const nodeEle = cy.getElementById(currentInspectedAgent.id);
+
+            try {
+                const res = await fetch(getApiUrl('save_device_role'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
+                        dashboard_id: activeDashId,
+                        agent_id: aid,
+                        role: newRole
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast(`Role updated to ${newRole.toUpperCase()}`, 'success');
+                    if (nodeEle && nodeEle.length > 0) {
+                        nodeEle.data('role', newRole);
+                        nodeEle.data('category', data.category);
+                        nodeEle.data('icon_url', data.icon_url);
+                    }
+                    currentInspectedAgent.role = newRole;
+                    currentInspectedAgent.icon_url = data.icon_url;
+                    currentInspectedAgent.category = data.category;
+                    document.getElementById('drawerRoleTitle').innerText = newRole.toUpperCase();
+                    const iconImg = document.getElementById('drawerIconImg');
+                    if (iconImg) iconImg.src = data.icon_url;
+                } else {
+                    alert('Failed to update role: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error while updating role: ' + err.message);
+            }
+        }
+
         function openInspector(data) {
             currentInspectedAgent = data;
+            currentInspectedEdge = null;
+
+            document.getElementById('drawerHeaderTitle').innerHTML = '<span class="material-symbols-outlined" style="color:var(--brand-green);">info</span> Device Inspector';
+            document.getElementById('drawerNodeContent').style.display = 'block';
+            document.getElementById('drawerEdgeContent').style.display = 'none';
+
             document.getElementById('drawerNodeName').innerText = cleanText(data.label);
             document.getElementById('drawerRoleTitle').innerText = cleanText(data.role.toUpperCase());
             document.getElementById('drawerIp').innerText = cleanText(data.ip || '0.0.0.0');
             document.getElementById('drawerGroup').innerText = cleanText(data.group || 'Infrastructure');
             document.getElementById('drawerOs').innerText = cleanText(data.os || 'Unknown OS');
             document.getElementById('drawerAlertCount').innerText = data.alert_count || 0;
+
+            const roleSelect = document.getElementById('drawerRoleSelect');
+            if (roleSelect) {
+                roleSelect.value = data.role;
+            }
 
             const iconImg = document.getElementById('drawerIconImg');
             if (iconImg) {
@@ -3169,12 +4006,62 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 stBadge.innerHTML = '<span class="badge-pill badge-ok">Normal</span>';
             }
 
+            // Close inline connect box if open
+            const connectBox = document.getElementById('drawerConnectBox');
+            if (connectBox) connectBox.style.display = 'none';
+
+            // Populate connected links
+            renderDrawerConnectedLinks(data.id);
+
+            document.getElementById('inspectorDrawer').classList.add('open');
+        }
+
+        function openEdgeInspector(edge) {
+            currentInspectedEdge = edge;
+            currentInspectedAgent = null;
+
+            document.getElementById('drawerHeaderTitle').innerHTML = '<span class="material-symbols-outlined" style="color:#2563eb;">share</span> Connection Link';
+            document.getElementById('drawerNodeContent').style.display = 'none';
+            document.getElementById('drawerEdgeContent').style.display = 'block';
+
+            const edgeData = edge.data();
+            const srcId = edgeData.source;
+            const tgtId = edgeData.target;
+            const srcNode = cy.getElementById(srcId);
+            const tgtNode = cy.getElementById(tgtId);
+
+            document.getElementById('drawerEdgeSrcName').innerText = srcNode.length > 0 ? srcNode.data('label') : srcId;
+            document.getElementById('drawerEdgeTgtName').innerText = tgtNode.length > 0 ? tgtNode.data('label') : tgtId;
+            document.getElementById('drawerEdgeLabel').innerText = edgeData.label || 'None';
+
+            const badgeEl = document.getElementById('drawerEdgeTypeBadge');
+            if (badgeEl) {
+                badgeEl.innerText = edgeData.is_custom ? 'Custom Link' : 'Parent Hierarchy';
+            }
+
+            const statusEl = document.getElementById('drawerEdgeStatus');
+            if (statusEl) {
+                const s = edgeData.status || 'active';
+                if (s === 'critical') {
+                    statusEl.innerHTML = '<span class="badge-pill badge-crit">Critical</span>';
+                } else if (s === 'warning') {
+                    statusEl.innerHTML = '<span class="badge-pill badge-warn">Warning</span>';
+                } else {
+                    statusEl.innerHTML = '<span class="badge-pill badge-ok">Active</span>';
+                }
+            }
+
             document.getElementById('inspectorDrawer').classList.add('open');
         }
 
         function closeInspector() {
             currentInspectedAgent = null;
-            document.getElementById('inspectorDrawer').classList.remove('open');
+            currentInspectedEdge = null;
+            const drawer = document.getElementById('inspectorDrawer');
+            if (drawer) drawer.classList.remove('open');
+            if (cy) {
+                cy.edges().unselect();
+            }
         }
 
         function exportTopologyImage() {
@@ -3195,6 +4082,16 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
             return String(text || '').replace(/[&<>"']/g, m => map[m]);
         }
+
+        // Keyboard shortcuts (Escape exits connect mode & closes drawer)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (isConnectMode) {
+                    exitConnectMode();
+                }
+                closeInspector();
+            }
+        });
 
         // --- 8. INITIALIZATION ON READY ---
         document.addEventListener('DOMContentLoaded', () => {
