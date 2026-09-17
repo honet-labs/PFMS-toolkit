@@ -2850,17 +2850,52 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                             Connect to Device...
                         </button>
                         
-                        <div id="drawerConnectBox" style="display:none; margin-top:8px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;">
-                            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;">Target Device</label>
-                            <select id="drawerTargetDeviceSelect" class="form-control-custom" style="width:100%; height:30px; font-size:12px; margin-bottom:8px;">
-                                <!-- Populated with other devices in canvas -->
-                            </select>
-                            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;">Link Label (Optional)</label>
-                            <input type="text" id="drawerLinkLabelInput" class="form-control-custom" placeholder="e.g. 10G Trunk, eth0, Uplink" style="width:100%; height:30px; font-size:12px; margin-bottom:10px;">
-                            <button type="button" class="btn-apply" onclick="connectFromDrawer()" style="width:100%; justify-content:center; height:30px; font-size:12px;">
+                        <div id="drawerConnectBox" style="display:none; margin-top:10px; padding:12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px;">
+                            <div style="font-size:12px; font-weight:700; color:#094d4a; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
                                 <span class="material-symbols-outlined" style="font-size:16px;">cable</span>
-                                Establish Link
-                            </button>
+                                Connect Interface Link
+                            </div>
+
+                            <!-- 1. Target Device -->
+                            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;">Target Device</label>
+                            <select id="drawerTargetDeviceSelect" class="form-control-custom" style="width:100%; height:32px; font-size:12px; margin-bottom:10px; background:#ffffff;" onchange="onDrawerTargetDeviceChange(this.value)">
+                                <!-- Populated dynamically -->
+                            </select>
+
+                            <!-- 2. Source Interface (This Device) -->
+                            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;">
+                                Source Interface (<span id="drawerSrcDeviceLabel">This Device</span>)
+                            </label>
+                            <div style="position:relative; margin-bottom:4px;">
+                                <input type="text" id="drawerSrcSearch" class="form-control-custom" placeholder="Search source port..." style="width:100%; height:26px; font-size:11px; padding-left:24px; background:#ffffff;" oninput="filterDrawerInterfaces('src', this.value)">
+                                <span class="material-symbols-outlined" style="position:absolute; left:5px; top:5px; font-size:15px; color:#94a3b8; pointer-events:none;">search</span>
+                            </div>
+                            <select id="drawerSourceInterfaceSelect" class="form-control-custom" style="width:100%; height:32px; font-size:12px; margin-bottom:10px; background:#ffffff;">
+                                <option value="">Loading...</option>
+                            </select>
+
+                            <!-- 3. Target Interface (Target Device) -->
+                            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;">
+                                Target Interface (<span id="drawerTgtDeviceLabel">Target</span>)
+                            </label>
+                            <div style="position:relative; margin-bottom:4px;">
+                                <input type="text" id="drawerTgtSearch" class="form-control-custom" placeholder="Search target port..." style="width:100%; height:26px; font-size:11px; padding-left:24px; background:#ffffff;" oninput="filterDrawerInterfaces('tgt', this.value)">
+                                <span class="material-symbols-outlined" style="position:absolute; left:5px; top:5px; font-size:15px; color:#94a3b8; pointer-events:none;">search</span>
+                            </div>
+                            <select id="drawerTargetInterfaceSelect" class="form-control-custom" style="width:100%; height:32px; font-size:12px; margin-bottom:12px; background:#ffffff;">
+                                <option value="">Loading...</option>
+                            </select>
+
+                            <div style="display:flex; flex-direction:column; gap:6px;">
+                                <button type="button" class="btn-apply" id="btnDrawerEstablishLink" onclick="connectFromDrawer()" style="width:100%; justify-content:center; height:32px; font-size:12px;">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">add_link</span>
+                                    Establish Interface Link
+                                </button>
+                                <button type="button" class="btn-secondary-custom" onclick="openModalFromDrawer()" style="width:100%; justify-content:center; height:28px; font-size:11px;">
+                                    <span class="material-symbols-outlined" style="font-size:15px;">open_in_new</span>
+                                    Open in Full Modal...
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -4333,7 +4368,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 });
                 const data = await res.json();
                 if (data.ok) {
-                    const existing = cy.getElementById(edgeId);
                     const edgeData = {
                         id: edgeId,
                         source: sourceId,
@@ -4348,10 +4382,22 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         is_custom: true
                     };
 
+                    let existing = cy.getElementById(edgeId);
+                    if (!existing || existing.length === 0) {
+                        existing = cy.edges().filter(e => 
+                            (e.data('source') === sourceId && e.data('target') === targetId) ||
+                            (e.data('source') === targetId && e.data('target') === sourceId)
+                        );
+                    }
+
                     if (existing && existing.length > 0) {
                         existing.data(edgeData);
                     } else {
                         cy.add({ group: 'edges', data: edgeData });
+                    }
+
+                    if (currentInspectedAgent && (currentInspectedAgent.id === sourceId || currentInspectedAgent.id === targetId)) {
+                        renderDrawerConnectedLinks(currentInspectedAgent.id);
                     }
 
                     closeInterfaceLinkModal();
@@ -4847,30 +4893,223 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             listEl.innerHTML = html;
         }
 
-        function toggleDrawerConnectSection() {
+        let drawerCachedSrcInterfaces = [];
+        let drawerCachedTgtInterfaces = [];
+
+        async function toggleDrawerConnectSection() {
             const box = document.getElementById('drawerConnectBox');
             if (!box) return;
             const isHidden = box.style.display === 'none';
             box.style.display = isHidden ? 'block' : 'none';
 
             if (isHidden && currentInspectedAgent && cy) {
+                const srcLabelEl = document.getElementById('drawerSrcDeviceLabel');
+                if (srcLabelEl) srcLabelEl.innerText = cleanText(currentInspectedAgent.label);
+
+                const srcSearch = document.getElementById('drawerSrcSearch');
+                if (srcSearch) srcSearch.value = '';
+                const tgtSearch = document.getElementById('drawerTgtSearch');
+                if (tgtSearch) tgtSearch.value = '';
+
                 // Populate target dropdown with all other nodes in canvas
                 const select = document.getElementById('drawerTargetDeviceSelect');
+                const otherNodes = cy.nodes().filter(n => n.id() !== currentInspectedAgent.id);
                 if (select) {
-                    const otherNodes = cy.nodes().filter(n => n.id() !== currentInspectedAgent.id);
-                    select.innerHTML = otherNodes.map(n => {
-                        return `<option value="${n.id()}">${escapeHtml(n.data('label'))} (${n.data('ip') || '-'})</option>`;
-                    }).join('');
+                    if (otherNodes.length === 0) {
+                        select.innerHTML = '<option value="">No other devices on canvas</option>';
+                    } else {
+                        select.innerHTML = otherNodes.map(n => {
+                            return `<option value="${n.id()}">${escapeHtml(n.data('label'))} (${n.data('ip') || '-'})</option>`;
+                        }).join('');
+                    }
+                }
+
+                // Fetch source interfaces for this inspected agent
+                const srcSelect = document.getElementById('drawerSourceInterfaceSelect');
+                if (srcSelect) srcSelect.innerHTML = '<option value="">Loading interface modules...</option>';
+                try {
+                    const srcAid = currentInspectedAgent.agent_id || currentInspectedAgent.id.replace('agent-', '');
+                    const resSrc = await fetch(getApiUrl('get_agent_interfaces', { id_agent: srcAid }));
+                    const dataSrc = await resSrc.json();
+                    drawerCachedSrcInterfaces = Array.isArray(dataSrc.interfaces) ? dataSrc.interfaces : [];
+                    populateInterfaceSelect(srcSelect, drawerCachedSrcInterfaces);
+                } catch (e) {
+                    if (srcSelect) srcSelect.innerHTML = '<option value="">None</option>';
+                }
+
+                // Fetch target interfaces for initial target device
+                if (select && select.value) {
+                    onDrawerTargetDeviceChange(select.value);
                 }
             }
         }
 
-        function connectFromDrawer() {
-            if (!currentInspectedAgent || !cy) return;
-            const select = document.getElementById('drawerTargetDeviceSelect');
-            if (!select || !select.value) return;
+        async function onDrawerTargetDeviceChange(targetId) {
+            const tgtSelect = document.getElementById('drawerTargetInterfaceSelect');
+            const tgtLabelEl = document.getElementById('drawerTgtDeviceLabel');
+            const tgtSearch = document.getElementById('drawerTgtSearch');
+            if (tgtSearch) tgtSearch.value = '';
+            if (!tgtSelect || !targetId || !cy) return;
 
-            const targetId = select.value;
+            const tgtNode = cy.getElementById(targetId);
+            if (tgtNode.length > 0 && tgtLabelEl) {
+                tgtLabelEl.innerText = cleanText(tgtNode.data('label'));
+            }
+
+            tgtSelect.innerHTML = '<option value="">Loading interface modules...</option>';
+            try {
+                const tgtAid = (tgtNode.length > 0) ? (tgtNode.data('agent_id') || tgtNode.id().replace('agent-', '')) : targetId.replace('agent-', '');
+                const resTgt = await fetch(getApiUrl('get_agent_interfaces', { id_agent: tgtAid }));
+                const dataTgt = await resTgt.json();
+                drawerCachedTgtInterfaces = Array.isArray(dataTgt.interfaces) ? dataTgt.interfaces : [];
+                populateInterfaceSelect(tgtSelect, drawerCachedTgtInterfaces);
+            } catch (e) {
+                tgtSelect.innerHTML = '<option value="">None</option>';
+            }
+        }
+
+        function filterDrawerInterfaces(side, query) {
+            query = (query || '').toLowerCase().trim();
+            const selectEl = (side === 'src') 
+                ? document.getElementById('drawerSourceInterfaceSelect') 
+                : document.getElementById('drawerTargetInterfaceSelect');
+            const interfaces = (side === 'src') ? drawerCachedSrcInterfaces : drawerCachedTgtInterfaces;
+            if (!selectEl) return;
+
+            const currentVal = selectEl.value;
+            const currentId = selectEl.options[selectEl.selectedIndex]?.getAttribute('data-id');
+
+            const filtered = query 
+                ? interfaces.filter(itf => {
+                    const name = (itf.name || '').toLowerCase();
+                    const cleanPort = (itf.clean_port || '').toLowerCase();
+                    const datos = (itf.datos || '').toLowerCase();
+                    return name.includes(query) || cleanPort.includes(query) || datos.includes(query);
+                })
+                : interfaces;
+
+            populateInterfaceSelect(selectEl, filtered);
+
+            if (currentId && currentId !== '0') {
+                selectMatchingOption(selectEl, currentVal, currentId);
+            }
+        }
+
+        async function connectFromDrawer() {
+            if (!currentInspectedAgent || !cy || !activeDashId) return;
+            const targetSelect = document.getElementById('drawerTargetDeviceSelect');
+            if (!targetSelect || !targetSelect.value) {
+                showToast('Pilih perangkat target terlebih dahulu.', 'warning');
+                return;
+            }
+
+            const targetId = targetSelect.value;
+            const sourceId = currentInspectedAgent.id;
+            const srcNode = cy.getElementById(sourceId);
+            const tgtNode = cy.getElementById(targetId);
+
+            const srcSelect = document.getElementById('drawerSourceInterfaceSelect');
+            const tgtSelect = document.getElementById('drawerTargetInterfaceSelect');
+            const srcOpt = srcSelect ? srcSelect.options[srcSelect.selectedIndex] : null;
+            const tgtOpt = tgtSelect ? tgtSelect.options[tgtSelect.selectedIndex] : null;
+
+            const srcIface = srcOpt ? srcOpt.value : '';
+            const srcModId = srcOpt ? parseInt(srcOpt.getAttribute('data-id') || 0) : 0;
+            const srcStatus = srcOpt ? parseInt(srcOpt.getAttribute('data-status') || 0) : 0;
+
+            const tgtIface = tgtOpt ? tgtOpt.value : '';
+            const tgtModId = tgtOpt ? parseInt(tgtOpt.getAttribute('data-id') || 0) : 0;
+            const tgtStatus = tgtOpt ? parseInt(tgtOpt.getAttribute('data-status') || 0) : 0;
+
+            const srcLabel = cleanText(currentInspectedAgent.label || sourceId);
+            const tgtLabel = (tgtNode.length > 0) ? cleanText(tgtNode.data('label')) : targetId;
+            const edgeId = 'custom-' + sourceId.replace(/[^a-zA-Z0-9_\-]/g, '') + '-' + targetId.replace(/[^a-zA-Z0-9_\-]/g, '');
+
+            const btn = document.getElementById('btnDrawerEstablishLink');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Connecting...';
+            }
+
+            try {
+                const res = await fetch(getApiUrl('save_topology_edge'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
+                        dashboard_id: activeDashId,
+                        source: sourceId,
+                        target: targetId,
+                        source_interface: srcIface,
+                        source_module_id: srcModId,
+                        source_status: srcStatus,
+                        target_interface: tgtIface,
+                        target_module_id: tgtModId,
+                        target_status: tgtStatus
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    let existing = cy.getElementById(edgeId);
+                    if (!existing || existing.length === 0) {
+                        existing = cy.edges().filter(e => 
+                            (e.data('source') === sourceId && e.data('target') === targetId) ||
+                            (e.data('source') === targetId && e.data('target') === sourceId)
+                        );
+                    }
+
+                    const edgeData = {
+                        id: edgeId,
+                        source: sourceId,
+                        target: targetId,
+                        source_interface: srcIface,
+                        source_module_id: srcModId,
+                        source_status: srcStatus,
+                        target_interface: tgtIface,
+                        target_module_id: tgtModId,
+                        target_status: tgtStatus,
+                        status: (srcStatus === 1 || tgtStatus === 1) ? 'critical' : 'active',
+                        is_custom: true
+                    };
+
+                    if (existing && existing.length > 0) {
+                        existing.data(edgeData);
+                    } else {
+                        cy.add({ group: 'edges', data: edgeData });
+                    }
+
+                    const box = document.getElementById('drawerConnectBox');
+                    if (box) box.style.display = 'none';
+
+                    renderDrawerConnectedLinks(sourceId);
+
+                    if (!srcIface && !tgtIface) {
+                        showToast(`Koneksi antar ${srcLabel} dan ${tgtLabel} berhasil dibuat (tanpa modul interface spesifik).`, 'info');
+                    } else {
+                        showToast(`Interface link berhasil dihubungkan antara ${srcLabel} (${srcIface || 'None'}) dan ${tgtLabel} (${tgtIface || 'None'})`, 'success');
+                    }
+                } else {
+                    showToast('Gagal menyimpan interface link: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (err) {
+                showToast('Terjadi kendala saat menyimpan link: ' + err.message, 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">add_link</span> Establish Interface Link';
+                }
+            }
+        }
+
+        function openModalFromDrawer() {
+            if (!currentInspectedAgent || !cy) return;
+            const targetSelect = document.getElementById('drawerTargetDeviceSelect');
+            if (!targetSelect || !targetSelect.value) return;
+
+            const targetId = targetSelect.value;
             const srcNode = cy.getElementById(currentInspectedAgent.id);
             const tgtNode = cy.getElementById(targetId);
 
