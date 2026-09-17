@@ -754,7 +754,7 @@ if (!empty($api)) {
         exit;
     }
 
-    // API: SAVE TOPOLOGY EDGE (Connect 2 devices)
+    // API: SAVE TOPOLOGY EDGE (Connect 2 devices with interface link)
     if ($api === 'save_topology_edge') {
         $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
@@ -768,6 +768,14 @@ if (!empty($api)) {
         $target = trim((string)($input['target'] ?? ''));
         $label = trim((string)($input['label'] ?? ''));
         $status = trim((string)($input['status'] ?? 'active'));
+        
+        $source_interface = trim((string)($input['source_interface'] ?? ''));
+        $source_module_id = (int)($input['source_module_id'] ?? 0);
+        $source_status = isset($input['source_status']) ? (int)$input['source_status'] : 0;
+        
+        $target_interface = trim((string)($input['target_interface'] ?? ''));
+        $target_module_id = (int)($input['target_module_id'] ?? 0);
+        $target_status = isset($input['target_status']) ? (int)$input['target_status'] : 0;
 
         if (empty($dash_id) || empty($source) || empty($target) || $source === $target) {
             echo json_encode(['ok' => false, 'error' => 'Invalid source or target node.']);
@@ -784,28 +792,39 @@ if (!empty($api)) {
                     $d['custom_edges'] = [];
                 }
                 
-                // Check if already exists (in either direction)
-                $exists = false;
-                foreach ($d['custom_edges'] as $ce) {
+                $edge_id = 'custom-' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $source) . '-' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $target);
+                
+                // If edge already exists in either direction, update it
+                $existing_idx = -1;
+                foreach ($d['custom_edges'] as $idx => $ce) {
                     if (($ce['source'] === $source && $ce['target'] === $target) ||
                         ($ce['source'] === $target && $ce['target'] === $source)) {
-                        $exists = true;
-                        $new_edge = $ce;
+                        $existing_idx = $idx;
+                        $edge_id = $ce['id'] ?? $edge_id;
                         break;
                     }
                 }
 
-                if (!$exists) {
-                    $edge_id = 'custom-' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $source) . '-' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $target);
-                    $new_edge = [
-                        'id' => $edge_id,
-                        'source' => $source,
-                        'target' => $target,
-                        'label' => pretty_text($label),
-                        'status' => in_array($status, ['active', 'warning', 'critical']) ? $status : 'active',
-                        'is_custom' => true,
-                        'created_at' => date('Y-m-d H:i:s')
-                    ];
+                $new_edge = [
+                    'id' => $edge_id,
+                    'source' => $source,
+                    'target' => $target,
+                    'label' => pretty_text($label),
+                    'status' => in_array($status, ['active', 'warning', 'critical']) ? $status : 'active',
+                    'source_interface' => pretty_text($source_interface),
+                    'source_module_id' => $source_module_id,
+                    'source_status' => $source_status,
+                    'target_interface' => pretty_text($target_interface),
+                    'target_module_id' => $target_module_id,
+                    'target_status' => $target_status,
+                    'is_custom' => true,
+                    'updated_at' => date('Y-m-d H:i:s')
+                ];
+
+                if ($existing_idx >= 0) {
+                    $d['custom_edges'][$existing_idx] = $new_edge;
+                } else {
+                    $new_edge['created_at'] = date('Y-m-d H:i:s');
                     $d['custom_edges'][] = $new_edge;
                 }
 
@@ -951,6 +970,79 @@ if (!empty($api)) {
             ]);
         } else {
             echo json_encode(['ok' => false, 'error' => 'Dashboard not found']);
+        }
+        exit;
+    }
+
+    // API: GET AGENT INTERFACE MODULES (Specifically ifOperStatus, ifAdmin, and network interfaces)
+    if ($api === 'get_agent_interfaces') {
+        $id_agent_raw = trim((string)($_GET['id_agent'] ?? $_POST['id_agent'] ?? ''));
+        $parsed = parse_node_id($id_agent_raw);
+        $node = $parsed['node'] ?: 'primary';
+        $id_agent = (int)$parsed['id'];
+
+        if ($id_agent <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid Agent ID']);
+            exit;
+        }
+
+        global $custom_pdos;
+        $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? $pdo);
+
+        try {
+            // First priority: Query modules matching network interface patterns (ifOperStatus, ifAdminStatus, ifAdmin)
+            $sql = "SELECT m.id_agente_modulo AS id, m.nombre AS name, e.estado, e.datos, m.unit
+                    FROM tagente_modulo m
+                    LEFT JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
+                    WHERE m.id_agente = ? 
+                      AND (m.nombre LIKE '%ifOperStatus%' OR m.nombre LIKE '%ifAdminStatus%' OR m.nombre LIKE '%ifAdmin%' OR m.nombre LIKE '%ifOper%')
+                      AND m.disabled = 0
+                    ORDER BY m.nombre ASC";
+            $stmt = $active_pdo->prepare($sql);
+            $stmt->execute([$id_agent]);
+            $mods = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Fallback: If no modules with ifOperStatus/ifAdminStatus found, fetch active status/network modules
+            if (empty($mods)) {
+                $sqlFallback = "SELECT m.id_agente_modulo AS id, m.nombre AS name, e.estado, e.datos, m.unit
+                                FROM tagente_modulo m
+                                LEFT JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
+                                WHERE m.id_agente = ? AND m.disabled = 0
+                                ORDER BY m.nombre ASC LIMIT 100";
+                $stmtFb = $active_pdo->prepare($sqlFallback);
+                $stmtFb->execute([$id_agent]);
+                $mods = $stmtFb->fetchAll(PDO::FETCH_ASSOC);
+            }
+
+            $interfaces = [];
+            foreach ($mods as $m) {
+                $rawName = $m['name'];
+                $cleanTextName = pretty_text($rawName);
+                $cleanPortName = str_ireplace(
+                    ['ifOperStatus_', '_ifOperStatus', 'ifOperStatus', 'ifAdminStatus_', '_ifAdminStatus', 'ifAdminStatus', 'ifAdmin_', '_ifAdmin', 'ifAdmin'],
+                    '',
+                    $cleanTextName
+                );
+                $cleanPortName = trim($cleanPortName);
+                if (empty($cleanPortName)) $cleanPortName = $cleanTextName;
+
+                $estadoVal = isset($m['estado']) ? (int)$m['estado'] : 0;
+                // estado: 0 = Normal/UP (green), 1 = Critical/DOWN (red), 2 = Warning (yellow), 3 = Unknown
+                $statusStr = ($estadoVal === 0) ? 'up' : (($estadoVal === 1) ? 'down' : 'warning');
+
+                $interfaces[] = [
+                    'id' => (int)$m['id'],
+                    'name' => $cleanTextName,
+                    'clean_port' => $cleanPortName,
+                    'estado' => $estadoVal,
+                    'status_str' => $statusStr,
+                    'datos' => pretty_text($m['datos'] ?? '')
+                ];
+            }
+
+            echo json_encode(['ok' => true, 'interfaces' => $interfaces]);
+        } catch (Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
         }
         exit;
     }
@@ -1333,6 +1425,25 @@ if (!empty($api)) {
                 }
             }
 
+            // Look up live module statuses for interface links
+            $mod_ids_to_check = [];
+            foreach ($custom_edges as $ce) {
+                if (!empty($ce['source_module_id'])) $mod_ids_to_check[] = (int)$ce['source_module_id'];
+                if (!empty($ce['target_module_id'])) $mod_ids_to_check[] = (int)$ce['target_module_id'];
+            }
+            $live_mod_states = [];
+            if (!empty($mod_ids_to_check) && $pdo) {
+                $mod_ids_to_check = array_values(array_unique($mod_ids_to_check));
+                $inQuery = implode(',', array_fill(0, count($mod_ids_to_check), '?'));
+                try {
+                    $stMod = $pdo->prepare("SELECT id_agente_modulo, estado FROM tagente_estado WHERE id_agente_modulo IN ($inQuery)");
+                    $stMod->execute($mod_ids_to_check);
+                    while ($r = $stMod->fetch(PDO::FETCH_ASSOC)) {
+                        $live_mod_states[(int)$r['id_agente_modulo']] = (int)$r['estado'];
+                    }
+                } catch (Throwable $e) {}
+            }
+
             // 2. Custom user-defined edges connecting agents
             foreach ($custom_edges as $ce) {
                 $cSrc = (string)($ce['source'] ?? '');
@@ -1346,12 +1457,24 @@ if (!empty($api)) {
                     if (!isset($edge_keys[$k1]) && !isset($edge_keys[$k2])) {
                         $edge_keys[$k1] = true;
                         $edgeId = !empty($ce['id']) ? $ce['id'] : ('custom-' . $cSrc . '-' . $cTgt);
+                        
+                        $srcModId = (int)($ce['source_module_id'] ?? 0);
+                        $tgtModId = (int)($ce['target_module_id'] ?? 0);
+                        $srcStatus = isset($live_mod_states[$srcModId]) ? $live_mod_states[$srcModId] : (int)($ce['source_status'] ?? 0);
+                        $tgtStatus = isset($live_mod_states[$tgtModId]) ? $live_mod_states[$tgtModId] : (int)($ce['target_status'] ?? 0);
+
                         $edges[] = [
                             'id' => $edgeId,
                             'source' => $cSrc,
                             'target' => $cTgt,
                             'label' => pretty_text($ce['label'] ?? ''),
                             'status' => $ce['status'] ?? 'active',
+                            'source_interface' => pretty_text($ce['source_interface'] ?? ''),
+                            'source_module_id' => $srcModId,
+                            'source_status' => $srcStatus,
+                            'target_interface' => pretty_text($ce['target_interface'] ?? ''),
+                            'target_module_id' => $tgtModId,
+                            'target_status' => $tgtStatus,
                             'is_custom' => true
                         ];
                     }
@@ -1773,6 +1896,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             width: 100%;
             height: 100%;
             display: block;
+            background-color: #ffffff;
+            background-size: 28px 28px;
+            background-image: 
+                linear-gradient(to right, rgba(226, 232, 240, 0.6) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(226, 232, 240, 0.6) 1px, transparent 1px);
         }
 
         .canvas-controls {
@@ -2132,6 +2260,252 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         .toast-success { background: #065f46 !important; color: #ffffff !important; }
         .toast-error { background: #991b1b !important; color: #ffffff !important; }
 
+        /* Teal Modal Headers & Outlines (Screenshot 3 & 4) */
+        .modal-head-teal {
+            background: #094d4a !important;
+            color: #ffffff !important;
+            padding: 14px 20px !important;
+            border-bottom: none !important;
+        }
+        .modal-head-teal h3 {
+            color: #ffffff !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.3px;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .modal-head-teal .modal-close-btn {
+            color: #ffffff !important;
+            cursor: pointer;
+            font-size: 20px;
+            opacity: 0.85;
+            transition: opacity 0.15s;
+        }
+        .modal-head-teal .modal-close-btn:hover {
+            opacity: 1;
+        }
+
+        .btn-outline-teal {
+            background: #ffffff;
+            border: 1.5px solid #094d4a;
+            color: #094d4a;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 8px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+        }
+        .btn-outline-teal:hover {
+            background: #094d4a;
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(9, 77, 74, 0.25);
+        }
+
+        /* Interface Link Box (Screenshot 4) */
+        .interface-link-box {
+            background: #d5eae6;
+            border: 1px solid #b2dfdb;
+            border-radius: 6px;
+            padding: 18px 20px;
+            display: grid;
+            grid-template-columns: 1fr 1.3fr 1.3fr 1fr;
+            gap: 16px;
+            align-items: center;
+        }
+        .interface-link-col {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .interface-link-col-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .interface-link-node-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0f172a;
+            word-break: break-word;
+            padding: 7px 0;
+        }
+
+        /* Add Node Accordions & Pagination (Screenshot 3) */
+        .add-node-section {
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background: #ffffff;
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+        .add-node-section-head {
+            padding: 12px 18px;
+            background: #ffffff;
+            font-weight: 700;
+            font-size: 13px;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .add-node-section-body {
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .agent-paginate-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .agent-paginate-table th {
+            background: #f8fafc;
+            padding: 9px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #64748b;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        .agent-paginate-table td {
+            padding: 9px 12px;
+            border-bottom: 1px solid #f1f5f9;
+            color: #1e293b;
+            vertical-align: middle;
+        }
+        .agent-paginate-table tr:hover td {
+            background: #f0fdfa;
+            cursor: pointer;
+        }
+        .agent-paginate-table tr.selected td {
+            background: #ccfbf1;
+        }
+        .paginate-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #64748b;
+            padding: 6px 2px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .page-btn-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .page-btn {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .page-btn:hover:not(:disabled) {
+            background: #094d4a;
+            color: #ffffff;
+            border-color: #094d4a;
+        }
+        .page-btn.active {
+            background: #094d4a;
+            color: #ffffff;
+            border-color: #094d4a;
+            font-weight: 700;
+        }
+        .page-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 38px;
+            height: 20px;
+            vertical-align: middle;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background-color: #cbd5e1;
+            transition: .2s;
+            border-radius: 20px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #094d4a;
+        }
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(18px);
+        }
+
+        /* Canvas Context Menu */
+        .canvas-context-menu {
+            position: fixed;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+            min-width: 175px;
+            padding: 5px 0;
+            z-index: 99999;
+            animation: modalPop 0.12s ease-out;
+        }
+        .context-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            font-size: 13px;
+            color: #334155;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .context-menu-item:hover {
+            background: #f1f5f9;
+            color: #094d4a;
+            font-weight: 600;
+        }
+        .context-menu-item .material-symbols-outlined {
+            font-size: 18px !important;
+            color: #64748b;
+        }
+        .context-menu-item:hover .material-symbols-outlined {
+            color: #094d4a;
+        }
+
         .loading-overlay {
             position: absolute;
             inset: 0;
@@ -2340,16 +2714,16 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         <div class="canvas-toolbar">
             <div class="toolbar-left">
-                <!-- Add Devices Button -->
-                <button class="btn-apply" id="btnAddDevicesToolbar" onclick="openAddDevicesModal()" style="height:34px; padding:0 14px; font-size:13px;" title="Add or remove devices on this dashboard">
+                <!-- Add Node Button -->
+                <button class="btn-apply" id="btnAddDevicesToolbar" onclick="openAddNodeModal()" style="height:34px; padding:0 14px; font-size:13px;" title="Add node">
                     <span class="material-symbols-outlined" style="font-size:18px;">add_circle</span>
-                    Add Devices
+                    Add node
                 </button>
 
-                <!-- Connect Devices Button (Interactive Edge Connection) -->
-                <button class="btn-secondary-custom" id="btnConnectMode" onclick="toggleConnectMode()" style="height:34px; padding:0 14px; font-size:13px;" title="Connect two devices by clicking them sequentially">
-                    <span class="material-symbols-outlined" id="connectModeIcon" style="font-size:18px;">share</span>
-                    <span id="connectModeLabel">Connect Devices</span>
+                <!-- Interface Link Button (Interactive Connection) -->
+                <button class="btn-secondary-custom" id="btnConnectMode" onclick="toggleConnectMode()" style="height:34px; padding:0 14px; font-size:13px;" title="Connect two devices by interface link">
+                    <span class="material-symbols-outlined" id="connectModeIcon" style="font-size:18px;">cable</span>
+                    <span id="connectModeLabel">Interface link</span>
                 </button>
 
                 <!-- Group Filter dropdown (cleaned of &#x20;) -->
@@ -2389,7 +2763,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             <div id="connectModeBanner" class="connect-banner d-none">
                 <div class="connect-banner-content">
                     <span class="material-symbols-outlined connect-pulse">cable</span>
-                    <span id="connectBannerText"><strong>Connect Mode:</strong> Click the first device (Source)...</span>
+                    <span id="connectBannerText"><strong>Interface Link:</strong> Click the first device (Source)...</span>
                 </div>
                 <button type="button" class="btn-cancel-connect" onclick="exitConnectMode()">
                     <span class="material-symbols-outlined" style="font-size:14px;">close</span> Cancel
@@ -2401,9 +2775,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     <span class="material-symbols-outlined empty-icon">hub</span>
                     <h3>Topology Canvas is Empty</h3>
                     <p>This topology dashboard does not have any devices yet. Pick agents from your Pandora FMS inventory to visualize.</p>
-                    <button class="btn-apply" onclick="openAddDevicesModal()" style="margin-top: 8px !important;">
+                    <button class="btn-apply" onclick="openAddNodeModal()" style="margin-top: 8px !important;">
                         <span class="material-symbols-outlined">add_circle</span>
-                        Add Devices to Topology
+                        Add node
                     </button>
                 </div>
             </div>
@@ -2627,42 +3001,194 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     </div>
 
     <!-- ========================================================================= -->
-    <!-- ADD / MANAGE DEVICES MODAL                                                -->
+    <!-- ADD NODE MODAL (Screenshot 3 - Preloaded 10 agents with pagination & search) -->
     <!-- ========================================================================= -->
-    <div class="modal-overlay" id="addDevicesModal">
-        <div class="modal-card" style="max-width: 680px; width: 92%; max-height: 85vh; display: flex; flex-direction: column;">
-            <div class="modal-head">
-                <h3><span class="material-symbols-outlined">devices</span> Add Devices to Topology</h3>
-                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeAddDevicesModal()">close</span>
+    <div class="modal-overlay" id="addNodeModal">
+        <div class="modal-card" style="max-width: 760px; width: 94%; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-head modal-head-teal">
+                <h3>Add node</h3>
+                <span class="material-symbols-outlined modal-close-btn" onclick="closeAddNodeModal()">close</span>
             </div>
-            <div class="modal-body" style="overflow-y: hidden; display: flex; flex-direction: column; gap: 12px; flex: 1;">
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <div style="position: relative; flex: 1;">
-                        <input type="text" id="agentPickerSearch" class="form-control-custom" placeholder="Search by name, IP, OS or group..." oninput="filterAgentPicker(this.value)">
-                        <span class="material-symbols-outlined" style="position:absolute; right:10px; top:9px; color:#94a3b8;">search</span>
+            <div class="modal-body" style="overflow-y: auto; padding: 20px; gap: 16px;">
+                <!-- Section 1: Add agent node -->
+                <div class="add-node-section">
+                    <div class="add-node-section-head">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="material-symbols-outlined" style="font-size:18px; color:#64748b;">expand_less</span>
+                            <span>Add agent node</span>
+                        </div>
                     </div>
-                    <select id="agentPickerGroupFilter" class="form-control-custom" style="width: 200px;" onchange="filterAgentPicker()">
-                        <option value="">All Groups</option>
-                    </select>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted); padding: 0 4px;">
-                    <span id="agentPickerCount">0 devices found</span>
-                    <div style="display: flex; gap: 12px;">
-                        <a href="javascript:void(0)" onclick="selectAllPickerAgents(true)" style="color: var(--brand-green); font-weight: 600; text-decoration: none;">Select All</a>
-                        <a href="javascript:void(0)" onclick="selectAllPickerAgents(false)" style="color: #64748b; text-decoration: none;">Deselect All</a>
+                    <div class="add-node-section-body">
+                        <div>
+                            <label class="form-label" style="font-size:13px; color:#0f172a; margin-bottom:6px;">Agent</label>
+                            <div style="position:relative;">
+                                <input type="text" id="addNodeAgentSearch" class="form-control-custom" placeholder="Search agent by name, IP, group, OS..." oninput="onAddNodeSearch(this.value)">
+                                <span class="material-symbols-outlined" style="position:absolute; right:10px; top:9px; color:#94a3b8;">search</span>
+                            </div>
+                            <div style="font-size:11px; color:#64748b; margin-top:4px;">Type at least two characters to search.</div>
+                        </div>
+
+                        <!-- Preloaded Agent List (10 agents per page with pagination) -->
+                        <div style="margin-top:6px;">
+                            <table class="agent-paginate-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px; text-align:center;">Select</th>
+                                        <th>Agent Name / Alias</th>
+                                        <th>IP Address</th>
+                                        <th>Group</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="addNodeTableBody">
+                                    <!-- Rendered dynamically with 10 agents -->
+                                </tbody>
+                            </table>
+
+                            <!-- Pagination Controls -->
+                            <div class="paginate-controls" id="addNodePaginationControls">
+                                <span id="addNodePageInfo">Showing 1-10 of 0 agents</span>
+                                <div class="page-btn-group" id="addNodePageButtons">
+                                    <!-- Rendered dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+                            <button type="button" class="btn-outline-teal" id="btnAddAgentNodeSubmit" onclick="submitAddAgentNode()">
+                                Add agent node
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div id="agentPickerList" class="agent-picker-list" style="flex: 1; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; max-height: 380px;">
-                    <!-- Dynamically populated rows with checkboxes & official Pandora icons -->
+
+                <!-- Section 2: Add agent node (filter by group) -->
+                <div class="add-node-section">
+                    <div class="add-node-section-head">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="material-symbols-outlined" style="font-size:18px; color:#64748b;">expand_less</span>
+                            <span>Add agent node (filter by group)</span>
+                        </div>
+                    </div>
+                    <div class="add-node-section-body">
+                        <div style="display:grid; grid-template-columns: 1fr auto; gap: 16px; align-items: flex-end;">
+                            <div>
+                                <label class="form-label" style="font-size:13px; color:#0f172a; margin-bottom:6px;">Group</label>
+                                <select id="addNodeGroupSelect" class="form-control-custom" onchange="onAddNodeGroupSelect(this.value)">
+                                    <option value="">None</option>
+                                </select>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
+                                <label class="form-label" style="font-size:13px; color:#0f172a; margin-bottom:0;">Recursion</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="addNodeRecursionToggle" checked onchange="onAddNodeRecursionChange()">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="modal-foot">
-                <button class="btn-secondary-custom" onclick="closeAddDevicesModal()">Cancel</button>
-                <button class="btn-apply" id="btnSaveSelectedDevices" onclick="saveSelectedDevices()">
-                    <span class="material-symbols-outlined">check</span>
-                    Save & Update Topology (<span id="selectedCountBadge">0</span>)
-                </button>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- INTERFACE LINK MODAL (Screenshot 4)                                       -->
+    <!-- ========================================================================= -->
+    <div class="modal-overlay" id="interfaceLinkModal">
+        <div class="modal-card" style="max-width: 720px; width: 94%; border-radius: 8px; overflow:hidden;">
+            <div class="modal-head modal-head-teal">
+                <h3>Interface link</h3>
+                <span class="material-symbols-outlined modal-close-btn" onclick="closeInterfaceLinkModal()">close</span>
             </div>
+            <div class="modal-body" style="padding: 24px;">
+                <input type="hidden" id="linkSourceNodeId" value="">
+                <input type="hidden" id="linkTargetNodeId" value="">
+                
+                <!-- Light teal box matching Screenshot 4 -->
+                <div class="interface-link-box">
+                    <div class="interface-link-col">
+                        <div class="interface-link-col-title">Node source</div>
+                        <div class="interface-link-node-name" id="linkSourceNodeName">-</div>
+                    </div>
+
+                    <div class="interface-link-col">
+                        <div class="interface-link-col-title">Interface source</div>
+                        <select id="linkSourceInterfaceSelect" class="form-control-custom" style="background:#ffffff; height:36px;">
+                            <option value="">None</option>
+                        </select>
+                    </div>
+
+                    <div class="interface-link-col">
+                        <div class="interface-link-col-title">Interface target</div>
+                        <select id="linkTargetInterfaceSelect" class="form-control-custom" style="background:#ffffff; height:36px;">
+                            <option value="">None</option>
+                        </select>
+                    </div>
+
+                    <div class="interface-link-col">
+                        <div class="interface-link-col-title">Node target</div>
+                        <div class="interface-link-node-name" id="linkTargetNodeName">-</div>
+                    </div>
+                </div>
+
+                <div id="interfaceLinkLoading" style="display:none; text-align:center; padding:12px; color:#094d4a; font-size:12px;">
+                    <span class="material-symbols-outlined spin-icon" style="font-size:16px;">progress_activity</span> Loading interface modules (ifOperStatus/ifAdmin)...
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 18px;">
+                    <button type="button" class="btn-outline-teal" id="btnAddInterfaceLinkSubmit" onclick="submitInterfaceLink()">
+                        Add interface link
+                    </button>
+                    <button type="button" class="btn-secondary-custom" id="btnDeleteInterfaceLink" onclick="deleteCurrentInterfaceLink()" style="display:none; color:#dc2626; border-color:#fecaca;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">delete</span> Delete Link
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- CANVAS CONTEXT MENU (Screenshot 1)                                        -->
+    <!-- ========================================================================= -->
+    <div id="canvasContextMenu" class="canvas-context-menu" style="display:none;">
+        <div class="context-menu-item" onclick="openAddNodeModalFromContext()">
+            <span class="material-symbols-outlined">add_circle</span>
+            <span>Add node</span>
+        </div>
+        <div class="context-menu-item" onclick="loadNewNodesFromContext()">
+            <span class="material-symbols-outlined">refresh</span>
+            <span>Load new nodes</span>
+        </div>
+        <div class="context-menu-item" onclick="redrawMapFromContext()">
+            <span class="material-symbols-outlined">sync</span>
+            <span>Redraw map</span>
+        </div>
+    </div>
+
+    <div id="nodeContextMenu" class="canvas-context-menu" style="display:none;">
+        <div class="context-menu-item" onclick="connectFromNodeContext()">
+            <span class="material-symbols-outlined">cable</span>
+            <span>Connect interface link...</span>
+        </div>
+        <div class="context-menu-item" onclick="inspectFromNodeContext()">
+            <span class="material-symbols-outlined">info</span>
+            <span>Inspect node</span>
+        </div>
+        <div class="context-menu-item" onclick="removeFromNodeContext()" style="color:#dc2626;">
+            <span class="material-symbols-outlined" style="color:#dc2626;">delete</span>
+            <span>Remove node</span>
+        </div>
+    </div>
+
+    <div id="edgeContextMenu" class="canvas-context-menu" style="display:none;">
+        <div class="context-menu-item" onclick="editEdgeFromContext()">
+            <span class="material-symbols-outlined">edit</span>
+            <span>Edit interface link</span>
+        </div>
+        <div class="context-menu-item" onclick="deleteEdgeFromContext()" style="color:#dc2626;">
+            <span class="material-symbols-outlined" style="color:#dc2626;">link_off</span>
+            <span>Delete Link</span>
         </div>
     </div>
 
@@ -3164,7 +3690,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                             target: e.target,
                             label: cleanText(e.label || ''),
                             status: e.status || 'active',
-                            is_custom: e.is_custom !== undefined ? e.is_custom : true
+                            is_custom: e.is_custom !== undefined ? e.is_custom : true,
+                            source_interface: cleanText(e.source_interface || ''),
+                            source_module_id: e.source_module_id || 0,
+                            source_status: e.source_status !== undefined ? e.source_status : 0,
+                            target_interface: cleanText(e.target_interface || ''),
+                            target_module_id: e.target_module_id || 0,
+                            target_status: e.target_status !== undefined ? e.target_status : 0
                         }
                     });
                 }
@@ -3192,115 +3724,98 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         selector: 'node',
                         style: {
                             'label': 'data(label)',
-                            'color': '#1e293b',
+                            'color': '#0f172a',
                             'font-family': 'Inter, sans-serif',
-                            'font-size': 11,
-                            'font-weight': 600,
+                            'font-size': 12,
+                            'font-weight': 700,
                             'text-valign': 'bottom',
-                            'text-margin-y': 8,
+                            'text-margin-y': 10,
                             'text-wrap': 'ellipsis',
-                            'text-max-width': '120px',
-                            'width': 48,
-                            'height': 48,
-                            'background-color': '#ffffff',
-                            'border-width': 2,
-                            'border-color': function(ele) {
-                                const s = ele.data('status');
-                                if (s === 'critical') return '#ef4444';
-                                if (s === 'warning') return '#f59e0b';
-                                return '#10b981';
-                            },
+                            'text-max-width': '140px',
+                            'width': 56,
+                            'height': 56,
+                            'background-color': 'transparent',
                             'background-image': function(ele) {
-                                return ele.data('icon_url') || (IMAGES_URL + 'devices.svg');
+                                return WAVEFORM_NODE_SVG;
                             },
                             'background-fit': 'contain',
                             'background-clip': 'none',
-                            'background-width': '68%',
-                            'background-height': '68%'
-                        }
-                    },
-                    {
-                        selector: 'node[status = "critical"]',
-                        style: {
-                            'border-width': 3,
-                            'border-color': '#ef4444',
-                            'shadow-blur': 12,
-                            'shadow-color': 'rgba(239, 68, 68, 0.4)',
-                            'shadow-opacity': 0.8
-                        }
-                    },
-                    {
-                        selector: 'node[status = "warning"]',
-                        style: {
-                            'border-width': 2.5,
-                            'border-color': '#f59e0b'
+                            'border-width': 0
                         }
                     },
                     {
                         selector: 'node:selected',
                         style: {
-                            'border-color': '#2563eb',
-                            'border-width': 4,
+                            'border-color': '#094d4a',
+                            'border-width': 3,
                             'shadow-blur': 16,
-                            'shadow-color': 'rgba(37, 99, 235, 0.5)'
+                            'shadow-color': 'rgba(9, 77, 74, 0.45)'
                         }
                     },
                     {
                         selector: 'node.connect-source',
                         style: {
-                            'border-color': '#2563eb',
-                            'border-width': 5,
+                            'border-color': '#0284c7',
+                            'border-width': 4,
                             'shadow-blur': 22,
-                            'shadow-color': 'rgba(37, 99, 235, 0.7)',
+                            'shadow-color': 'rgba(2, 132, 199, 0.7)',
                             'shadow-opacity': 1
                         }
                     },
                     {
                         selector: 'edge',
                         style: {
-                            'width': 2.5,
-                            'line-color': '#94a3b8',
+                            'width': 2,
+                            'line-color': '#cbd5e1',
                             'curve-style': 'bezier',
-                            'target-arrow-shape': 'triangle',
-                            'target-arrow-color': '#94a3b8',
-                            'arrow-scale': 0.85,
-                            'label': 'data(label)',
+                            'source-arrow-shape': function(ele) {
+                                return ele.data('source_interface') ? 'circle' : 'none';
+                            },
+                            'source-arrow-color': function(ele) {
+                                const s = ele.data('source_status');
+                                return (s === 1 || s === 'critical' || s === '1') ? '#ef4444' : '#10b981';
+                            },
+                            'source-arrow-fill': 'filled',
+                            'target-arrow-shape': function(ele) {
+                                return ele.data('target_interface') ? 'circle' : 'none';
+                            },
+                            'target-arrow-color': function(ele) {
+                                const s = ele.data('target_status');
+                                return (s === 1 || s === 'critical' || s === '1') ? '#ef4444' : '#10b981';
+                            },
+                            'target-arrow-fill': 'filled',
+                            'arrow-scale': 1.15,
+                            'source-label': function(ele) {
+                                return cleanText(ele.data('source_interface') || '');
+                            },
+                            'source-text-offset': 38,
+                            'source-text-margin-y': -12,
+                            'source-text-rotation': 0,
+                            'target-label': function(ele) {
+                                return cleanText(ele.data('target_interface') || '');
+                            },
+                            'target-text-offset': 38,
+                            'target-text-margin-y': -12,
+                            'target-text-rotation': 0,
+                            'label': function(ele) {
+                                if (ele.data('source_interface') || ele.data('target_interface')) return '';
+                                return cleanText(ele.data('label') || '');
+                            },
                             'font-family': 'Inter, sans-serif',
-                            'font-size': 10,
+                            'font-size': 11,
                             'font-weight': 600,
-                            'color': '#475569',
-                            'text-background-opacity': 0.9,
+                            'color': '#1e293b',
+                            'text-background-opacity': 0.85,
                             'text-background-color': '#ffffff',
-                            'text-background-padding': 3,
-                            'text-background-shape': 'roundrectangle',
-                            'text-border-opacity': 0.5,
-                            'text-border-width': 1,
-                            'text-border-color': '#cbd5e1'
+                            'text-background-padding': 2,
+                            'text-background-shape': 'roundrectangle'
                         }
                     },
                     {
                         selector: 'edge:selected',
                         style: {
-                            'width': 4,
-                            'line-color': '#2563eb',
-                            'target-arrow-color': '#2563eb'
-                        }
-                    },
-                    {
-                        selector: 'edge[status = "critical"]',
-                        style: {
-                            'line-color': '#ef4444',
-                            'target-arrow-color': '#ef4444',
-                            'line-style': 'dashed',
-                            'width': 3
-                        }
-                    },
-                    {
-                        selector: 'edge[status = "warning"]',
-                        style: {
-                            'line-color': '#f59e0b',
-                            'target-arrow-color': '#f59e0b',
-                            'width': 2.5
+                            'width': 3.5,
+                            'line-color': '#094d4a'
                         }
                     }
                 ],
@@ -3316,6 +3831,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
             // Node Click Event
             cy.on('tap', 'node', function(evt) {
+                hideAllContextMenus();
                 const node = evt.target;
                 if (isConnectMode) {
                     handleConnectNodeClick(node);
@@ -3324,15 +3840,23 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 openInspector(node.data());
             });
 
-            // Edge Click Event -> Open Edge Inspector
+            // Edge Click Event -> Open Interface Link Modal
             cy.on('tap', 'edge', function(evt) {
+                hideAllContextMenus();
                 const edge = evt.target;
                 if (isConnectMode) return;
-                openEdgeInspector(edge);
+                const srcNode = cy.getElementById(edge.data('source'));
+                const tgtNode = cy.getElementById(edge.data('target'));
+                if (srcNode.length > 0 && tgtNode.length > 0) {
+                    openInterfaceLinkModal(srcNode, tgtNode, edge);
+                } else {
+                    openEdgeInspector(edge);
+                }
             });
 
-            // Canvas Click Event -> Close Inspector if background tapped
+            // Canvas Click Event -> Close Context Menu & Inspector if background tapped
             cy.on('tap', function(evt) {
+                hideAllContextMenus();
                 if (evt.target === cy) {
                     if (isConnectMode && connectSourceNode) {
                         connectSourceNode.removeClass('connect-source');
@@ -3343,158 +3867,251 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     closeInspector();
                 }
             });
+
+            // Right-Click Context Menu on Canvas, Node, Edge (Screenshot 1)
+            cy.on('cxttap', function(evt) {
+                evt.originalEvent.preventDefault();
+                hideAllContextMenus();
+                const x = evt.originalEvent.clientX;
+                const y = evt.originalEvent.clientY;
+                if (evt.target === cy) {
+                    showCanvasContextMenu(x, y);
+                } else if (evt.target.isNode()) {
+                    showNodeContextMenu(evt.target, x, y);
+                } else if (evt.target.isEdge()) {
+                    showEdgeContextMenu(evt.target, x, y);
+                }
+            });
         }
 
-        // --- 6. DEVICE PICKER MODAL (Add / Remove Devices) ---
-        async function openAddDevicesModal() {
-            if (!activeDashId) return;
-            const currentDash = allDashboards.find(d => d.id === activeDashId);
+        // =========================================================================
+        // ADD NODE MODAL & 10-AGENT PAGINATION ENGINE (Screenshot 3)
+        // =========================================================================
+        let addNodePage = 1;
+        const ADD_NODE_PAGE_SIZE = 10;
+        let addNodeSearchQuery = '';
+        let addNodeSelectedGroupId = '';
+        let addNodeRecursion = true;
+        let addNodePickedAgentId = null;
+        let contextActiveNode = null;
+        let contextActiveEdge = null;
 
-            // Fetch available agents from backend
-            showLoading(true);
+        const WAVEFORM_NODE_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+            <circle cx="50" cy="50" r="48" fill="#e11d48"/>
+            <rect x="24" y="40" width="6" height="20" rx="3" fill="#ffffff"/>
+            <rect x="36" y="28" width="6" height="44" rx="3" fill="#ffffff"/>
+            <rect x="47" y="16" width="6" height="68" rx="3" fill="#ffffff"/>
+            <rect x="58" y="24" width="6" height="52" rx="3" fill="#ffffff"/>
+            <rect x="70" y="40" width="6" height="20" rx="3" fill="#ffffff"/>
+        </svg>`);
+
+        async function ensureAgentsLoaded() {
+            if (availableAgents.length > 0) return true;
             try {
                 const res = await fetch(getApiUrl('get_available_agents'));
-                if (!res.ok && res.status !== 200) {
-                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-                }
                 const data = await res.json();
-                showLoading(false);
-
                 if (data.ok && Array.isArray(data.agents)) {
                     availableAgents = data.agents;
-
-                    // Initialize selectedAgentIds with current dashboard's device_ids or nodes
-                    selectedAgentIds.clear();
-                    if (currentDash && Array.isArray(currentDash.device_ids) && currentDash.device_ids.length > 0) {
-                        currentDash.device_ids.forEach(id => selectedAgentIds.add(parseInt(id)));
-                    } else if (rawTopologyData && Array.isArray(rawTopologyData.nodes)) {
-                        rawTopologyData.nodes.forEach(n => {
-                            if (n.agent_id) selectedAgentIds.add(parseInt(n.agent_id));
-                        });
-                    }
-
-                    document.getElementById('agentPickerSearch').value = '';
-                    document.getElementById('agentPickerGroupFilter').value = '';
-                    renderAgentPickerList();
-                    document.getElementById('addDevicesModal').style.display = 'flex';
-                } else {
-                    alert('Error loading agents: ' + (data.error || 'Unknown error'));
+                    return true;
                 }
-            } catch (err) {
-                showLoading(false);
-                alert('Network error loading agents: ' + err.message);
+            } catch (e) {
+                console.error("Failed to load agents:", e);
             }
+            return false;
         }
 
-        function closeAddDevicesModal() {
-            document.getElementById('addDevicesModal').style.display = 'none';
+        async function openAddNodeModal() {
+            if (!activeDashId) return;
+            showLoading(true);
+            await ensureAgentsLoaded();
+            await loadGroupsForAddNode();
+            showLoading(false);
+
+            addNodePage = 1;
+            addNodeSearchQuery = '';
+            addNodeSelectedGroupId = '';
+            addNodePickedAgentId = null;
+            
+            const searchInput = document.getElementById('addNodeAgentSearch');
+            if (searchInput) searchInput.value = '';
+            const groupSelect = document.getElementById('addNodeGroupSelect');
+            if (groupSelect) groupSelect.value = '';
+
+            renderAddNodePage();
+            document.getElementById('addNodeModal').style.display = 'flex';
         }
 
-        function renderAgentPickerList() {
-            const listEl = document.getElementById('agentPickerList');
-            const searchVal = (document.getElementById('agentPickerSearch').value || '').toLowerCase().trim();
-            const groupVal = document.getElementById('agentPickerGroupFilter').value;
+        function closeAddNodeModal() {
+            document.getElementById('addNodeModal').style.display = 'none';
+        }
 
+        // Backward compatibility alias
+        const openAddDevicesModal = openAddNodeModal;
+        const closeAddDevicesModal = closeAddNodeModal;
+
+        async function loadGroupsForAddNode() {
+            const selectEl = document.getElementById('addNodeGroupSelect');
+            if (!selectEl || selectEl.options.length > 1) return;
+            try {
+                const res = await fetch(getApiUrl('get_groups'));
+                const data = await res.json();
+                if (data.ok && Array.isArray(data.groups)) {
+                    let html = '<option value="">None</option>';
+                    data.groups.forEach(g => {
+                        html += `<option value="${g.id}">${escapeHtml(g.display_name || g.name)}</option>`;
+                    });
+                    selectEl.innerHTML = html;
+                }
+            } catch (e) {}
+        }
+
+        function onAddNodeSearch(val) {
+            addNodeSearchQuery = (val || '').toLowerCase().trim();
+            addNodePage = 1;
+            renderAddNodePage();
+        }
+
+        function onAddNodeGroupSelect(val) {
+            addNodeSelectedGroupId = val;
+            addNodePage = 1;
+            renderAddNodePage();
+        }
+
+        function onAddNodeRecursionChange() {
+            const toggle = document.getElementById('addNodeRecursionToggle');
+            addNodeRecursion = toggle ? toggle.checked : true;
+            addNodePage = 1;
+            renderAddNodePage();
+        }
+
+        function renderAddNodePage() {
+            const tbody = document.getElementById('addNodeTableBody');
+            const pageInfo = document.getElementById('addNodePageInfo');
+            const pageBtns = document.getElementById('addNodePageButtons');
+            if (!tbody) return;
+
+            // Filter agents
             const filtered = availableAgents.filter(a => {
-                if (groupVal && String(a.group_id) !== groupVal) return false;
-                if (searchVal) {
-                    const matchName = (a.name || '').toLowerCase().includes(searchVal);
-                    const matchRaw = (a.raw_name || '').toLowerCase().includes(searchVal);
-                    const matchIp = (a.ip || '').toLowerCase().includes(searchVal);
-                    const matchOs = (a.os || '').toLowerCase().includes(searchVal);
-                    const matchGroup = (a.group_name || '').toLowerCase().includes(searchVal);
-                    if (!matchName && !matchRaw && !matchIp && !matchOs && !matchGroup) return false;
+                if (addNodeSelectedGroupId) {
+                    if (String(a.group_id) !== String(addNodeSelectedGroupId)) return false;
+                }
+                if (addNodeSearchQuery) {
+                    const matchName = (a.name || '').toLowerCase().includes(addNodeSearchQuery);
+                    const matchRaw = (a.raw_name || '').toLowerCase().includes(addNodeSearchQuery);
+                    const matchIp = (a.ip || '').toLowerCase().includes(addNodeSearchQuery);
+                    const matchGroup = (a.group_name || '').toLowerCase().includes(addNodeSearchQuery);
+                    const matchOs = (a.os || '').toLowerCase().includes(addNodeSearchQuery);
+                    if (!matchName && !matchRaw && !matchIp && !matchGroup && !matchOs) return false;
                 }
                 return true;
             });
 
-            document.getElementById('agentPickerCount').innerText = `${filtered.length} devices available`;
-            document.getElementById('selectedCountBadge').innerText = selectedAgentIds.size;
+            const total = filtered.length;
+            const totalPages = Math.max(1, Math.ceil(total / ADD_NODE_PAGE_SIZE));
+            if (addNodePage > totalPages) addNodePage = totalPages;
+            if (addNodePage < 1) addNodePage = 1;
 
-            if (filtered.length === 0) {
-                listEl.innerHTML = `
-                    <div style="text-align:center; padding:30px; color:#94a3b8; font-size:13px;">
-                        No devices match the search criteria.
-                    </div>
+            const startIndex = (addNodePage - 1) * ADD_NODE_PAGE_SIZE;
+            const endIndex = Math.min(startIndex + ADD_NODE_PAGE_SIZE, total);
+            const pageItems = filtered.slice(startIndex, endIndex);
+
+            // Update Page Info
+            if (pageInfo) {
+                if (total === 0) {
+                    pageInfo.innerText = '0 agents found';
+                } else {
+                    pageInfo.innerText = `Showing ${startIndex + 1}-${endIndex} of ${total} agents`;
+                }
+            }
+
+            // Render Table Rows
+            if (pageItems.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" style="text-align:center; padding:24px; color:#94a3b8;">
+                            No agents match the search criteria.
+                        </td>
+                    </tr>
                 `;
+            } else {
+                let html = '';
+                pageItems.forEach(a => {
+                    const isSelected = (addNodePickedAgentId === a.id);
+                    const statusBadge = a.status === 'critical' ? '<span style="color:#ef4444; font-weight:600;">Critical</span>' : (a.status === 'warning' ? '<span style="color:#f59e0b; font-weight:600;">Warning</span>' : '<span style="color:#10b981; font-weight:600;">Normal</span>');
+                    html += `
+                        <tr class="${isSelected ? 'selected' : ''}" onclick="selectAddNodeAgent(${a.id})">
+                            <td style="text-align:center;">
+                                <input type="radio" name="add_node_agent_choice" value="${a.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); selectAddNodeAgent(${a.id});">
+                            </td>
+                            <td>
+                                <strong style="color:#0f172a;">${escapeHtml(cleanText(a.name))}</strong>
+                            </td>
+                            <td>${escapeHtml(cleanText(a.ip))}</td>
+                            <td>${escapeHtml(cleanText(a.group_name))}</td>
+                            <td>${statusBadge}</td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = html;
+            }
+
+            // Render Pagination Buttons
+            if (pageBtns) {
+                let btnHtml = '';
+                btnHtml += `<button type="button" class="page-btn" ${addNodePage <= 1 ? 'disabled' : ''} onclick="changeAddNodePage(${addNodePage - 1})">&laquo; Prev</button>`;
+                
+                let startPage = Math.max(1, addNodePage - 2);
+                let endPage = Math.min(totalPages, startPage + 4);
+                if (endPage - startPage < 4) {
+                    startPage = Math.max(1, endPage - 4);
+                }
+
+                for (let p = startPage; p <= endPage; p++) {
+                    btnHtml += `<button type="button" class="page-btn ${p === addNodePage ? 'active' : ''}" onclick="changeAddNodePage(${p})">${p}</button>`;
+                }
+
+                btnHtml += `<button type="button" class="page-btn" ${addNodePage >= totalPages ? 'disabled' : ''} onclick="changeAddNodePage(${addNodePage + 1})">Next &raquo;</button>`;
+                pageBtns.innerHTML = btnHtml;
+            }
+        }
+
+        function changeAddNodePage(p) {
+            addNodePage = p;
+            renderAddNodePage();
+        }
+
+        function selectAddNodeAgent(agentId) {
+            addNodePickedAgentId = agentId;
+            renderAddNodePage();
+        }
+
+        async function submitAddAgentNode() {
+            if (!activeDashId) return;
+            if (!addNodePickedAgentId) {
+                alert('Please select an agent to add.');
                 return;
             }
 
-            let html = '';
-            filtered.forEach(a => {
-                const checked = selectedAgentIds.has(a.id) ? 'checked' : '';
-                const iconUrl = a.icon_url || (IMAGES_URL + 'devices.svg');
-                html += `
-                    <div class="agent-picker-item" onclick="togglePickerRow(${a.id}, event)">
-                        <input type="checkbox" id="chk_agent_${a.id}" ${checked} onclick="event.stopPropagation(); togglePickerAgent(${a.id}, this.checked);">
-                        <img src="${escapeHtml(iconUrl)}" class="agent-picker-icon" alt="${escapeHtml(a.role)}">
-                        <div class="agent-picker-details">
-                            <div class="agent-picker-name">${escapeHtml(a.name)}</div>
-                            <div class="agent-picker-meta">
-                                <span><strong style="color:#475569;">IP:</strong> ${escapeHtml(a.ip)}</span>
-                                <span><strong style="color:#475569;">Group:</strong> ${escapeHtml(a.group_name)}</span>
-                                <span><strong style="color:#475569;">Role:</strong> ${escapeHtml(a.role.toUpperCase())}</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            listEl.innerHTML = html;
-        }
-
-        function togglePickerRow(agentId, event) {
-            const chk = document.getElementById('chk_agent_' + agentId);
-            if (chk) {
-                chk.checked = !chk.checked;
-                togglePickerAgent(agentId, chk.checked);
+            const currentDash = allDashboards.find(d => d.id === activeDashId);
+            let currentList = [];
+            if (currentDash && Array.isArray(currentDash.device_ids)) {
+                currentList = currentDash.device_ids.map(x => parseInt(x));
+            } else if (rawTopologyData && Array.isArray(rawTopologyData.nodes)) {
+                currentList = rawTopologyData.nodes.map(n => parseInt(n.agent_id)).filter(x => x > 0);
             }
-        }
 
-        function togglePickerAgent(agentId, isChecked) {
-            if (isChecked) {
-                selectedAgentIds.add(agentId);
-            } else {
-                selectedAgentIds.delete(agentId);
+            if (currentList.includes(addNodePickedAgentId)) {
+                showToast('Agent is already on this topology map', 'warning');
+                closeAddNodeModal();
+                return;
             }
-            document.getElementById('selectedCountBadge').innerText = selectedAgentIds.size;
-        }
 
-        function filterAgentPicker() {
-            renderAgentPickerList();
-        }
-
-        function selectAllPickerAgents(selectAll) {
-            const searchVal = (document.getElementById('agentPickerSearch').value || '').toLowerCase().trim();
-            const groupVal = document.getElementById('agentPickerGroupFilter').value;
-
-            availableAgents.forEach(a => {
-                if (groupVal && String(a.group_id) !== groupVal) return;
-                if (searchVal) {
-                    const matchName = (a.name || '').toLowerCase().includes(searchVal);
-                    const matchRaw = (a.raw_name || '').toLowerCase().includes(searchVal);
-                    const matchIp = (a.ip || '').toLowerCase().includes(searchVal);
-                    const matchOs = (a.os || '').toLowerCase().includes(searchVal);
-                    const matchGroup = (a.group_name || '').toLowerCase().includes(searchVal);
-                    if (!matchName && !matchRaw && !matchIp && !matchOs && !matchGroup) return;
-                }
-
-                if (selectAll) {
-                    selectedAgentIds.add(a.id);
-                } else {
-                    selectedAgentIds.delete(a.id);
-                }
-            });
-            renderAgentPickerList();
-        }
-
-        async function saveSelectedDevices() {
-            if (!activeDashId) return;
-            const btn = document.getElementById('btnSaveSelectedDevices');
+            currentList.push(addNodePickedAgentId);
+            const btn = document.getElementById('btnAddAgentNodeSubmit');
             btn.disabled = true;
             const origHtml = btn.innerHTML;
-            btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Saving Devices...';
-
-            const deviceArray = Array.from(selectedAgentIds);
+            btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Adding...';
 
             try {
                 const res = await fetch(getApiUrl('save_dashboard_devices'), {
@@ -3506,35 +4123,309 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     body: JSON.stringify({
                         csrf_token: CSRF_TOKEN,
                         dashboard_id: activeDashId,
-                        device_ids: deviceArray
+                        device_ids: currentList
                     })
                 });
-                if (!res.ok && res.status !== 200) {
-                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-                }
                 const data = await res.json();
                 if (data.ok) {
-                    // Update in local array
-                    const dash = allDashboards.find(d => d.id === activeDashId);
-                    if (dash) {
-                        dash.map_type = 'blank';
-                        dash.device_ids = deviceArray;
-                        dash.node_count = deviceArray.length;
+                    if (currentDash) {
+                        currentDash.device_ids = currentList;
+                        currentDash.node_count = currentList.length;
                     }
-                    renderDashboardTable(allDashboards);
-                    closeAddDevicesModal();
-                    showToast(`Updated topology with ${deviceArray.length} devices`, 'success');
-                    // Reload canvas
+                    closeAddNodeModal();
+                    showToast('Agent added to topology map', 'success');
                     loadTopologyData(activeDashId);
                 } else {
-                    alert('Failed to save devices: ' + (data.error || 'Unknown error'));
+                    alert('Failed to add agent: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
-                alert('Network error while saving devices: ' + err.message);
+                alert('Network error: ' + err.message);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
             }
+        }
+
+        // =========================================================================
+        // INTERFACE LINK MODAL ENGINE (Screenshot 4)
+        // =========================================================================
+        let currentLinkSourceNode = null;
+        let currentLinkTargetNode = null;
+        let currentEditingEdgeId = null;
+
+        async function openInterfaceLinkModal(sourceNode, targetNode, existingEdge = null) {
+            currentLinkSourceNode = sourceNode;
+            currentLinkTargetNode = targetNode;
+            currentEditingEdgeId = existingEdge ? existingEdge.id() : null;
+
+            const srcName = cleanText(sourceNode.data('label') || sourceNode.id());
+            const tgtName = cleanText(targetNode.data('label') || targetNode.id());
+            const srcAgentId = sourceNode.data('agent_id') || sourceNode.id().replace('agent-', '');
+            const tgtAgentId = targetNode.data('agent_id') || targetNode.id().replace('agent-', '');
+
+            document.getElementById('linkSourceNodeId').value = sourceNode.id();
+            document.getElementById('linkTargetNodeId').value = targetNode.id();
+            document.getElementById('linkSourceNodeName').innerText = srcName;
+            document.getElementById('linkTargetNodeName').innerText = tgtName;
+
+            const srcSelect = document.getElementById('linkSourceInterfaceSelect');
+            const tgtSelect = document.getElementById('linkTargetInterfaceSelect');
+            srcSelect.innerHTML = '<option value="">Loading...</option>';
+            tgtSelect.innerHTML = '<option value="">Loading...</option>';
+
+            const deleteBtn = document.getElementById('btnDeleteInterfaceLink');
+            if (deleteBtn) deleteBtn.style.display = existingEdge ? 'inline-flex' : 'none';
+
+            const loadingEl = document.getElementById('interfaceLinkLoading');
+            if (loadingEl) loadingEl.style.display = 'block';
+
+            document.getElementById('interfaceLinkModal').style.display = 'flex';
+
+            // Fetch interfaces for both nodes in parallel
+            try {
+                const [resSrc, resTgt] = await Promise.all([
+                    fetch(getApiUrl('get_agent_interfaces', { id_agent: srcAgentId })),
+                    fetch(getApiUrl('get_agent_interfaces', { id_agent: tgtAgentId }))
+                ]);
+                const dataSrc = await resSrc.json();
+                const dataTgt = await resTgt.json();
+
+                if (loadingEl) loadingEl.style.display = 'none';
+
+                populateInterfaceSelect(srcSelect, dataSrc.interfaces || []);
+                populateInterfaceSelect(tgtSelect, dataTgt.interfaces || []);
+
+                // If editing existing edge, preselect
+                if (existingEdge) {
+                    const eData = existingEdge.data();
+                    if (eData.source_interface) {
+                        selectMatchingOption(srcSelect, eData.source_interface, eData.source_module_id);
+                    }
+                    if (eData.target_interface) {
+                        selectMatchingOption(tgtSelect, eData.target_interface, eData.target_module_id);
+                    }
+                }
+            } catch (err) {
+                if (loadingEl) loadingEl.style.display = 'none';
+                srcSelect.innerHTML = '<option value="">None</option>';
+                tgtSelect.innerHTML = '<option value="">None</option>';
+                console.error("Error loading interfaces:", err);
+            }
+        }
+
+        function populateInterfaceSelect(selectEl, interfaces) {
+            let html = '<option value="" data-id="0" data-status="0">None</option>';
+            interfaces.forEach(itf => {
+                const cleanName = cleanText(itf.clean_port || itf.name);
+                const fullName = cleanText(itf.name);
+                const statusDot = (itf.estado === 1) ? '● (Down)' : (itf.estado === 0 ? '● (Up)' : '●');
+                html += `<option value="${escapeHtml(cleanName)}" data-id="${itf.id}" data-status="${itf.estado}" data-fullname="${escapeHtml(fullName)}">
+                    ${escapeHtml(fullName)} ${statusDot}
+                </option>`;
+            });
+            selectEl.innerHTML = html;
+        }
+
+        function selectMatchingOption(selectEl, ifaceName, modId) {
+            for (let i = 0; i < selectEl.options.length; i++) {
+                const opt = selectEl.options[i];
+                if (modId && opt.getAttribute('data-id') == modId) {
+                    selectEl.selectedIndex = i;
+                    return;
+                }
+                if (opt.value === ifaceName || opt.getAttribute('data-fullname') === ifaceName) {
+                    selectEl.selectedIndex = i;
+                    return;
+                }
+            }
+        }
+
+        function closeInterfaceLinkModal() {
+            document.getElementById('interfaceLinkModal').style.display = 'none';
+            currentLinkSourceNode = null;
+            currentLinkTargetNode = null;
+            currentEditingEdgeId = null;
+        }
+
+        async function submitInterfaceLink() {
+            if (!currentLinkSourceNode || !currentLinkTargetNode || !activeDashId) return;
+
+            const srcSelect = document.getElementById('linkSourceInterfaceSelect');
+            const tgtSelect = document.getElementById('linkTargetInterfaceSelect');
+            const srcOpt = srcSelect.options[srcSelect.selectedIndex];
+            const tgtOpt = tgtSelect.options[tgtSelect.selectedIndex];
+
+            const srcIface = srcOpt ? srcOpt.value : '';
+            const srcModId = srcOpt ? parseInt(srcOpt.getAttribute('data-id') || 0) : 0;
+            const srcStatus = srcOpt ? parseInt(srcOpt.getAttribute('data-status') || 0) : 0;
+
+            const tgtIface = tgtOpt ? tgtOpt.value : '';
+            const tgtModId = tgtOpt ? parseInt(tgtOpt.getAttribute('data-id') || 0) : 0;
+            const tgtStatus = tgtOpt ? parseInt(tgtOpt.getAttribute('data-status') || 0) : 0;
+
+            const sourceId = currentLinkSourceNode.id();
+            const targetId = currentLinkTargetNode.id();
+            const edgeId = currentEditingEdgeId || ('custom-' + sourceId.replace(/[^a-zA-Z0-9_\-]/g, '') + '-' + targetId.replace(/[^a-zA-Z0-9_\-]/g, ''));
+
+            const btn = document.getElementById('btnAddInterfaceLinkSubmit');
+            btn.disabled = true;
+            const origHtml = btn.innerHTML;
+            btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Saving link...';
+
+            try {
+                const res = await fetch(getApiUrl('save_topology_edge'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
+                        dashboard_id: activeDashId,
+                        source: sourceId,
+                        target: targetId,
+                        source_interface: srcIface,
+                        source_module_id: srcModId,
+                        source_status: srcStatus,
+                        target_interface: tgtIface,
+                        target_module_id: tgtModId,
+                        target_status: tgtStatus
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    const existing = cy.getElementById(edgeId);
+                    const edgeData = {
+                        id: edgeId,
+                        source: sourceId,
+                        target: targetId,
+                        source_interface: srcIface,
+                        source_module_id: srcModId,
+                        source_status: srcStatus,
+                        target_interface: tgtIface,
+                        target_module_id: tgtModId,
+                        target_status: tgtStatus,
+                        status: (srcStatus === 1 || tgtStatus === 1) ? 'critical' : 'active',
+                        is_custom: true
+                    };
+
+                    if (existing && existing.length > 0) {
+                        existing.data(edgeData);
+                    } else {
+                        cy.add({ group: 'edges', data: edgeData });
+                    }
+
+                    closeInterfaceLinkModal();
+                    exitConnectMode();
+                    showToast(`Interface link connected between ${cleanText(currentLinkSourceNode.data('label'))} and ${cleanText(currentLinkTargetNode.data('label'))}`, 'success');
+                } else {
+                    alert('Failed to save interface link: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error while saving interface link: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
+        }
+
+        async function deleteCurrentInterfaceLink() {
+            if (!currentEditingEdgeId) return;
+            const edgeId = currentEditingEdgeId;
+            closeInterfaceLinkModal();
+            await deleteEdgeById(edgeId);
+        }
+
+        // =========================================================================
+        // CONTEXT MENU ACTIONS (Screenshot 1)
+        // =========================================================================
+        function showCanvasContextMenu(x, y) {
+            const menu = document.getElementById('canvasContextMenu');
+            if (!menu) return;
+            menu.style.left = Math.min(x, window.innerWidth - 190) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - 160) + 'px';
+            menu.style.display = 'block';
+        }
+
+        function showNodeContextMenu(node, x, y) {
+            contextActiveNode = node;
+            const menu = document.getElementById('nodeContextMenu');
+            if (!menu) return;
+            menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - 160) + 'px';
+            menu.style.display = 'block';
+        }
+
+        function showEdgeContextMenu(edge, x, y) {
+            contextActiveEdge = edge;
+            const menu = document.getElementById('edgeContextMenu');
+            if (!menu) return;
+            menu.style.left = Math.min(x, window.innerWidth - 190) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - 140) + 'px';
+            menu.style.display = 'block';
+        }
+
+        function hideAllContextMenus() {
+            ['canvasContextMenu', 'nodeContextMenu', 'edgeContextMenu'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+        }
+        document.addEventListener('click', hideAllContextMenus);
+
+        function openAddNodeModalFromContext() {
+            hideAllContextMenus();
+            openAddNodeModal();
+        }
+
+        function loadNewNodesFromContext() {
+            hideAllContextMenus();
+            showToast('Scanning and loading new nodes from Pandora FMS...', 'info');
+            refreshCurrentTopology();
+        }
+
+        function redrawMapFromContext() {
+            hideAllContextMenus();
+            const currentDash = allDashboards.find(d => d.id === activeDashId);
+            const prefLayout = (currentDash && currentDash.layout) ? currentDash.layout : 'dagre';
+            changeLayout(prefLayout);
+            showToast('Redrawn map layout', 'success');
+        }
+
+        function connectFromNodeContext() {
+            hideAllContextMenus();
+            if (!contextActiveNode) return;
+            enterConnectMode();
+            handleConnectNodeClick(contextActiveNode);
+        }
+
+        function inspectFromNodeContext() {
+            hideAllContextMenus();
+            if (!contextActiveNode) return;
+            openInspector(contextActiveNode.data());
+        }
+
+        function removeFromNodeContext() {
+            hideAllContextMenus();
+            if (!contextActiveNode) return;
+            currentInspectedAgent = contextActiveNode.data();
+            removeCurrentDeviceFromDashboard();
+        }
+
+        function editEdgeFromContext() {
+            hideAllContextMenus();
+            if (!contextActiveEdge) return;
+            const srcNode = cy.getElementById(contextActiveEdge.data('source'));
+            const tgtNode = cy.getElementById(contextActiveEdge.data('target'));
+            if (srcNode.length > 0 && tgtNode.length > 0) {
+                openInterfaceLinkModal(srcNode, tgtNode, contextActiveEdge);
+            }
+        }
+
+        function deleteEdgeFromContext() {
+            hideAllContextMenus();
+            if (!contextActiveEdge) return;
+            deleteEdgeById(contextActiveEdge.id());
         }
 
         async function removeCurrentDeviceFromDashboard() {
@@ -3544,7 +4435,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
             if (!confirm(`Remove "${name}" from this topology dashboard?`)) return;
 
-            // Compute new device list
             const currentDash = allDashboards.find(d => d.id === activeDashId);
             let currentList = [];
             if (currentDash && Array.isArray(currentDash.device_ids) && currentDash.device_ids.length > 0) {
@@ -3717,7 +4607,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 srcNode.removeClass('connect-source');
                 connectSourceNode = null;
                 updateConnectBanner();
-                establishDeviceConnection(srcNode.id(), tgtNode.id(), srcNode.data('label'), tgtNode.data('label'));
+                openInterfaceLinkModal(srcNode, tgtNode);
             }
         }
 
@@ -3916,19 +4806,18 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         function connectFromDrawer() {
             if (!currentInspectedAgent || !cy) return;
             const select = document.getElementById('drawerTargetDeviceSelect');
-            const labelInput = document.getElementById('drawerLinkLabelInput');
             if (!select || !select.value) return;
 
             const targetId = select.value;
-            const label = labelInput ? labelInput.value.trim() : '';
+            const srcNode = cy.getElementById(currentInspectedAgent.id);
             const tgtNode = cy.getElementById(targetId);
-            const tgtName = tgtNode.length > 0 ? tgtNode.data('label') : targetId;
 
-            establishDeviceConnection(currentInspectedAgent.id, targetId, currentInspectedAgent.label, tgtName, label);
-
-            if (labelInput) labelInput.value = '';
             const box = document.getElementById('drawerConnectBox');
             if (box) box.style.display = 'none';
+
+            if (srcNode.length > 0 && tgtNode.length > 0) {
+                openInterfaceLinkModal(srcNode, tgtNode);
+            }
         }
 
         async function changeInspectedDeviceRole(newRole) {
