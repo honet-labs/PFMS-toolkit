@@ -106,7 +106,7 @@ class TopologyDeviceClassifier {
         return [
             self::ROLE_VM => [
                 'id' => self::ROLE_VM,
-                'title' => 'VMware vSphere VM',
+                'title' => 'Virtual Machine',
                 'short_title' => 'VM',
                 'category' => 'compute',
                 'badge_color' => '#3b82f6',
@@ -114,15 +114,15 @@ class TopologyDeviceClassifier {
             ],
             self::ROLE_HYPERVISOR => [
                 'id' => self::ROLE_HYPERVISOR,
-                'title' => 'VMware vSphere Hypervisor',
-                'short_title' => 'Hypervisor',
+                'title' => 'Hypervisor Host',
+                'short_title' => 'Host',
                 'category' => 'compute',
                 'badge_color' => '#1e293b',
                 'rank' => 2
             ],
             self::ROLE_CLUSTER => [
                 'id' => self::ROLE_CLUSTER,
-                'title' => 'VMware vSphere Cluster',
+                'title' => 'Compute Cluster',
                 'short_title' => 'Cluster',
                 'category' => 'compute',
                 'badge_color' => '#475569',
@@ -130,7 +130,7 @@ class TopologyDeviceClassifier {
             ],
             self::ROLE_DATACENTER => [
                 'id' => self::ROLE_DATACENTER,
-                'title' => 'VMware vSphere Datacenter',
+                'title' => 'Datacenter',
                 'short_title' => 'Datacenter',
                 'category' => 'compute',
                 'badge_color' => '#0f172a',
@@ -138,16 +138,16 @@ class TopologyDeviceClassifier {
             ],
             self::ROLE_STORAGE => [
                 'id' => self::ROLE_STORAGE,
-                'title' => 'VMware vSphere Datastore',
-                'short_title' => 'Datastore',
+                'title' => 'Storage Datastore',
+                'short_title' => 'Storage',
                 'category' => 'storage',
                 'badge_color' => '#0284c7',
                 'rank' => 2
             ],
             self::ROLE_VCENTER => [
                 'id' => self::ROLE_VCENTER,
-                'title' => 'VMware vSphere vCenter',
-                'short_title' => 'vCenter',
+                'title' => 'Management Controller',
+                'short_title' => 'Mgmt',
                 'category' => 'management',
                 'badge_color' => '#64748b',
                 'rank' => 3
@@ -642,24 +642,6 @@ if (!empty($api)) {
             }
         }
 
-        if ($current_dash && !empty($current_dash['is_demo'])) {
-            $demo = TopologyDeviceClassifier::getReferenceDemoTopology();
-            echo json_encode([
-                'ok' => true,
-                'mode' => 'demo',
-                'title' => pretty_text($current_dash['name']),
-                'nodes' => $demo['nodes'],
-                'edges' => $demo['edges'],
-                'stats' => [
-                    'total_nodes' => count($demo['nodes']),
-                    'total_edges' => count($demo['edges']),
-                    'critical' => count(array_filter($demo['nodes'], fn($n) => $n['status'] === 'critical')),
-                    'warning' => count(array_filter($demo['nodes'], fn($n) => $n['status'] === 'warning')),
-                    'normal' => count(array_filter($demo['nodes'], fn($n) => $n['status'] === 'normal'))
-                ]
-            ]);
-            exit;
-        }
 
         try {
             // Check IP Column dynamically
@@ -719,21 +701,20 @@ if (!empty($api)) {
             $stmt->execute($params);
             $agents = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // If database has few or no agents, fallback automatically to reference demo
+            // If database has no active agents in this group/scope
             if (empty($agents)) {
-                $demo = TopologyDeviceClassifier::getReferenceDemoTopology();
                 echo json_encode([
                     'ok' => true,
-                    'mode' => 'demo',
-                    'notice' => 'No active agents found in selected scope. Displaying reference SDDC demo topology.',
-                    'nodes' => $demo['nodes'],
-                    'edges' => $demo['edges'],
+                    'mode' => 'real',
+                    'notice' => 'No active agents found in selected scope.',
+                    'nodes' => [],
+                    'edges' => [],
                     'stats' => [
-                        'total_nodes' => count($demo['nodes']),
-                        'total_edges' => count($demo['edges']),
-                        'critical' => count(array_filter($demo['nodes'], fn($n) => $n['status'] === 'critical')),
-                        'warning' => count(array_filter($demo['nodes'], fn($n) => $n['status'] === 'warning')),
-                        'normal' => count(array_filter($demo['nodes'], fn($n) => $n['status'] === 'normal'))
+                        'total_nodes' => 0,
+                        'total_edges' => 0,
+                        'critical' => 0,
+                        'warning' => 0,
+                        'normal' => 0
                     ]
                 ]);
                 exit;
@@ -1693,17 +1674,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 <div>
                     <label class="form-label">Default Graph Layout</label>
                     <select id="dashModalLayout" class="form-control-custom">
-                        <option value="dagre">Hierarchical (Multi-Tier vSphere)</option>
+                        <option value="dagre">Hierarchical (Top-Down)</option>
+                        <option value="breadthfirst">Tree Hierarchy</option>
                         <option value="cose">Force-Directed (Mesh)</option>
                         <option value="circle">Circular Ring</option>
                     </select>
-                </div>
-
-                <div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="dashModalDemo" style="width:16px; height:16px; cursor:pointer;">
-                    <label for="dashModalDemo" style="font-size:13px; color:var(--text-dark); cursor:pointer; margin:0;">
-                        Use VMware vSphere SDDC Reference Topology Demo
-                    </label>
                 </div>
             </div>
             <div class="modal-foot">
@@ -1751,7 +1726,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         <td colspan="5" style="text-align:center; padding:45px 20px; color:#64748b;">
                             <span class="material-symbols-outlined" style="font-size:48px; color:#94a3b8; margin-bottom:8px;">hub</span>
                             <div style="font-size:15px; font-weight:600; color:#334155;">No Topology Dashboards Configured</div>
-                            <div style="font-size:13px; color:#94a3b8; margin-top:4px;">Create your first topology dashboard to visualize agent networks or load the reference demo.</div>
+                            <div style="font-size:13px; color:#94a3b8; margin-top:4px;">Create your first topology dashboard to visualize agent networks.</div>
                             <button class="btn-apply" style="margin-top:16px;" onclick="openCreateModal()">
                                 <span class="material-symbols-outlined">add</span> Create Topology Dashboard
                             </button>
@@ -1763,12 +1738,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
             let html = '';
             dashboardsToRender.forEach(d => {
-                const isDemo = !!d.is_demo;
-                const nodeCount = d.node_count || (isDemo ? 14 : 'Live');
-                const badge = isDemo ? '<span class="badge-demo">Reference Demo</span>' : '<span class="badge-count">Auto-Discovery</span>';
                 const cleanName = cleanText(d.name);
                 const cleanDesc = cleanText(d.description || '');
                 const cleanGroup = cleanText(d.group_name || 'All Agent Groups');
+                const nodeCount = (d.node_count && d.node_count > 0) ? `${d.node_count} devices` : 'Active Scope';
 
                 html += `
                     <tr>
@@ -1780,10 +1753,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         </td>
                         <td>
                             <span style="font-weight:500; color:#334155;">${escapeHtml(cleanGroup)}</span>
-                            <div style="margin-top:4px;">${badge}</div>
                         </td>
                         <td>
-                            <span class="badge-count">${nodeCount} devices</span>
+                            <span class="badge-count">${escapeHtml(nodeCount)}</span>
                         </td>
                         <td style="color:#64748b; font-size:12px;">
                             ${escapeHtml(d.updated_at || d.created_at || '-')}
@@ -1866,7 +1838,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             document.getElementById('dashModalDesc').value = '';
             document.getElementById('dashModalGroup').value = '0';
             document.getElementById('dashModalLayout').value = 'dagre';
-            document.getElementById('dashModalDemo').checked = false;
             document.getElementById('dashboardModal').style.display = 'flex';
         }
 
@@ -1880,7 +1851,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             document.getElementById('dashModalDesc').value = cleanText(d.description || '');
             document.getElementById('dashModalGroup').value = String(d.group_id || '0');
             document.getElementById('dashModalLayout').value = d.layout || 'dagre';
-            document.getElementById('dashModalDemo').checked = !!d.is_demo;
             document.getElementById('dashboardModal').style.display = 'flex';
         }
 
@@ -1894,7 +1864,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const desc = document.getElementById('dashModalDesc').value.trim();
             const groupId = parseInt(document.getElementById('dashModalGroup').value) || 0;
             const layout = document.getElementById('dashModalLayout').value;
-            const isDemo = document.getElementById('dashModalDemo').checked;
 
             if (!name) {
                 alert('Please enter a Dashboard Name.');
@@ -1921,7 +1890,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         group_id: groupId,
                         group_name: groupName,
                         layout: layout,
-                        is_demo: isDemo
+                        is_demo: false
                     })
                 });
                 const data = await res.json();

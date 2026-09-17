@@ -1,17 +1,5 @@
 [
     {
-        "id": "sddc-demo-default",
-        "name": "Global SDDC Infrastructure (Reference Demo)",
-        "description": "VMware vSphere SDDC reference architecture featuring Datacenter, Clusters, vCenter, ESXi Hosts, Virtual Machines, and Datastores.",
-        "group_id": 0,
-        "group_name": "All Agent Groups",
-        "layout": "dagre",
-        "is_demo": true,
-        "node_count": 14,
-        "created_at": "2026-09-18 00:00:00",
-        "updated_at": "2026-09-18 00:00:00"
-    },
-    {
         "id": "core-infra-01",
         "name": "Core Infrastructure Network",
         "description": "Auto-discovered topology mapping of all active Pandora FMS infrastructure agents.",
