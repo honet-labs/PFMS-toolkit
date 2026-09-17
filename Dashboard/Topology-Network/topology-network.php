@@ -3948,17 +3948,21 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                                 const s = ele.data('target_status');
                                 return (s === 1 || s === 'critical' || s === '1') ? '#ef4444' : '#10b981';
                             },
-                            'target-arrow-fill': 'filled',
-                            'arrow-scale': 1.25,
+                            'source-label': function(ele) {
+                                return cleanText(ele.data('source_interface') || '');
+                            },
+                            'source-text-offset': 48,
+                            'source-text-margin-y': -12,
+                            'source-text-rotation': 'autorotate',
+                            'target-label': function(ele) {
+                                return cleanText(ele.data('target_interface') || '');
+                            },
+                            'target-text-offset': 48,
+                            'target-text-margin-y': -12,
+                            'target-text-rotation': 'autorotate',
                             'label': function(ele) {
-                                const srcIf = cleanText(ele.data('source_interface') || '');
-                                const tgtIf = cleanText(ele.data('target_interface') || '');
-                                if (srcIf && tgtIf) {
-                                    return srcIf + ' ⇄ ' + tgtIf;
-                                } else if (srcIf) {
-                                    return srcIf + ' ⇄';
-                                } else if (tgtIf) {
-                                    return '⇄ ' + tgtIf;
+                                if (ele.data('source_interface') || ele.data('target_interface')) {
+                                    return '';
                                 }
                                 return cleanText(ele.data('label') || '');
                             },
@@ -3968,7 +3972,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                             'color': '#0f172a',
                             'text-background-opacity': 0.95,
                             'text-background-color': '#ffffff',
-                            'text-background-padding': 4,
+                            'text-background-padding': 3,
                             'text-background-shape': 'roundrectangle',
                             'text-border-opacity': 0.85,
                             'text-border-width': 1,
