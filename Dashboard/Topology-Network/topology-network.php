@@ -52,6 +52,8 @@ if (empty($csrf_token)) {
     $csrf_token = bin2hex(random_bytes(32));
     $_SESSION['pfms_csrf_token'] = $csrf_token;
 }
+// Immediately release session lock to allow parallel non-blocking AJAX requests
+session_write_close();
 
 $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
 if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
@@ -80,6 +82,18 @@ if (empty($user_id) && !$is_standalone) {
 
 $portal_page_param = $_GET['page'] ?? 'Dashboard/Topology-Network/topology-network.php';
 $DASHBOARD_FILE = __DIR__ . '/topology_dashboards.json';
+
+// Performance Helper: get agent ip column with static caching to prevent repeated DDL queries
+function get_agent_ip_col(PDO $pdo): string {
+    static $ipCol = null;
+    if ($ipCol !== null) return $ipCol;
+    $ipCol = 'direccion';
+    try {
+        $checkIp = $pdo->query("SHOW COLUMNS FROM tagente LIKE 'ip_address'");
+        if ($checkIp && $checkIp->rowCount() > 0) $ipCol = 'ip_address';
+    } catch (Throwable $e) {}
+    return $ipCol;
+}
 
 // Helper to get all candidate storage paths
 function get_topology_storage_candidates(): array {
@@ -723,11 +737,7 @@ if (!empty($api)) {
     // 4. API: GET AVAILABLE AGENTS FOR DEVICE PICKER
     if ($api === 'get_available_agents') {
         try {
-            $ipCol = 'direccion';
-            try {
-                $checkIp = $pdo->query("SHOW COLUMNS FROM tagente LIKE 'ip_address'");
-                if ($checkIp && $checkIp->rowCount() > 0) $ipCol = 'ip_address';
-            } catch (Throwable $e) {}
+            $ipCol = get_agent_ip_col($pdo);
 
             $sql = "SELECT a.id_agente, a.nombre, a.alias, a.$ipCol AS ip, 
                            os.name AS os, os.icon_name AS os_icon, a.id_grupo, a.id_parent, 
@@ -914,12 +924,8 @@ if (!empty($api)) {
         }
 
         try {
-            // Check IP Column dynamically
-            $ipCol = 'direccion';
-            try {
-                $checkIp = $pdo->query("SHOW COLUMNS FROM tagente LIKE 'ip_address'");
-                if ($checkIp && $checkIp->rowCount() > 0) $ipCol = 'ip_address';
-            } catch (Throwable $e) {}
+            // Check IP Column dynamically using static cache
+            $ipCol = get_agent_ip_col($pdo);
 
             // Expand sub-groups recursively if group_id is given
             $target_group_ids = [];
@@ -995,22 +1001,38 @@ if (!empty($api)) {
                 exit;
             }
 
-            // Fetch alert statuses from tagente_estado
+            // Fetch alert statuses efficiently using index on tagente_modulo + PRIMARY KEY on tagente_estado
             $agent_ids = array_map(fn($a) => (int)$a['id_agente'], $agents);
             $statuses = [];
             if (!empty($agent_ids)) {
                 $in_ids = implode(',', $agent_ids);
-                $st_alerts = $pdo->query("SELECT id_agente, MAX(estado) as max_state, COUNT(*) as mod_count
-                                          FROM tagente_estado
-                                          WHERE id_agente IN ($in_ids)
-                                          GROUP BY id_agente");
-                if ($st_alerts) {
-                    while ($row = $st_alerts->fetch(PDO::FETCH_ASSOC)) {
-                        $statuses[(int)$row['id_agente']] = [
-                            'state' => (int)$row['max_state'],
-                            'count' => (int)$row['mod_count']
-                        ];
+                try {
+                    $sql_status = "SELECT m.id_agente, MAX(e.estado) as max_state, COUNT(*) as mod_count
+                                   FROM tagente_modulo m
+                                   INNER JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
+                                   WHERE m.id_agente IN ($in_ids) AND m.disabled = 0
+                                   GROUP BY m.id_agente";
+                    $st_alerts = $pdo->query($sql_status);
+                    if ($st_alerts) {
+                        while ($row = $st_alerts->fetch(PDO::FETCH_ASSOC)) {
+                            $statuses[(int)$row['id_agente']] = [
+                                'state' => (int)$row['max_state'],
+                                'count' => (int)$row['mod_count']
+                            ];
+                        }
                     }
+                } catch (Throwable $e) {
+                    try {
+                        $st_alerts = $pdo->query("SELECT id_agente, MAX(estado) as max_state, COUNT(*) as mod_count FROM tagente_estado WHERE id_agente IN ($in_ids) GROUP BY id_agente");
+                        if ($st_alerts) {
+                            while ($row = $st_alerts->fetch(PDO::FETCH_ASSOC)) {
+                                $statuses[(int)$row['id_agente']] = [
+                                    'state' => (int)$row['max_state'],
+                                    'count' => (int)$row['mod_count']
+                                ];
+                            }
+                        }
+                    } catch (Throwable $e2) {}
                 }
             }
 
@@ -1127,16 +1149,21 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Topology Network | PFMS-Toolkit</title>
     
-    <!-- Unified Fonts & Icons matching Dynamic Dashboard and Route Parser -->
+    <!-- Unified Local Fonts & Icons (Instant Offline Load) -->
     <link rel="stylesheet" href="<?= htmlspecialchars($vendor_url) ?>/fonts/fonts.css">
     <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
 
     <!-- Offline Cytoscape & Dagre Layout Engines -->
-    <script src="../../vendor/cytoscape/cytoscape.min.js"></script>
-    <script src="../../vendor/cytoscape/dagre.min.js"></script>
-    <script src="../../vendor/cytoscape/cytoscape-dagre.min.js"></script>
+    <script src="<?= htmlspecialchars($vendor_url) ?>/cytoscape/cytoscape.min.js"></script>
+    <script src="<?= htmlspecialchars($vendor_url) ?>/cytoscape/dagre.min.js"></script>
+    <script src="<?= htmlspecialchars($vendor_url) ?>/cytoscape/cytoscape-dagre.min.js"></script>
+    <script>
+        if (typeof cytoscape === 'undefined') {
+            document.write('<script src="../../vendor/cytoscape/cytoscape.min.js"><\/script>');
+            document.write('<script src="../../vendor/cytoscape/dagre.min.js"><\/script>');
+            document.write('<script src="../../vendor/cytoscape/cytoscape-dagre.min.js"><\/script>');
+        }
+    </script>
 
     <style>
         :root {
@@ -2680,9 +2707,18 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 cy.destroy();
             }
 
+            const currentDash = allDashboards.find(d => d.id === activeDashId);
+            const preferredLayout = (currentDash && currentDash.layout) ? currentDash.layout : 'dagre';
+            const nodeCount = visibleNodes.length;
+
             cy = cytoscape({
                 container: container,
                 elements: elements,
+                wheelSensitivity: 0.25,
+                boxSelectionEnabled: false,
+                textureOnViewport: true,
+                hideEdgesOnViewport: false,
+                pixelRatio: 'auto',
                 style: [
                     {
                         selector: 'node',
@@ -2770,12 +2806,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     }
                 ],
                 layout: {
-                    name: 'dagre',
+                    name: preferredLayout,
                     rankDir: 'TB',
                     nodeSep: 60,
                     rankSep: 80,
-                    animate: true,
-                    animationDuration: 400
+                    animate: nodeCount <= 60,
+                    animationDuration: 300
                 }
             });
 
@@ -3149,11 +3185,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         // --- 8. INITIALIZATION ON READY ---
         document.addEventListener('DOMContentLoaded', () => {
             renderDashboardTable(allDashboards);
-            loadAgentGroups();
 
             if (activeDashId) {
                 openDashboard(activeDashId);
             }
+
+            // Lazy load agent groups in background so it doesn't block initial render
+            setTimeout(loadAgentGroups, 150);
         });
     </script>
 </body>
