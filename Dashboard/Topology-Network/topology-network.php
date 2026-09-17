@@ -2678,10 +2678,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <!-- ========================================================================= -->
     <div id="view_canvas" class="<?= $current_dashboard ? '' : 'd-none' ?>">
         <div class="pandora-header-bottom" style="padding: 10px 24px;">
-            <div style="display:flex; align-items:center; gap:16px;">
-                <button class="btn-secondary-custom" onclick="closeDashboard()" title="Back to Dashboard List">
-                    <span class="material-symbols-outlined">arrow_back</span>
-                    Dashboard List
+            <div style="display:flex; align-items:center; gap:14px;">
+                <button class="btn-secondary-custom" onclick="closeDashboard()" title="Back to Dashboard List" style="width:34px; height:34px; padding:0; justify-content:center; border-radius:6px; flex-shrink:0;">
+                    <span class="material-symbols-outlined" style="font-size:20px;">arrow_back</span>
                 </button>
                 <div class="breadcrumb-box">
                     <span class="page-breadcrumb" id="canvasBreadcrumb"><?= htmlspecialchars($dynamic_breadcrumb) ?></span>
@@ -2692,11 +2691,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             </div>
 
             <div class="top-controls">
-                <div id="statusBadges" style="display:flex; gap:8px;">
-                    <span class="badge-pill badge-crit" title="Critical Nodes"><span class="material-symbols-outlined" style="font-size:14px;">error</span> <span id="cntCrit">0</span></span>
-                    <span class="badge-pill badge-warn" title="Warning Nodes"><span class="material-symbols-outlined" style="font-size:14px;">warning</span> <span id="cntWarn">0</span></span>
-                    <span class="badge-pill badge-ok" title="Normal Nodes"><span class="material-symbols-outlined" style="font-size:14px;">check_circle</span> <span id="cntOk">0</span></span>
-                </div>
                 <button class="btn-secondary-custom" onclick="fitTopologyView()" title="Fit View">
                     <span class="material-symbols-outlined">fit_screen</span>
                     Fit View
@@ -2705,15 +2699,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     <span class="material-symbols-outlined">refresh</span>
                     Refresh
                 </button>
-                <button class="btn-secondary-custom" onclick="exportTopologyImage()" title="Export PNG">
-                    <span class="material-symbols-outlined">download</span>
-                    Export PNG
-                </button>
             </div>
         </div>
 
         <div class="canvas-toolbar">
-            <div class="toolbar-left">
+            <div class="toolbar-left" style="display:flex; align-items:center; gap:10px;">
                 <!-- Add Node Button -->
                 <button class="btn-apply" id="btnAddDevicesToolbar" onclick="openAddNodeModal()" style="height:34px; padding:0 14px; font-size:13px;" title="Add node">
                     <span class="material-symbols-outlined" style="font-size:18px;">add_circle</span>
@@ -2726,28 +2716,15 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     <span id="connectModeLabel">Interface link</span>
                 </button>
 
-                <!-- Group Filter dropdown (cleaned of &#x20;) -->
-                <select id="canvasGroupSelect" class="form-control-custom" style="width:240px;" onchange="onCanvasGroupChange(this.value)">
-                    <option value="0">All Agent Groups</option>
-                </select>
-
-                <!-- Filter Segmented by Category -->
-                <div class="filter-segmented">
-                    <button class="filter-btn active" onclick="setCategoryFilter('all', this)">All Devices</button>
-                    <button class="filter-btn" onclick="setCategoryFilter('compute', this)">Compute</button>
-                    <button class="filter-btn" onclick="setCategoryFilter('storage', this)">Storage</button>
-                    <button class="filter-btn" onclick="setCategoryFilter('network', this)">Network</button>
-                </div>
-
                 <!-- Device Search -->
                 <div style="position:relative; display:inline-block;">
-                    <input type="text" id="deviceSearch" class="form-control-custom" style="width:220px; padding-left:32px;" placeholder="Search node or IP..." oninput="onDeviceSearch(this.value)">
-                    <span class="material-symbols-outlined" style="position:absolute; left:8px; top:9px; color:#94a3b8;">search</span>
+                    <input type="text" id="deviceSearch" class="form-control-custom" style="width:240px; padding-left:32px;" placeholder="Search node or IP..." oninput="onDeviceSearch(this.value)">
+                    <span class="material-symbols-outlined" style="position:absolute; left:8px; top:9px; color:#94a3b8; pointer-events:none;">search</span>
                 </div>
             </div>
 
             <div class="toolbar-right">
-                <select id="layoutSelect" class="form-control-custom" style="width:160px;" onchange="changeLayout(this.value)">
+                <select id="layoutSelect" class="form-control-custom" style="width:170px;" onchange="changeLayout(this.value)">
                     <option value="dagre">Hierarchical (Multi-Tier)</option>
                     <option value="cose">Force-Directed (Mesh)</option>
                     <option value="circle">Circular Ring</option>
@@ -3105,7 +3082,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 <input type="hidden" id="linkSourceNodeId" value="">
                 <input type="hidden" id="linkTargetNodeId" value="">
                 
-                <!-- Light teal box matching Screenshot 4 -->
+                <!-- Light teal box matching Screenshot 4 with search filter -->
                 <div class="interface-link-box">
                     <div class="interface-link-col">
                         <div class="interface-link-col-title">Node source</div>
@@ -3114,6 +3091,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
                     <div class="interface-link-col">
                         <div class="interface-link-col-title">Interface source</div>
+                        <div style="position:relative; margin-bottom:6px;">
+                            <input type="text" id="linkSourceSearch" class="form-control-custom" placeholder="Search module / port..." style="background:#ffffff; height:30px; font-size:11px; padding-left:26px;" oninput="filterInterfaceOptions('src', this.value)">
+                            <span class="material-symbols-outlined" style="position:absolute; left:6px; top:7px; font-size:16px; color:#94a3b8; pointer-events:none;">search</span>
+                        </div>
                         <select id="linkSourceInterfaceSelect" class="form-control-custom" style="background:#ffffff; height:36px;">
                             <option value="">None</option>
                         </select>
@@ -3121,6 +3102,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
                     <div class="interface-link-col">
                         <div class="interface-link-col-title">Interface target</div>
+                        <div style="position:relative; margin-bottom:6px;">
+                            <input type="text" id="linkTargetSearch" class="form-control-custom" placeholder="Search module / port..." style="background:#ffffff; height:30px; font-size:11px; padding-left:26px;" oninput="filterInterfaceOptions('tgt', this.value)">
+                            <span class="material-symbols-outlined" style="position:absolute; left:6px; top:7px; font-size:16px; color:#94a3b8; pointer-events:none;">search</span>
+                        </div>
                         <select id="linkTargetInterfaceSelect" class="form-control-custom" style="background:#ffffff; height:36px;">
                             <option value="">None</option>
                         </select>
@@ -3627,9 +3612,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         function updateStatusCounters(stats) {
             if (!stats) return;
-            document.getElementById('cntCrit').innerText = stats.critical || 0;
-            document.getElementById('cntWarn').innerText = stats.warning || 0;
-            document.getElementById('cntOk').innerText = stats.normal || 0;
+            const c = document.getElementById('cntCrit'); if (c) c.innerText = stats.critical || 0;
+            const w = document.getElementById('cntWarn'); if (w) w.innerText = stats.warning || 0;
+            const o = document.getElementById('cntOk'); if (o) o.innerText = stats.normal || 0;
         }
 
         function renderCytoscapeGraph(data) {
@@ -3822,10 +3807,22 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 layout: {
                     name: preferredLayout,
                     rankDir: 'TB',
-                    nodeSep: 60,
-                    rankSep: 80,
+                    nodeSep: 90,
+                    rankSep: 110,
+                    padding: 100,
                     animate: nodeCount <= 60,
                     animationDuration: 300
+                }
+            });
+
+            // Prevent excessive default zoom-in when there are few nodes on canvas
+            cy.on('layoutstop', function() {
+                if (cy && cy.elements().length > 0) {
+                    cy.fit(null, 100);
+                    if (cy.zoom() > 0.8) {
+                        cy.zoom(0.75);
+                        cy.center();
+                    }
                 }
             });
 
@@ -4152,6 +4149,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         let currentLinkSourceNode = null;
         let currentLinkTargetNode = null;
         let currentEditingEdgeId = null;
+        let cachedSrcInterfaces = [];
+        let cachedTgtInterfaces = [];
 
         async function openInterfaceLinkModal(sourceNode, targetNode, existingEdge = null) {
             currentLinkSourceNode = sourceNode;
@@ -4167,6 +4166,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             document.getElementById('linkTargetNodeId').value = targetNode.id();
             document.getElementById('linkSourceNodeName').innerText = srcName;
             document.getElementById('linkTargetNodeName').innerText = tgtName;
+
+            const srcSearch = document.getElementById('linkSourceSearch');
+            if (srcSearch) srcSearch.value = '';
+            const tgtSearch = document.getElementById('linkTargetSearch');
+            if (tgtSearch) tgtSearch.value = '';
 
             const srcSelect = document.getElementById('linkSourceInterfaceSelect');
             const tgtSelect = document.getElementById('linkTargetInterfaceSelect');
@@ -4192,8 +4196,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
                 if (loadingEl) loadingEl.style.display = 'none';
 
-                populateInterfaceSelect(srcSelect, dataSrc.interfaces || []);
-                populateInterfaceSelect(tgtSelect, dataTgt.interfaces || []);
+                cachedSrcInterfaces = Array.isArray(dataSrc.interfaces) ? dataSrc.interfaces : [];
+                cachedTgtInterfaces = Array.isArray(dataTgt.interfaces) ? dataTgt.interfaces : [];
+
+                populateInterfaceSelect(srcSelect, cachedSrcInterfaces);
+                populateInterfaceSelect(tgtSelect, cachedTgtInterfaces);
 
                 // If editing existing edge, preselect
                 if (existingEdge) {
@@ -4210,6 +4217,34 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 srcSelect.innerHTML = '<option value="">None</option>';
                 tgtSelect.innerHTML = '<option value="">None</option>';
                 console.error("Error loading interfaces:", err);
+            }
+        }
+
+        function filterInterfaceOptions(side, query) {
+            query = (query || '').toLowerCase().trim();
+            const selectEl = (side === 'src') 
+                ? document.getElementById('linkSourceInterfaceSelect') 
+                : document.getElementById('linkTargetInterfaceSelect');
+            const interfaces = (side === 'src') ? cachedSrcInterfaces : cachedTgtInterfaces;
+            if (!selectEl) return;
+
+            const currentVal = selectEl.value;
+            const currentId = selectEl.options[selectEl.selectedIndex]?.getAttribute('data-id');
+
+            const filtered = query 
+                ? interfaces.filter(itf => {
+                    const name = (itf.name || '').toLowerCase();
+                    const cleanPort = (itf.clean_port || '').toLowerCase();
+                    const datos = (itf.datos || '').toLowerCase();
+                    return name.includes(query) || cleanPort.includes(query) || datos.includes(query);
+                })
+                : interfaces;
+
+            populateInterfaceSelect(selectEl, filtered);
+
+            // Re-select previously selected item if present in filtered list
+            if (currentId && currentId !== '0') {
+                selectMatchingOption(selectEl, currentVal, currentId);
             }
         }
 
@@ -4252,8 +4287,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
             const srcSelect = document.getElementById('linkSourceInterfaceSelect');
             const tgtSelect = document.getElementById('linkTargetInterfaceSelect');
-            const srcOpt = srcSelect.options[srcSelect.selectedIndex];
-            const tgtOpt = tgtSelect.options[tgtSelect.selectedIndex];
+            const srcOpt = srcSelect ? srcSelect.options[srcSelect.selectedIndex] : null;
+            const tgtOpt = tgtSelect ? tgtSelect.options[tgtSelect.selectedIndex] : null;
 
             const srcIface = srcOpt ? srcOpt.value : '';
             const srcModId = srcOpt ? parseInt(srcOpt.getAttribute('data-id') || 0) : 0;
@@ -4265,7 +4300,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
             const sourceId = currentLinkSourceNode.id();
             const targetId = currentLinkTargetNode.id();
+            const srcLabel = cleanText(currentLinkSourceNode.data('label') || sourceId);
+            const tgtLabel = cleanText(currentLinkTargetNode.data('label') || targetId);
             const edgeId = currentEditingEdgeId || ('custom-' + sourceId.replace(/[^a-zA-Z0-9_\-]/g, '') + '-' + targetId.replace(/[^a-zA-Z0-9_\-]/g, ''));
+
+            const hasInterface = (srcIface !== '' || tgtIface !== '');
 
             const btn = document.getElementById('btnAddInterfaceLinkSubmit');
             btn.disabled = true;
@@ -4317,12 +4356,17 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
                     closeInterfaceLinkModal();
                     exitConnectMode();
-                    showToast(`Interface link connected between ${cleanText(currentLinkSourceNode.data('label'))} and ${cleanText(currentLinkTargetNode.data('label'))}`, 'success');
+
+                    if (!hasInterface) {
+                        showToast(`Koneksi antar ${srcLabel} dan ${tgtLabel} berhasil dibuat (tanpa modul interface spesifik).`, 'info');
+                    } else {
+                        showToast(`Interface link berhasil dihubungkan antara ${srcLabel} (${srcIface || 'None'}) dan ${tgtLabel} (${tgtIface || 'None'})`, 'success');
+                    }
                 } else {
-                    alert('Failed to save interface link: ' + (data.error || 'Unknown error'));
+                    showToast('Gagal menyimpan link: ' + (data.error || 'Unknown error'), 'error');
                 }
             } catch (err) {
-                alert('Network error while saving interface link: ' + err.message);
+                showToast('Terjadi kendala saat menyimpan interface link: ' + err.message, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
@@ -4488,18 +4532,36 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         function changeLayout(layoutName) {
             if (!cy) return;
-            let layoutOptions = { name: layoutName, animate: true, animationDuration: 400 };
+            let layoutOptions = { 
+                name: layoutName, 
+                animate: true, 
+                animationDuration: 400,
+                padding: 100,
+                stop: function() {
+                    if (cy && cy.elements().length > 0) {
+                        cy.fit(null, 100);
+                        if (cy.zoom() > 0.8) {
+                            cy.zoom(0.75);
+                            cy.center();
+                        }
+                    }
+                }
+            };
             if (layoutName === 'dagre') {
                 layoutOptions.rankDir = 'TB';
-                layoutOptions.nodeSep = 60;
-                layoutOptions.rankSep = 80;
+                layoutOptions.nodeSep = 90;
+                layoutOptions.rankSep = 110;
             }
             cy.layout(layoutOptions).run();
         }
 
         function fitTopologyView() {
-            if (cy) {
-                cy.fit(null, 40);
+            if (cy && cy.elements().length > 0) {
+                cy.fit(null, 100);
+                if (cy.zoom() > 0.8) {
+                    cy.zoom(0.75);
+                    cy.center();
+                }
             }
         }
 
