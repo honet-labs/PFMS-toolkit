@@ -53,11 +53,22 @@ if (empty($csrf_token)) {
     $_SESSION['pfms_csrf_token'] = $csrf_token;
 }
 
+$script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
+    $PANDORA_BASE_URL = rtrim($matches[1], '/');
+    $vendor_url = $PANDORA_BASE_URL . '/' . $matches[2] . '/panel/vendor';
+} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
+    $PANDORA_BASE_URL = '';
+    $vendor_url = '/' . $matches[1] . '/panel/vendor';
+} else {
+    $PANDORA_BASE_URL = "/pandora_console"; 
+    $vendor_url = "/pandora_console/custom/panel/vendor";
+}
+$pandora_base = $PANDORA_BASE_URL;
+
 $is_standalone = isset($_GET['standalone']) || isset($_GET['embed']);
 if (empty($user_id) && !$is_standalone) {
-    $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
-    $pandora_base = preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $m) ? rtrim($m[1], '/') : '/pandora_console';
-    header("Location: " . $pandora_base . "/index.php");
+    header("Location: " . ($pandora_base ?: '') . "/index.php");
     exit;
 }
 
@@ -887,12 +898,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Topology Network | PFMS-Toolkit</title>
     
-    <!-- Unified Fonts & Icons -->
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="../../vendor/fonts/inter.css" rel="stylesheet">
-    <link href="../../vendor/fonts/material-symbols.css" rel="stylesheet">
-    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <!-- Unified Fonts & Icons matching Dynamic Dashboard and Route Parser -->
+    <link rel="stylesheet" href="<?= htmlspecialchars($vendor_url) ?>/fonts/fonts.css">
+    <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
 
     <!-- Offline Cytoscape & Dagre Layout Engines -->
     <script src="../../vendor/cytoscape/cytoscape.min.js"></script>
@@ -916,8 +926,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         * { box-sizing: border-box; }
-        body, input, button, select, textarea {
-            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        html, body, input, button, select, textarea, table, th, td, h1, h2, h3, h4, h5, h6, span, a, p, div {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important;
         }
         body {
             margin: 0;
@@ -948,7 +958,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             justify-content: space-between;
             flex-wrap: wrap;
             gap: 15px;
-            border-bottom: 1px solid var(--border-color);
         }
 
         .breadcrumb-box {
@@ -956,18 +965,18 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             flex-direction: column;
         }
         .page-breadcrumb {
-            font-size: 11px;
-            color: var(--text-muted);
+            font-size: 11px !important;
+            color: var(--text-muted) !important;
             margin-bottom: 4px;
-            font-weight: 500;
+            font-weight: normal !important;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         .page-title {
-            font-size: 18px;
-            color: var(--primary-navy);
+            font-size: 18px !important;
+            color: var(--primary-navy) !important;
             margin: 0;
-            font-weight: 600;
+            font-weight: 600 !important;
             line-height: 1.1;
             display: flex;
             align-items: center;
@@ -984,14 +993,15 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         .list-search-box {
-            padding: 0 15px 0 35px;
-            height: 36px;
-            margin: 0;
-            box-sizing: border-box;
-            width: 260px;
+            padding: 0 15px 0 35px !important;
+            height: 36px !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+            width: 300px;
             border: 1px solid #dce1e5;
             border-radius: 4px;
-            font-size: 13px;
+            font-size: 13px !important;
+            font-weight: normal !important;
             outline: none;
             background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%237f8c8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 10px center;
             transition: 0.2s;
@@ -1002,14 +1012,16 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         .btn-apply {
-            height: 36px;
+            height: 36px !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
             background: var(--brand-green);
             color: #fff !important;
             border: none;
             padding: 0 18px;
             border-radius: 4px;
-            font-size: 13px;
-            font-weight: 500;
+            font-size: 13px !important;
+            font-weight: normal !important;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -1026,14 +1038,16 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         .btn-secondary-custom {
-            height: 36px;
+            height: 36px !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
             background: #ffffff;
             color: #4a5568 !important;
             border: 1px solid #dce1e5;
             padding: 0 16px;
             border-radius: 4px;
-            font-size: 13px;
-            font-weight: 500;
+            font-size: 13px !important;
+            font-weight: normal !important;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -1064,39 +1078,39 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         table.list-table {
-            border-collapse: collapse;
-            width: 100%;
-            margin: 0;
+            border-collapse: collapse !important;
+            width: 100% !important;
+            margin: 0 !important;
         }
         table.list-table thead th {
-            background-color: #fafbfc;
-            border-bottom: 1px solid var(--border-color);
+            background-color: #fafbfc !important;
+            border-bottom: 1px solid var(--border-color) !important;
             text-transform: uppercase;
-            padding: 14px 20px;
-            font-weight: 600;
-            color: #7f8c8d;
-            font-size: 11px;
+            padding: 15px 20px !important;
+            font-weight: normal !important;
+            color: #7f8c8d !important;
+            font-size: 11px !important;
             text-align: left;
             letter-spacing: 0.5px;
         }
         table.list-table tbody td {
-            padding: 14px 20px;
-            border-bottom: 1px solid var(--border-light);
-            color: var(--text-dark);
+            padding: 15px 20px !important;
+            border-bottom: 1px solid var(--border-light) !important;
+            color: var(--text-dark) !important;
             vertical-align: middle;
-            transition: 0.15s;
+            transition: 0.2s;
         }
         table.list-table tbody tr:hover td {
-            background-color: #f8f9fa;
+            background-color: #f8f9fa !important;
         }
         table.list-table tbody tr:last-child td {
-            border-bottom: none;
+            border-bottom: none !important;
         }
 
         .dash-name-link {
-            font-size: 14px;
-            font-weight: 600;
-            color: #0b1a26;
+            font-size: 14px !important;
+            font-weight: normal !important;
+            color: #1976d2 !important;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
@@ -1104,7 +1118,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             cursor: pointer;
         }
         .dash-name-link:hover {
-            color: var(--brand-green);
+            text-decoration: underline !important;
+            color: #0d47a1 !important;
         }
 
         .dash-desc-sub {
@@ -1112,6 +1127,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             color: var(--text-muted);
             margin-top: 3px;
             line-height: 1.4;
+            font-weight: normal !important;
         }
 
         .badge-count {
@@ -1120,7 +1136,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             font-size: 11px;
             padding: 3px 8px;
             border-radius: 12px;
-            font-weight: 600;
+            font-weight: normal;
             display: inline-block;
         }
         .badge-demo {
@@ -1129,7 +1145,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             font-size: 10px;
             padding: 2px 6px;
             border-radius: 4px;
-            font-weight: 700;
+            font-weight: 500;
             text-transform: uppercase;
         }
 
@@ -1139,7 +1155,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             gap: 4px;
             padding: 5px 10px;
             font-size: 12px;
-            font-weight: 500;
+            font-weight: normal;
             color: #4a5568;
             background: #ffffff;
             border: 1px solid #dce1e5;
@@ -1482,7 +1498,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         <div class="pandora-header-bottom">
             <div class="breadcrumb-box">
                 <span class="page-breadcrumb"><?= htmlspecialchars($dynamic_breadcrumb) ?></span>
-                <h1 class="page-title"><span class="material-symbols-outlined">hub</span> Topology Network</h1>
+                <h1 class="page-title" id="pageMainTitle">Topology Network</h1>
             </div>
 
             <div class="top-controls">
@@ -1527,7 +1543,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 <div class="breadcrumb-box">
                     <span class="page-breadcrumb" id="canvasBreadcrumb"><?= htmlspecialchars($dynamic_breadcrumb) ?></span>
                     <h1 class="page-title" id="canvasDashTitle">
-                        <span class="material-symbols-outlined">hub</span>
                         <span id="canvasTitleText"><?= htmlspecialchars($current_dashboard['name'] ?? 'Topology Canvas') ?></span>
                     </h1>
                 </div>
@@ -1759,8 +1774,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     <tr>
                         <td>
                             <a class="dash-name-link" onclick="openDashboard('${escapeHtml(d.id)}')">
-                                <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:20px;">hub</span>
-                                <strong>${escapeHtml(cleanName)}</strong>
+                                ${escapeHtml(cleanName)}
                             </a>
                             ${cleanDesc ? `<div class="dash-desc-sub">${escapeHtml(cleanDesc)}</div>` : ''}
                         </td>
