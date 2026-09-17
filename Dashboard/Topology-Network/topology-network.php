@@ -1647,7 +1647,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         html, body, input, button, select, textarea, table, th, td, h1, h2, h3, h4, h5, h6, span, a, p, div {
             font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important;
         }
-        body {
+        html, body {
+            height: 100%;
             margin: 0;
             padding: 0;
             background-color: var(--bg-page);
@@ -1901,7 +1902,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         #view_canvas {
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 70px);
+            height: 100vh;
+            width: 100%;
             position: relative;
             overflow: hidden;
         }
@@ -1969,7 +1971,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         .canvas-wrapper {
             position: relative;
             flex-grow: 1;
-            background: #f8fafc;
+            height: 100%;
+            width: 100%;
+            background: #ffffff;
             overflow: hidden;
         }
 
@@ -4919,6 +4923,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             if (hasUnsavedPositions) {
                 e.preventDefault();
                 e.returnValue = '';
+            }
+        });
+
+        window.addEventListener('resize', function() {
+            if (cy) {
+                cy.resize();
             }
         });
 
