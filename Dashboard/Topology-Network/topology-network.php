@@ -853,6 +853,18 @@ if (!empty($api)) {
                     }
                 }
 
+                $srcIfaceClean = trim((string)$source_interface);
+                $tgtIfaceClean = trim((string)$target_interface);
+                if (empty($label)) {
+                    if (!empty($srcIfaceClean) && !empty($tgtIfaceClean)) {
+                        $label = $srcIfaceClean . ' ⇄ ' . $tgtIfaceClean;
+                    } elseif (!empty($srcIfaceClean)) {
+                        $label = $srcIfaceClean;
+                    } elseif (!empty($tgtIfaceClean)) {
+                        $label = $tgtIfaceClean;
+                    }
+                }
+
                 $new_edge = [
                     'id' => $edge_id,
                     'source' => $source,
@@ -1449,25 +1461,27 @@ if (!empty($api)) {
             $edges = [];
             $edge_keys = [];
 
-            // 1. Real parent hierarchy links from tagente.id_parent (unless user explicitly deleted)
-            foreach ($nodes as $n) {
-                $pid = $n['parent_id'];
-                if ($pid > 0 && isset($agent_map[$pid])) {
-                    $src = $agent_map[$pid];
-                    $tgt = $n['id'];
-                    $k1 = $src . '->' . $tgt;
-                    $k2 = $tgt . '->' . $src;
-                    if (!isset($deleted_edges[$k1]) && !isset($deleted_edges[$k2])) {
-                        if (!isset($edge_keys[$k1]) && !isset($edge_keys[$k2])) {
-                            $edge_keys[$k1] = true;
-                            $edges[] = [
-                                'id' => 'parent-' . $src . '-' . $tgt,
-                                'source' => $src,
-                                'target' => $tgt,
-                                'label' => '',
-                                'status' => $n['status'] === 'critical' ? 'critical' : ($n['status'] === 'warning' ? 'warning' : 'active'),
-                                'is_custom' => false
-                            ];
+            // 1. Real parent hierarchy links from tagente.id_parent (Only for group-level automated maps with no picked device_ids; NEVER for blank/custom manual topology)
+            if ($map_type === 'group' && empty($device_ids)) {
+                foreach ($nodes as $n) {
+                    $pid = $n['parent_id'];
+                    if ($pid > 0 && isset($agent_map[$pid])) {
+                        $src = $agent_map[$pid];
+                        $tgt = $n['id'];
+                        $k1 = $src . '->' . $tgt;
+                        $k2 = $tgt . '->' . $src;
+                        if (!isset($deleted_edges[$k1]) && !isset($deleted_edges[$k2])) {
+                            if (!isset($edge_keys[$k1]) && !isset($edge_keys[$k2])) {
+                                $edge_keys[$k1] = true;
+                                $edges[] = [
+                                    'id' => 'parent-' . $src . '-' . $tgt,
+                                    'source' => $src,
+                                    'target' => $tgt,
+                                    'label' => '',
+                                    'status' => $n['status'] === 'critical' ? 'critical' : ($n['status'] === 'warning' ? 'warning' : 'active'),
+                                    'is_custom' => false
+                                ];
+                            }
                         }
                     }
                 }
@@ -1511,16 +1525,29 @@ if (!empty($api)) {
                         $srcStatus = isset($live_mod_states[$srcModId]) ? $live_mod_states[$srcModId] : (int)($ce['source_status'] ?? 0);
                         $tgtStatus = isset($live_mod_states[$tgtModId]) ? $live_mod_states[$tgtModId] : (int)($ce['target_status'] ?? 0);
 
+                        $srcIface = pretty_text($ce['source_interface'] ?? '');
+                        $tgtIface = pretty_text($ce['target_interface'] ?? '');
+                        $edgeLabel = pretty_text($ce['label'] ?? '');
+                        if (empty($edgeLabel)) {
+                            if (!empty($srcIface) && !empty($tgtIface)) {
+                                $edgeLabel = $srcIface . ' ⇄ ' . $tgtIface;
+                            } elseif (!empty($srcIface)) {
+                                $edgeLabel = $srcIface;
+                            } elseif (!empty($tgtIface)) {
+                                $edgeLabel = $tgtIface;
+                            }
+                        }
+
                         $edges[] = [
                             'id' => $edgeId,
                             'source' => $cSrc,
                             'target' => $cTgt,
-                            'label' => pretty_text($ce['label'] ?? ''),
-                            'status' => $ce['status'] ?? 'active',
-                            'source_interface' => pretty_text($ce['source_interface'] ?? ''),
+                            'label' => $edgeLabel,
+                            'status' => ($srcStatus === 1 || $tgtStatus === 1) ? 'critical' : ($ce['status'] ?? 'active'),
+                            'source_interface' => $srcIface,
                             'source_module_id' => $srcModId,
                             'source_status' => $srcStatus,
-                            'target_interface' => pretty_text($ce['target_interface'] ?? ''),
+                            'target_interface' => $tgtIface,
                             'target_module_id' => $tgtModId,
                             'target_status' => $tgtStatus,
                             'is_custom' => true
@@ -3894,8 +3921,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     {
                         selector: 'edge',
                         style: {
-                            'width': 2,
-                            'line-color': '#cbd5e1',
+                            'width': 2.5,
+                            'line-color': function(ele) {
+                                const s = ele.data('status');
+                                if (s === 'critical' || ele.data('source_status') === 1 || ele.data('target_status') === 1) return '#ef4444';
+                                if (s === 'warning') return '#f59e0b';
+                                return '#94a3b8';
+                            },
                             'curve-style': 'bezier',
                             'source-arrow-shape': function(ele) {
                                 return ele.data('source_interface') ? 'circle' : 'none';
@@ -3913,38 +3945,41 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                                 return (s === 1 || s === 'critical' || s === '1') ? '#ef4444' : '#10b981';
                             },
                             'target-arrow-fill': 'filled',
-                            'arrow-scale': 1.15,
-                            'source-label': function(ele) {
-                                return cleanText(ele.data('source_interface') || '');
-                            },
-                            'source-text-offset': 38,
-                            'source-text-margin-y': -12,
-                            'source-text-rotation': 0,
-                            'target-label': function(ele) {
-                                return cleanText(ele.data('target_interface') || '');
-                            },
-                            'target-text-offset': 38,
-                            'target-text-margin-y': -12,
-                            'target-text-rotation': 0,
+                            'arrow-scale': 1.25,
                             'label': function(ele) {
-                                if (ele.data('source_interface') || ele.data('target_interface')) return '';
+                                const srcIf = cleanText(ele.data('source_interface') || '');
+                                const tgtIf = cleanText(ele.data('target_interface') || '');
+                                if (srcIf && tgtIf) {
+                                    return srcIf + ' ⇄ ' + tgtIf;
+                                } else if (srcIf) {
+                                    return srcIf + ' ⇄';
+                                } else if (tgtIf) {
+                                    return '⇄ ' + tgtIf;
+                                }
                                 return cleanText(ele.data('label') || '');
                             },
-                            'font-family': 'Inter, sans-serif',
+                            'font-family': 'Inter, system-ui, -apple-system, sans-serif',
                             'font-size': 11,
                             'font-weight': 600,
-                            'color': '#1e293b',
-                            'text-background-opacity': 0.85,
+                            'color': '#0f172a',
+                            'text-background-opacity': 0.95,
                             'text-background-color': '#ffffff',
-                            'text-background-padding': 2,
-                            'text-background-shape': 'roundrectangle'
+                            'text-background-padding': 4,
+                            'text-background-shape': 'roundrectangle',
+                            'text-border-opacity': 0.85,
+                            'text-border-width': 1,
+                            'text-border-color': '#cbd5e1',
+                            'text-rotation': 'autorotate',
+                            'text-margin-y': -2
                         }
                     },
                     {
                         selector: 'edge:selected',
                         style: {
                             'width': 3.5,
-                            'line-color': '#094d4a'
+                            'line-color': '#0284c7',
+                            'text-border-color': '#0284c7',
+                            'text-border-width': 2
                         }
                     }
                 ],
@@ -4464,6 +4499,15 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const origHtml = btn.innerHTML;
             btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Saving link...';
 
+            let edgeLabel = '';
+            if (srcIface && tgtIface) {
+                edgeLabel = `${srcIface} ⇄ ${tgtIface}`;
+            } else if (srcIface) {
+                edgeLabel = `${srcIface} ⇄`;
+            } else if (tgtIface) {
+                edgeLabel = `⇄ ${tgtIface}`;
+            }
+
             try {
                 const res = await fetch(getApiUrl('save_topology_edge'), {
                     method: 'POST',
@@ -4476,6 +4520,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         dashboard_id: activeDashId,
                         source: sourceId,
                         target: targetId,
+                        label: edgeLabel,
                         source_interface: srcIface,
                         source_module_id: srcModId,
                         source_status: srcStatus,
@@ -4490,6 +4535,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         id: edgeId,
                         source: sourceId,
                         target: targetId,
+                        label: edgeLabel,
                         source_interface: srcIface,
                         source_module_id: srcModId,
                         source_status: srcStatus,
@@ -4512,6 +4558,19 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         existing.data(edgeData);
                     } else {
                         cy.add({ group: 'edges', data: edgeData });
+                    }
+
+                    if (rawTopologyData && Array.isArray(rawTopologyData.edges)) {
+                        const existingIdx = rawTopologyData.edges.findIndex(e => 
+                            e.id === edgeId || 
+                            (e.source === sourceId && e.target === targetId) ||
+                            (e.source === targetId && e.target === sourceId)
+                        );
+                        if (existingIdx >= 0) {
+                            rawTopologyData.edges[existingIdx] = edgeData;
+                        } else {
+                            rawTopologyData.edges.push(edgeData);
+                        }
                     }
 
                     if (currentInspectedAgent && (currentInspectedAgent.id === sourceId || currentInspectedAgent.id === targetId)) {
@@ -5294,6 +5353,15 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Connecting...';
             }
 
+            let edgeLabel = '';
+            if (srcIface && tgtIface) {
+                edgeLabel = `${srcIface} ⇄ ${tgtIface}`;
+            } else if (srcIface) {
+                edgeLabel = `${srcIface} ⇄`;
+            } else if (tgtIface) {
+                edgeLabel = `⇄ ${tgtIface}`;
+            }
+
             try {
                 const res = await fetch(getApiUrl('save_topology_edge'), {
                     method: 'POST',
@@ -5306,6 +5374,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         dashboard_id: activeDashId,
                         source: sourceId,
                         target: targetId,
+                        label: edgeLabel,
                         source_interface: srcIface,
                         source_module_id: srcModId,
                         source_status: srcStatus,
@@ -5328,6 +5397,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         id: edgeId,
                         source: sourceId,
                         target: targetId,
+                        label: edgeLabel,
                         source_interface: srcIface,
                         source_module_id: srcModId,
                         source_status: srcStatus,
@@ -5342,6 +5412,19 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         existing.data(edgeData);
                     } else {
                         cy.add({ group: 'edges', data: edgeData });
+                    }
+
+                    if (rawTopologyData && Array.isArray(rawTopologyData.edges)) {
+                        const existingIdx = rawTopologyData.edges.findIndex(e => 
+                            e.id === edgeId || 
+                            (e.source === sourceId && e.target === targetId) ||
+                            (e.source === targetId && e.target === sourceId)
+                        );
+                        if (existingIdx >= 0) {
+                            rawTopologyData.edges[existingIdx] = edgeData;
+                        } else {
+                            rawTopologyData.edges.push(edgeData);
+                        }
                     }
 
                     const box = document.getElementById('drawerConnectBox');
