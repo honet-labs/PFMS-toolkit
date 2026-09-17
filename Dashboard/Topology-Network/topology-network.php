@@ -754,6 +754,54 @@ if (!empty($api)) {
         exit;
     }
 
+    // 3b. API: SAVE NODE POSITIONS (Persist user-dragged coordinates for topology)
+    if ($api === 'save_node_positions') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
+        if (!empty($csrf_token) && !empty($client_token) && $client_token !== $csrf_token) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
+            exit;
+        }
+
+        $id = trim((string)($input['dashboard_id'] ?? ''));
+        $positions = isset($input['positions']) && is_array($input['positions']) ? $input['positions'] : [];
+
+        if (empty($id)) {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard ID required']);
+            exit;
+        }
+
+        $dashboards = load_topology_dashboards($DASHBOARD_FILE);
+        $found = false;
+        foreach ($dashboards as &$d) {
+            if ($d['id'] === $id) {
+                $clean_positions = [];
+                foreach ($positions as $node_id => $pos) {
+                    if (is_array($pos) && isset($pos['x']) && isset($pos['y'])) {
+                        $clean_positions[(string)$node_id] = [
+                            'x' => round((float)$pos['x'], 2),
+                            'y' => round((float)$pos['y'], 2)
+                        ];
+                    }
+                }
+                $d['node_positions'] = $clean_positions;
+                $d['layout'] = 'preset';
+                $d['updated_at'] = date('Y-m-d H:i:s');
+                $found = true;
+                break;
+            }
+        }
+        unset($d);
+
+        if ($found) {
+            save_topology_dashboards($DASHBOARD_FILE, $dashboards);
+            echo json_encode(['ok' => true, 'count' => count($clean_positions)]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard not found']);
+        }
+        exit;
+    }
+
     // API: SAVE TOPOLOGY EDGE (Connect 2 devices with interface link)
     if ($api === 'save_topology_edge') {
         $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
@@ -1485,6 +1533,12 @@ if (!empty($api)) {
                 'ok' => true,
                 'mode' => 'live',
                 'title' => $current_dash ? pretty_text($current_dash['name']) : 'Infrastructure Topology',
+                'dashboard' => $current_dash ? [
+                    'id' => $current_dash['id'],
+                    'name' => pretty_text($current_dash['name']),
+                    'layout' => $current_dash['layout'] ?? 'dagre',
+                    'node_positions' => $current_dash['node_positions'] ?? null
+                ] : null,
                 'nodes' => $nodes,
                 'edges' => $edges,
                 'stats' => [
@@ -2033,6 +2087,16 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             color: #ffffff !important;
             border-color: #047857 !important;
             box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.35) !important;
+        }
+        @keyframes pulseSaveGlow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.45); }
+            50% { box-shadow: 0 0 0 5px rgba(2, 132, 199, 0.25); }
+        }
+        .pulse-save-btn {
+            animation: pulseSaveGlow 1.4s infinite !important;
+            border-color: #0284c7 !important;
+            color: #0284c7 !important;
+            background: #f0f9ff !important;
         }
         .connect-banner {
             position: absolute;
@@ -2716,6 +2780,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     <span id="connectModeLabel">Interface link</span>
                 </button>
 
+                <!-- Save Positions Button -->
+                <button class="btn-secondary-custom" id="btnSavePositions" onclick="saveCurrentNodePositions()" style="height:34px; padding:0 14px; font-size:13px;" title="Save current layout / node positions">
+                    <span class="material-symbols-outlined" id="savePositionsIcon" style="font-size:18px; color:#0284c7;">save</span>
+                    <span id="savePositionsLabel">Save Positions</span>
+                </button>
+
                 <!-- Device Search -->
                 <div style="position:relative; display:inline-block;">
                     <input type="text" id="deviceSearch" class="form-control-custom" style="width:240px; padding-left:32px;" placeholder="Search node or IP..." oninput="onDeviceSearch(this.value)">
@@ -2724,7 +2794,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             </div>
 
             <div class="toolbar-right">
-                <select id="layoutSelect" class="form-control-custom" style="width:170px;" onchange="changeLayout(this.value)">
+                <select id="layoutSelect" class="form-control-custom" style="width:190px;" onchange="changeLayout(this.value)">
+                    <option value="preset">Saved Positions (Manual)</option>
                     <option value="dagre">Hierarchical (Multi-Tier)</option>
                     <option value="cose">Force-Directed (Mesh)</option>
                     <option value="circle">Circular Ring</option>
@@ -3175,6 +3246,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         <div class="context-menu-item" onclick="openAddNodeModalFromContext()">
             <span class="material-symbols-outlined">add_circle</span>
             <span>Add node</span>
+        </div>
+        <div class="context-menu-item" onclick="savePositionsFromContext()">
+            <span class="material-symbols-outlined" style="color:#0284c7;">save</span>
+            <span>Save positions</span>
         </div>
         <div class="context-menu-item" onclick="loadNewNodesFromContext()">
             <span class="material-symbols-outlined">refresh</span>
@@ -3633,7 +3708,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 showLoading(false);
 
                 if (data.ok) {
-                    rawTopologyData = { nodes: data.nodes || [], edges: data.edges || [] };
+                    rawTopologyData = { 
+                        nodes: data.nodes || [], 
+                        edges: data.edges || [],
+                        dashboard: data.dashboard || null
+                    };
                     updateStatusCounters(data.stats);
                     renderCytoscapeGraph(rawTopologyData);
                 } else {
@@ -3673,11 +3752,17 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             if (emptyState) emptyState.classList.add('d-none');
             container.style.display = 'block';
 
+            const currentDash = allDashboards.find(d => d.id === activeDashId);
+            const savedPositions = (data && data.dashboard && data.dashboard.node_positions) 
+                || (currentDash && currentDash.node_positions) 
+                || null;
+            const hasSavedPositions = savedPositions && typeof savedPositions === 'object' && Object.keys(savedPositions).length > 0;
+
             const elements = [];
 
-            // Node elements with official Pandora FMS icon URL
+            // Node elements with official Pandora FMS icon URL and saved custom coordinates
             visibleNodes.forEach(n => {
-                elements.push({
+                const nodeObj = {
                     group: 'nodes',
                     data: {
                         id: n.id,
@@ -3693,7 +3778,14 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         group: cleanText(n.group),
                         tier: n.tier || 3
                     }
-                });
+                };
+                if (hasSavedPositions && savedPositions[n.id] && savedPositions[n.id].x !== undefined) {
+                    nodeObj.position = {
+                        x: parseFloat(savedPositions[n.id].x),
+                        y: parseFloat(savedPositions[n.id].y)
+                    };
+                }
+                elements.push(nodeObj);
             });
 
             // Active node ids set
@@ -3727,8 +3819,25 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 cy.destroy();
             }
 
-            const currentDash = allDashboards.find(d => d.id === activeDashId);
-            const preferredLayout = (currentDash && currentDash.layout) ? currentDash.layout : 'dagre';
+            let preferredLayout = 'dagre';
+            if (hasSavedPositions) {
+                preferredLayout = 'preset';
+            } else if (currentDash && currentDash.layout) {
+                preferredLayout = currentDash.layout;
+            }
+
+            const layoutSelect = document.getElementById('layoutSelect');
+            if (layoutSelect) {
+                layoutSelect.value = preferredLayout;
+            }
+
+            const saveBtn = document.getElementById('btnSavePositions');
+            if (saveBtn) {
+                saveBtn.classList.remove('pulse-save-btn');
+                const label = document.getElementById('savePositionsLabel');
+                if (label) label.innerText = 'Save Positions';
+            }
+
             const nodeCount = visibleNodes.length;
 
             cy = cytoscape({
@@ -3839,7 +3948,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         }
                     }
                 ],
-                layout: {
+                layout: (preferredLayout === 'preset') ? {
+                    name: 'preset',
+                    fit: true,
+                    padding: 100
+                } : {
                     name: preferredLayout,
                     rankDir: 'TB',
                     nodeSep: 90,
@@ -3859,6 +3972,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         cy.center();
                     }
                 }
+            });
+
+            // Listen for node drag events to highlight Save Positions button
+            cy.on('dragfree', 'node', function() {
+                markPositionsModified();
             });
 
             // Node Click Event
@@ -4576,8 +4694,55 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             renderCytoscapeGraph(rawTopologyData);
         }
 
+        let hasUnsavedPositions = false;
+
+        function markPositionsModified() {
+            hasUnsavedPositions = true;
+            const btn = document.getElementById('btnSavePositions');
+            if (btn) {
+                btn.classList.add('pulse-save-btn');
+                const label = document.getElementById('savePositionsLabel');
+                if (label) label.innerText = 'Save Positions *';
+            }
+        }
+
         function changeLayout(layoutName) {
             if (!cy) return;
+
+            const currentDash = allDashboards.find(d => d.id === activeDashId);
+            const savedPositions = (rawTopologyData && rawTopologyData.dashboard && rawTopologyData.dashboard.node_positions)
+                || (currentDash && currentDash.node_positions)
+                || null;
+
+            if (layoutName === 'preset') {
+                if (savedPositions && typeof savedPositions === 'object' && Object.keys(savedPositions).length > 0) {
+                    cy.batch(() => {
+                        cy.nodes().forEach(node => {
+                            const pos = savedPositions[node.id()];
+                            if (pos && pos.x !== undefined && pos.y !== undefined) {
+                                node.position({ x: parseFloat(pos.x), y: parseFloat(pos.y) });
+                            }
+                        });
+                    });
+                    cy.fit(null, 100);
+                    if (cy.zoom() > 0.8) {
+                        cy.zoom(0.75);
+                        cy.center();
+                    }
+                    hasUnsavedPositions = false;
+                    const btn = document.getElementById('btnSavePositions');
+                    if (btn) {
+                        btn.classList.remove('pulse-save-btn');
+                        const label = document.getElementById('savePositionsLabel');
+                        if (label) label.innerText = 'Save Positions';
+                    }
+                    showToast('Memuat posisi node yang tersimpan', 'success');
+                } else {
+                    showToast('Belum ada posisi node tersimpan untuk dashboard ini', 'warning');
+                }
+                return;
+            }
+
             let layoutOptions = { 
                 name: layoutName, 
                 animate: true, 
@@ -4591,6 +4756,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                             cy.center();
                         }
                     }
+                    markPositionsModified();
                 }
             };
             if (layoutName === 'dagre') {
@@ -4600,6 +4766,103 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             }
             cy.layout(layoutOptions).run();
         }
+
+        async function saveCurrentNodePositions() {
+            if (!cy || !activeDashId) {
+                showToast('Tidak ada dashboard aktif yang dipilih', 'warning');
+                return;
+            }
+
+            const btn = document.getElementById('btnSavePositions');
+            const icon = document.getElementById('savePositionsIcon');
+            const label = document.getElementById('savePositionsLabel');
+
+            if (btn) btn.disabled = true;
+            if (icon) icon.innerText = 'sync';
+            if (label) label.innerText = 'Saving...';
+
+            const positions = {};
+            cy.nodes().forEach(node => {
+                const pos = node.position();
+                if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+                    positions[node.id()] = {
+                        x: Math.round(pos.x * 100) / 100,
+                        y: Math.round(pos.y * 100) / 100
+                    };
+                }
+            });
+
+            try {
+                const res = await fetch(getApiUrl('save_node_positions'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        csrf_token: CSRF_TOKEN,
+                        dashboard_id: activeDashId,
+                        positions: positions
+                    })
+                });
+
+                const data = await res.json();
+                if (data && data.ok) {
+                    hasUnsavedPositions = false;
+                    if (btn) {
+                        btn.classList.remove('pulse-save-btn');
+                        btn.disabled = false;
+                    }
+                    if (icon) icon.innerText = 'check';
+                    if (label) label.innerText = 'Saved!';
+
+                    // Update in-memory state
+                    const cur = allDashboards.find(d => d.id === activeDashId);
+                    if (cur) {
+                        cur.node_positions = positions;
+                        cur.layout = 'preset';
+                    }
+                    if (rawTopologyData && rawTopologyData.dashboard) {
+                        rawTopologyData.dashboard.node_positions = positions;
+                        rawTopologyData.dashboard.layout = 'preset';
+                    }
+
+                    const layoutSelect = document.getElementById('layoutSelect');
+                    if (layoutSelect) layoutSelect.value = 'preset';
+
+                    setTimeout(() => {
+                        if (icon) icon.innerText = 'save';
+                        if (label) label.innerText = 'Save Positions';
+                    }, 2000);
+
+                    showToast(data.msg || 'Posisi layout node berhasil disimpan!', 'success');
+                } else {
+                    if (btn) btn.disabled = false;
+                    if (icon) icon.innerText = 'save';
+                    if (label) label.innerText = 'Save Positions *';
+                    showToast((data && data.msg) || 'Gagal menyimpan posisi layout node', 'error');
+                }
+            } catch (err) {
+                console.error('Error saving node positions:', err);
+                if (btn) btn.disabled = false;
+                if (icon) icon.innerText = 'save';
+                if (label) label.innerText = 'Save Positions *';
+                showToast('Terjadi kesalahan jaringan saat menyimpan posisi node: ' + err.message, 'error');
+            }
+        }
+
+        function savePositionsFromContext() {
+            hideAllContextMenus();
+            saveCurrentNodePositions();
+        }
+
+        window.addEventListener('beforeunload', function(e) {
+            if (hasUnsavedPositions) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
 
         function fitTopologyView() {
             if (cy && cy.elements().length > 0) {
