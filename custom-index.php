@@ -866,16 +866,24 @@ function getMenuTree($dir, $baseDir, $exc_dirs, $exc_files) {
 }
 
 $menuTree = [];
+$force_refresh = isset($_GET['t']);
+
 // Clear cache if 't' parameter is present (Force Refresh)
-if (isset($_GET['t']) && file_exists($menu_cache_file)) {
+if ($force_refresh && file_exists($menu_cache_file)) {
     @unlink($menu_cache_file);
 }
 
-if (file_exists($menu_cache_file)) {
-    $menuTree = json_decode(file_get_contents($menu_cache_file), true);
+// Load cache only if not forcing refresh and cache is younger than 120 seconds
+if (!$force_refresh && file_exists($menu_cache_file)) {
+    if ((time() - filemtime($menu_cache_file)) < 120) {
+        $cached_content = @file_get_contents($menu_cache_file);
+        if (!empty($cached_content)) {
+            $menuTree = json_decode($cached_content, true);
+        }
+    }
 }
 
-if (empty($menuTree)) {
+if (empty($menuTree) || !is_array($menuTree)) {
     $menuTree = getMenuTree($base_dir, $base_dir, $active_exclude_dirs, $active_exclude_files);
     if (!is_dir(dirname($menu_cache_file))) @mkdir(dirname($menu_cache_file), 0777, true);
     @file_put_contents($menu_cache_file, json_encode($menuTree));
