@@ -6,7 +6,9 @@
         "includes",
         "scanning-mib",
         "snmp-explorer",
-        "scratch"
+        "scratch",
+        "vendor",
+        "Engine"
     ],
     "exclude_files": [
         "nfx_local_config.php",
@@ -18,8 +20,11 @@
         "temp_query.php",
         "pfms_latency_map.php",
         "api_network.php",
+        "api-network.php",
+        "api-topology.php",
+        "debug.php",
         "cron.php",
-        "pfms_latency_map.php",
+        "topology-cron.php",
         "pfms_lib.php",
         "traffic-interface.php",
         "mib-webui-(beta).php",
