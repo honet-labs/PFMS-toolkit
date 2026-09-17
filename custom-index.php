@@ -96,7 +96,7 @@ $active_exclude_dirs = array_unique(array_merge($config_data['exclude_dirs'], $s
 $active_exclude_files = array_unique(array_merge($config_data['exclude_files'], $sys_files));
 
 // Core dashboard directories must NEVER be excluded by local config overrides
-$core_dashboards = ['Network-Mapping', 'network-mapping', 'Traffic-Dashboard', 'traffic-dashboard', 'Route-Parser', 'route-parser', 'Netflow-Explorer', 'netflow-explorer', 'Metrics-Dashboard', 'metrics-dashboard', 'Dynamic-Dashboard', 'dynamic-dashboard', 'Table-Viewer', 'table-viewer'];
+$core_dashboards = ['Topology-Network', 'topology-network', 'Network-Mapping', 'network-mapping', 'Traffic-Dashboard', 'traffic-dashboard', 'Route-Parser', 'route-parser', 'Netflow-Explorer', 'netflow-explorer', 'Metrics-Dashboard', 'metrics-dashboard', 'Dynamic-Dashboard', 'dynamic-dashboard', 'Table-Viewer', 'table-viewer'];
 $active_exclude_dirs = array_values(array_diff($active_exclude_dirs, $core_dashboards));
 
 // API Forwarding / Routing to sub-pages to prevent 500 errors caused by direct execution blocks in webservers
