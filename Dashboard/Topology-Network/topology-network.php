@@ -1821,27 +1821,41 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             background: #ffffff;
             border: 1px solid var(--border-color);
             border-radius: 12px;
-            padding: 36px 32px;
-            max-width: 440px;
+            padding: 40px 36px 36px 36px;
+            max-width: 460px;
             text-align: center;
             box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         .empty-state-card .empty-icon {
             font-size: 52px;
             color: var(--brand-green);
-            margin-bottom: 12px;
+            margin-bottom: 14px;
         }
         .empty-state-card h3 {
             font-size: 17px;
             font-weight: 700;
             color: var(--primary-navy);
-            margin: 0 0 8px 0;
+            margin: 0 0 10px 0;
         }
         .empty-state-card p {
             font-size: 13px;
             color: var(--text-muted);
-            line-height: 1.5;
-            margin: 0;
+            line-height: 1.6;
+            margin: 0 0 20px 0;
+        }
+        .empty-state-card .btn-apply {
+            margin-top: 8px !important;
+            padding: 0 22px !important;
+            height: 38px !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            border-radius: 6px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 8px !important;
         }
 
         /* AGENT PICKER MODAL STYLES */
@@ -2024,7 +2038,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     <span class="material-symbols-outlined empty-icon">hub</span>
                     <h3>Topology Canvas is Empty</h3>
                     <p>This topology dashboard does not have any devices yet. Pick agents from your Pandora FMS inventory to visualize.</p>
-                    <button class="btn-apply" onclick="openAddDevicesModal()" style="margin-top: 16px;">
+                    <button class="btn-apply" onclick="openAddDevicesModal()" style="margin-top: 8px !important;">
                         <span class="material-symbols-outlined">add_circle</span>
                         Add Devices to Topology
                     </button>
