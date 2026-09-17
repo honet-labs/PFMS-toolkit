@@ -2,6 +2,26 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.7] - 2026-09-18 (Network Topology SDDC/vSphere Visualization & Agent Device Classification)
+### Added
+- **SDDC & vSphere Network Topology Layout:**
+  - Mengimplementasikan visualisasi Network Topology interaktif terinspirasi arsitektur VMware SDDC / vSphere sesuai referensi desain UI.
+  - Mengintegrasikan library Cytoscape.js v3.28.1, Dagre layout engine, dan cytoscape-dagre secara offline/local di `vendor/cytoscape/` tanpa ketergantungan CDN internet (air-gapped ready).
+  - Merender status node dengan double-ring alert visual (lingkaran merah berkedip untuk critical, kuning untuk warning, dan netral untuk normal) lengkap dengan badge tanda seru `!`.
+  - Mengimplementasikan label dua baris (`Display Name` dan `Device Role Subtitle`) dengan typography modern dan kontras tinggi.
+- **Intelligent Agent Role Classification (`DeviceClassifier.php`):**
+  - Klasifikasi otomatis agen Pandora FMS ke dalam 10 role perangkat: Virtual Machine (`vm`), Hypervisor (`hypervisor`), Cluster (`cluster`), Datacenter (`datacenter`), Storage / Datastore (`storage`), vCenter (`vcenter`), Switch (`switch`), Router (`router`), Firewall (`firewall`), dan Server (`server`).
+  - Pemetaan berbasis OS (`so`), komentar, nama agen, dan nama grup Pandora FMS.
+  - Kemampuan override role kustom per perangkat yang disimpan di `mapping_layout.json` dan dapat diganti langsung via inspector drawer.
+  - Menyediakan *1-Click Reference SDDC Topology Demo* (CA-EAST-02-SDDC, Management/Workload Clusters, ESXi Hypervisors, Workload VMs, & Datastores) yang dapat dimuat instan untuk referensi arsitektur.
+- **Hierarchical Parent-Child Agent Topology Integration:**
+  - Topologi otomatis membaca relasi hierarki native Pandora FMS (`id_parent` pada tabel `tagente`) serta link LLDP/CDP/FDB, sehingga topologi terhubung secara dinamis dan akurat antar agent.
+- **Enhanced UI/UX Canvas & Inspector Drawer:**
+  - Toolbar modern sesuai pedoman `UI-UX-Style.prd` dan `StyleGuide.md` (warna aksen `#004d40`, Inter typography, Material Symbols Outlined).
+  - Fitur live search dengan auto pan & zoom ke node yang dipilih.
+  - Filter segmentasi cepat: *All Devices*, *Compute & Storage*, *Network Infrastructure*.
+  - Detail inspector drawer menampilkan ringkasan status, alamat IP, OS, grup, modul monitor aktif, peringatan alert aktif, link langsung ke konsol agen Pandora FMS, dan role switcher.
+
 ## [2.6] - 2026-09-08 (Traffic Dashboard Fix: 500 Error, Category Handling & Module Discovery)
 ### Fixed
 - **Deterministic Chart Color Stability & Module Ordering:**

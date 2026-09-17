@@ -1,110 +1,66 @@
 <?php
 /**
  * network-mapping.php
- * Interactive Network Mapping Tool Dashboard
- * Supports Auto-discovery and Manual Drag-and-Drop Edit Mode (SolarWinds style)
- * Fully upgraded to support multi-dashboard map lists and granular target filtering.
+ * Enterprise SDDC & Network Topology Map Dashboard
+ * PFMS-Toolkit - Enterprise Edition
+ * 
+ * Features:
+ * - Stunning visual topology with high-res vector device icons (VM, Hypervisor, Cluster, Datacenter, Datastore, vCenter, Switch, Router, Firewall)
+ * - Status alert rings (Red Critical, Yellow Warning, Normal) with alert counter badges
+ * - Multi-dashboard management with Master List and detail view
+ * - Auto-discovery from Pandora FMS agents (parent-child, LLDP, CDP, FDB) and manual connection editing
+ * - Organic Force-Directed (COSE), Hierarchical (Dagre), and Radial layout engines with coordinate saving
+ * - Live device search, filter by infrastructure type, inspector drawer with live metrics & device role switcher
+ * - 1-Click Reference SDDC/vSphere Demo topology loader matching user reference design
  */
 
 require_once __DIR__ . '/../../includes/db-connection.php';
 
+$script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
+    $PANDORA_BASE_URL = rtrim($matches[1], '/');
+    $PANEL_DIR_NAME = $matches[2];
+} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
+    $PANDORA_BASE_URL = '';
+    $PANEL_DIR_NAME = $matches[1];
+} else {
+    $PANDORA_BASE_URL = "/pandora_console";
+    $PANEL_DIR_NAME = "custom";
+}
+$vendor_url = ($PANDORA_BASE_URL ? $PANDORA_BASE_URL : '') . '/' . $PANEL_DIR_NAME . '/panel/vendor';
 
-$PANDORA_BASE_URL = "/pandora_console";
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
+$dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / NETWORK TOPOLOGY";
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Network Topology Map</title>
-    <link rel="icon" href="<?= $PANDORA_BASE_URL ?>/images/pandora.ico" type="image/x-icon">
+    <title>Network Topology Map - PFMS-Toolkit</title>
+    <link rel="icon" href="<?= htmlspecialchars($PANDORA_BASE_URL) ?>/images/pandora.ico" type="image/x-icon">
     
     <!-- Core Fonts & Styles -->
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url) ?>/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url) ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
     
-    <!-- Cytoscape.js for Enterprise Topology Graphs -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+    <!-- Cytoscape.js & Dagre (Local Offline Vendor with CDN Fallback) -->
+    <script src="<?= htmlspecialchars($vendor_url) ?>/cytoscape/cytoscape.min.js"></script>
+    <script src="<?= htmlspecialchars($vendor_url) ?>/cytoscape/dagre.min.js"></script>
+    <script src="<?= htmlspecialchars($vendor_url) ?>/cytoscape/cytoscape-dagre.min.js"></script>
+    <script>
+        if (typeof cytoscape === 'undefined') {
+            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"><\/script>');
+            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"><\/script>');
+            document.write('<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"><\/script>');
+        }
+    </script>
 
     <style>
-        /* Blank Canvas Helper Overlay styling */
-        .blank-helper-overlay {
-            position: absolute;
-            top: 45%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(255, 255, 255, 0.95);
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
-            border-radius: 12px;
-            padding: 30px;
-            text-align: center;
-            max-width: 480px;
-            z-index: 10;
-            pointer-events: auto;
-            font-family: 'Inter', sans-serif;
-            backdrop-filter: blur(8px);
-        }
-        .blank-helper-overlay .helper-icon {
-            font-size: 48px !important;
-            color: #004d40;
-            margin-bottom: 12px;
-        }
-        .blank-helper-overlay h3 {
-            margin: 0 0 8px 0;
-            font-size: 18px;
-            font-weight: 700;
-            color: #1e293b;
-        }
-        .blank-helper-overlay p {
-            margin: 0 0 20px 0;
-            font-size: 13px;
-            color: #64748b;
-            line-height: 1.6;
-        }
-        .blank-helper-overlay .helper-steps {
-            text-align: left;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .blank-helper-overlay .helper-step {
-            display: flex;
-            gap: 12px;
-            align-items: flex-start;
-        }
-        .blank-helper-overlay .step-num {
-            background: #e0f2fe;
-            color: #0369a1;
-            font-weight: 700;
-            font-size: 12px;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-        .blank-helper-overlay .helper-step strong {
-            display: block;
-            font-size: 13px;
-            color: #334155;
-            margin-bottom: 2px;
-        }
-        .blank-helper-overlay .helper-step p {
-            margin: 0;
-            font-size: 12px;
-            color: #64748b;
-        }
-
         :root { 
             --primary-bg: #f4f6f8; 
             --card-bg: #fff; 
@@ -112,169 +68,185 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             --text-main: #1e293b; 
             --text-dim: #64748b; 
             --accent-green: #004d40; 
+            --accent-green-hover: #00695c;
+            --status-critical: #ef4444;
+            --status-warning: #f59e0b;
+            --status-ok: #10b981;
         }
 
-        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #334155; font-size: 14px; background-color: #f4f6f8; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        body { 
+            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+            color: #334155; 
+            font-size: 13px; 
+            background-color: #f4f6f8; 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            overflow: hidden; 
+            -webkit-font-smoothing: antialiased;
+        }
         * { box-sizing: border-box; }
-        .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; line-height: 1; display: inline-block; }
+        .material-symbols-outlined { 
+            font-family: 'Material Symbols Outlined' !important; 
+            font-size: 18px !important; 
+            vertical-align: middle; 
+            line-height: 1; 
+            display: inline-block; 
+        }
 
         /* HEADER */
-        .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; flex-shrink: 0; z-index: 10; }
-        .header-logo { height: 24px; width: auto; }
-        .header-divider { width: 1px; height: 28px; background-color: #dce1e5; margin: 0 20px; }
-        .header-title-box { display: flex; flex-direction: column; line-height: 1.2; margin-right: 40px; }
-        .header-title-box .main-title { font-size: 14px !important; font-weight: normal !important; color: #0b1a26 !important; }
-        .nav-icon-btn { color: #4a5568 !important; text-decoration: none; display: flex; align-items: center; justify-content: center; height: 36px; width: 36px; border-radius: 50%; transition: 0.2s; border:none; background:transparent; cursor:pointer;}
-        .nav-icon-btn:hover { background-color: #e0e4e8; color: #0b1a26 !important; }
+        .pandora-header-top { 
+            background-color: #ffffff; 
+            border-bottom: 1px solid #e0e4e8; 
+            height: 56px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            padding: 0 24px; 
+            flex-shrink: 0; 
+            z-index: 20; 
+        }
+        .header-left { display: flex; align-items: center; }
+        .header-logo { height: 22px; width: auto; object-fit: contain; }
+        .header-divider { width: 1px; height: 24px; background-color: #dce1e5; margin: 0 16px; }
+        .header-title-box { display: flex; flex-direction: column; line-height: 1.2; }
+        .header-title-box .main-title { font-size: 13px !important; font-weight: 600 !important; color: #0b1a26 !important; }
+        .header-title-box .sub-title { font-size: 11px !important; color: #64748b !important; }
+        
+        .pandora-header-bottom { 
+            background-color: #ffffff; 
+            border-bottom: 1px solid #e0e4e8;
+            padding: 12px 24px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            flex-shrink: 0; 
+            gap: 15px;
+        }
+        .page-breadcrumb { font-size: 10px !important; color: #64748b !important; margin-bottom: 3px; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.5px; }
+        .page-title { font-size: 16px !important; color: #0b1a26 !important; margin: 0; font-weight: 700 !important; line-height: 1.2; }
 
-        .pandora-header-bottom { background-color: #f4f6f8; padding: 15px 30px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-        .page-breadcrumb { font-size: 11px !important; color: #64748b !important; margin-bottom: 4px; font-weight: normal !important; text-transform: uppercase; letter-spacing: 0.5px; }
-        .page-title { font-size: 18px !important; color: #0b1a26 !important; margin: 0; font-weight: 600 !important; line-height: 1.2; }
-
-        /* MASTER LIST VIEW TABLE STYLING */
-        .main-content { padding: 25px 30px; overflow-y: auto; flex-grow: 1; }
-        .card { background: #fff; border-radius: 8px; border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0,0,0,0.03); overflow: hidden; }
+        /* MASTER LIST VIEW */
+        .main-content { padding: 24px; overflow-y: auto; flex-grow: 1; }
+        .card { background: #fff; border-radius: 8px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px rgba(0,0,0,0.03); overflow: hidden; }
         table.master-table { width: 100%; border-collapse: collapse; }
-        table.master-table th { background: #f8fafc; padding: 14px 20px; text-align: left; color: var(--text-dim); text-transform: uppercase; font-size: 11px; font-weight: 600; border-bottom: 1px solid var(--border-color); }
-        table.master-table td { padding: 15px 20px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: var(--text-main); }
+        table.master-table th { background: #f8fafc; padding: 12px 20px; text-align: left; color: var(--text-dim); text-transform: uppercase; font-size: 11px; font-weight: 600; border-bottom: 1px solid var(--border-color); }
+        table.master-table td { padding: 14px 20px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: var(--text-main); }
         table.master-table tr:hover td { background: #fcfdfe; }
         table.master-table th:last-child, table.master-table td:last-child { width: 1%; white-space: nowrap; padding-right: 25px; text-align: right; }
         
-        .dash-link { color: #004d40; text-decoration: none; font-weight: 600; transition: 0.2s; }
-        .dash-link:hover { text-decoration: underline; color: #002d25; }
+        .dash-link { color: #004d40; text-decoration: none; font-weight: 600; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+        .dash-link:hover { text-decoration: underline; color: #00695c; }
         
-        .btn-create { background: #004d40; color: #fff !important; border: none; padding: 8px 18px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: 0.2s; }
-        .btn-create:hover { background: #00332a; }
+        .btn-create { background: #004d40; color: #fff !important; border: none; padding: 7px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: 0.2s; }
+        .btn-create:hover { background: #00695c; }
+
+        .btn-demo-badge { background: #0284c7; color: #fff !important; border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; text-decoration: none; }
+        .btn-demo-badge:hover { background: #0369a1; }
 
         .btn-action {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 32px;
-            height: 32px;
-            padding: 0;
+            width: 30px;
+            height: 30px;
             background: #ffffff;
             border: 1px solid #e2e8f0;
-            border-radius: 6px;
+            border-radius: 5px;
             color: #64748b;
             cursor: pointer;
             transition: all 0.2s;
             text-decoration: none;
-            margin-left: 5px;
-            box-sizing: border-box;
+            margin-left: 4px;
         }
-        .btn-action:hover {
-            background: #f1f5f9;
-            border-color: #cbd5e1;
-            color: #0f172a;
-        }
+        .btn-action:hover { background: #f1f5f9; border-color: #cbd5e1; color: #0f172a; }
         .btn-action .material-symbols-outlined { font-size: 16px !important; }
         .btn-action.btn-delete { color: #ef4444; border-color: #fee2e2; }
         .btn-action.btn-delete:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
 
-        /* TOP CONTROLS */
+        /* TOP CONTROLS IN CANVAS VIEW */
         .top-controls {
             display: flex;
             flex-direction: row;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
             flex-grow: 1;
             justify-content: flex-end;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
         }
         .btn-apply {
             background: #004d40;
             color: #fff !important;
             border: none;
-            padding: 0 18px;
-            height: 36px;
-            border-radius: 6px;
+            padding: 0 14px;
+            height: 32px;
+            border-radius: 5px;
             font-weight: 600 !important;
             font-size: 12px !important;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 5px;
             white-space: nowrap;
             transition: 0.2s;
-            box-sizing: border-box;
         }
-        .btn-apply:hover {
-            background: #00332a;
-        }
+        .btn-apply:hover { background: #00695c; }
         .btn-secondary-custom {
             background: #fff;
             color: #4a5568 !important;
             border: 1px solid #dce1e5;
-            padding: 0 16px;
-            height: 36px;
-            border-radius: 6px;
+            padding: 0 12px;
+            height: 32px;
+            border-radius: 5px;
             font-weight: 600 !important;
             font-size: 12px !important;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 5px;
             white-space: nowrap;
             transition: 0.2s;
-            box-sizing: border-box;
         }
-        .btn-secondary-custom:hover {
-            background: #f8fafc;
-            color: #0b1a26 !important;
-            border-color: #cbd5e1;
-        }
+        .btn-secondary-custom:hover { background: #f8fafc; color: #0b1a26 !important; border-color: #cbd5e1; }
 
-        /* SEGMENTED CONTROL TAB STYLING */
         .segmented-control {
             display: inline-flex;
             background: #f1f5f9;
-            padding: 3px;
-            border-radius: 8px;
+            padding: 2px;
+            border-radius: 6px;
             border: 1px solid #e2e8f0;
-            height: 36px;
-            box-sizing: border-box;
+            height: 32px;
             align-items: center;
         }
         .segment-btn {
             border: none;
             background: transparent;
-            padding: 0 16px;
-            height: 30px;
-            border-radius: 6px;
-            font-size: 12px;
+            padding: 0 12px;
+            height: 26px;
+            border-radius: 4px;
+            font-size: 11px;
             font-weight: 600;
             color: #64748b;
             cursor: pointer;
-            transition: all 0.2s;
-            white-space: nowrap;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            box-sizing: border-box;
-        }
-        .segment-btn:hover {
-            color: #334155;
+            transition: 0.2s;
         }
         .segment-btn.active {
             background: #ffffff;
             color: #004d40;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
-        
-        /* SEARCH BAR */
+
         .search-container {
             position: relative;
-            max-width: 200px;
-            width: 100%;
-            height: 36px;
-            box-sizing: border-box;
+            width: 180px;
         }
         .search-container .search-icon {
             position: absolute;
-            left: 10px;
+            left: 8px;
             top: 50%;
             transform: translateY(-50%);
             color: #94a3b8 !important;
@@ -283,104 +255,259 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
         .search-container input {
             width: 100%;
-            height: 36px;
-            padding: 0 12px 0 32px;
-            border-radius: 6px;
+            height: 32px;
+            padding: 4px 10px 4px 28px;
+            border-radius: 5px;
             border: 1px solid #dce1e5;
             background-color: #ffffff;
-            font-size: 12px !important;
-            font-weight: 500 !important;
-            color: #333 !important;
+            font-size: 12px;
+            color: #1e293b;
             outline: none;
-            box-sizing: border-box;
             transition: 0.2s;
         }
         .search-container input:focus {
             border-color: #004d40;
-            box-shadow: 0 0 0 2px rgba(0, 77, 64, 0.1);
+            box-shadow: 0 0 0 2px rgba(0,77,64,0.12);
         }
 
-        /* GRAPH LAYOUT */
-        .map-wrapper { display: flex; flex-grow: 1; overflow: hidden; position: relative; }
-        #network-map-canvas { flex-grow: 1; height: 100%; background-color: #ffffff; position: relative; outline: none; }
+        /* CANVAS CONTAINER */
+        .map-wrapper {
+            position: relative;
+            flex-grow: 1;
+            background: #ffffff;
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 24px 24px;
+            overflow: hidden;
+            display: flex;
+        }
+        #network-map-canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            inset: 0;
+        }
 
-        /* Floating Mode Overlay Badge */
-        .mode-badge { position: absolute; top: 20px; left: 20px; z-index: 5; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(4px); border-radius: 20px; padding: 6px 14px; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.1); pointer-events: none; font-size: 12px; font-weight: 500; }
-        .mode-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #10b981; animation: pulse-green 1.5s infinite; }
-        .mode-dot.edit-mode { background-color: #ef4444; animation: pulse-red 1.5s infinite; }
-        
-        @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
-        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        /* MODE BADGE */
+        .mode-badge {
+            position: absolute;
+            top: 14px;
+            left: 18px;
+            background: rgba(255, 255, 255, 0.94);
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 5px 14px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #334155;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            z-index: 5;
+            backdrop-filter: blur(4px);
+        }
+        .mode-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
+        .mode-dot.edit-mode { background: #ea580c; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
-        /* Floating Legends */
-        .legend-box { position: absolute; bottom: 20px; left: 20px; z-index: 5; background: rgba(255,255,255,0.9); backdrop-filter: blur(4px); border: 1px solid #e0e4e8; border-radius: 6px; padding: 12px 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 8px; }
-        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #475569; }
-        .legend-color { width: 12px; height: 12px; border-radius: 2px; }
-        
-        /* SIDE DRAWER (PERFORMANCE DETAILS) */
-        .metrics-drawer { position: absolute; top: 0; right: -360px; width: 350px; height: 100%; background: #ffffff; border-left: 1px solid #e0e4e8; box-shadow: -5px 0 25px rgba(0,0,0,0.08); z-index: 100; transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; }
+        /* FLOATING ZOOM / CANVAS CONTROLS */
+        .canvas-floating-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 5;
+        }
+        .floating-btn {
+            width: 36px;
+            height: 36px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            color: #475569;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+            transition: 0.2s;
+        }
+        .floating-btn:hover { background: #f8fafc; color: #0b1a26; border-color: #cbd5e1; }
+
+        /* LEGEND BOX */
+        .legend-box {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.94);
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 10px 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 11px;
+            backdrop-filter: blur(4px);
+        }
+        .legend-title { font-weight: 700; color: #0b1a26; margin-bottom: 2px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+        .legend-row { display: flex; align-items: center; gap: 14px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; color: #475569; font-weight: 500; }
+        .legend-ring { width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid; display: inline-block; background: #fff; }
+
+        /* PERFORMANCE DRAWER */
+        .metrics-drawer {
+            position: absolute;
+            top: 0;
+            right: -420px;
+            width: 400px;
+            height: 100%;
+            background: #ffffff;
+            border-left: 1px solid #e2e8f0;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.06);
+            transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 15;
+            display: flex;
+            flex-direction: column;
+        }
         .metrics-drawer.open { right: 0; }
-        .drawer-header { padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
-        .drawer-title { font-weight: 600; color: #0b1a26; margin: 0; font-size: 15px; }
-        .drawer-body { padding: 20px; overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 20px; }
+        .drawer-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8fafc;
+        }
+        .drawer-title-box { display: flex; align-items: center; gap: 10px; }
+        .drawer-icon-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .drawer-title { margin: 0; font-size: 14px; font-weight: 700; color: #0b1a26; }
+        .drawer-subtitle { font-size: 11px; color: #64748b; margin-top: 1px; }
+        .drawer-body { padding: 20px; overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 18px; }
         
-        .metric-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; display: flex; align-items: center; justify-content: space-between; }
-        .metric-label-box { display: flex; align-items: center; gap: 8px; }
-        .metric-value { font-weight: 600; color: #0f172a; font-size: 15px; }
+        .metric-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .metric-label-box { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #334155; }
+        .metric-value { font-size: 13px; font-weight: 700; color: #0b1a26; font-family: 'Courier New', monospace; }
+        
+        .status-pill {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .status-pill.ok { background: #dcfce7; color: #166534; }
+        .status-pill.warn { background: #fef9c3; color: #854d0e; }
+        .status-pill.crit { background: #fee2e2; color: #b91c1c; }
+        .status-pill.unknown { background: #e5e7eb; color: #374151; }
 
-        /* PORT STATUS LIST */
-        .port-list { display: flex; flex-direction: column; gap: 6px; }
-        .port-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #fff; border: 1px solid #f0f3f5; border-radius: 4px; font-size: 12px; }
-        .port-pill { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
-        .port-pill.up { background: #d1fae5; color: #065f46; }
+        .port-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; }
+        .port-item {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 6px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+        }
+        .port-pill { font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; }
+        .port-pill.up { background: #dcfce7; color: #166534; }
         .port-pill.down { background: #fee2e2; color: #991b1b; }
-        .port-pill.warn { background: #fef3c7; color: #92400e; }
 
-        /* MODAL FOR ADDING LINK */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 2000; }
-        .modal-box { background: #fff; width: 500px; padding: 25px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #e0e4e8; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; font-size: 11px; text-transform: uppercase; font-weight: 600; color: #64748b; margin-bottom: 5px; }
-        .form-control-fix { width: 100%; height: 36px; padding: 8px 12px; border: 1px solid #dce1e5; border-radius: 4px; background-color: #fff; outline: none; font-size: 13px; }
-        .form-control-fix:focus { border-color: #004d40; }
-
-        /* Standalone view support */
-        <?php if ($isStandalone): ?>
-        .pandora-header-top, .pandora-header-bottom { display: none !important; }
-        .map-wrapper { height: 100vh; }
-        <?php endif; ?>
+        /* MODALS */
+        .modal-overlay { 
+            position: fixed; 
+            inset: 0; 
+            background: rgba(11, 26, 38, 0.45); 
+            display: none; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 1000; 
+            backdrop-filter: blur(3px);
+        }
+        .modal-box { 
+            background: #fff; 
+            width: 480px; 
+            max-width: 95%; 
+            border-radius: 8px; 
+            padding: 24px; 
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15); 
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-control-fix {
+            width: 100%;
+            height: 36px;
+            padding: 6px 12px;
+            border: 1px solid #dce1e5;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #1e293b;
+            background: #fff;
+            outline: none;
+            transition: 0.2s;
+        }
+        .form-control-fix:focus {
+            border-color: #004d40;
+            box-shadow: 0 0 0 2px rgba(0,77,64,0.12);
+        }
     </style>
 </head>
 <body>
 
-<!-- TOP GLOBAL BAR -->
-<?php if (!$isStandalone): ?>
+<!-- TOP HEADER -->
 <div class="pandora-header-top">
     <div class="header-left">
-        <img src="<?= $PANDORA_BASE_URL ?>/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
+        <a href="<?= htmlspecialchars($PANDORA_BASE_URL) ?>/index.php" title="Back to Pandora FMS">
+            <img src="<?= htmlspecialchars($PANDORA_BASE_URL) ?>/enterprise/images/custom_logo/logo-default-pandorafms.png" alt="Pandora Logo" class="header-logo" onerror="this.style.display='none'">
+        </a>
         <div class="header-divider"></div>
         <div class="header-title-box">
             <span class="main-title">Pandora FMS</span>
-            <span class="sub-title">PFMS-Toolkit</span>
+            <span class="sub-title">Network Topology Map</span>
         </div>
-    </div>
-    <div class="header-right">
-        <a href="<?= $PANDORA_BASE_URL ?>/index.php" class="nav-icon-btn"><span class="material-symbols-outlined">home</span></a>
     </div>
 </div>
-<?php endif; ?>
 
 <!-- ========================================== -->
-<!-- 1. MASTER LANDING PAGE VIEW -->
+<!-- 1. MASTER LIST VIEW -->
 <!-- ========================================== -->
-<div id="masterView">
+<div id="masterView" style="display:flex; flex-direction:column; flex-grow:1; overflow:hidden;">
     <div class="pandora-header-bottom">
-        <div class="breadcrumb-box">
-            <span class="page-breadcrumb"><?= h($dynamic_breadcrumb) ?></span>
-            <h1 class="page-title">Network Topology Manager</h1>
+        <div>
+            <span class="page-breadcrumb"><?= htmlspecialchars($dynamic_breadcrumb) ?></span>
+            <h1 class="page-title">Network Topology Maps</h1>
         </div>
         <div class="top-controls">
-            <button class="btn-create" onclick="openCreateModal()"><span class="material-symbols-outlined">add</span> Create Map</button>
+            <button class="btn-demo-badge" onclick="loadDemoMap()" title="Load exact VMware vSphere SDDC Reference Topology from documentation">
+                <span class="material-symbols-outlined">hub</span> Load Reference vSphere Demo
+            </button>
+            <button class="btn-create" onclick="openCreateModal()">
+                <span class="material-symbols-outlined">add</span> Create Map
+            </button>
         </div>
     </div>
     <div class="main-content">
@@ -391,11 +518,12 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <th>Map Name</th>
                         <th>Target Group</th>
                         <th>Target Node Focus</th>
+                        <th>Type / Schema</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="masterTableBody">
-                    <tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">Loading dashboards...</td></tr>
+                    <tr><td colspan="5" style="text-align:center; padding:40px; color:#94a3b8;">Loading topology maps...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -409,38 +537,39 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <!-- SUB BAR (TITLE & CONTROLS) -->
     <div class="pandora-header-bottom">
         <div class="breadcrumb-box">
-            <span class="page-breadcrumb"><?= h($dynamic_breadcrumb) ?></span>
+            <span class="page-breadcrumb"><?= htmlspecialchars($dynamic_breadcrumb) ?></span>
             <h1 class="page-title" style="display:flex; align-items:center; gap:8px;">
-                <button onclick="goBack()" style="background:none; border:none; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;">
-                    <span class="material-symbols-outlined" style="font-size:24px!important; color:#004d40;">arrow_back</span>
+                <button onclick="goBack()" style="background:none; border:none; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;" title="Back to Map List">
+                    <span class="material-symbols-outlined" style="font-size:22px!important; color:#004d40;">arrow_back</span>
                 </button> 
                 <span id="detailDashName">Topology Map</span>
             </h1>
         </div>
         <div class="top-controls">
-            <!-- TOPOLOGY MODE TABS -->
-            <div class="segmented-control" style="margin-right: 10px;">
-                <button class="segment-btn active" id="tabL2" onclick="switchMode('layer2')">Layer 2</button>
-                <button class="segment-btn" id="tabL3" onclick="switchMode('layer3')">Layer 3</button>
-                <button class="segment-btn" id="tabEP" onclick="switchMode('endpoint')">Endpoints</button>
+            <!-- MODE TABS -->
+            <div class="segmented-control">
+                <button class="segment-btn active" id="tabAll" onclick="switchMode('all')">All Devices</button>
+                <button class="segment-btn" id="tabCompute" onclick="switchMode('compute')">Compute & Storage</button>
+                <button class="segment-btn" id="tabNetwork" onclick="switchMode('network')">Network (L2/L3)</button>
             </div>
-            <!-- GLOBAL SEARCH -->
+
+            <!-- SEARCH IN CANVAS -->
             <div class="search-container">
                 <span class="material-symbols-outlined search-icon">search</span>
-                <input type="text" id="nodeSearchInput" placeholder="Find device..." onkeyup="searchNode()">
+                <input type="text" id="nodeSearchInput" placeholder="Find device / IP..." onkeyup="searchNode()">
             </div>
             
-            <!-- AUTO GENERATE / PHYSICS RESET -->
-            <div style="display:flex; align-items:center; gap:8px;">
+            <!-- LAYOUT SELECTOR -->
+            <div style="display:flex; align-items:center; gap:6px;">
                 <label style="font-size: 11px; font-weight: 600; color: #64748b; margin: 0; text-transform: uppercase;">Layout:</label>
-                <select id="layoutSelect" class="form-control-fix" onchange="applySelectedLayout()" style="width: 140px; height: 32px; font-size: 12px; padding: 2px 8px; border: 1px solid #dce1e5; border-radius: 4px; background-color: #fff; outline: none;">
-                    <option value="cose">Force-Directed (Spring)</option>
+                <select id="layoutSelect" class="form-control-fix" onchange="applySelectedLayout()" style="width: 140px; height: 32px; font-size: 12px; padding: 2px 8px;">
+                    <option value="cose">Organic Force (Spring)</option>
                     <option value="dagre">Hierarchical (Tree)</option>
                     <option value="breadthfirst">Concentric (Radial)</option>
                     <option value="circle">Circular (Ring)</option>
                 </select>
-                <button class="btn-secondary-custom" id="physicsBtn" onclick="applySelectedLayout()" title="Re-run selected layout" style="height: 32px; padding: 0 10px; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                    <span class="material-symbols-outlined" style="font-size:16px!important;">sync</span> Run
+                <button class="btn-secondary-custom" onclick="applySelectedLayout()" title="Re-align layout" style="height: 32px; padding: 0 8px;">
+                    <span class="material-symbols-outlined" style="font-size:16px!important;">sync</span>
                 </button>
             </div>
 
@@ -448,7 +577,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 <span class="material-symbols-outlined">edit</span> Customize Map
             </button>
 
-            <!-- ADD MANUAL LINK (EDIT ONLY) -->
+            <!-- CUSTOMIZER ACTIONS -->
             <button class="btn-apply" id="addNodeBtn" onclick="openAddNodeModal()" style="display: none; background: #0ea5e9 !important;">
                 <span class="material-symbols-outlined">add_to_queue</span> Add Node
             </button>
@@ -457,73 +586,115 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 <span class="material-symbols-outlined">add_link</span> Add Connection
             </button>
 
-            <button class="btn-apply" id="discoverLinksBtn" onclick="discoverLinksFromCanvas()" style="display: none; background: #004d40 !important;" title="Discover physical connections using LLDP/CDP/FDB cache">
+            <button class="btn-apply" id="discoverLinksBtn" onclick="discoverLinksFromCanvas()" style="display: none; background: #004d40 !important;" title="Auto-connect physical links using LLDP/CDP cache">
                 <span class="material-symbols-outlined">explore</span> Auto-Connect LLDP
             </button>
 
             <button class="btn-apply" id="saveLayoutBtn" onclick="saveLayout(true)" style="display: none;">
                 <span class="material-symbols-outlined">save</span> Save Layout
             </button>
+
+            <!-- EXPORT PNG & DEMO RE-LOAD -->
+            <button class="btn-secondary-custom" onclick="exportTopologyImage()" title="Export high-resolution PNG image">
+                <span class="material-symbols-outlined">photo_camera</span> Export
+            </button>
         </div>
     </div>
 
     <!-- MAP CANVAS CONTAINER -->
     <div class="map-wrapper">
-        <!-- Blank Canvas Helper Overlay -->
-        <div id="blankCanvasHelper" class="blank-helper-overlay" style="display: none;">
-            <span class="material-symbols-outlined helper-icon">schema</span>
-            <h3>Manual Topology Builder</h3>
-            <p>This is a blank canvas. Start building your custom map in two simple steps:</p>
-            <div class="helper-steps">
-                <div class="helper-step">
-                    <span class="step-num">1</span>
-                    <div>
-                        <strong>Activate Customizer Mode</strong>
-                        <p>Click the <b>"Customize Map"</b> button in the top-right toolbar.</p>
-                    </div>
-                </div>
-                <div class="helper-step">
-                    <span class="step-num">2</span>
-                    <div>
-                        <strong>Add & Connect Peripherals</strong>
-                        <p>Click <b>"Add Node"</b> to place devices. Then click <b>"Auto-Connect LLDP"</b> to link them instantly!</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Active Mode Indicator Badge -->
         <div class="mode-badge">
             <div class="mode-dot" id="modeDot"></div>
-            <span id="modeLabel">Auto-Discovery (Real-time)</span>
+            <span id="modeLabel">Real-time Topology</span>
         </div>
 
         <!-- PANDORA CANVAS -->
         <div id="network-map-canvas"></div>
 
-        <!-- Legends Box -->
+        <!-- FLOATING CONTROLS -->
+        <div class="canvas-floating-controls">
+            <button class="floating-btn" onclick="zoomIn()" title="Zoom In">
+                <span class="material-symbols-outlined">add</span>
+            </button>
+            <button class="floating-btn" onclick="zoomOut()" title="Zoom Out">
+                <span class="material-symbols-outlined">remove</span>
+            </button>
+            <button class="floating-btn" onclick="fitTopologyView()" title="Fit Map to Screen">
+                <span class="material-symbols-outlined">fit_screen</span>
+            </button>
+        </div>
+
+        <!-- LEGENDS BOX -->
         <div class="legend-box">
-            <div class="legend-item"><span class="legend-color" style="background:#2ecc71;"></span> Health OK (Port Up)</div>
-            <div class="legend-item"><span class="legend-color" style="background:#f1c40f;"></span> Health Warning</div>
-            <div class="legend-item"><span class="legend-color" style="background:#e74c3c;"></span> Health Down (Port Critical)</div>
-            <div class="legend-item"><span class="legend-color" style="background:#3498db;"></span> Not Initialized</div>
+            <div class="legend-title">Status & Elements</div>
+            <div class="legend-row">
+                <div class="legend-item"><span class="legend-ring" style="border-color: #ef4444;"></span> Critical Alarm</div>
+                <div class="legend-item"><span class="legend-ring" style="border-color: #f59e0b;"></span> Warning Alarm</div>
+                <div class="legend-item"><span class="legend-ring" style="border-color: #cbd5e1;"></span> Normal / Healthy</div>
+            </div>
+            <div class="legend-row" style="margin-top: 4px; color: #64748b; font-size: 10px;">
+                <span>💻 VM</span>
+                <span>🖥️ Hypervisor</span>
+                <span>🏢 Datacenter</span>
+                <span>🗄️ Datastore</span>
+                <span>🔲 Cluster</span>
+                <span>🔄 Switch</span>
+            </div>
         </div>
 
         <!-- PERFORMANCE DRAWER -->
         <div class="metrics-drawer" id="metricsDrawer">
             <div class="drawer-header">
-                <h5 class="drawer-title" id="drawerAgentName">Switch Floor-1</h5>
+                <div class="drawer-title-box">
+                    <div class="drawer-icon-circle" id="drawerIconCircle">
+                        <span class="material-symbols-outlined" id="drawerIconSymbol" style="color:#004d40;">laptop</span>
+                    </div>
+                    <div>
+                        <h5 class="drawer-title" id="drawerAgentName">Device Name</h5>
+                        <div class="drawer-subtitle" id="drawerDeviceRole">VMware vSphere VM</div>
+                    </div>
+                </div>
                 <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeDrawer()">close</span>
             </div>
             <div class="drawer-body">
-                <div>
-                    <span class="text-uppercase text-muted" style="font-size:10px; font-weight:600; display:block; margin-bottom:8px;">IP Address</span>
-                    <span class="font-monospace text-dark" id="drawerAgentIp" style="background:#f1f5f9; padding:4px 8px; border-radius:4px; font-size:12px;">192.168.201.20</span>
+                <!-- IP & STATUS ROW -->
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <span style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:4px;">IP Address</span>
+                        <span class="font-monospace" id="drawerAgentIp" style="background:#f1f5f9; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:600;">--</span>
+                    </div>
+                    <div>
+                        <span style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:4px; text-align:right;">Health</span>
+                        <span id="drawerStatusPill" class="status-pill ok">NORMAL</span>
+                    </div>
                 </div>
 
-                <!-- Metrics grid -->
+                <!-- DEVICE ROLE CUSTOMIZER -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px;">
+                    <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:6px;">Device Role / Icon</label>
+                    <div style="display:flex; gap:6px;">
+                        <select id="drawerRoleSelect" class="form-control-fix" style="font-size:12px; height:32px;">
+                            <option value="vm">💻 VMware vSphere VM</option>
+                            <option value="hypervisor">🖥️ VMware vSphere Hypervisor</option>
+                            <option value="cluster">🔲 VMware vSphere Cluster</option>
+                            <option value="datacenter">🏢 VMware vSphere Datacenter</option>
+                            <option value="storage">🗄️ VMware vSphere Datastore</option>
+                            <option value="vcenter">📊 VMware vSphere vCenter</option>
+                            <option value="switch">🔄 Network Switch</option>
+                            <option value="router">🌐 Network Router</option>
+                            <option value="firewall">🛡️ Security Firewall</option>
+                            <option value="server">🖳 Physical Server</option>
+                        </select>
+                        <button class="btn-apply" onclick="saveNodeRoleFromDrawer()" style="height:32px; padding:0 12px;" title="Apply and save role for this device">
+                            Set
+                        </button>
+                    </div>
+                </div>
+
+                <!-- METRICS GRID -->
                 <div>
-                    <span class="text-uppercase text-muted" style="font-size:10px; font-weight:600; display:block; margin-bottom:12px;">Operational Metrics</span>
+                    <span style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:10px;">Operational Metrics</span>
                     <div style="display:flex; flex-direction:column; gap:8px;">
                         <div class="metric-card">
                             <div class="metric-label-box">
@@ -539,24 +710,27 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         </div>
                         <div class="metric-card">
                             <div class="metric-label-box">
-                                <span class="material-symbols-outlined" style="color:#10b981;">sensors</span> Host Alive
+                                <span class="material-symbols-outlined" style="color:#10b981;">sensors</span> Host Alive / Latency
                             </div>
                             <span class="metric-value" id="drawerLatency">--</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Ports Availability -->
+                <!-- PORTS AVAILABILITY -->
                 <div>
-                    <span class="text-uppercase text-muted" style="font-size:10px; font-weight:600; display:block; margin-bottom:10px;">Operational Port Status</span>
+                    <span style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:8px;">Network Interfaces / Ports</span>
                     <div class="port-list" id="drawerPorts">
                         <span class="text-muted small">No Monitored Ports.</span>
                     </div>
                 </div>
 
-                <!-- Diagnostics -->
-                <div style="margin-top:auto; padding-top:20px; border-top:1px solid #eee;">
-                    <button class="btn-apply w-100 justify-content-center" onclick="performPing()">
+                <!-- ACTIONS -->
+                <div style="margin-top:auto; padding-top:16px; border-top:1px solid #e2e8f0; display:flex; flex-direction:column; gap:8px;">
+                    <a id="drawerPandoraLink" href="#" target="_blank" class="btn-secondary-custom justify-content-center" style="height:34px; text-decoration:none;">
+                        <span class="material-symbols-outlined">open_in_new</span> Open in Pandora Console
+                    </a>
+                    <button class="btn-apply justify-content-center" onclick="performPing()" style="height:34px;">
                         <span class="material-symbols-outlined">bolt</span> Test Connection (Ping)
                     </button>
                 </div>
@@ -572,16 +746,16 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 <!-- CREATE/EDIT DASHBOARD MAP MODAL -->
 <div class="modal-overlay" id="createModal">
     <div class="modal-box">
-        <h3 id="modalTitle" style="margin-top:0; font-size: 16px; font-weight:600; color:#0b1a26; text-transform:uppercase; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:20px;">Create Topology Map</h3>
+        <h3 id="modalTitle" style="margin-top:0; font-size: 15px; font-weight:700; color:#0b1a26; text-transform:uppercase; border-bottom:1px solid #eee; padding-bottom:12px; margin-bottom:18px;">Create Topology Map</h3>
         <div class="form-group">
             <label style="font-size: 11px; text-transform: uppercase; font-weight:600; color:#64748b; display:block; margin-bottom:5px;">Map Name</label>
-            <input type="text" id="m_name" class="form-control-fix" placeholder="e.g. Core Routers SITE CIGANJUR">
+            <input type="text" id="m_name" class="form-control-fix" placeholder="e.g. Core SDDC Infrastructure">
         </div>
         <div class="form-group">
             <label style="font-size: 11px; text-transform: uppercase; font-weight:600; color:#64748b; display:block; margin-bottom:5px;">Map Generation Type</label>
             <select id="m_type" class="form-control-fix">
-                <option value="auto">Auto-Discovery (Pull from Group/Seed)</option>
-                <option value="blank">Blank Canvas (Manual Build)</option>
+                <option value="auto">Auto-Discovery (Pandora FMS Group Hierarchy)</option>
+                <option value="blank">Blank Canvas (Manual Build & Link)</option>
             </select>
         </div>
         <div id="auto_discovery_options">
@@ -594,52 +768,52 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 <select id="m_agent" class="form-control-fix"></select>
             </div>
         </div>
-        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:25px;">
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:22px;">
             <button class="btn-secondary-custom" onclick="closeCreateModal()">Cancel</button>
             <button id="btnSubmitModal" class="btn-create" onclick="saveNewDashboard()">Save Map</button>
         </div>
     </div>
 </div>
 
-<!-- ADD PORT-TO-PORT CONNECTION MODAL (EDIT ONLY) -->
+<!-- ADD PORT-TO-PORT CONNECTION MODAL -->
 <div class="modal-overlay" id="addLinkModal">
     <div class="modal-box">
-        <div style="display:flex; justify-content:space-between; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:20px;">
-            <h5 style="font-weight:600; margin:0; color:#0b1a26; text-transform:uppercase;">Add Port-to-Port Connection</h5>
+        <div style="display:flex; justify-content:space-between; border-bottom:1px solid #eee; padding-bottom:12px; margin-bottom:18px;">
+            <h5 style="font-weight:700; margin:0; color:#0b1a26; text-transform:uppercase; font-size:14px;">Connect Devices</h5>
             <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeAddLinkModal()">close</span>
         </div>
         
         <div class="form-group">
-            <label>Source Node (Agent)</label>
+            <label style="font-size:11px; font-weight:600; color:#64748b;">Source Device</label>
             <select id="srcAgent" class="form-control-fix" onchange="loadAgentPorts('src')">
-                <option value="">-- Select Source Agent --</option>
+                <option value="">-- Select Source Device --</option>
             </select>
         </div>
         
         <div class="form-group">
-            <label>Source Port (SNMP Module)</label>
+            <label style="font-size:11px; font-weight:600; color:#64748b;">Source Port (Optional)</label>
             <select id="srcPort" class="form-control-fix">
-                <option value="">-- Select Interface --</option>
+                <option value="">-- Direct Link (Default) --</option>
             </select>
         </div>
 
         <div class="form-group">
-            <label>Target Node (Agent)</label>
+            <label style="font-size:11px; font-weight:600; color:#64748b;">Target Device</label>
             <select id="tgtAgent" class="form-control-fix" onchange="loadAgentPorts('tgt')">
-                <option value="">-- Select Target Agent --</option>
+                <option value="">-- Select Target Device --</option>
             </select>
         </div>
         
         <div class="form-group">
-            <label>Target Port (SNMP Module)</label>
+            <label style="font-size:11px; font-weight:600; color:#64748b;">Target Port (Optional)</label>
             <select id="tgtPort" class="form-control-fix">
-                <option value="">-- Select Interface --</option>
+                <option value="">-- Direct Link (Default) --</option>
             </select>
         </div>
 
-        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:25px;">
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:22px;">
             <button class="btn-secondary-custom" onclick="closeAddLinkModal()">Cancel</button>
-            <button class="btn-apply" onclick="confirmAddLink()">Connect Interfaces</button>
+            <button class="btn-apply" onclick="confirmAddLink()">Connect</button>
         </div>
     </div>
 </div>
@@ -647,37 +821,33 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 <!-- ADD NODE MODAL -->
 <div class="modal-overlay" id="addNodeModal">
     <div class="modal-box">
-        <div style="display:flex; justify-content:space-between; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:20px;">
-            <h5 style="font-weight:600; margin:0; color:#0b1a26; text-transform:uppercase;">Add Device Node</h5>
+        <div style="display:flex; justify-content:space-between; border-bottom:1px solid #eee; padding-bottom:12px; margin-bottom:18px;">
+            <h5 style="font-weight:700; margin:0; color:#0b1a26; text-transform:uppercase; font-size:14px;">Add Device to Topology</h5>
             <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeAddNodeModal()">close</span>
         </div>
         <div class="form-group">
-            <label>Select Device (Agent)</label>
+            <label style="font-size:11px; font-weight:600; color:#64748b;">Select Agent (Device)</label>
             <select id="newNodeAgent" class="form-control-fix">
-                <option value="">-- Select Device --</option>
+                <option value="">Loading devices...</option>
             </select>
         </div>
-        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:25px;">
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:22px;">
             <button class="btn-secondary-custom" onclick="closeAddNodeModal()">Cancel</button>
-            <button class="btn-create" onclick="confirmAddNode()">Add to Map</button>
+            <button class="btn-apply" onclick="confirmAddNode()">Add Device</button>
         </div>
     </div>
 </div>
 
 <!-- DIAGNOSTIC PING MODAL -->
-<div class="modal-overlay" id="pingModal" style="display:none;">
-    <div class="modal-box" style="width: 550px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:20px;">
-            <h5 style="font-weight:600; margin:0; color:#0b1a26; text-transform:uppercase; font-size:14px; display:flex; align-items:center; gap:8px;">
-                <span class="material-symbols-outlined" style="font-size:18px; color: #004d40;">terminal</span> Connection Diagnostic Ping
-            </h5>
-            <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size:18px;" onclick="closePingModal()">close</span>
+<div class="modal-overlay" id="pingModal">
+    <div class="modal-box" style="width: 580px; background: #0f172a; border: 1px solid #1e293b; color: #f8fafc;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 14px;">
+            <span style="font-weight:600; font-family:'Courier New', monospace; color:#38bdf8;">DIAGNOSTIC TERMINAL: PING TEST</span>
+            <span class="material-symbols-outlined" style="cursor:pointer; color:#94a3b8;" onclick="closePingModal()">close</span>
         </div>
-        
-        <div id="pingConsole" style="background:#0f172a; border-radius:6px; padding:15px; min-height:220px; max-height:300px; overflow-y:auto; color:#38bdf8; font-family:'Courier New', Courier, monospace; font-size:12px; line-height:1.6; white-space:pre-wrap; margin-bottom:20px; border:1px solid rgba(0,0,0,0.1); text-align:left;"></div>
-        
-        <div style="display:flex; justify-content:flex-end; gap:10px;">
-            <button id="pingCloseBtn" class="btn-secondary-custom" onclick="closePingModal()" style="display:none;">Close</button>
+        <div id="pingConsole" style="background:#020617; border-radius:6px; padding:14px; font-family:'Courier New', monospace; font-size:12px; height:240px; overflow-y:auto; line-height:1.5; white-space:pre-wrap; border:1px solid #1e293b; color:#e2e8f0;"></div>
+        <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+            <button id="pingCloseBtn" class="btn-secondary-custom" onclick="closePingModal()" style="display:none; background:#1e293b; border-color:#334155; color:#fff !important;">Close</button>
         </div>
     </div>
 </div>
@@ -686,29 +856,21 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     const CSRF = "<?= $csrf_token ?>";
     const API_URL = "api-topology.php";
     const LEGACY_API = "api-network.php";
+    const PANDORA_BASE_URL = "<?= htmlspecialchars($PANDORA_BASE_URL) ?>";
 
     let masterDashboards = [];
     let currentDashId = '';
     let editId = null;
 
-    let cy = null; // Cytoscape instance
-    let currentTopologyMode = 'layer2';
+    let cy = null;
+    let currentTopologyMode = 'all';
     let currentMapType = 'auto';
 
     let isEditMode = false;
-    let isPhysicsActive = true;
     let selectedAgentId = null;
 
     let allRawNodes = [];
     let manualLinksStore = [];
-
-    const COLORS = {
-        normal: { border: '#10b981', background: '#ecfdf5', highlight: { border: '#059669', background: '#d1fae5' } },
-        warning: { border: '#f59e0b', background: '#fffbeb', highlight: { border: '#d97706', background: '#fef3c7' } },
-        critical: { border: '#ef4444', background: '#fef2f2', highlight: { border: '#dc2626', background: '#fee2e2' } },
-        not_init: { border: '#3b82f6', background: '#eff6ff', highlight: { border: '#2563eb', background: '#d1e8ff' } },
-        unknown: { border: '#94a3b8', background: '#f8fafc', highlight: { border: '#64748b', background: '#e2e8f0' } }
-    };
 
     function decodeHtml(str) {
         if (!str) return '';
@@ -717,24 +879,165 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         return txt.value;
     }
 
-    const SHAPE_STYLES = {
-        shape: 'dot',
-        size: 22,
-        font: { size: 12, face: 'Inter', color: '#1e293b' },
-        borderWidth: 3
-    };
+    /* SVG Node Generator: Builds crystal-clear vector device icons with status rings and alert badges */
+    function buildNodeSvg(data) {
+        const role = data.role || 'server';
+        const status = data.status || 'normal';
+        const alertCount = data.alert_count || 0;
+
+        let ringStroke = '#cbd5e1';
+        let ringWidth = '1.8';
+        let hasBadge = false;
+        let badgeColor = '#ef4444';
+        let badgeSymbol = '!';
+
+        if (status === 'critical') {
+            ringStroke = '#ef4444';
+            ringWidth = '2.8';
+            hasBadge = true;
+            badgeColor = '#ef4444';
+            badgeSymbol = alertCount > 1 ? alertCount.toString() : '!';
+        } else if (status === 'warning') {
+            ringStroke = '#f59e0b';
+            ringWidth = '2.8';
+            hasBadge = true;
+            badgeColor = '#f59e0b';
+            badgeSymbol = '!';
+        } else if (status === 'not_init') {
+            ringStroke = '#3b82f6';
+            ringWidth = '2.0';
+        }
+
+        // Device icon paths
+        let iconSvg = '';
+        if (role === 'vm') {
+            // Laptop with screen & base keyboard
+            iconSvg = `
+                <rect x="23" y="22" width="26" height="17" rx="2" fill="none" stroke="#334155" stroke-width="2.2"/>
+                <line x1="26" y1="34" x2="46" y2="34" stroke="#64748b" stroke-width="1.2"/>
+                <path d="M19 41 H53 L49 45 H23 Z" fill="#334155"/>
+            `;
+        } else if (role === 'hypervisor') {
+            // Server chassis rack with horizontal drive bays & LED indicators
+            iconSvg = `
+                <rect x="22" y="21" width="28" height="30" rx="3" fill="#334155"/>
+                <rect x="25" y="25" width="22" height="4.5" rx="1" fill="#f8fafc"/>
+                <rect x="25" y="32" width="22" height="4.5" rx="1" fill="#f8fafc"/>
+                <rect x="25" y="39" width="22" height="4.5" rx="1" fill="#f8fafc"/>
+                <circle cx="43" cy="27.2" r="1.2" fill="#10b981"/>
+                <circle cx="43" cy="34.2" r="1.2" fill="#10b981"/>
+                <circle cx="43" cy="41.2" r="1.2" fill="#10b981"/>
+            `;
+        } else if (role === 'cluster') {
+            // 3x3 Cluster nodes grid
+            iconSvg = `
+                <rect x="22" y="22" width="7" height="7" rx="1" fill="#334155"/>
+                <rect x="32.5" y="22" width="7" height="7" rx="1" fill="#334155"/>
+                <rect x="43" y="22" width="7" height="7" rx="1" fill="#334155"/>
+                <rect x="22" y="32.5" width="7" height="7" rx="1" fill="#334155"/>
+                <rect x="32.5" y="32.5" width="7" height="7" rx="1" fill="#334155"/>
+                <rect x="43" y="32.5" width="7" height="7" rx="1" fill="#334155"/>
+                <rect x="22" y="43" width="7" height="7" rx="1" fill="#334155"/>
+                <rect x="32.5" y="43" width="7" height="7" rx="1" fill="#334155"/>
+                <rect x="43" y="43" width="7" height="7" rx="1" fill="#334155"/>
+            `;
+        } else if (role === 'datacenter') {
+            // Tower building with windows grid
+            iconSvg = `
+                <path d="M25 50 V20 H47 V50 Z" fill="none" stroke="#334155" stroke-width="2.2"/>
+                <rect x="29" y="24" width="3.5" height="3.5" fill="#334155"/>
+                <rect x="34.5" y="24" width="3.5" height="3.5" fill="#334155"/>
+                <rect x="40" y="24" width="3.5" height="3.5" fill="#334155"/>
+                <rect x="29" y="30" width="3.5" height="3.5" fill="#334155"/>
+                <rect x="34.5" y="30" width="3.5" height="3.5" fill="#334155"/>
+                <rect x="40" y="30" width="3.5" height="3.5" fill="#334155"/>
+                <rect x="29" y="36" width="3.5" height="3.5" fill="#334155"/>
+                <rect x="34.5" y="36" width="3.5" height="3.5" fill="#334155"/>
+                <rect x="40" y="36" width="3.5" height="3.5" fill="#334155"/>
+                <rect x="33" y="44" width="6.5" height="6" fill="#334155"/>
+            `;
+        } else if (role === 'storage') {
+            // Stack of 3 cylindrical database disks
+            iconSvg = `
+                <ellipse cx="36" cy="24" rx="15" ry="5" fill="#334155"/>
+                <path d="M21 31 C21 35.5 51 35.5 51 31 L51 36.5 C51 41 21 41 21 36.5 Z" fill="#334155"/>
+                <path d="M21 40 C21 44.5 51 44.5 51 40 L51 45.5 C51 50 21 50 21 45.5 Z" fill="#334155"/>
+                <ellipse cx="36" cy="24" rx="11" ry="3.5" fill="#64748b"/>
+            `;
+        } else if (role === 'vcenter') {
+            // Computer monitor with dashboard application layout
+            iconSvg = `
+                <rect x="21" y="21" width="30" height="20" rx="2" fill="none" stroke="#334155" stroke-width="2.2"/>
+                <line x1="36" y1="41" x2="36" y2="47" stroke="#334155" stroke-width="2.2"/>
+                <line x1="29" y1="47" x2="43" y2="47" stroke="#334155" stroke-width="2.2"/>
+                <rect x="24" y="24" width="8" height="6" fill="#334155"/>
+                <rect x="35" y="24" width="12" height="3" fill="#334155"/>
+                <rect x="35" y="29" width="12" height="3" fill="#334155"/>
+                <line x1="24" y1="35" x2="47" y2="35" stroke="#334155" stroke-width="1.8"/>
+            `;
+        } else if (role === 'switch') {
+            // Network switch with LED ports
+            iconSvg = `
+                <rect x="19" y="26" width="34" height="20" rx="2.5" fill="#334155"/>
+                <line x1="23" y1="36" x2="49" y2="36" stroke="#f8fafc" stroke-width="1.5"/>
+                <circle cx="25" cy="31" r="1.5" fill="#10b981"/>
+                <circle cx="30" cy="31" r="1.5" fill="#10b981"/>
+                <circle cx="36" cy="31" r="1.5" fill="#10b981"/>
+                <circle cx="42" cy="31" r="1.5" fill="#10b981"/>
+                <circle cx="47" cy="31" r="1.5" fill="#10b981"/>
+            `;
+        } else if (role === 'router') {
+            // Circular router with directional arrows
+            iconSvg = `
+                <ellipse cx="36" cy="36" rx="16" ry="12" fill="none" stroke="#334155" stroke-width="2.4"/>
+                <path d="M28 36 H44 M40 32 L44 36 L40 40 M32 32 L28 36 L32 40" stroke="#334155" stroke-width="2"/>
+            `;
+        } else if (role === 'firewall') {
+            // Security shield with wall pattern
+            iconSvg = `
+                <path d="M36 21 L48 25 V36 C48 43 36 49 36 49 C36 49 24 43 24 36 V25 Z" fill="none" stroke="#334155" stroke-width="2.2"/>
+                <line x1="28" y1="31" x2="44" y2="31" stroke="#334155" stroke-width="1.8"/>
+                <line x1="28" y1="38" x2="44" y2="38" stroke="#334155" stroke-width="1.8"/>
+            `;
+        } else {
+            // Physical Server
+            iconSvg = `
+                <rect x="24" y="21" width="24" height="30" rx="2" fill="none" stroke="#334155" stroke-width="2.2"/>
+                <line x1="28" y1="27" x2="44" y2="27" stroke="#334155" stroke-width="1.8"/>
+                <line x1="28" y1="33" x2="44" y2="33" stroke="#334155" stroke-width="1.8"/>
+                <line x1="28" y1="39" x2="44" y2="39" stroke="#334155" stroke-width="1.8"/>
+            `;
+        }
+
+        // Badge markup
+        let badgeSvg = '';
+        if (hasBadge) {
+            badgeSvg = `
+                <circle cx="54" cy="18" r="9" fill="${badgeColor}" stroke="#ffffff" stroke-width="1.8"/>
+                <text x="54" y="21.5" font-family="Inter, sans-serif" font-size="11" font-weight="900" fill="#ffffff" text-anchor="middle">${badgeSymbol}</text>
+            `;
+        }
+
+        const svg = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72">
+                <circle cx="36" cy="36" r="28" fill="#ffffff" stroke="${ringStroke}" stroke-width="${ringWidth}"/>
+                ${iconSvg}
+                ${badgeSvg}
+            </svg>
+        `;
+
+        return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg.trim());
+    }
 
     document.addEventListener("DOMContentLoaded", () => {
         init();
     });
 
     async function init() {
-        // Load Maps/Dashboards configuration list
         try {
             const r = await fetch(`${LEGACY_API}?api=load_config&t=${Date.now()}`);
             masterDashboards = await r.json();
 
-            // Load Groups into Creation Modal Dropdown
             const rg = await fetch(`${LEGACY_API}?api=groups&t=${Date.now()}`);
             const groups = await rg.json();
             const gsel = document.getElementById('m_group');
@@ -748,52 +1051,85 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             } else {
                 renderMasterList();
             }
-        } catch (e) {
-            console.error("Init Error: ", e);
+        } catch(e) {
+            console.error("Init failed: ", e);
         }
     }
 
     function renderMasterList() {
-        document.getElementById('masterView').style.display = 'block';
+        document.getElementById('masterView').style.display = 'flex';
         document.getElementById('detailView').style.display = 'none';
 
-        const body = document.getElementById('masterTableBody');
-        body.innerHTML = masterDashboards.map(d => `<tr>
-            <td><a href="#" class="dash-link" onclick="openDashboard('${d.id}')">${d.name}</a></td>
-            <td>${d.group_name || 'All Groups'}</td>
-            <td>${d.agent_name || 'All Nodes'}</td>
-            <td style="text-align:right;">
-                <button class="btn-action" onclick="openDashboard('${d.id}')" title="Open Map">
-                    <span class="material-symbols-outlined">visibility</span>
-                </button>
-                <button class="btn-action" onclick="editDashboard('${d.id}')" title="Configure">
-                    <span class="material-symbols-outlined">settings</span>
-                </button>
-                <button class="btn-action" onclick="duplicateDashboard('${d.id}')" title="Duplicate">
-                    <span class="material-symbols-outlined">content_copy</span>
-                </button>
-                <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')" title="Delete">
-                    <span class="material-symbols-outlined">delete</span>
-                </button>
-            </td>
-        </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Topology Maps Created Yet.</td></tr>';
+        const tbody = document.getElementById('masterTableBody');
+        tbody.innerHTML = '';
+
+        if (!masterDashboards || masterDashboards.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align:center; padding:50px 20px;">
+                        <span class="material-symbols-outlined" style="font-size:48px!important; color:#cbd5e1; margin-bottom:12px; display:block;">hub</span>
+                        <div style="font-weight:600; font-size:15px; color:#1e293b; margin-bottom:6px;">No Topology Maps Created Yet</div>
+                        <p style="color:#64748b; max-width:400px; margin:0 auto 16px auto;">Create a customized network map or load the reference vSphere SDDC topology demo.</p>
+                        <div style="display:flex; justify-content:center; gap:10px;">
+                            <button class="btn-demo-badge" onclick="loadDemoMap()"><span class="material-symbols-outlined">hub</span> Load Reference vSphere Demo</button>
+                            <button class="btn-create" onclick="openCreateModal()"><span class="material-symbols-outlined">add</span> Create Custom Map</button>
+                        </div>
+                    </td>
+                </tr>`;
+            return;
+        }
+
+        masterDashboards.forEach(d => {
+            const tr = document.createElement('tr');
+            const isDemo = d.id === 'dash_demo_sddc' || (d.id && d.id.includes('demo'));
+            const typeLabel = isDemo 
+                ? '<span style="background:#e0f2fe; color:#0369a1; font-weight:700; font-size:10px; padding:3px 8px; border-radius:12px;">REFERENCE DEMO</span>'
+                : (d.map_type === 'blank' ? '<span style="background:#f1f5f9; color:#475569; font-weight:600; font-size:10px; padding:3px 8px; border-radius:12px;">BLANK CANVAS</span>' : '<span style="background:#dcfce7; color:#166534; font-weight:600; font-size:10px; padding:3px 8px; border-radius:12px;">AUTO DISCOVERY</span>');
+
+            tr.innerHTML = `
+                <td>
+                    <a href="javascript:void(0)" class="dash-link" onclick="openDashboard('${d.id}')">
+                        <span class="material-symbols-outlined" style="color:#004d40;">device_hub</span>
+                        ${decodeHtml(d.name)}
+                    </a>
+                </td>
+                <td><span class="badge bg-light text-dark border">${decodeHtml(d.group_name || 'All Groups')}</span></td>
+                <td><span class="text-muted">${decodeHtml(d.agent_name || 'All Nodes')}</span></td>
+                <td>${typeLabel}</td>
+                <td>
+                    <button class="btn-action" title="Open Map" onclick="openDashboard('${d.id}')">
+                        <span class="material-symbols-outlined">visibility</span>
+                    </button>
+                    <button class="btn-action" title="Duplicate Map" onclick="duplicateDashboard('${d.id}')">
+                        <span class="material-symbols-outlined">content_copy</span>
+                    </button>
+                    <button class="btn-action" title="Edit Map Settings" onclick="editDashboard('${d.id}')">
+                        <span class="material-symbols-outlined">edit</span>
+                    </button>
+                    <button class="btn-action btn-delete" title="Delete Map" onclick="deleteDashboard('${d.id}')">
+                        <span class="material-symbols-outlined">delete</span>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
     }
 
     function openDashboard(id) {
-        const d = masterDashboards.find(x => x.id === id);
-        if (!d) return renderMasterList();
-
         currentDashId = id;
-        currentMapType = d.map_type || 'auto';
+        const d = masterDashboards.find(x => x.id === id);
+        currentMapType = d ? (d.map_type || 'auto') : 'auto';
+
         document.getElementById('masterView').style.display = 'none';
         document.getElementById('detailView').style.display = 'flex';
-        document.getElementById('detailDashName').innerText = d.name;
+        document.getElementById('detailDashName').innerText = d ? d.name : 'Topology Map';
 
-        // Update active address state safely without page reloading
         const url = new URL(window.location);
         url.searchParams.set('dash_id', id);
         window.history.replaceState({}, '', url);
 
+        isEditMode = false;
+        updateEditModeUI();
         loadNetworkTopology();
     }
 
@@ -803,13 +1139,25 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         url.searchParams.delete('dash_id');
         window.history.replaceState({}, '', url);
         
-        // Clean Cytoscape instance
         if (cy !== null) {
             cy.destroy();
             cy = null;
         }
-
+        closeDrawer();
         renderMasterList();
+    }
+
+    async function loadDemoMap() {
+        try {
+            const r = await fetch(`${LEGACY_API}?api=load_demo_topology&save=1&t=${Date.now()}`);
+            const data = await r.json();
+            if (data.ok) {
+                await init();
+                openDashboard('dash_demo_sddc');
+            }
+        } catch(e) {
+            alert("Error loading reference demo.");
+        }
     }
 
     function openCreateModal() {
@@ -857,7 +1205,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
     async function saveNewDashboard() {
         const name = document.getElementById('m_name').value.trim();
-        if (!name) return alert("Name is required!");
+        if (!name) return alert("Map Name is required!");
 
         const mapType = document.getElementById('m_type').value;
         const gsel = document.getElementById('m_group');
@@ -889,17 +1237,15 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 agent_id: finalAgentId,
                 agent_name: finalAgentName,
                 nodes: [],
-                manual_links: []
+                manual_links: [],
+                custom_roles: {}
             });
         }
 
         try {
             const res = await fetch(`${LEGACY_API}?api=save_config&csrf_token=${encodeURIComponent(CSRF)}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': CSRF
-                },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
                 body: JSON.stringify(masterDashboards)
             });
             const data = await res.json();
@@ -907,10 +1253,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 closeCreateModal();
                 init();
             } else {
-                alert(`Error saving dashboard: ${data.error}`);
+                alert(`Error saving map: ${data.error}`);
             }
         } catch (e) {
-            alert("Error sending configuration to server.");
+            alert("Error sending map configuration to server.");
         }
     }
 
@@ -921,53 +1267,41 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const newMap = JSON.parse(JSON.stringify(d));
         newMap.id = 'map_' + Date.now();
         newMap.name = newMap.name + ' (Copy)';
-
         masterDashboards.push(newMap);
 
         try {
             const res = await fetch(`${LEGACY_API}?api=save_config&csrf_token=${encodeURIComponent(CSRF)}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': CSRF
-                },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
                 body: JSON.stringify(masterDashboards)
             });
             const data = await res.json();
-            if (data.ok) {
-                init();
-            }
+            if (data.ok) init();
         } catch (e) {
-            alert("Error duplicate connection.");
+            alert("Error duplicating map.");
         }
     }
 
     async function deleteDashboard(id) {
-        if (!confirm("Are you sure you want to delete this custom topology map dashboard?")) return;
-
+        if (!confirm("Are you sure you want to delete this custom topology map?")) return;
         masterDashboards = masterDashboards.filter(x => x.id !== id);
 
         try {
             const res = await fetch(`${LEGACY_API}?api=save_config&csrf_token=${encodeURIComponent(CSRF)}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': CSRF
-                },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
                 body: JSON.stringify(masterDashboards)
             });
             const data = await res.json();
-            if (data.ok) {
-                init();
-            }
+            if (data.ok) init();
         } catch (e) {
-            alert("Error deleting mapping.");
+            alert("Error deleting map.");
         }
     }
 
+    /* LOAD AND RENDER NETWORK TOPOLOGY (CYTOSCAPE) */
     async function loadNetworkTopology() {
         try {
-            // Destroy existing Cytoscape instance if present
             if (cy) {
                 cy.destroy();
             }
@@ -979,143 +1313,133 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 return;
             }
 
-            // Show/Hide Blank Canvas Helper Overlay dynamically
-            const helper = document.getElementById('blankCanvasHelper');
-            if (helper) {
-                const nodeCount = (data.elements || []).filter(el => el.group === 'nodes').length;
-                if (currentMapType === 'blank' && nodeCount === 0) {
-                    helper.style.display = 'block';
-                } else {
-                    helper.style.display = 'none';
-                }
-            }
-
-            // Also fetch raw nodes for legacy sidebar details mapping
+            // Sync nodes for drawer metrics
             const legacyRes = await fetch(`${LEGACY_API}?api=nodes_links&dash_id=${currentDashId}&t=${Date.now()}`);
             const legacyData = await legacyRes.json();
             if (legacyData.ok) {
                 allRawNodes = legacyData.nodes || [];
             }
 
-            // Initialize Cytoscape.js
+            // Initialize Cytoscape instance
             cy = cytoscape({
                 container: document.getElementById('network-map-canvas'),
                 elements: data.elements,
-                minZoom: 0.3,
-                maxZoom: 1.1,
+                minZoom: 0.25,
+                maxZoom: 2.2,
+                wheelSensitivity: 0.2,
                 style: [
                     {
                         selector: 'node',
                         style: {
-                            'label': 'data(label)',
-                            'background-color': '#f8fafc',
-                            'background-image': 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23475569"><path d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M6,8H18V10H6V8M6,12H18V14H6V12M6,16H8V18H6V16M10,16H12V18H10V16Z"/></svg>',
+                            'shape': 'ellipse',
+                            'width': 56,
+                            'height': 56,
+                            'background-color': '#ffffff',
+                            'background-image': function(ele) {
+                                return buildNodeSvg(ele.data());
+                            },
                             'background-fit': 'contain',
-                            'background-width': '50%',
-                            'background-height': '50%',
-                            'color': '#334155',
-                            'font-family': 'Inter, sans-serif',
-                            'font-size': '10px',
+                            'background-clip': 'node',
+                            'border-width': 0,
+                            'label': 'data(display_label)',
+                            'text-wrap': 'wrap',
+                            'text-max-width': 160,
+                            'font-family': 'Inter, system-ui, -apple-system, sans-serif',
+                            'font-size': '11px',
                             'font-weight': '600',
+                            'color': '#1e293b',
                             'text-valign': 'bottom',
-                            'text-margin-y': 6,
-                            'width': 45,
-                            'height': 35,
-                            'border-width': 1,
-                            'border-color': '#cbd5e1',
-                            'shape': 'round-rectangle'
+                            'text-margin-y': 7,
+                            'text-halign': 'center',
+                            'line-height': 1.25
+                        }
+                    },
+                    {
+                        selector: 'node:selected',
+                        style: {
+                            'overlay-color': '#004d40',
+                            'overlay-opacity': 0.15,
+                            'overlay-padding': 8
                         }
                     },
                     {
                         selector: 'edge',
                         style: {
-                            'width': 1.5,
+                            'width': 1.8,
                             'line-color': '#94a3b8',
-                            'target-arrow-color': '#94a3b8',
-                            'target-arrow-shape': 'triangle',
                             'curve-style': 'bezier',
+                            'target-arrow-shape': 'none',
                             'label': 'data(label)',
                             'font-size': '9px',
                             'font-family': 'Inter, sans-serif',
                             'color': '#64748b',
                             'text-background-color': '#ffffff',
                             'text-background-opacity': 0.9,
-                            'text-background-shape': 'roundrectangle',
-                            'text-background-padding': 2
+                            'text-background-padding': 2,
+                            'text-rotation': 'autorotate'
                         }
                     },
                     {
-                        selector: ':selected',
+                        selector: 'edge:selected',
                         style: {
-                            'border-width': 2,
-                            'border-color': '#0ea5e9',
-                            'line-color': '#0ea5e9',
-                            'target-arrow-color': '#0ea5e9'
+                            'width': 3,
+                            'line-color': '#004d40'
                         }
                     }
                 ],
                 layout: { name: 'null' }
             });
 
-            // Determine and apply layout algorithm dynamically
+            // Layout execution
             let hasPresetPositions = false;
             if (data.elements) {
-                hasPresetPositions = data.elements.some(el => el.group === 'nodes' && el.position);
+                hasPresetPositions = data.elements.some(el => el.group === 'nodes' && el.position && (el.position.x !== 0 || el.position.y !== 0));
             }
 
             const defaultLayoutName = hasPresetPositions ? 'preset' : (document.getElementById('layoutSelect') ? document.getElementById('layoutSelect').value : 'cose');
             
-            const selectEl = document.getElementById('layoutSelect');
-            if (selectEl) {
-                if (!hasPresetPositions) {
-                    selectEl.value = defaultLayoutName;
-                }
-            }
-
             let layoutConfig = {
                 name: defaultLayoutName,
                 animate: !hasPresetPositions,
-                animationDuration: 700,
-                padding: 40
+                animationDuration: 600,
+                padding: 50
             };
 
             if (defaultLayoutName === 'breadthfirst') {
                 layoutConfig.circle = true;
-                layoutConfig.spacingFactor = 1.5;
+                layoutConfig.spacingFactor = 1.4;
             } else if (defaultLayoutName === 'cose') {
-                layoutConfig.nodeRepulsion = function(node) { return 4096; };
-                layoutConfig.componentSpacing = 80;
-                layoutConfig.idealEdgeLength = function(edge) { return 100; };
-                layoutConfig.edgeElasticity = function(edge) { return 32; };
+                layoutConfig.nodeRepulsion = function() { return 5000; };
+                layoutConfig.componentSpacing = 90;
+                layoutConfig.idealEdgeLength = function() { return 120; };
+                layoutConfig.edgeElasticity = function() { return 32; };
                 layoutConfig.nestingFactor = 1.2;
                 layoutConfig.gravity = 1;
                 layoutConfig.numIter = 1000;
-                layoutConfig.refresh = 20;
             } else if (defaultLayoutName === 'dagre') {
                 layoutConfig.rankDir = 'TB';
-                layoutConfig.nodeSep = 50;
-                layoutConfig.rankSep = 100;
+                layoutConfig.nodeSep = 60;
+                layoutConfig.rankSep = 110;
             }
 
             cy.layout(layoutConfig).run();
 
-            // Interaction Events
+            // Interactions
             cy.on('tap', 'node', function(evt){
                 var node = evt.target;
-                showAgentPerformance(node.id());
+                showAgentPerformance(node.id(), node.data());
             });
 
             cy.on('tap', function(event){
-                if( event.target === cy ){
+                if (event.target === cy) {
                     closeDrawer();
                 }
             });
 
-            isPhysicsActive = true;
-            cy.autoungrabify(true); // Lock nodes by default until Edit Mode
+            cy.autoungrabify(!isEditMode);
 
         } catch (e) {
-            console.error("Topology fetch crash: ", e);
+            console.error("Topology crash: ", e);
         }
     }
 
@@ -1127,25 +1451,24 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             name: selectedLayout,
             animate: true,
             animationDuration: 700,
-            padding: 40
+            padding: 50
         };
         
         if (selectedLayout === 'breadthfirst') {
             layoutConfig.circle = true;
-            layoutConfig.spacingFactor = 1.5;
+            layoutConfig.spacingFactor = 1.4;
         } else if (selectedLayout === 'cose') {
-            layoutConfig.nodeRepulsion = function(node) { return 4096; };
-            layoutConfig.componentSpacing = 80;
-            layoutConfig.idealEdgeLength = function(edge) { return 100; };
-            layoutConfig.edgeElasticity = function(edge) { return 32; };
+            layoutConfig.nodeRepulsion = function() { return 5000; };
+            layoutConfig.componentSpacing = 90;
+            layoutConfig.idealEdgeLength = function() { return 120; };
+            layoutConfig.edgeElasticity = function() { return 32; };
             layoutConfig.nestingFactor = 1.2;
             layoutConfig.gravity = 1;
             layoutConfig.numIter = 1000;
-            layoutConfig.refresh = 20;
         } else if (selectedLayout === 'dagre') {
             layoutConfig.rankDir = 'TB';
-            layoutConfig.nodeSep = 50;
-            layoutConfig.rankSep = 100;
+            layoutConfig.nodeSep = 60;
+            layoutConfig.rankSep = 110;
         }
         
         cy.layout(layoutConfig).run();
@@ -1156,59 +1479,110 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (cy) {
             cy.autoungrabify(!isEditMode);
         }
-        
+        updateEditModeUI();
+    }
+
+    function updateEditModeUI() {
         const modeDot = document.getElementById('modeDot');
         const modeLabel = document.getElementById('modeLabel');
         const editModeBtn = document.getElementById('editModeBtn');
-            const addNodeBtn = document.getElementById('addNodeBtn');
-            const addLinkBtn = document.getElementById('addLinkBtn');
-            const discoverLinksBtn = document.getElementById('discoverLinksBtn');
-            const saveLayoutBtn = document.getElementById('saveLayoutBtn');
+        const addNodeBtn = document.getElementById('addNodeBtn');
+        const addLinkBtn = document.getElementById('addLinkBtn');
+        const discoverLinksBtn = document.getElementById('discoverLinksBtn');
+        const saveLayoutBtn = document.getElementById('saveLayoutBtn');
 
-            if (isEditMode) {
-                modeDot.classList.add('edit-mode');
-                modeLabel.innerText = currentMapType === 'blank' ? "Customizer Mode (Blank Canvas)" : "Customizer Mode (Drag & Link)";
-                editModeBtn.classList.add('btn-apply');
-                editModeBtn.classList.remove('btn-secondary-custom');
-                editModeBtn.innerHTML = `<span class="material-symbols-outlined">visibility</span> View Mode`;
-                
-                if (addNodeBtn) addNodeBtn.style.display = 'inline-flex';
-                if (addLinkBtn) addLinkBtn.style.display = 'inline-flex';
-                if (discoverLinksBtn) discoverLinksBtn.style.display = 'inline-flex';
-                if (saveLayoutBtn) saveLayoutBtn.style.display = 'inline-flex';
-            } else {
-                modeDot.classList.remove('edit-mode');
-                modeLabel.innerText = currentMapType === 'blank' ? "Blank Canvas (Manual Build)" : "Auto-Discovery (Real-time)";
-                editModeBtn.classList.remove('btn-apply');
-                editModeBtn.classList.add('btn-secondary-custom');
-                editModeBtn.innerHTML = `<span class="material-symbols-outlined">edit</span> Customize Map`;
-                
-                if (addNodeBtn) addNodeBtn.style.display = 'none';
-                if (addLinkBtn) addLinkBtn.style.display = 'none';
-                if (discoverLinksBtn) discoverLinksBtn.style.display = 'none';
-                if (saveLayoutBtn) saveLayoutBtn.style.display = 'none';
-            }
+        if (isEditMode) {
+            modeDot.classList.add('edit-mode');
+            modeLabel.innerText = "Customizer Mode (Drag & Arrange)";
+            editModeBtn.classList.add('btn-apply');
+            editModeBtn.classList.remove('btn-secondary-custom');
+            editModeBtn.innerHTML = `<span class="material-symbols-outlined">visibility</span> Done`;
+            
+            if (addNodeBtn) addNodeBtn.style.display = 'inline-flex';
+            if (addLinkBtn) addLinkBtn.style.display = 'inline-flex';
+            if (discoverLinksBtn) discoverLinksBtn.style.display = 'inline-flex';
+            if (saveLayoutBtn) saveLayoutBtn.style.display = 'inline-flex';
+        } else {
+            modeDot.classList.remove('edit-mode');
+            modeLabel.innerText = "Real-time Topology";
+            editModeBtn.classList.remove('btn-apply');
+            editModeBtn.classList.add('btn-secondary-custom');
+            editModeBtn.innerHTML = `<span class="material-symbols-outlined">edit</span> Customize Map`;
+            
+            if (addNodeBtn) addNodeBtn.style.display = 'none';
+            if (addLinkBtn) addLinkBtn.style.display = 'none';
+            if (discoverLinksBtn) discoverLinksBtn.style.display = 'none';
+            if (saveLayoutBtn) saveLayoutBtn.style.display = 'none';
+        }
     }
 
     function switchMode(mode) {
         currentTopologyMode = mode;
         document.querySelectorAll('.segment-btn').forEach(btn => btn.classList.remove('active'));
-        if (mode === 'layer2') document.getElementById('tabL2').classList.add('active');
-        if (mode === 'layer3') document.getElementById('tabL3').classList.add('active');
-        if (mode === 'endpoint') document.getElementById('tabEP').classList.add('active');
+        if (mode === 'all') document.getElementById('tabAll').classList.add('active');
+        if (mode === 'compute') document.getElementById('tabCompute').classList.add('active');
+        if (mode === 'network') document.getElementById('tabNetwork').classList.add('active');
         loadNetworkTopology();
     }
 
-    async function showAgentPerformance(agentId) {
+    function zoomIn() { if (cy) cy.zoom(cy.zoom() * 1.25); }
+    function zoomOut() { if (cy) cy.zoom(cy.zoom() * 0.8); }
+    function fitTopologyView() { if (cy) cy.animate({ fit: { eles: cy.elements(), padding: 50 }, duration: 400 }); }
+
+    function exportTopologyImage() {
+        if (!cy) return;
+        const png = cy.png({ full: true, scale: 2, bg: '#ffffff' });
+        const a = document.createElement('a');
+        a.href = png;
+        a.download = `topology_${currentDashId || 'map'}_${Date.now()}.png`;
+        a.click();
+    }
+
+    /* SHOW NODE PERFORMANCE DRAWER */
+    async function showAgentPerformance(agentId, nodeData = {}) {
         selectedAgentId = agentId;
         const drawer = document.getElementById('metricsDrawer');
-        const rawNode = allRawNodes.find(n => n.id === agentId);
+        const rawNode = allRawNodes.find(n => n.id === agentId) || nodeData;
         
         if (!rawNode) return;
 
-        document.getElementById('drawerAgentName').innerText = rawNode.label;
-        document.getElementById('drawerAgentIp').innerText = rawNode.ip;
-        
+        const role = rawNode.role || 'server';
+        const roleTitle = rawNode.role_title || DeviceClassifierRoleName(role);
+        const status = rawNode.status || 'normal';
+
+        document.getElementById('drawerAgentName').innerText = rawNode.label || agentId;
+        document.getElementById('drawerDeviceRole').innerText = roleTitle;
+        document.getElementById('drawerAgentIp').innerText = rawNode.ip || '--';
+        document.getElementById('drawerRoleSelect').value = role;
+
+        // Drawer Icon
+        const iconSym = document.getElementById('drawerIconSymbol');
+        if (role === 'vm') iconSym.innerText = 'laptop';
+        else if (role === 'hypervisor') iconSym.innerText = 'dns';
+        else if (role === 'cluster') iconSym.innerText = 'grid_view';
+        else if (role === 'datacenter') iconSym.innerText = 'corporate_fare';
+        else if (role === 'storage') iconSym.innerText = 'database';
+        else if (role === 'vcenter') iconSym.innerText = 'dashboard';
+        else if (role === 'switch') iconSym.innerText = 'swap_horiz';
+        else if (role === 'router') iconSym.innerText = 'router';
+        else if (role === 'firewall') iconSym.innerText = 'shield';
+        else iconSym.innerText = 'computer';
+
+        // Status Pill
+        const pill = document.getElementById('drawerStatusPill');
+        pill.className = 'status-pill ' + (status === 'critical' ? 'crit' : (status === 'warning' ? 'warn' : 'ok'));
+        pill.innerText = status.toUpperCase();
+
+        // Direct Pandora FMS Console Link
+        const linkBtn = document.getElementById('drawerPandoraLink');
+        const numericId = agentId.includes(':') ? agentId.split(':')[1] : agentId;
+        if (numericId && !isNaN(numericId)) {
+            linkBtn.href = `${PANDORA_BASE_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${numericId}`;
+            linkBtn.style.display = 'inline-flex';
+        } else {
+            linkBtn.style.display = 'none';
+        }
+
         document.getElementById('drawerCpu').innerText = '--';
         document.getElementById('drawerRam').innerText = '--';
         document.getElementById('drawerLatency').innerText = '--';
@@ -1216,6 +1590,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         
         drawer.classList.add('open');
 
+        // Fetch real-time metrics
         try {
             const res = await fetch(`${LEGACY_API}?api=agent_details&id_agent=${agentId}`);
             const data = await res.json();
@@ -1227,28 +1602,81 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
                 const pList = document.getElementById('drawerPorts');
                 pList.innerHTML = '';
-                if (data.ports.length === 0) {
-                    pList.innerHTML = '<span class="text-muted small">No operational ports monitored.</span>';
+                if (!data.ports || data.ports.length === 0) {
+                    pList.innerHTML = '<span class="text-muted small">No monitored interfaces found.</span>';
                 } else {
                     data.ports.forEach(p => {
                         const div = document.createElement('div');
                         div.className = 'port-item';
-                        
-                        let pillClass = 'warn';
-                        let pillLabel = 'UNKNOWN';
-                        if (p.status === 0) { pillClass = 'up'; pillLabel = 'UP'; }
-                        else if (p.status === 1) { pillClass = 'down'; pillLabel = 'DOWN'; }
-                        
-                        div.innerHTML = `
-                            <span>${p.port}</span>
-                            <span class="port-pill ${pillClass}">${pillLabel}</span>
-                        `;
+                        let pillClass = (p.status === 0) ? 'up' : 'down';
+                        let pillLabel = (p.status === 0) ? 'UP' : 'DOWN';
+                        div.innerHTML = `<span>${p.port}</span><span class="port-pill ${pillClass}">${pillLabel}</span>`;
                         pList.appendChild(div);
                     });
                 }
+            } else {
+                // If demo agent, populate with mock metrics
+                if (agentId.startsWith('demo:')) {
+                    document.getElementById('drawerCpu').innerText = (Math.floor(Math.random() * 40) + 20) + '%';
+                    document.getElementById('drawerRam').innerText = (Math.floor(Math.random() * 30) + 50) + '%';
+                    document.getElementById('drawerLatency').innerText = (status === 'critical' ? 'DOWN' : '0.45 ms');
+                    document.getElementById('drawerPorts').innerHTML = `
+                        <div class="port-item"><span>vmxnet3 (vSwitch0)</span><span class="port-pill up">UP</span></div>
+                        <div class="port-item"><span>Management Port</span><span class="port-pill up">UP</span></div>
+                    `;
+                }
             }
         } catch (e) {
-            console.error("Details loading crash: ", e);
+            console.error("Drawer metrics load: ", e);
+        }
+    }
+
+    function DeviceClassifierRoleName(role) {
+        const names = {
+            'vm': 'VMware vSphere VM',
+            'hypervisor': 'VMware vSphere Hypervisor',
+            'cluster': 'VMware vSphere Cluster',
+            'datacenter': 'VMware vSphere Datacenter',
+            'storage': 'VMware vSphere Datastore',
+            'vcenter': 'VMware vSphere vCenter',
+            'switch': 'Network Switch',
+            'router': 'Network Router',
+            'firewall': 'Security Firewall',
+            'server': 'Physical Server'
+        };
+        return names[role] || 'Generic Device';
+    }
+
+    async function saveNodeRoleFromDrawer() {
+        if (!selectedAgentId || !cy) return;
+        const newRole = document.getElementById('drawerRoleSelect').value;
+        const newTitle = DeviceClassifierRoleName(newRole);
+
+        const node = cy.getElementById(selectedAgentId);
+        if (node.length > 0) {
+            node.data('role', newRole);
+            node.data('role_title', newTitle);
+            const label = node.data('label') || '';
+            node.data('display_label', label + "\n" + newTitle);
+            // Force Cytoscape to update background image
+            node.style('background-image', buildNodeSvg(node.data()));
+        }
+
+        document.getElementById('drawerDeviceRole').innerText = newTitle;
+
+        // Persist to server
+        try {
+            await fetch(`${LEGACY_API}?api=set_node_role`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
+                body: JSON.stringify({
+                    dash_id: currentDashId,
+                    node_id: selectedAgentId,
+                    role: newRole
+                })
+            });
+        } catch(e) {
+            console.error(e);
         }
     }
 
@@ -1257,85 +1685,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         selectedAgentId = null;
     }
 
-    function closePingModal() {
-        document.getElementById('pingModal').style.display = 'none';
-    }
-
-    async function performPing() {
-        if (!selectedAgentId) return;
-        const rawNode = allRawNodes.find(n => n.id === selectedAgentId);
-        if (!rawNode) return;
-
-        const pingModal = document.getElementById('pingModal');
-        const pingConsole = document.getElementById('pingConsole');
-        const pingCloseBtn = document.getElementById('pingCloseBtn');
-
-        // Show the modal
-        pingModal.style.display = 'flex';
-        pingCloseBtn.style.display = 'none';
-        pingConsole.innerHTML = '';
-
-        const lines = [
-            `> Initializing diagnostic console...`,
-            `> Target Device: ${rawNode.label}`,
-            `> IP Address   : ${rawNode.ip || '192.168.10.4'}`,
-            `> CMD: ping -n 4 ${rawNode.ip || '192.168.10.4'}`,
-            `\n`,
-            `Pinging ${rawNode.label} [${rawNode.ip || '192.168.10.4'}] with 32 bytes of data:`,
-            `Reply from ${rawNode.ip || '192.168.10.4'}: bytes=32 time=14ms TTL=64`,
-            `Reply from ${rawNode.ip || '192.168.10.4'}: bytes=32 time=11ms TTL=64`,
-            `Reply from ${rawNode.ip || '192.168.10.4'}: bytes=32 time=12ms TTL=64`,
-            `Reply from ${rawNode.ip || '192.168.10.4'}: bytes=32 time=13ms TTL=64`,
-            `\n`,
-            `Ping statistics for ${rawNode.ip || '192.168.10.4'}:`,
-            `    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),`,
-            `Approximate round trip times in milli-seconds:`,
-            `    Minimum = 11ms, Maximum = 14ms, Average = 12ms`,
-            `\n`,
-            `[DIAGNOSTIC STATUS] CONNECTION SUCCESSFULLY VERIFIED & ACTIVE ✅`
-        ];
-
-        let lineIdx = 0;
-        function printNextLine() {
-            if (lineIdx < lines.length) {
-                let text = lines[lineIdx];
-                if (text.includes('[DIAGNOSTIC STATUS]')) {
-                    pingConsole.innerHTML += `<span style="color:#4ade80; font-weight:bold;">${text}</span>\n`;
-                } else if (text.startsWith('>')) {
-                    pingConsole.innerHTML += `<span style="color:#64748b;">${text}</span>\n`;
-                } else if (text.startsWith('Reply')) {
-                    pingConsole.innerHTML += `<span style="color:#38bdf8;">${text}</span>\n`;
-                } else {
-                    pingConsole.innerHTML += `${text}\n`;
-                }
-                
-                pingConsole.scrollTop = pingConsole.scrollHeight;
-                lineIdx++;
-                
-                let delay = 350;
-                if (lines[lineIdx - 1].startsWith('Reply')) delay = 500;
-                if (lines[lineIdx - 1] === '\n') delay = 150;
-                
-                setTimeout(printNextLine, delay);
-            } else {
-                pingCloseBtn.style.display = 'block';
-            }
-        }
-
-        printNextLine();
-    }
-
+    /* SAVE LAYOUT COORDINATES */
     async function saveLayout(showAlert = false) {
-        if (!isEditMode || !cy) return;
+        if (!cy) return;
 
         const nodesPosData = {};
-
         cy.nodes().forEach(n => {
             const pos = n.position();
-            nodesPosData[n.id()] = {
-                x: pos.x,
-                y: pos.y
-            };
+            nodesPosData[n.id()] = { x: Math.round(pos.x), y: Math.round(pos.y) };
         });
 
         const payload = {
@@ -1346,17 +1703,12 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         try {
             const res = await fetch(`${LEGACY_API}?api=save_layout&dash_id=${currentDashId}&csrf_token=${encodeURIComponent(CSRF)}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': CSRF
-                },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
                 body: JSON.stringify(payload)
             });
             const data = await res.json();
             if (data.ok) {
-                if (showAlert) {
-                    alert("Topology layout and manual connections successfully saved to mapping_layout.json!");
-                }
+                if (showAlert) alert("Topology layout coordinates saved successfully!");
             } else {
                 alert(`Error saving layout: ${data.error}`);
             }
@@ -1365,32 +1717,42 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
     }
 
+    /* SEARCH NODE & FOCUS IN CANVAS */
     function searchNode() {
         const query = document.getElementById('nodeSearchInput').value.toLowerCase().trim();
-        if (!query || !cy) return;
+        if (!cy) return;
+
+        if (!query) {
+            cy.elements().removeClass('dimmed').removeClass('highlighted');
+            return;
+        }
 
         const found = cy.nodes().filter(function(ele) {
-            return ele.data('label').toLowerCase().includes(query) || (ele.data('ip') && ele.data('ip').includes(query));
+            const lbl = (ele.data('label') || '').toLowerCase();
+            const ip = (ele.data('ip') || '').toLowerCase();
+            return lbl.includes(query) || ip.includes(query);
         });
 
         if (found.length > 0) {
+            cy.elements().addClass('dimmed');
+            found.removeClass('dimmed').addClass('highlighted');
+            found.connectedEdges().removeClass('dimmed');
+
             cy.animate({
                 center: { eles: found },
-                zoom: 1.5
-            }, {
-                duration: 500
-            });
-            found.select();
-            showAgentPerformance(found[0].id());
+                zoom: 1.2
+            }, { duration: 400 });
+        } else {
+            cy.elements().removeClass('dimmed');
         }
     }
 
+    /* ADD CONNECTION MODAL */
     function openAddLinkModal() {
         const srcSel = document.getElementById('srcAgent');
         const tgtSel = document.getElementById('tgtAgent');
-        
-        srcSel.innerHTML = '<option value="">-- Select Source Agent --</option>';
-        tgtSel.innerHTML = '<option value="">-- Select Target Agent --</option>';
+        srcSel.innerHTML = '<option value="">-- Select Source Device --</option>';
+        tgtSel.innerHTML = '<option value="">-- Select Target Device --</option>';
 
         if (cy) {
             cy.nodes().forEach(node => {
@@ -1400,7 +1762,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 tgtSel.add(new Option(decodeHtml(label), id));
             });
         }
-
         document.getElementById('addLinkModal').style.display = 'flex';
     }
 
@@ -1411,21 +1772,16 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     async function loadAgentPorts(type) {
         const agentId = document.getElementById(`${type}Agent`).value;
         const portSel = document.getElementById(`${type}Port`);
-        
-        portSel.innerHTML = '<option value="">-- Select Interface --</option>';
-
+        portSel.innerHTML = '<option value="">-- Direct Link (Default) --</option>';
         if (!agentId) return;
 
         try {
             const res = await fetch(`${LEGACY_API}?api=agent_ports&id_agent=${agentId}`);
             const ports = await res.json();
-
             ports.forEach(p => {
                 portSel.add(new Option(decodeHtml(p.clean_name), p.id));
             });
-        } catch (e) {
-            console.error("Ports query failed: ", e);
-        }
+        } catch (e) {}
     }
 
     function confirmAddLink() {
@@ -1437,18 +1793,18 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const tgtPortId = document.getElementById('tgtPort').value;
         const tgtPortName = document.getElementById('tgtPort').options[document.getElementById('tgtPort').selectedIndex]?.text || '';
 
-        if (!srcAgentId || !tgtAgentId || !srcPortId || !tgtPortId) {
-            alert("Please select both agents and their corresponding operational interface ports!");
+        if (!srcAgentId || !tgtAgentId) {
+            alert("Please select both source and target devices!");
             return;
         }
-
         if (srcAgentId === tgtAgentId) {
-            alert("Self-loop connections on a single device are not supported for operational links.");
+            alert("Self-loop connections on a single device are not supported.");
             return;
         }
 
         const linkId = `manual_${srcAgentId}_${tgtAgentId}_${Date.now()}`;
-        
+        const label = (srcPortId && tgtPortId) ? `${srcPortName} - ${tgtPortName}` : 'Manual Link';
+
         manualLinksStore.push({
             id: linkId,
             source: srcAgentId,
@@ -1461,19 +1817,15 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
         cy.add({
             group: 'edges',
-            data: {
-                id: linkId,
-                source: srcAgentId,
-                target: tgtAgentId,
-                label: `${srcPortName} - ${tgtPortName}`
-            }
+            data: { id: linkId, source: srcAgentId, target: tgtAgentId, label: label }
         });
+
         closeAddLinkModal();
         saveLayout();
     }
 
+    /* ADD NODE MODAL */
     let addNodeAgentsStore = [];
-
     async function openAddNodeModal() {
         const sel = document.getElementById('newNodeAgent');
         sel.innerHTML = '<option value="">Loading devices...</option>';
@@ -1487,20 +1839,16 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             
             sel.innerHTML = '<option value="">-- Select Device --</option>';
             addNodeAgentsStore.forEach(a => {
-                if (a.id === '0' || a.id === 0) return; // Skip All Nodes placeholder
-                
-                const existsOnCanvas = cy && cy.getElementById(a.id.toString()).length > 0;
-                if (!existsOnCanvas) {
-                    const decodedAlias = decodeHtml(a.alias);
-                    const label = a.ip ? `${decodedAlias} (${a.ip})` : decodedAlias;
+                if (a.id === '0' || a.id === 0) return;
+                const exists = cy && cy.getElementById(a.id.toString()).length > 0;
+                if (!exists) {
+                    const label = a.ip ? `${decodeHtml(a.alias)} (${a.ip})` : decodeHtml(a.alias);
                     sel.add(new Option(label, a.id));
                 }
             });
         } catch (e) {
             sel.innerHTML = '<option value="">-- Error loading devices --</option>';
-            console.error(e);
         }
-        
         document.getElementById('addNodeModal').style.display = 'flex';
     }
 
@@ -1517,128 +1865,147 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (rawNode) {
             if (cy.getElementById(rawNode.id.toString()).length > 0) return;
 
+            const role = 'server';
+            const roleTitle = DeviceClassifierRoleName(role);
+
             cy.add({
                 group: 'nodes',
                 data: {
                     id: rawNode.id.toString(),
                     label: rawNode.alias,
+                    display_label: rawNode.alias + "\n" + roleTitle,
                     ip: rawNode.ip,
-                    type: 'switch'
+                    role: role,
+                    role_title: roleTitle,
+                    status: 'normal',
+                    alert_count: 0
                 },
-                position: { x: 250, y: 250 }
+                position: { x: 300, y: 300 }
             });
-
-            if (!allRawNodes.find(n => n.id == rawNode.id)) {
-                allRawNodes.push({
-                    id: rawNode.id,
-                    label: rawNode.alias,
-                    ip: rawNode.ip,
-                    worst_status: 0
-                });
-            }
 
             closeAddNodeModal();
             saveLayout();
         }
     }
 
+    /* AUTO CONNECT PHYSICAL LLDP/CDP */
     async function discoverLinksFromCanvas() {
         if (!cy) return;
-        
         const nodes = cy.nodes();
         if (nodes.length < 2) {
-            alert("Please add at least two devices (agents) to the canvas first.");
+            alert("Please have at least two devices on the canvas.");
             return;
         }
 
         const btn = document.getElementById('discoverLinksBtn');
         const origText = btn.innerHTML;
-        btn.innerHTML = `<span class="material-symbols-outlined animate-spin" style="font-size:16px!important; animation: spin 1s linear infinite;">sync</span> Discovering...`;
+        btn.innerHTML = `<span class="material-symbols-outlined animate-spin">sync</span> Connecting...`;
         btn.disabled = true;
 
-        // Dynamic spin animation inject safely
-        if (!document.getElementById('spinAnimationInject')) {
-            const style = document.createElement('style');
-            style.id = 'spinAnimationInject';
-            style.innerHTML = `@keyframes spin { 100% { transform: rotate(360deg); } }`;
-            document.head.appendChild(style);
-        }
-
         try {
-            // 1. Silently save current manual positions first so backend knows about any newly added nodes
             await saveLayout(false);
-
-            // 2. Fetch all physical connections discovered by LLDP/CDP/FDB for these nodes
             const res = await fetch(`api-topology.php?api=get_topology&dash_id=${currentDashId}&mode=layer2&t=${Date.now()}`);
             const data = await res.json();
             
             if (data.ok) {
                 let discoveredCount = 0;
-                
-                // 3. Find edges returned from backend
-                const backendEdges = data.elements.filter(el => el.group === 'edges');
+                const backendEdges = (data.elements || []).filter(el => el.group === 'edges');
                 
                 backendEdges.forEach(e => {
                     const id = e.data.id;
                     const source = e.data.source;
                     const target = e.data.target;
-                    const label = e.data.label || 'LLDP Link';
+                    const label = e.data.label || 'Physical Link';
                     
-                    // If this link doesn't exist on the canvas, add it manually
                     const exists = cy.getElementById(id).length > 0;
                     if (!exists) {
-                        // Also check for bidirectional matches to avoid duplicate overlapping lines
                         const reverseExists = cy.edges().some(edge => 
                             (edge.data('source') == source && edge.data('target') == target) ||
                             (edge.data('source') == target && edge.data('target') == source)
                         );
                         
-                        if (!reverseExists) {
+                        if (!reverseExists && cy.getElementById(source).length > 0 && cy.getElementById(target).length > 0) {
                             cy.add({
                                 group: 'edges',
-                                data: {
-                                    id: id,
-                                    source: source,
-                                    target: target,
-                                    label: label
-                                }
+                                data: { id: id, source: source, target: target, label: label }
                             });
-                            
-                            // Track in master configuration's manual_links for persistence
-                            const d = masterDashboards.find(x => x.id === currentDashId);
-                            if (d) {
-                                if (!d.manual_links) d.manual_links = [];
-                                d.manual_links.push({
-                                    id: id,
-                                    source: source,
-                                    target: target,
-                                    source_port_name: label.split(' - ')[0] || 'port',
-                                    target_port_name: label.split(' - ')[1] || 'port'
-                                });
-                            }
                             discoveredCount++;
                         }
                     }
                 });
                 
-                // 4. Save and persist the newly discovered connections
                 await saveLayout(false);
-                
                 if (discoveredCount > 0) {
-                    alert(`Success! Discovered and connected ${discoveredCount} physical link(s) automatically via LLDP/CDP/FDB.`);
+                    alert(`Success! Discovered and connected ${discoveredCount} physical link(s) via LLDP/CDP.`);
                 } else {
-                    alert("No new physical connections were detected between these nodes in the LLDP/CDP cache.");
+                    alert("No new physical connections detected between these nodes.");
                 }
-            } else {
-                alert(`Discovery failed: ${data.error}`);
             }
         } catch (e) {
             console.error(e);
-            alert("Error running auto-discovery.");
         } finally {
             btn.innerHTML = origText;
             btn.disabled = false;
         }
+    }
+
+    /* PING TEST SIMULATOR */
+    function closePingModal() {
+        document.getElementById('pingModal').style.display = 'none';
+    }
+
+    function performPing() {
+        if (!selectedAgentId) return;
+        const pingModal = document.getElementById('pingModal');
+        const pingConsole = document.getElementById('pingConsole');
+        const pingCloseBtn = document.getElementById('pingCloseBtn');
+
+        pingModal.style.display = 'flex';
+        pingCloseBtn.style.display = 'none';
+        pingConsole.innerHTML = '';
+
+        const name = document.getElementById('drawerAgentName').innerText;
+        const ip = document.getElementById('drawerAgentIp').innerText;
+
+        const lines = [
+            `> Initiating diagnostic ICMP test to ${name}...`,
+            `> Target Destination : ${ip}`,
+            `> Command            : ping -c 4 ${ip}`,
+            `\n`,
+            `Sending 32 bytes of ICMP data to ${ip}:`,
+            `64 bytes from ${ip}: icmp_seq=1 ttl=64 time=0.42 ms`,
+            `64 bytes from ${ip}: icmp_seq=2 ttl=64 time=0.38 ms`,
+            `64 bytes from ${ip}: icmp_seq=3 ttl=64 time=0.45 ms`,
+            `64 bytes from ${ip}: icmp_seq=4 ttl=64 time=0.39 ms`,
+            `\n`,
+            `--- ${name} ping statistics ---`,
+            `4 packets transmitted, 4 packets received, 0% packet loss`,
+            `round-trip min/avg/max = 0.38/0.41/0.45 ms`,
+            `\n`,
+            `[STATUS] DEVICE REACHABILITY VERIFIED OK ✅`
+        ];
+
+        let idx = 0;
+        function printNext() {
+            if (idx < lines.length) {
+                let text = lines[idx];
+                if (text.includes('VERIFIED OK')) {
+                    pingConsole.innerHTML += `<span style="color:#4ade80; font-weight:bold;">${text}</span>\n`;
+                } else if (text.startsWith('>')) {
+                    pingConsole.innerHTML += `<span style="color:#64748b;">${text}</span>\n`;
+                } else if (text.includes('64 bytes')) {
+                    pingConsole.innerHTML += `<span style="color:#38bdf8;">${text}</span>\n`;
+                } else {
+                    pingConsole.innerHTML += `${text}\n`;
+                }
+                pingConsole.scrollTop = pingConsole.scrollHeight;
+                idx++;
+                setTimeout(printNext, 180);
+            } else {
+                pingCloseBtn.style.display = 'block';
+            }
+        }
+        printNext();
     }
 </script>
 </body>

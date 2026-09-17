@@ -9,6 +9,9 @@ error_reporting(E_ALL);
  */
 
 require_once __DIR__ . '/../../includes/db-connection.php';
+require_once __DIR__ . '/Engine/DeviceClassifier.php';
+
+use NetworkMapping\Engine\DeviceClassifier;
 
 header('Content-Type: application/json');
 
@@ -49,7 +52,8 @@ function load_multi_dashboard_config($file) {
                         'agent_id' => '0',
                         'agent_name' => 'All Nodes',
                         'nodes' => $legacy_nodes,
-                        'manual_links' => $legacy_links
+                        'manual_links' => $legacy_links,
+                        'custom_roles' => []
                     ]
                 ]
             ];
@@ -66,7 +70,8 @@ function load_multi_dashboard_config($file) {
                 'agent_id' => '0',
                 'agent_name' => 'All Nodes',
                 'nodes' => [],
-                'manual_links' => []
+                'manual_links' => [],
+                'custom_roles' => []
             ]
         ]
     ];
@@ -183,12 +188,107 @@ try {
                 'agent_id' => $in['agent_id'] ?? '0',
                 'agent_name' => $in['agent_name'] ?? 'All Nodes',
                 'nodes' => $found ? ($found['nodes'] ?? []) : [],
-                'manual_links' => $found ? ($found['manual_links'] ?? []) : []
+                'manual_links' => $found ? ($found['manual_links'] ?? []) : [],
+                'custom_roles' => $found ? ($found['custom_roles'] ?? []) : []
             ];
         }
 
         $bytes = file_put_contents($layout_file, json_encode(['dashboards' => $new_dashboards], JSON_PRETTY_PRINT));
         echo json_encode(['ok' => $bytes !== false]);
+        exit;
+    }
+
+    if ($api === 'roles') {
+        echo json_encode(['ok' => true, 'roles' => DeviceClassifier::getAllRoles()]);
+        exit;
+    }
+
+    if ($api === 'set_node_role') {
+        ob_clean();
+        $input = json_decode(file_get_contents('php://input'), true);
+        $dash_id = $input['dash_id'] ?? '';
+        $node_id = $input['node_id'] ?? '';
+        $role = $input['role'] ?? 'server';
+
+        if (empty($dash_id) || empty($node_id)) {
+            echo json_encode(['ok' => false, 'error' => 'Missing dash_id or node_id']);
+            exit;
+        }
+
+        $config = load_multi_dashboard_config($layout_file);
+        $updated = false;
+        foreach ($config['dashboards'] as &$d) {
+            if ($d['id'] === $dash_id) {
+                if (!isset($d['custom_roles']) || !is_array($d['custom_roles'])) {
+                    $d['custom_roles'] = [];
+                }
+                $d['custom_roles'][$node_id] = $role;
+                $updated = true;
+                break;
+            }
+        }
+        if ($updated) {
+            file_put_contents($layout_file, json_encode($config, JSON_PRETTY_PRINT));
+            echo json_encode(['ok' => true, 'role' => $role, 'role_title' => DeviceClassifier::getRoleTitle($role)]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard not found']);
+        }
+        exit;
+    }
+
+    if ($api === 'load_demo_topology') {
+        ob_clean();
+        $demo = DeviceClassifier::getReferenceDemoTopology();
+        $saveToConfig = isset($_GET['save']) && $_GET['save'] === '1';
+
+        if ($saveToConfig) {
+            $config = load_multi_dashboard_config($layout_file);
+            $demoId = 'dash_demo_sddc';
+
+            $demoNodes = [];
+            $demoLinks = [];
+            $customRoles = [];
+            foreach ($demo['nodes'] as $dn) {
+                $demoNodes[$dn['id']] = ['x' => $dn['x'], 'y' => $dn['y']];
+                $customRoles[$dn['id']] = $dn['role'];
+            }
+            foreach ($demo['edges'] as $idx => $de) {
+                $demoLinks[] = [
+                    'id' => 'demo_edge_' . $idx,
+                    'source' => $de['source'],
+                    'target' => $de['target'],
+                    'label' => $de['label']
+                ];
+            }
+
+            $found = false;
+            foreach ($config['dashboards'] as &$d) {
+                if ($d['id'] === $demoId) {
+                    $d['name'] = 'SDDC vSphere Reference Topology';
+                    $d['nodes'] = $demoNodes;
+                    $d['manual_links'] = $demoLinks;
+                    $d['custom_roles'] = $customRoles;
+                    $found = true;
+                    break;
+                }
+            }
+            if (!$found) {
+                array_unshift($config['dashboards'], [
+                    'id' => $demoId,
+                    'name' => 'SDDC vSphere Reference Topology',
+                    'group_id' => '0',
+                    'group_name' => 'All Groups',
+                    'agent_id' => '0',
+                    'agent_name' => 'All Nodes',
+                    'nodes' => $demoNodes,
+                    'manual_links' => $demoLinks,
+                    'custom_roles' => $customRoles
+                ]);
+            }
+            file_put_contents($layout_file, json_encode($config, JSON_PRETTY_PRINT));
+        }
+
+        echo json_encode(['ok' => true, 'demo' => $demo]);
         exit;
     }
 
@@ -347,9 +447,54 @@ try {
         }
         $manualLinks = $active_dash['manual_links'] ?? [];
 
+        // Check for reference demo mode
+        if ($dash_id === 'dash_demo_sddc' || ($active_dash && strpos($active_dash['id'], 'demo') !== false)) {
+            $demo = DeviceClassifier::getReferenceDemoTopology();
+            $customRoles = $active_dash['custom_roles'] ?? [];
+            $nodes = [];
+            foreach ($demo['nodes'] as $dn) {
+                $pos = $savedNodes[$dn['id']] ?? ['x' => $dn['x'], 'y' => $dn['y']];
+                $roleKey = $customRoles[$dn['id']] ?? $dn['role'];
+                $roleTitle = DeviceClassifier::getRoleTitle($roleKey);
+                $nodes[] = [
+                    'id' => $dn['id'],
+                    'label' => $dn['label'],
+                    'display_label' => $dn['label'] . "\n" . $roleTitle,
+                    'ip' => $dn['ip'],
+                    'status' => $dn['status'],
+                    'alert_count' => $dn['alert_count'],
+                    'role' => $roleKey,
+                    'role_title' => $roleTitle,
+                    'icon' => $roleKey,
+                    'x' => $pos['x'],
+                    'y' => $pos['y'],
+                    'is_manual' => true
+                ];
+            }
+            $edges = [];
+            foreach ($demo['edges'] as $idx => $de) {
+                $edges[] = [
+                    'id' => 'demo_edge_' . $idx,
+                    'from' => $de['source'],
+                    'to' => $de['target'],
+                    'type' => 'auto',
+                    'status' => 'normal',
+                    'label' => $de['label']
+                ];
+            }
+            echo json_encode([
+                'ok' => true,
+                'dash_name' => $active_dash['name'] ?? 'SDDC vSphere Reference Topology',
+                'nodes' => $nodes,
+                'edges' => $edges
+            ]);
+            exit;
+        }
+
         // 1. Fetch active agents with optional dynamic dashboard filtering
         $params = [];
         $agentSql = "SELECT a.id_agente AS id, a.alias, a.direccion AS ip, a.id_parent, a.id_grupo, 
+                            a.so, a.comentarios, a.nombre, g.nombre AS group_name,
                             COALESCE((
                                 SELECT MIN(e.estado) 
                                 FROM tagente_modulo m 
@@ -357,6 +502,7 @@ try {
                                 WHERE m.id_agente = a.id_agente AND m.disabled = 0 AND m.nombre LIKE '%ifOperStatus%'
                             ), 0) as worst_port_status
                      FROM tagente a 
+                     LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo
                      WHERE a.disabled = 0";
         
         if ($isBlankCanvas) {
@@ -390,8 +536,10 @@ try {
         $agentsStmt->execute($params);
         $rawAgents = $agentsStmt->fetchAll();
 
-        // 2. Fetch worst global health of each agent
-        $agentHealthSql = "SELECT m.id_agente, MAX(e.estado) as worst_status 
+        // 2. Fetch worst global health and count of active alerts for each agent
+        $agentHealthSql = "SELECT m.id_agente, 
+                                  MAX(e.estado) as worst_status,
+                                  SUM(CASE WHEN e.estado IN (1, 2) THEN 1 ELSE 0 END) as alert_count
                            FROM tagente_modulo m 
                            JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo 
                            WHERE m.disabled = 0 
@@ -399,7 +547,10 @@ try {
         $healthStmt = $active_pdo->query($agentHealthSql);
         $healths = [];
         while ($h = $healthStmt->fetch()) {
-            $healths[$h['id_agente']] = (int)$h['worst_status'];
+            $healths[$h['id_agente']] = [
+                'worst_status' => (int)$h['worst_status'],
+                'alert_count' => (int)$h['alert_count']
+            ];
         }
 
         // 4. Fetch active ports for SNMP status coloring
@@ -419,23 +570,38 @@ try {
         // Process Nodes
         $nodes = [];
         $agentsIndexed = [];
+        $customRoles = $active_dash['custom_roles'] ?? [];
+
         foreach ($rawAgents as $agent) {
             $id = (int)$agent['id'];
             $prefixed_id = get_node_uuid($node) . ':' . $id;
             $agentsIndexed[$id] = $agent;
 
-            // Health Status Mapping
-            $worstModule = $healths[$id] ?? 0;
+            // Health Status & Alert Count Mapping
+            $worstModule = isset($healths[$id]) ? $healths[$id]['worst_status'] : 0;
+            $alertCount = isset($healths[$id]) ? $healths[$id]['alert_count'] : 0;
+
             $healthLabel = 'normal'; // green
             if ($worstModule === 1) $healthLabel = 'critical'; // red
             elseif ($worstModule === 2) $healthLabel = 'warning'; // yellow
             elseif ($worstModule === 4) $healthLabel = 'not_init'; // blue
+            elseif ($worstModule === 3) $healthLabel = 'unknown';
+
+            // Intelligent Device Role Classification
+            $devClass = DeviceClassifier::classify($agent, $customRoles);
 
             $nodes[] = [
                 'id' => $prefixed_id,
                 'label' => $node_label . pretty_text($agent['alias']),
+                'display_label' => $node_label . pretty_text($agent['alias']) . "\n" . $devClass['title'],
                 'ip' => $agent['ip'] ?: '-',
+                'os' => $agent['so'] ?: '',
+                'group_name' => $agent['group_name'] ?? '',
                 'status' => $healthLabel,
+                'alert_count' => $alertCount,
+                'role' => $devClass['role'],
+                'role_title' => $devClass['title'],
+                'icon' => $devClass['icon'],
                 'id_parent' => $agent['id_parent'] ? (get_node_uuid($node) . ':' . (int)$agent['id_parent']) : null,
                 'x' => isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['x'] : null,
                 'y' => isset($savedNodes[$prefixed_id]) ? (float)$savedNodes[$prefixed_id]['y'] : null,
