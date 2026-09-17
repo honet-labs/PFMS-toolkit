@@ -506,10 +506,22 @@ if ($api === 'bulk_panel_data') {
                     $history = array_reverse($history);
                 }
 
+                $cur_val = $mod['current_val'];
+                if ($cur_val !== null && is_numeric($cur_val)) {
+                    $u_trim = trim($mod['unit'] ?? '');
+                    $n_trim = strtolower(trim($mod['nombre'] ?? ''));
+                    $is_pct = ($u_trim === '%' || strpos($u_trim, '%') !== false || strpos($n_trim, ' in %') !== false || strpos($n_trim, ' %') !== false);
+                    if ($is_pct && (float)$cur_val > 100.0) {
+                        $cur_val = ($mod['max'] > 0) ? min(100.0, (float)$mod['max']) : 100.0;
+                    } elseif ((float)$mod['max'] > 0 && (float)$cur_val > (float)$mod['max']) {
+                        $cur_val = (float)$mod['max'];
+                    }
+                }
+
                 $moduleResults[] = [
                     'id' => $parsed['node'] . ':' . $mod_id,
                     'module_name' => pretty_text($mod['nombre']),
-                    'current' => $mod['current_val'] !== null ? $mod['current_val'] : 'N/A',
+                    'current' => $cur_val !== null ? $cur_val : 'N/A',
                     'status' => (int)$mod['estado'],
                     'last_contact' => (int)$mod['last_contact'],
                     'unit' => pretty_text($mod['unit']),
@@ -1513,7 +1525,13 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true, moduleName =
 
     // 3. Percentage
     if (uLower === '%') {
-        return (num % 1 === 0 ? num : num.toFixed(2)) + '%';
+        let pct = num;
+        const mLow = (moduleName || '').toLowerCase();
+        const cLow = (cardTitle || '').toLowerCase();
+        if (pct > 100 && (mLow.includes('load') || mLow.includes('used') || mLow.includes('cpu') || mLow.includes('mem') || mLow.includes('disk') || cLow.includes('utiliz'))) {
+            pct = 100;
+        }
+        return (pct % 1 === 0 ? pct : pct.toFixed(2)) + '%';
     }
 
     // 4. Latency / Time
@@ -2614,6 +2632,10 @@ function generateSummaryPanelHtml(p, modules) {
             history.forEach(h => {
                 let valNum = parseFloat(h.val);
                 let numericVal = isNaN(valNum) ? 0 : valNum;
+                const isPctMod = (m.unit === '%' || (m.module_name && (m.module_name.includes('Load') || m.module_name.includes('Used'))) || p.title.toLowerCase().includes('utiliz'));
+                if (isPctMod && numericVal > 100) {
+                    numericVal = 100;
+                }
                 let bitVal = (effectiveTraffic && isByte) ? (numericVal * 8) : numericVal;
                 let displayVal = '';
 
@@ -2970,11 +2992,14 @@ function refreshCurrentNodeData() {
                                 historyMap[roundedTs] = h.val;
                             }
                         });
+                        const isPct = (m.unit === '%' || (m.module_name && (m.module_name.includes('Load') || m.module_name.includes('Used'))) || p.title.toLowerCase().includes('utiliz'));
                         let lastVal = null;
                         const data = uniqueTimestamps.map(ts => {
                             if (historyMap[ts] !== undefined) lastVal = historyMap[ts];
                             if (lastVal !== null && !isNaN(lastVal)) {
-                                return isByte ? (Number(lastVal) * 8) : lastVal;
+                                let v = Number(lastVal);
+                                if (isPct && v > 100) v = 100;
+                                return isByte ? (v * 8) : v;
                             }
                             return null;
                         });
@@ -3056,7 +3081,7 @@ function refreshCurrentNodeData() {
                             xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: labels, show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                             yAxis: { 
                                 type: 'value', 
-                                max: p.force_100 ? 100 : null, 
+                                max: (p.force_100 || (commonUnit === '%')) ? 100 : null, 
                                 splitLine: { lineStyle: { color: '#f0f3f5' } }, 
                                 axisLabel: { 
                                     fontSize: Math.max(8, chartFs - 2), 
@@ -3827,6 +3852,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         const unit = res.unit ? ' ' + res.unit : '';
         
         let html = '';
+        const isDetailPct = (unit.trim() === '%' || unit.includes('%') || title.toLowerCase().includes('load') || title.toLowerCase().includes('used'));
         data.forEach(row => {
             let formattedDate = row.waktu;
             if (row.waktu && row.waktu.includes('-')) {
@@ -3834,7 +3860,8 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                 const ymd = parts[0].split('-');
                 formattedDate = `${ymd[2]}/${ymd[1]}/${ymd[0]} ${parts[1]}`;
             }
-            const valNum = parseFloat(row.datos);
+            let valNum = parseFloat(row.datos);
+            if (isDetailPct && valNum > 100) valNum = 100;
             const displayVal = (valNum % 1 === 0) ? valNum : valNum.toFixed(2);
             html += `<tr>
                 <td style="font-weight: normal; color: #475569;">${formattedDate}</td>
@@ -3852,7 +3879,11 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                 }
                 return row.waktu;
             });
-            const dataset = data.map(row => parseFloat(row.datos));
+            const dataset = data.map(row => {
+                let v = parseFloat(row.datos);
+                if (isDetailPct && v > 100) v = 100;
+                return v;
+            });
             
             let dom = document.getElementById('nativeModuleDetailChart');
             if (dom) {
@@ -3881,7 +3912,12 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                     },
                     grid: { left: 5, right: 15, top: 15, bottom: 25, containLabel: true },
                     xAxis: { type: 'category', boundaryGap: false, data: labels, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
-                    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { fontSize: 10, color: '#64748b' } },
+                    yAxis: { 
+                        type: 'value', 
+                        max: isDetailPct ? 100 : null,
+                        splitLine: { lineStyle: { color: '#f1f5f9' } }, 
+                        axisLabel: { fontSize: 10, color: '#64748b' } 
+                    },
                     dataZoom: [{
                         type: 'inside',
                         start: 0,

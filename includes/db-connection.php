@@ -451,11 +451,13 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
 
     // 1. Determine the specific table for this module to optimize query performance (Numeric/String/Inc)
     $target_table = null;
+    $mod_meta = null;
     try {
-        $stType = $active_pdo->prepare("SELECT m.id_tipo_modulo, t.name FROM tagente_modulo m JOIN ttipo_modulo t ON m.id_tipo_modulo = t.id_tipo_modulo WHERE m.id_agente_modulo = ?");
+        $stType = $active_pdo->prepare("SELECT m.id_tipo_modulo, t.name, m.min, m.max, m.unit, m.nombre FROM tagente_modulo m JOIN ttipo_modulo t ON m.id_tipo_modulo = t.id_tipo_modulo WHERE m.id_agente_modulo = ?");
         $stType->execute([$id_mod]);
         $row = $stType->fetch(PDO::FETCH_ASSOC);
         if ($row) {
+            $mod_meta = $row;
             $typeId = (int)$row['id_tipo_modulo'];
             $typeName = strtolower((string)$row['name']);
             
@@ -470,6 +472,32 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
         }
     } catch (Throwable $e) {
         error_log("Failed to determine module type table: " . $e->getMessage());
+    }
+
+    // Determine validity bounds to filter out corrupted outliers / glitch values
+    $min_bound = null;
+    $max_bound = null;
+    if ($mod_meta && $target_table === 'tagente_datos') {
+        $raw_unit = trim($mod_meta['unit'] ?? '');
+        $raw_nombre = strtolower(trim($mod_meta['nombre'] ?? ''));
+        $mod_min = isset($mod_meta['min']) ? (float)$mod_meta['min'] : 0.0;
+        $mod_max = isset($mod_meta['max']) ? (float)$mod_meta['max'] : 0.0;
+
+        $is_percent = ($raw_unit === '%' || strpos($raw_unit, '%') !== false || strpos($raw_nombre, ' in %') !== false || strpos($raw_nombre, ' %') !== false);
+        
+        if ($is_percent) {
+            // Percentage metrics must strictly stay within [0, 100] unless configured otherwise
+            $min_bound = ($mod_min != 0.0) ? $mod_min : 0.0;
+            $max_bound = ($mod_max > 0.0) ? $mod_max : 100.0;
+        } else {
+            // Non-percentage numeric metrics: respect explicit positive max or non-zero min if configured
+            if ($mod_max > 0.0) {
+                $max_bound = $mod_max;
+            }
+            if ($mod_min != 0.0) {
+                $min_bound = $mod_min;
+            }
+        }
     }
 
     $historyData = [];
@@ -611,16 +639,33 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     }
 
     if ($preData) {
-        $preData['ts'] = (int)$start;
-        $historyData[] = $preData;
+        $pNum = is_numeric($preData['datos']) ? (float)$preData['datos'] : null;
+        $pValid = true;
+        if ($target_table === 'tagente_datos' && $pNum !== null) {
+            if ($max_bound !== null && $pNum > $max_bound) $pValid = false;
+            if ($min_bound !== null && $pNum < $min_bound) $pValid = false;
+        }
+        if ($pValid) {
+            $preData['ts'] = (int)$start;
+            $historyData[] = $preData;
+        }
     }
 
     // Merge results using array_merge
     $merged = array_merge($historyData, $activeData);
 
-    // Deduplicate by timestamp to prevent duplicate points
+    // Deduplicate by timestamp and discard corrupted outliers outside module thresholds
     $unique = [];
     foreach ($merged as $item) {
+        if ($target_table === 'tagente_datos' && is_numeric($item['datos'])) {
+            $num = (float)$item['datos'];
+            if ($max_bound !== null && $num > $max_bound) {
+                continue; // Discard outlier above max / 100%
+            }
+            if ($min_bound !== null && $num < $min_bound) {
+                continue; // Discard outlier below min / 0%
+            }
+        }
         $unique[$item['ts']] = $item;
     }
     $result = array_values($unique);
@@ -687,6 +732,24 @@ function get_modules_history_data_batch($pdo, $pdo_history, $modIds, $start, $en
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $max_limit = min(5000, count($ids) * 500);
 
+        // Fetch module boundaries to discard corrupted outliers
+        $bounds_map = [];
+        try {
+            $stMeta = $active_pdo->prepare("SELECT id_agente_modulo, unit, min, max, nombre FROM tagente_modulo WHERE id_agente_modulo IN ($placeholders)");
+            $stMeta->execute($ids);
+            while ($mRow = $stMeta->fetch(PDO::FETCH_ASSOC)) {
+                $u = trim($mRow['unit'] ?? '');
+                $nm = strtolower(trim($mRow['nombre'] ?? ''));
+                $mn = isset($mRow['min']) ? (float)$mRow['min'] : 0.0;
+                $mx = isset($mRow['max']) ? (float)$mRow['max'] : 0.0;
+                $is_pct = ($u === '%' || strpos($u, '%') !== false || strpos($nm, ' in %') !== false || strpos($nm, ' %') !== false);
+                $bounds_map[$mRow['id_agente_modulo']] = [
+                    'min' => $is_pct ? ($mn != 0.0 ? $mn : 0.0) : ($mn != 0.0 ? $mn : null),
+                    'max' => $is_pct ? ($mx > 0.0 ? $mx : 100.0) : ($mx > 0.0 ? $mx : null),
+                ];
+            }
+        } catch (Throwable $e) {}
+
         // Fast Path: Query indexed numeric table `tagente_datos` directly (99.9% of metrics)
         $direct_sql = "SELECT id_agente_modulo, utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo IN ($placeholders) AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT $max_limit";
         $direct_params = array_merge($ids, [$start, $end]);
@@ -699,7 +762,14 @@ function get_modules_history_data_batch($pdo, $pdo_history, $modIds, $start, $en
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 if (!empty($rows)) {
                     foreach ($rows as $row) {
-                        $prefixed_mod_id = $node . ':' . $row['id_agente_modulo'];
+                        $mid = $row['id_agente_modulo'];
+                        if (isset($bounds_map[$mid]) && is_numeric($row['datos'])) {
+                            $vNum = (float)$row['datos'];
+                            $b = $bounds_map[$mid];
+                            if ($b['max'] !== null && $vNum > $b['max']) continue;
+                            if ($b['min'] !== null && $vNum < $b['min']) continue;
+                        }
+                        $prefixed_mod_id = $node . ':' . $mid;
                         $node_data[] = [
                             'id_mod' => $prefixed_mod_id,
                             'ts' => (int)$row['ts'],
