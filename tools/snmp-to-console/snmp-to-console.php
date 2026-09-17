@@ -165,8 +165,12 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
     <title>SNMP to Console - Modernized</title>
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <!-- Fallback relative links for standalone/subpath support -->
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; margin: 0; }
+        body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; margin: 0; }
+        input, button, select, textarea { font-family: inherit; }
         .material-symbols-outlined { vertical-align: middle; font-size: 18px; }
         
         .header-box { background: #f4f6f8; padding: 15px 30px; border-bottom: 1px solid #e0e4e8; display: flex; justify-content: space-between; align-items: center; }
@@ -178,11 +182,13 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
         
         .form-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 5px; display: block; }
         .form-control, .form-select { font-size: 13px; border-color: #dce1e5; padding: 7px 10px; }
-        .form-control:focus { border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1); }
+        .form-control:focus { border-color: #004d40; box-shadow: 0 0 0 3px rgba(0, 77, 64, 0.1); }
         
-        .btn-premium { background: #059669; color: #fff; border: none; padding: 10px 15px; border-radius: 6px; font-weight: 600; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
-        .btn-premium:hover { background: #047857; }
+        .btn-premium { background: #004d40; color: #fff; border: none; padding: 10px 15px; border-radius: 6px; font-weight: 600; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; cursor: pointer; }
+        .btn-premium:hover { background: #00695c; }
         .btn-premium:disabled { background: #94a3b8; }
+        .btn-brand { background: #004d40; border-color: #004d40; color: #fff; }
+        .btn-brand:hover { background: #00695c; border-color: #00695c; color: #fff; }
         
         .tab-nav { background: #f8fafc; border-bottom: 1px solid #f0f3f5; padding: 10px 20px; display: flex; gap: 15px; }
         .tab-btn { background: none; border: none; padding: 5px 15px; color: #64748b; font-weight: 500; font-size: 12px; cursor: pointer; border-radius: 4px; }

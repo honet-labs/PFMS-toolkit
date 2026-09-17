@@ -388,12 +388,14 @@ if (!empty($export) && !empty($rows)) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Raw Data Generator</title>
     <link rel="icon" href="/pandora_console/images/pandora.ico" type="image/x-icon">
+    <link href="../vendor/fonts/fonts.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" />
+    <link href="../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <style>
-        * { font-family: 'Lato', sans-serif !important; color: #333; font-size: 14px !important; }
-        body { background-color: #f4f6f8; margin: 0; padding: 0; }
+        * { box-sizing: border-box; }
+        body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+        body { background-color: #f4f6f8; color: #334155; font-size: 13px; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-weight: normal !important; font-size: 18px !important; line-height: 1 !important; display: inline-block; vertical-align: middle; color: inherit !important; }
 
         .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 10; }

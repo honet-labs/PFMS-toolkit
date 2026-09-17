@@ -146,11 +146,15 @@ $share_refresh = $is_share_mode ? (int)($_GET['refresh'] ?? 0) : 0;
     <meta charset="UTF-8">
     <title>Dynamic Table Viewer - Pandora FMS</title>
     <!-- Core fonts and style dependencies -->
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     
     <style>
-        body { font-family: 'Inter', sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; margin: 0; padding: 0; }
+        * { box-sizing: border-box; }
+        body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+        body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
         .material-symbols-outlined { vertical-align: middle; font-size: 18px; }
         .header-section { padding: 15px 30px; background: #fff; border-bottom: 1px solid #e0e4e8; display: flex; justify-content: space-between; align-items: center; }
         .page-title { font-size: 16px; font-weight: 600; color: #0b1a26; margin: 0; }
@@ -161,16 +165,16 @@ $share_refresh = $is_share_mode ? (int)($_GET['refresh'] ?? 0) : 0;
         .panel-title { font-size: 14px; font-weight: 600; color: #0b1a26; margin: 0; }
         .panel-body { padding: 20px; }
         
-        .table-pfms { width: 100%; border-collapse: collapse; }
-        .table-pfms th { background: #f8f9fa; padding: 12px 20px; text-align: left; font-size: 11px; text-transform: uppercase; color: #7f8c8d; border-bottom: 2px solid #e0e4e8; white-space: nowrap; }
-        .table-pfms td { padding: 12px 20px; border-bottom: 1px solid #f0f3f5; word-break: break-word; vertical-align: top; }
-        .table-pfms tr:hover { background: #f8fafc; }
+        table.table-pfms { width: 100%; border-collapse: collapse; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        table.table-pfms th { background: #f8f9fa; padding: 12px 20px; text-align: left; font-size: 11px; text-transform: uppercase; color: #7f8c8d; border-bottom: 2px solid #e0e4e8; white-space: nowrap; }
+        table.table-pfms td { padding: 12px 20px; border-bottom: 1px solid #f0f3f5; word-break: break-word; vertical-align: top; }
+        table.table-pfms tr:hover { background: #f8fafc; }
         
         .btn-pfms { padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.2s; border: 1px solid transparent; display: inline-flex; align-items: center; gap: 6px; }
         .btn-primary-pfms { background: #004d40; color: #fff; }
-        .btn-primary-pfms:hover { background: #00332a; }
+        .btn-primary-pfms:hover { background: #00695c; }
         .btn-outline-pfms { background: #fff; border-color: #dce1e5; color: #4a5568; }
-        .btn-outline-pfms:hover { border-color: #cbd5e1; background: #f8fafc; }
+        .btn-outline-pfms:hover { border-color: #cbd5e1; background: #f4f6f8; color: #0b1a26; }
         .btn-danger-pfms { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
         .btn-danger-pfms:hover { background: #fecaca; color: #991b1b; }
         .btn-icon { padding: 6px; }

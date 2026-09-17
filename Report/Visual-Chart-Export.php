@@ -222,19 +222,26 @@ if ($api === 'chart_data' && $db_status) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visual Chart Reports - Pandora FMS</title>
     <!-- Core fonts and style dependencies -->
+    <link href="../vendor/fonts/fonts.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($panelDirName ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($panelDirName ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <!-- ECharts JS Library -->
+    <script src="../vendor/echarts/echarts.min.js"></script>
     <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($panelDirName ?? "custom") ?>/panel/vendor/echarts/echarts.min.js"></script>
     
     <style>
+        * { box-sizing: border-box; }
+        body, input, button, select, textarea {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        }
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: #f8fafc;
-            color: #1e293b;
+            background-color: #f4f6f8;
+            color: #334155;
             margin: 0;
             padding: 0;
             font-size: 13px;
+            -webkit-font-smoothing: antialiased;
         }
         .main-container {
             padding: 25px 30px;

@@ -59,9 +59,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <title>Topology Network - PFMS-Toolkit</title>
     
     <!-- Google Fonts Inter & Material Symbols -->
+    <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
     <link rel="stylesheet" href="../../vendor/fonts/inter.css">
     <link rel="stylesheet" href="../../vendor/fonts/material-symbols.css">
-    <link rel="stylesheet" href="../../vendor/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../../vendor/bootstrap/bootstrap.min.css">
 
     <!-- Offline Cytoscape & Dagre Engines -->
     <script src="../../vendor/cytoscape/cytoscape.min.js"></script>
@@ -77,15 +78,19 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             --surface-bg: #f8fafc;
             --card-bg: #ffffff;
             --border-color: #e2e8f0;
-            --text-main: #0f172a;
+            --text-main: #334155;
             --text-muted: #64748b;
             --status-crit: #ef4444;
             --status-warn: #f59e0b;
             --status-ok: #10b981;
         }
 
+        body, input, button, select, textarea {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        }
+
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             background-color: var(--surface-bg);
             color: var(--text-main);
             margin: 0;
@@ -889,7 +894,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 const badgeBg = isCrit ? '#ef4444' : '#f59e0b';
                 badgeSvg = `
                     <circle cx="56" cy="16" r="8.5" fill="${badgeBg}" stroke="#ffffff" stroke-width="2" />
-                    <text x="56" y="20" font-family="Arial, sans-serif" font-size="10" font-weight="900" fill="#ffffff" text-anchor="middle">!</text>
+                    <text x="56" y="20" font-family="'Inter', sans-serif" font-size="10" font-weight="900" fill="#ffffff" text-anchor="middle">!</text>
                 `;
             }
 

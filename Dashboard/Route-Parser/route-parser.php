@@ -1129,7 +1129,7 @@ if (!$current_dashboard):
     <style>
         :root {
             --brand-green: #004d40;
-            --brand-green-hover: #00332a;
+            --brand-green-hover: #00695c;
             --primary-navy: #0b1a26;
             --bg-page: #f4f6f8;
             --card-bg: #ffffff;
@@ -1143,10 +1143,13 @@ if (!$current_dashboard):
         }
 
         * { box-sizing: border-box; }
+        body, input, button, select, textarea {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        }
         body {
             margin: 0;
             padding: 0;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             background-color: var(--bg-page);
             color: var(--text-dark);
             font-size: 14px;
@@ -2352,10 +2355,13 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
         }
 
         * { box-sizing: border-box; }
+        body, input, button, select, textarea {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        }
         body {
             margin: 0;
             padding: 0;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             background-color: var(--bg-page);
             color: var(--text-dark);
             -webkit-font-smoothing: antialiased;

@@ -24,7 +24,7 @@ if (file_exists($db_connection_file)) {
     foreach ($possible_paths as $p) { if (file_exists($p)) { require_once $p; break; } }
 }
 if (!isset($pdo) || !($pdo instanceof PDO)) {
-    die("<div style='color:red; padding:20px; font-family:sans-serif;'><b>FATAL ERROR:</b> Central database connection failed.</div>");
+    die("<div style='color:red; padding:20px; font-family:\'Inter\',sans-serif;'><b>FATAL ERROR:</b> Central database connection failed.</div>");
 }
 
 // --- 2. CONFIG & HELPERS (PROTECTED) ---
@@ -204,11 +204,16 @@ $PATH_ID = $_GET['path_id'] ?? null;
 <head>
     <meta charset="UTF-8">
     <title>NetPath Dashboard</title>
+    <!-- Core fonts and style dependencies -->
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <!-- Fallback relative links for standalone/subpath support -->
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <style>
-        :root { --primary-dark: #0b1a26; --secondary-text: #64748b; --border-color: #e0e4e8; --bg-color: #f4f6f8; --accent-green: #004d40; --accent-green-hover: #00332a; }
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: #334155; margin: 0; font-size: 14px; -webkit-font-smoothing: antialiased; }
+        :root { --primary-dark: #0b1a26; --secondary-text: #64748b; --border-color: #e0e4e8; --bg-color: #f4f6f8; --accent-green: #004d40; --accent-green-hover: #00695c; }
+        body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background-color: var(--bg-color); color: #334155; margin: 0; font-size: 14px; -webkit-font-smoothing: antialiased; }
+        input, button, select, textarea { font-family: inherit; }
         .pandora-header-bottom { background: var(--bg-color); padding: 15px 30px; display: flex; align-items: center; justify-content: space-between; }
         .page-title { font-size: 18px; color: var(--primary-dark); margin: 0; font-weight: 600; display: flex; align-items: center; gap: 10px; }
         .btn-apply { background: var(--accent-green); color: #fff !important; border: none; padding: 8px 20px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: 0.2s; }

@@ -52,7 +52,7 @@ function pretty_text($s) {
 
 function get_mock_graph($label) {
     $url_label = urlencode($label);
-    return '<div style="margin: 15px 0; height: 200px; background-color: #e2e8f0; color: #475569; display: flex; align-items: center; justify-content: center; font-weight: normal; font-family: sans-serif; border-radius: 6px; border: 1px solid #cbd5e1;">' . $url_label . ' (Mock Graph)</div>';
+    return '<div style="margin: 15px 0; height: 200px; background-color: #e2e8f0; color: #475569; display: flex; align-items: center; justify-content: center; font-weight: normal; font-family: \'Inter\', sans-serif; border-radius: 6px; border: 1px solid #cbd5e1;">' . $url_label . ' (Mock Graph)</div>';
 }
 
 $pdo = null;
@@ -222,13 +222,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_status) {
     
     
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" />
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <!-- Fallback relative links for standalone/subpath support -->
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
 
     <style>
         /* Base Global Styling */
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }
+        input, button, select, textarea { font-family: inherit; }
 
         /* MATERIAL SYMBOLS FIX */
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-weight: normal !important; font-style: normal !important; font-size: 18px !important; line-height: 1 !important; display: inline-block; vertical-align: middle; color: inherit !important; }

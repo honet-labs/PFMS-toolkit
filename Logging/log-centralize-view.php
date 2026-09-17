@@ -131,10 +131,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'download') {
 <head>
     <meta charset="UTF-8">
     <title>Log Centralize View - Pandora FMS</title>
+    <link href="../vendor/fonts/fonts.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        * { box-sizing: border-box; }
+        body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+        body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; margin: 0; display: flex; flex-direction: column; height: 100vh; -webkit-font-smoothing: antialiased; }
         .material-symbols-outlined { vertical-align: middle; font-size: 18px; }
         
         .header { padding: 12px 30px; background: #fff; border-bottom: 1px solid #e0e4e8; display: flex; justify-content: space-between; align-items: center; }
@@ -158,9 +162,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'download') {
         
         .btn-pfms { font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 6px; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
         .btn-outline { border: 1px solid #dce1e5; background: #fff; color: #64748b; }
-        .btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .btn-outline:hover { background: #f4f6f8; border-color: #cbd5e1; color: #0b1a26; }
         .btn-primary-pfms { background: #004d40; color: #fff; border: none; }
-        .btn-primary-pfms:hover { background: #003d33; }
+        .btn-primary-pfms:hover { background: #00695c; }
 
         ::-webkit-scrollbar { width: 10px; }
         ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }

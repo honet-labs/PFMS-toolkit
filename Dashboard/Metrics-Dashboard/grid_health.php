@@ -412,8 +412,11 @@ if ($isPure && $target_panel_id) {
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0">
     <style>
+        * { box-sizing: border-box; }
+        body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background-color: #f4f6f8; margin: 0; padding: 0; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; }
         
         .pandora-header-top { display: <?= $isStandalone ? 'flex' : 'none' ?>; background: #fff; border-bottom: 1px solid #e0e4e8; height: 60px; align-items: center; justify-content: space-between; padding: 0 25px; }
@@ -426,7 +429,7 @@ if ($isPure && $target_panel_id) {
         .page-title { font-size: 18px !important; color: #0b1a26 !important; margin: 0; font-weight: 600 !important; line-height: 1.1; display:flex; align-items:center; gap:8px;}
         
         .btn-apply { background: #004d40; color: #fff !important; border: none; padding: 8px 18px; border-radius: 4px; font-weight: normal !important; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; transition: 0.2s; height: 36px; }
-        .btn-apply:hover { background: #00332a; }
+        .btn-apply:hover { background: #00695c; }
         
         .toolbar-pill { background: #fff; border: 1px solid #dce1e5; border-radius: 6px; padding: 4px 10px; display: flex; align-items: center; gap: 8px; height: 36px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
         .refresh-select { border: none; background: transparent; font-size: 12px; font-weight: normal; color: #004d40; outline: none; cursor: pointer; }

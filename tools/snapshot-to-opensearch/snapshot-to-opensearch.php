@@ -608,8 +608,12 @@ function runBackgroundCron($pdo) {
     <title>OpenSearch Snapshot Indexer - Pandora FMS</title>
     <link href="<?= htmlspecialchars($base_url ?? "") ?>/vendor/fonts/fonts.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($base_url ?? "") ?>/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <!-- Fallback relative links for standalone/subpath support -->
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; margin: 0; padding: 25px; }
+        body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #f4f6f8; color: #334155; font-size: 13px; margin: 0; padding: 25px; }
+        input, button, select, textarea { font-family: inherit; }
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-weight: normal !important; font-style: normal !important; font-size: 18px !important; line-height: 1 !important; display: inline-block; vertical-align: middle; color: inherit !important; }
         
         .header-section { background: #fff; padding: 20px 30px; border-radius: 8px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
@@ -629,7 +633,7 @@ function runBackgroundCron($pdo) {
         
         .btn-pfms { font-size: 12px; font-weight: 500; padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; border: none; outline: none; }
         .btn-primary-pfms { background: #004d40; color: #fff; }
-        .btn-primary-pfms:hover { background: #003d33; }
+        .btn-primary-pfms:hover { background: #00695c; }
         .btn-outline-pfms { border: 1px solid #cbd5e1; background: #fff; color: #64748b; }
         .btn-outline-pfms:hover { background: #f8fafc; border-color: #94a3b8; color: #1e293b; }
         

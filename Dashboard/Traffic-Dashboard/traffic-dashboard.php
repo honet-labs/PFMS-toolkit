@@ -1090,11 +1090,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 <head>
     <meta charset="utf-8">
     <title>Traffic Dashboard</title>
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <script src="../../vendor/echarts/echarts.min.js"></script>
     <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/echarts/echarts.min.js"></script>
     <style>
-        :root { --primary-bg: #f4f6f8; --card-bg: #fff; --toolbar-bg: #fff; --border-color: #e0e4e8; --text-main: #1e293b; --text-dim: #64748b; --accent: #10b981; }
-        body { font-family: Arial, Helvetica, sans-serif; background: var(--primary-bg); color: var(--text-main); margin: 0; font-size: 12px; container-type: inline-size; container-name: body-container; }
+        :root { --primary-bg: #f4f6f8; --card-bg: #fff; --toolbar-bg: #fff; --border-color: #e0e4e8; --text-main: #334155; --text-dim: #64748b; --accent: #004d40; }
+        body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+        body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: var(--primary-bg); color: var(--text-main); margin: 0; font-size: 13px; container-type: inline-size; container-name: body-container; -webkit-font-smoothing: antialiased; }
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; }
 
         /* HEADER BREADCRUMB SYSTEMS */
@@ -1139,7 +1142,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
 
         .btn-create { background: #004d40; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-        .btn-create:hover { background: #00332a; }
+        .btn-create:hover { background: #00695c; }
 
         .main-content { padding: 20px 25px; overflow-x: auto; }
         @media (max-width: 768px) {
