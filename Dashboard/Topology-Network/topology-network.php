@@ -72,35 +72,69 @@ if (empty($user_id) && !$is_standalone) {
     exit;
 }
 
+$portal_page_param = $_GET['page'] ?? 'Dashboard/Topology-Network/topology-network.php';
 $DASHBOARD_FILE = __DIR__ . '/topology_dashboards.json';
+$temp_dir = dirname(__DIR__, 2) . '/temp';
+if (!file_exists($DASHBOARD_FILE)) {
+    if (file_exists($temp_dir . '/topology_dashboards.json')) {
+        $DASHBOARD_FILE = $temp_dir . '/topology_dashboards.json';
+    } elseif (!is_writable(__DIR__) && is_dir($temp_dir) && is_writable($temp_dir)) {
+        $DASHBOARD_FILE = $temp_dir . '/topology_dashboards.json';
+    }
+}
 
 // Helper: load dashboards
 function load_topology_dashboards(string $file): array {
-    if (!file_exists($file)) return [];
-    $raw = @file_get_contents($file);
-    $data = json_decode((string)$raw, true);
-    return is_array($data) ? $data : [];
+    $candidates = array_unique([$file, __DIR__ . '/topology_dashboards.json', dirname(__DIR__, 2) . '/temp/topology_dashboards.json']);
+    foreach ($candidates as $f) {
+        if (file_exists($f)) {
+            $raw = @file_get_contents($f);
+            if ($raw) {
+                $data = json_decode((string)$raw, true);
+                if (is_array($data)) return $data;
+            }
+        }
+    }
+    return [];
 }
 
 // Helper: save dashboards
 function save_topology_dashboards(string $file, array $data): bool {
-    return @file_put_contents($file, json_encode(array_values($data), JSON_PRETTY_PRINT)) !== false;
+    $json = json_encode(array_values($data), JSON_PRETTY_PRINT);
+    $res = @file_put_contents($file, $json);
+    if ($res !== false) {
+        $temp_file = dirname(__DIR__, 2) . '/temp/topology_dashboards.json';
+        if ($file !== $temp_file && file_exists(dirname($temp_file))) {
+            @file_put_contents($temp_file, $json);
+        }
+        return true;
+    }
+    // Fallback to temp if primary dir is not writable (e.g. Linux www-data permissions)
+    $temp_file = dirname(__DIR__, 2) . '/temp/topology_dashboards.json';
+    if ($file !== $temp_file) {
+        if (!is_dir(dirname($temp_file))) @mkdir(dirname($temp_file), 0777, true);
+        $res2 = @file_put_contents($temp_file, $json);
+        if ($res2 !== false) return true;
+    }
+    return false;
 }
 
 // =====================================================================
 // DEVICE CLASSIFIER & SDDC REFERENCE DEMO ENGINE
 // =====================================================================
 class TopologyDeviceClassifier {
-    const ROLE_VM         = 'vm';
-    const ROLE_HYPERVISOR = 'hypervisor';
-    const ROLE_CLUSTER    = 'cluster';
-    const ROLE_DATACENTER = 'datacenter';
-    const ROLE_STORAGE    = 'storage';
-    const ROLE_VCENTER    = 'vcenter';
-    const ROLE_SWITCH     = 'switch';
-    const ROLE_ROUTER     = 'router';
-    const ROLE_FIREWALL   = 'firewall';
-    const ROLE_SERVER     = 'server';
+    const ROLE_VM          = 'vm';
+    const ROLE_HYPERVISOR  = 'hypervisor';
+    const ROLE_CLUSTER     = 'cluster';
+    const ROLE_DATACENTER  = 'datacenter';
+    const ROLE_STORAGE     = 'storage';
+    const ROLE_VCENTER     = 'vcenter';
+    const ROLE_SWITCH      = 'switch';
+    const ROLE_ROUTER      = 'router';
+    const ROLE_FIREWALL    = 'firewall';
+    const ROLE_SERVER      = 'server';
+    const ROLE_DATABASE    = 'database';
+    const ROLE_WORKSTATION = 'workstation';
 
     public static function getRoles(): array {
         return [
@@ -110,7 +144,8 @@ class TopologyDeviceClassifier {
                 'short_title' => 'VM',
                 'category' => 'compute',
                 'badge_color' => '#3b82f6',
-                'rank' => 1
+                'rank' => 1,
+                'icon_file' => 'vmware@os.svg'
             ],
             self::ROLE_HYPERVISOR => [
                 'id' => self::ROLE_HYPERVISOR,
@@ -118,7 +153,8 @@ class TopologyDeviceClassifier {
                 'short_title' => 'Host',
                 'category' => 'compute',
                 'badge_color' => '#1e293b',
-                'rank' => 2
+                'rank' => 2,
+                'icon_file' => 'vmware@os.svg'
             ],
             self::ROLE_CLUSTER => [
                 'id' => self::ROLE_CLUSTER,
@@ -126,7 +162,8 @@ class TopologyDeviceClassifier {
                 'short_title' => 'Cluster',
                 'category' => 'compute',
                 'badge_color' => '#475569',
-                'rank' => 3
+                'rank' => 3,
+                'icon_file' => 'cluster@os.svg'
             ],
             self::ROLE_DATACENTER => [
                 'id' => self::ROLE_DATACENTER,
@@ -134,7 +171,8 @@ class TopologyDeviceClassifier {
                 'short_title' => 'Datacenter',
                 'category' => 'compute',
                 'badge_color' => '#0f172a',
-                'rank' => 4
+                'rank' => 4,
+                'icon_file' => 'network-server@os.svg'
             ],
             self::ROLE_STORAGE => [
                 'id' => self::ROLE_STORAGE,
@@ -142,7 +180,8 @@ class TopologyDeviceClassifier {
                 'short_title' => 'Storage',
                 'category' => 'storage',
                 'badge_color' => '#0284c7',
-                'rank' => 2
+                'rank' => 2,
+                'icon_file' => 'storage.svg'
             ],
             self::ROLE_VCENTER => [
                 'id' => self::ROLE_VCENTER,
@@ -150,7 +189,8 @@ class TopologyDeviceClassifier {
                 'short_title' => 'Mgmt',
                 'category' => 'management',
                 'badge_color' => '#64748b',
-                'rank' => 3
+                'rank' => 3,
+                'icon_file' => 'vmware@os.svg'
             ],
             self::ROLE_SWITCH => [
                 'id' => self::ROLE_SWITCH,
@@ -158,7 +198,8 @@ class TopologyDeviceClassifier {
                 'short_title' => 'Switch',
                 'category' => 'network',
                 'badge_color' => '#0d9488',
-                'rank' => 3
+                'rank' => 3,
+                'icon_file' => 'switch@os.svg'
             ],
             self::ROLE_ROUTER => [
                 'id' => self::ROLE_ROUTER,
@@ -166,7 +207,8 @@ class TopologyDeviceClassifier {
                 'short_title' => 'Router',
                 'category' => 'network',
                 'badge_color' => '#059669',
-                'rank' => 4
+                'rank' => 4,
+                'icon_file' => 'routers@os.svg'
             ],
             self::ROLE_FIREWALL => [
                 'id' => self::ROLE_FIREWALL,
@@ -174,7 +216,26 @@ class TopologyDeviceClassifier {
                 'short_title' => 'Firewall',
                 'category' => 'network',
                 'badge_color' => '#dc2626',
-                'rank' => 5
+                'rank' => 5,
+                'icon_file' => 'firewall@groups.svg'
+            ],
+            self::ROLE_DATABASE => [
+                'id' => self::ROLE_DATABASE,
+                'title' => 'Database Server',
+                'short_title' => 'Database',
+                'category' => 'compute',
+                'badge_color' => '#7c3aed',
+                'rank' => 2,
+                'icon_file' => 'database@groups.svg'
+            ],
+            self::ROLE_WORKSTATION => [
+                'id' => self::ROLE_WORKSTATION,
+                'title' => 'Workstation / Laptop',
+                'short_title' => 'PC',
+                'category' => 'compute',
+                'badge_color' => '#0284c7',
+                'rank' => 1,
+                'icon_file' => 'workstation@groups.svg'
             ],
             self::ROLE_SERVER => [
                 'id' => self::ROLE_SERVER,
@@ -182,9 +243,27 @@ class TopologyDeviceClassifier {
                 'short_title' => 'Server',
                 'category' => 'compute',
                 'badge_color' => '#334155',
-                'rank' => 2
+                'rank' => 2,
+                'icon_file' => 'network-server@os.svg'
             ]
         ];
+    }
+
+    public static function getIconUrl(string $base_url, array $agent, string $role): string {
+        $imgDir = rtrim($base_url, '/') . '/images/';
+        
+        // 1. Check if agent has configured os_icon from tagente/tconfig_os
+        if (!empty($agent['os_icon'])) {
+            $rawIcon = trim((string)$agent['os_icon']);
+            if (preg_match('/^[a-zA-Z0-9_\-\.@]+\.(svg|png|gif|jpg)$/i', $rawIcon)) {
+                return $imgDir . $rawIcon;
+            }
+        }
+        
+        // 2. Map role to official Pandora FMS image in /var/www/html/pandora_console/images/
+        $roles = self::getRoles();
+        $iconFile = $roles[$role]['icon_file'] ?? 'devices.svg';
+        return $imgDir . $iconFile;
     }
 
     public static function classifyAgent(array $agent, ?string $manualOverride = null): string {
@@ -209,22 +288,28 @@ class TopologyDeviceClassifier {
         if (preg_match('/(datacenter|sddc|dc-|data-center)/i', $haystack)) {
             return self::ROLE_DATACENTER;
         }
-        if (preg_match('/(datastore|vsan|san|nas|nfs|purestorage|storage|lun)/i', $haystack)) {
+        if (preg_match('/(datastore|vsan|san|nas|nfs|purestorage|storage|lun|truenas)/i', $haystack)) {
             return self::ROLE_STORAGE;
+        }
+        if (preg_match('/(db_|db-|database|mysql|postgres|mariadb|oracle|sql|mongodb|redis|onyxbdp|employeecase)/i', $haystack)) {
+            return self::ROLE_DATABASE;
+        }
+        if (preg_match('/(laptop|notebook|dell 3450|desktop|workstation|pc|thinkpad|client-pc)/i', $haystack)) {
+            return self::ROLE_WORKSTATION;
         }
         if (preg_match('/(esxi|hypervisor|vsphere host|proxmox|kvm host)/i', $haystack)) {
             return self::ROLE_HYPERVISOR;
         }
-        if (preg_match('/(vm-|srv-vm|vhost|virtual machine|debian|ubuntu|centos|rhel|windows server|win-vm|docker|k8s)/i', $haystack)) {
+        if (preg_match('/(vm-|srv-vm|vhost|virtual machine|win-vm|docker|k8s)/i', $haystack)) {
             return self::ROLE_VM;
         }
         if (preg_match('/(firewall|fortinet|palo alto|pfsense|opnsense|checkpoint)/i', $haystack)) {
             return self::ROLE_FIREWALL;
         }
-        if (preg_match('/(router|gateway|mikrotik|cisco crs|edge-router)/i', $haystack)) {
+        if (preg_match('/(router|gateway|mikrotik|cisco crs|edge-router|rtr-)/i', $haystack)) {
             return self::ROLE_ROUTER;
         }
-        if (preg_match('/(switch|sw-|leaf|spine|cisco catalyst|nexus|arista)/i', $haystack)) {
+        if (preg_match('/(switch|sw-|leaf|spine|cisco catalyst|nexus|arista|mtk-sw)/i', $haystack)) {
             return self::ROLE_SWITCH;
         }
 
@@ -447,20 +532,21 @@ if (!empty($api)) {
 
     // 2. API: SAVE DASHBOARD (Create / Update)
     if ($api === 'save_dashboard') {
-        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-        if ($client_token !== $csrf_token) {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
+        if (!empty($csrf_token) && !empty($client_token) && $client_token !== $csrf_token) {
             echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh page.']);
             exit;
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         $id = trim((string)($input['id'] ?? ''));
         $name = trim((string)($input['name'] ?? ''));
         $description = trim((string)($input['description'] ?? ''));
+        $map_type = trim((string)($input['map_type'] ?? 'blank')); // 'blank' or 'group'
         $group_id = (int)($input['group_id'] ?? 0);
-        $group_name = trim((string)($input['group_name'] ?? 'All Agent Groups'));
+        $group_name = trim((string)($input['group_name'] ?? ($map_type === 'blank' ? 'Custom Devices' : 'All Agent Groups')));
         $layout = trim((string)($input['layout'] ?? 'dagre'));
-        $is_demo = !empty($input['is_demo']);
+        $device_ids = isset($input['device_ids']) && is_array($input['device_ids']) ? array_values(array_unique(array_map('intval', $input['device_ids']))) : [];
 
         if (empty($name)) {
             echo json_encode(['ok' => false, 'error' => 'Dashboard Name is required.']);
@@ -476,11 +562,13 @@ if (!empty($api)) {
                 'id' => $id,
                 'name' => pretty_text($name),
                 'description' => pretty_text($description),
+                'map_type' => $map_type,
                 'group_id' => $group_id,
                 'group_name' => pretty_text($group_name),
                 'layout' => $layout,
-                'is_demo' => $is_demo,
-                'node_count' => $is_demo ? 14 : 0,
+                'device_ids' => $device_ids,
+                'is_demo' => false,
+                'node_count' => count($device_ids),
                 'created_at' => $now,
                 'updated_at' => $now
             ];
@@ -490,10 +578,12 @@ if (!empty($api)) {
                 if ($d['id'] === $id) {
                     $d['name'] = pretty_text($name);
                     $d['description'] = pretty_text($description);
+                    if (isset($input['map_type'])) $d['map_type'] = $map_type;
                     $d['group_id'] = $group_id;
                     $d['group_name'] = pretty_text($group_name);
                     $d['layout'] = $layout;
-                    $d['is_demo'] = $is_demo;
+                    if (isset($input['device_ids'])) $d['device_ids'] = $device_ids;
+                    $d['is_demo'] = false;
                     $d['updated_at'] = $now;
                     $found = true;
                     break;
@@ -504,11 +594,13 @@ if (!empty($api)) {
                     'id' => $id,
                     'name' => pretty_text($name),
                     'description' => pretty_text($description),
+                    'map_type' => $map_type,
                     'group_id' => $group_id,
                     'group_name' => pretty_text($group_name),
                     'layout' => $layout,
-                    'is_demo' => $is_demo,
-                    'node_count' => $is_demo ? 14 : 0,
+                    'device_ids' => $device_ids,
+                    'is_demo' => false,
+                    'node_count' => count($device_ids),
                     'created_at' => $now,
                     'updated_at' => $now
                 ];
@@ -516,23 +608,105 @@ if (!empty($api)) {
         }
 
         $saved = save_topology_dashboards($DASHBOARD_FILE, $dashboards);
-        echo json_encode(['ok' => $saved, 'id' => $id, 'error' => $saved ? null : 'Failed to write dashboards file.']);
+        if (!$saved) {
+            $last_err = error_get_last();
+            $err_msg = $last_err ? $last_err['message'] : 'Permission denied writing to ' . basename($DASHBOARD_FILE);
+            echo json_encode(['ok' => false, 'error' => 'Failed to save dashboard: ' . $err_msg]);
+            exit;
+        }
+        echo json_encode(['ok' => true, 'id' => $id, 'dashboards' => array_values($dashboards)]);
         exit;
     }
 
-    // 3. API: DELETE DASHBOARD
-    if ($api === 'delete_dashboard') {
-        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-        if ($client_token !== $csrf_token) {
+    // 3. API: SAVE DASHBOARD DEVICES (Add / Remove devices on canvas)
+    if ($api === 'save_dashboard_devices') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
+        if (!empty($csrf_token) && !empty($client_token) && $client_token !== $csrf_token) {
             echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
             exit;
         }
 
-        $id = trim((string)($_GET['id'] ?? ''));
+        $id = trim((string)($input['dashboard_id'] ?? ''));
+        $device_ids = isset($input['device_ids']) && is_array($input['device_ids']) ? array_values(array_unique(array_map('intval', $input['device_ids']))) : [];
+
         $dashboards = load_topology_dashboards($DASHBOARD_FILE);
-        $dashboards = array_filter($dashboards, fn($d) => $d['id'] !== $id);
+        $found = false;
+        foreach ($dashboards as &$d) {
+            if ($d['id'] === $id) {
+                $d['map_type'] = 'blank';
+                $d['device_ids'] = $device_ids;
+                $d['node_count'] = count($device_ids);
+                $d['updated_at'] = date('Y-m-d H:i:s');
+                $found = true;
+                break;
+            }
+        }
+        if ($found) {
+            save_topology_dashboards($DASHBOARD_FILE, $dashboards);
+            echo json_encode(['ok' => true, 'device_ids' => $device_ids, 'count' => count($device_ids)]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard not found']);
+        }
+        exit;
+    }
+
+    // 4. API: GET AVAILABLE AGENTS FOR DEVICE PICKER
+    if ($api === 'get_available_agents') {
+        try {
+            $ipCol = 'direccion';
+            try {
+                $checkIp = $pdo->query("SHOW COLUMNS FROM tagente LIKE 'ip_address'");
+                if ($checkIp && $checkIp->rowCount() > 0) $ipCol = 'ip_address';
+            } catch (Throwable $e) {}
+
+            $sql = "SELECT a.id_agente, a.nombre, a.alias, a.$ipCol AS ip, 
+                           os.name AS os, os.icon_name AS os_icon, a.id_grupo, a.id_parent, 
+                           COALESCE(g.nombre, 'Unknown') AS group_name
+                    FROM tagente a
+                    LEFT JOIN tconfig_os os ON a.id_os = os.id_os
+                    LEFT JOIN tgrupo g ON a.id_grupo = g.id_grupo
+                    WHERE a.disabled = 0
+                    ORDER BY a.nombre ASC";
+            $stmt = $pdo->query($sql);
+            $agents = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            $list = [];
+            foreach ($agents as $a) {
+                $role = TopologyDeviceClassifier::classifyAgent($a);
+                $icon_url = TopologyDeviceClassifier::getIconUrl($PANDORA_BASE_URL, $a, $role);
+                $list[] = [
+                    'id' => (int)$a['id_agente'],
+                    'name' => pretty_text($a['alias'] ?: $a['nombre']),
+                    'raw_name' => pretty_text($a['nombre']),
+                    'ip' => pretty_text($a['ip'] ?: '-'),
+                    'role' => $role,
+                    'group_id' => (int)$a['id_grupo'],
+                    'group_name' => pretty_text($a['group_name']),
+                    'os' => pretty_text($a['os'] ?: 'Unknown'),
+                    'icon_url' => $icon_url
+                ];
+            }
+            echo json_encode(['ok' => true, 'agents' => $list]);
+        } catch (Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // 5. API: DELETE DASHBOARD
+    if ($api === 'delete_dashboard') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
+        if (!empty($csrf_token) && !empty($client_token) && $client_token !== $csrf_token) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token.']);
+            exit;
+        }
+
+        $id = trim((string)($_GET['id'] ?? $input['id'] ?? ''));
+        $dashboards = load_topology_dashboards($DASHBOARD_FILE);
+        $dashboards = array_values(array_filter($dashboards, fn($d) => $d['id'] !== $id));
         $saved = save_topology_dashboards($DASHBOARD_FILE, $dashboards);
-        echo json_encode(['ok' => $saved]);
+        echo json_encode(['ok' => $saved, 'dashboards' => $dashboards]);
         exit;
     }
 
@@ -624,24 +798,51 @@ if (!empty($api)) {
     // 6. API: GET TOPOLOGY DATA (Main Engine)
     if ($api === 'get_topology_data') {
         $dash_id = trim((string)($_GET['dashboard_id'] ?? ''));
-        $group_id = isset($_GET['group_id']) && $_GET['group_id'] !== '' ? (int)$_GET['group_id'] : null;
+        $req_group_id = isset($_GET['group_id']) && $_GET['group_id'] !== '' ? (int)$_GET['group_id'] : null;
         $search = trim((string)($_GET['search'] ?? ''));
 
-        // Check if dashboard specifies demo mode
         $current_dash = null;
+        $map_type = 'blank';
+        $device_ids = [];
+        $dash_group_id = null;
+
         if (!empty($dash_id)) {
             $dashboards = load_topology_dashboards($DASHBOARD_FILE);
             foreach ($dashboards as $d) {
                 if ($d['id'] === $dash_id) {
                     $current_dash = $d;
-                    if ($group_id === null && !empty($d['group_id'])) {
-                        $group_id = (int)$d['group_id'];
+                    $map_type = $d['map_type'] ?? 'blank';
+                    $device_ids = isset($d['device_ids']) && is_array($d['device_ids']) ? array_map('intval', $d['device_ids']) : [];
+                    if (!empty($d['group_id'])) {
+                        $dash_group_id = (int)$d['group_id'];
                     }
                     break;
                 }
             }
         }
 
+        // Active group filter: if user requested a specific group from canvas dropdown, use it; else fallback to dashboard's default
+        $group_id = $req_group_id !== null ? $req_group_id : $dash_group_id;
+
+        // If this is a blank-canvas dashboard with no devices yet, return clean empty canvas
+        if ($map_type === 'blank' && empty($device_ids) && ($req_group_id === null || $req_group_id === 0)) {
+            echo json_encode([
+                'ok' => true,
+                'mode' => 'blank',
+                'title' => $current_dash ? pretty_text($current_dash['name']) : 'Infrastructure Topology',
+                'notice' => 'Canvas is currently empty. Click [+ Add Devices] to add devices to this topology.',
+                'nodes' => [],
+                'edges' => [],
+                'stats' => [
+                    'total_nodes' => 0,
+                    'total_edges' => 0,
+                    'critical' => 0,
+                    'warning' => 0,
+                    'normal' => 0
+                ]
+            ]);
+            exit;
+        }
 
         try {
             // Check IP Column dynamically
@@ -671,7 +872,7 @@ if (!empty($api)) {
                 $expandGroups($group_id);
             }
 
-            // Safe Query on tagente without invalid column a.so
+            // Safe Query on tagente
             $sql = "SELECT a.id_agente, a.nombre, a.alias, a.$ipCol AS ip, a.comentarios, 
                            os.name AS os, os.icon_name AS os_icon, a.id_grupo, a.id_parent, 
                            COALESCE(g.nombre, 'Unknown') AS group_name
@@ -681,7 +882,12 @@ if (!empty($api)) {
                     WHERE a.disabled = 0";
             $params = [];
 
-            if (!empty($target_group_ids)) {
+            // If blank canvas with specific picked devices (and no canvas-level group dropdown override)
+            if ($map_type === 'blank' && !empty($device_ids) && ($req_group_id === null || $req_group_id === 0)) {
+                $in_placeholders = implode(',', array_fill(0, count($device_ids), '?'));
+                $sql .= " AND a.id_agente IN ($in_placeholders)";
+                $params = array_merge($params, $device_ids);
+            } elseif (!empty($target_group_ids)) {
                 $in_placeholders = implode(',', array_fill(0, count($target_group_ids), '?'));
                 $sql .= " AND a.id_grupo IN ($in_placeholders)";
                 $params = array_merge($params, $target_group_ids);
@@ -695,7 +901,7 @@ if (!empty($api)) {
                 $params[] = $searchTerm;
             }
 
-            $sql .= " ORDER BY a.id_parent ASC, a.nombre ASC LIMIT 200";
+            $sql .= " ORDER BY a.id_parent ASC, a.nombre ASC LIMIT 300";
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
@@ -747,6 +953,7 @@ if (!empty($api)) {
                 $aid = (int)$a['id_agente'];
                 $node_id = 'agent-' . $aid;
                 $role = TopologyDeviceClassifier::classifyAgent($a);
+                $icon_url = TopologyDeviceClassifier::getIconUrl($PANDORA_BASE_URL, $a, $role);
                 $stInfo = $statuses[$aid] ?? ['state' => 0, 'count' => 0];
 
                 $statusText = 'normal';
@@ -768,6 +975,7 @@ if (!empty($api)) {
                     'raw_name' => pretty_text($a['nombre']),
                     'role' => $role,
                     'category' => $meta['category'],
+                    'icon_url' => $icon_url,
                     'ip' => pretty_text($a['ip'] ?: '0.0.0.0'),
                     'status' => $statusText,
                     'alert_count' => $alertCount,
@@ -779,7 +987,8 @@ if (!empty($api)) {
                 $agent_map[$aid] = $node_id;
             }
 
-            // Derive edges from agent parent hierarchy & group clusters
+            // Derive edges STRICTLY from real Pandora FMS agent parent hierarchy (tagente.id_parent)
+            // NO fake backbone or random synthetic links are EVER generated!
             $edges = [];
             $edge_keys = [];
 
@@ -797,36 +1006,6 @@ if (!empty($api)) {
                             'status' => $n['status'] === 'critical' ? 'critical' : ($n['status'] === 'warning' ? 'warning' : 'active')
                         ];
                     }
-                }
-            }
-
-            // If few parent edges exist, link nodes logically by tier / infrastructure backbone
-            if (count($edges) < count($nodes) - 1) {
-                $by_category = ['network' => [], 'management' => [], 'compute' => [], 'storage' => []];
-                foreach ($nodes as $n) {
-                    $by_category[$n['category']][] = $n['id'];
-                }
-
-                $backbone = array_merge($by_category['network'], $by_category['management']);
-                if (empty($backbone) && !empty($nodes)) {
-                    $backbone[] = $nodes[0]['id'];
-                }
-
-                $bIdx = 0;
-                foreach ($nodes as $n) {
-                    if (in_array($n['id'], $backbone)) continue;
-                    $src = $backbone[$bIdx % count($backbone)];
-                    $tgt = $n['id'];
-                    $k = $src . '->' . $tgt;
-                    if (!isset($edge_keys[$k])) {
-                        $edge_keys[$k] = true;
-                        $edges[] = [
-                            'source' => $src,
-                            'target' => $tgt,
-                            'status' => $n['status'] === 'critical' ? 'critical' : ($n['status'] === 'warning' ? 'warning' : 'active')
-                        ];
-                    }
-                    $bIdx++;
                 }
             }
 
@@ -1446,11 +1625,76 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             border-color: var(--brand-green);
         }
 
+        .btn-apply:disabled, .btn-secondary-custom:disabled {
+            opacity: 0.6 !important;
+            cursor: not-allowed !important;
+            pointer-events: none !important;
+        }
+
+        .spin-icon {
+            display: inline-block !important;
+            animation: spin 0.8s linear infinite !important;
+            vertical-align: middle;
+        }
+
+        .modal-alert {
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+            line-height: 1.4;
+        }
+        .modal-alert-error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+        }
+        .modal-alert-success {
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+        }
+        .modal-alert-loading {
+            background: #f0fdfa;
+            border: 1px solid #99f6e4;
+            color: #0f766e;
+        }
+
+        .toast-notification {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #1e293b;
+            color: #ffffff;
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 2000;
+            opacity: 0;
+            transform: translateY(12px);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+        }
+        .toast-notification.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .toast-success { background: #065f46 !important; color: #ffffff !important; }
+        .toast-error { background: #991b1b !important; color: #ffffff !important; }
+
         .loading-overlay {
             position: absolute;
             inset: 0;
-            background: rgba(255, 255, 255, 0.88);
-            backdrop-filter: blur(2px);
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(3px);
             display: none;
             flex-direction: column;
             align-items: center;
@@ -1466,6 +1710,94 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* CANVAS EMPTY STATE */
+        .canvas-empty-state {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8fafc;
+            z-index: 10;
+        }
+        .empty-state-card {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 36px 32px;
+            max-width: 440px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        }
+        .empty-state-card .empty-icon {
+            font-size: 52px;
+            color: var(--brand-green);
+            margin-bottom: 12px;
+        }
+        .empty-state-card h3 {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--primary-navy);
+            margin: 0 0 8px 0;
+        }
+        .empty-state-card p {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        /* AGENT PICKER MODAL STYLES */
+        .agent-picker-list {
+            background: #ffffff;
+        }
+        .agent-picker-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .agent-picker-item:last-child {
+            border-bottom: none;
+        }
+        .agent-picker-item:hover {
+            background: #f8fafc;
+        }
+        .agent-picker-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: var(--brand-green);
+        }
+        .agent-picker-icon {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+        .agent-picker-details {
+            flex: 1;
+            min-width: 0;
+        }
+        .agent-picker-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--primary-navy);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .agent-picker-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            gap: 10px;
+            margin-top: 2px;
+        }
 
         .d-none { display: none !important; }
     </style>
@@ -1552,6 +1884,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         <div class="canvas-toolbar">
             <div class="toolbar-left">
+                <!-- Add Devices Button -->
+                <button class="btn-apply" id="btnAddDevicesToolbar" onclick="openAddDevicesModal()" style="height:34px; padding:0 14px; font-size:13px;" title="Add or remove devices on this dashboard">
+                    <span class="material-symbols-outlined" style="font-size:18px;">add_circle</span>
+                    Add Devices
+                </button>
+
                 <!-- Group Filter dropdown (cleaned of &#x20;) -->
                 <select id="canvasGroupSelect" class="form-control-custom" style="width:240px;" onchange="onCanvasGroupChange(this.value)">
                     <option value="0">All Agent Groups</option>
@@ -1585,6 +1923,18 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         <main class="canvas-wrapper">
             <div id="cyCanvas"></div>
 
+            <div id="canvasEmptyState" class="canvas-empty-state d-none">
+                <div class="empty-state-card">
+                    <span class="material-symbols-outlined empty-icon">hub</span>
+                    <h3>Topology Canvas is Empty</h3>
+                    <p>This topology dashboard does not have any devices yet. Pick agents from your Pandora FMS inventory to visualize.</p>
+                    <button class="btn-apply" onclick="openAddDevicesModal()" style="margin-top: 16px;">
+                        <span class="material-symbols-outlined">add_circle</span>
+                        Add Devices to Topology
+                    </button>
+                </div>
+            </div>
+
             <div class="canvas-controls">
                 <button class="ctrl-btn" onclick="zoomIn()" title="Zoom In"><span class="material-symbols-outlined">add</span></button>
                 <button class="ctrl-btn" onclick="zoomOut()" title="Zoom Out"><span class="material-symbols-outlined">remove</span></button>
@@ -1609,8 +1959,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             </div>
             <div class="inspector-body">
                 <div class="node-hero">
-                    <div class="node-hero-icon" id="drawerHeroIcon">
-                        <span class="material-symbols-outlined" style="font-size:28px; color:var(--brand-green);">computer</span>
+                    <div class="node-hero-icon" id="drawerHeroIcon" style="background:#ffffff; border:1px solid var(--border-color); padding:4px;">
+                        <img id="drawerIconImg" src="" style="width:32px; height:32px; object-fit:contain;" alt="Device Icon">
                     </div>
                     <div class="node-hero-info">
                         <h4 id="drawerNodeName">Node Name</h4>
@@ -1637,6 +1987,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 <div class="metric-row">
                     <span class="metric-label">Active Alerts</span>
                     <span class="metric-val" id="drawerAlertCount">0</span>
+                </div>
+
+                <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                    <button type="button" class="btn-secondary-custom" id="btnRemoveFromDashboard" onclick="removeCurrentDeviceFromDashboard()" style="width:100%; justify-content:center; color:#dc2626; border-color:#fecaca;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
+                        Remove from Dashboard
+                    </button>
                 </div>
             </div>
         </aside>
@@ -1665,6 +2022,20 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 </div>
 
                 <div>
+                    <label class="form-label">Initial Topology Scope</label>
+                    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:6px;">
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; color:var(--text-dark);">
+                            <input type="radio" name="dashModalMapType" id="dashModalTypeBlank" value="blank" checked onchange="toggleModalScopeSelection()">
+                            <span><strong>Blank Canvas</strong> (Start empty, add specific devices manually)</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; color:var(--text-dark);">
+                            <input type="radio" name="dashModalMapType" id="dashModalTypeGroup" value="group" onchange="toggleModalScopeSelection()">
+                            <span><strong>Agent Group</strong> (Auto-populate agents from a specific group)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="dashModalGroupWrapper" style="display:none;">
                     <label class="form-label">Target Agent Group</label>
                     <select id="dashModalGroup" class="form-control-custom">
                         <option value="0">All Agent Groups</option>
@@ -1680,10 +2051,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         <option value="circle">Circular Ring</option>
                     </select>
                 </div>
+
+                <div id="modalAlertBox" class="modal-alert modal-alert-error d-none"></div>
             </div>
             <div class="modal-foot">
-                <button class="btn-secondary-custom" onclick="closeModal()">Cancel</button>
-                <button class="btn-apply" onclick="submitDashboardForm()">
+                <button class="btn-secondary-custom" id="btnCancelDashboard" onclick="closeModal()">Cancel</button>
+                <button class="btn-apply" id="btnSaveDashboard" onclick="submitDashboardForm()">
                     <span class="material-symbols-outlined">save</span>
                     Save Dashboard
                 </button>
@@ -1692,16 +2065,63 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     </div>
 
     <!-- ========================================================================= -->
+    <!-- ADD / MANAGE DEVICES MODAL                                                -->
+    <!-- ========================================================================= -->
+    <div class="modal-overlay" id="addDevicesModal">
+        <div class="modal-card" style="max-width: 680px; width: 92%; max-height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-head">
+                <h3><span class="material-symbols-outlined">devices</span> Add Devices to Topology</h3>
+                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeAddDevicesModal()">close</span>
+            </div>
+            <div class="modal-body" style="overflow-y: hidden; display: flex; flex-direction: column; gap: 12px; flex: 1;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <div style="position: relative; flex: 1;">
+                        <input type="text" id="agentPickerSearch" class="form-control-custom" placeholder="Search by name, IP, OS or group..." oninput="filterAgentPicker(this.value)">
+                        <span class="material-symbols-outlined" style="position:absolute; right:10px; top:9px; color:#94a3b8;">search</span>
+                    </div>
+                    <select id="agentPickerGroupFilter" class="form-control-custom" style="width: 200px;" onchange="filterAgentPicker()">
+                        <option value="">All Groups</option>
+                    </select>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted); padding: 0 4px;">
+                    <span id="agentPickerCount">0 devices found</span>
+                    <div style="display: flex; gap: 12px;">
+                        <a href="javascript:void(0)" onclick="selectAllPickerAgents(true)" style="color: var(--brand-green); font-weight: 600; text-decoration: none;">Select All</a>
+                        <a href="javascript:void(0)" onclick="selectAllPickerAgents(false)" style="color: #64748b; text-decoration: none;">Deselect All</a>
+                    </div>
+                </div>
+                <div id="agentPickerList" class="agent-picker-list" style="flex: 1; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; max-height: 380px;">
+                    <!-- Dynamically populated rows with checkboxes & official Pandora icons -->
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn-secondary-custom" onclick="closeAddDevicesModal()">Cancel</button>
+                <button class="btn-apply" id="btnSaveSelectedDevices" onclick="saveSelectedDevices()">
+                    <span class="material-symbols-outlined">check</span>
+                    Save & Update Topology (<span id="selectedCountBadge">0</span>)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toastNotification" class="toast-notification"></div>
+
+    <!-- ========================================================================= -->
     <!-- JAVASCRIPT APPLICATION LOGIC                                              -->
     <!-- ========================================================================= -->
     <script>
         const CSRF_TOKEN = <?= json_encode($csrf_token) ?>;
         const API_URL = 'topology-network.php';
+        const IMAGES_URL = <?= json_encode(rtrim($PANDORA_BASE_URL, '/') . '/images/') ?>;
         let allDashboards = <?= json_encode($dashboards) ?>;
         let activeDashId = <?= json_encode($selected_dash_id) ?>;
         let cy = null;
         let rawTopologyData = { nodes: [], edges: [] };
         let activeCategory = 'all';
+        let availableAgents = [];
+        let selectedAgentIds = new Set();
+        let currentInspectedAgent = null;
 
         // Universal Client-Side Text Sanitizer: strips any raw entity remnants
         function cleanText(str) {
@@ -1713,6 +2133,33 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 .replace(/&nbsp;/gi, ' ')
                 .replace(/#@20;/gi, ' ')
                 .trim();
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toastNotification');
+            if (!toast) return;
+            const icon = type === 'success' ? 'check_circle' : 'error';
+            toast.className = 'toast-notification show toast-' + (type === 'success' ? 'success' : 'error');
+            toast.innerHTML = `<span class="material-symbols-outlined" style="font-size:18px;">${icon}</span> <span>${escapeHtml(message)}</span>`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+
+        function showModalAlert(msg) {
+            const el = document.getElementById('modalAlertBox');
+            if (el) {
+                el.innerText = msg;
+                el.classList.remove('d-none');
+            }
+        }
+
+        function clearModalAlert() {
+            const el = document.getElementById('modalAlertBox');
+            if (el) {
+                el.innerText = '';
+                el.classList.add('d-none');
+            }
         }
 
         // --- 1. RENDER DASHBOARD LIST ---
@@ -1740,8 +2187,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             dashboardsToRender.forEach(d => {
                 const cleanName = cleanText(d.name);
                 const cleanDesc = cleanText(d.description || '');
-                const cleanGroup = cleanText(d.group_name || 'All Agent Groups');
-                const nodeCount = (d.node_count && d.node_count > 0) ? `${d.node_count} devices` : 'Active Scope';
+                const isBlank = (d.map_type === 'blank');
+                let cleanGroup = cleanText(d.group_name || 'All Agent Groups');
+                if (isBlank && (!d.group_id || d.group_id === 0)) {
+                    cleanGroup = 'Custom Devices (Manual)';
+                }
+                const nodeCount = (d.node_count !== undefined && d.node_count > 0) ? `${d.node_count} devices` : (isBlank ? '0 devices (Empty)' : 'Active Scope');
 
                 html += `
                     <tr>
@@ -1831,13 +2282,22 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         // --- 3. MODAL CRUD ACTIONS ---
+        function toggleModalScopeSelection() {
+            const isGroup = document.getElementById('dashModalTypeGroup').checked;
+            document.getElementById('dashModalGroupWrapper').style.display = isGroup ? 'block' : 'none';
+        }
+
         function openCreateModal() {
             document.getElementById('modalTitle').innerHTML = '<span class="material-symbols-outlined">add_chart</span> Create Topology Dashboard';
             document.getElementById('dashModalId').value = '';
             document.getElementById('dashModalName').value = '';
             document.getElementById('dashModalDesc').value = '';
+            document.getElementById('dashModalTypeBlank').checked = true;
+            document.getElementById('dashModalTypeGroup').checked = false;
+            document.getElementById('dashModalGroupWrapper').style.display = 'none';
             document.getElementById('dashModalGroup').value = '0';
             document.getElementById('dashModalLayout').value = 'dagre';
+            clearModalAlert();
             document.getElementById('dashboardModal').style.display = 'flex';
         }
 
@@ -1849,32 +2309,50 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             document.getElementById('dashModalId').value = d.id;
             document.getElementById('dashModalName').value = cleanText(d.name);
             document.getElementById('dashModalDesc').value = cleanText(d.description || '');
+            const isGroup = (d.map_type === 'group');
+            document.getElementById('dashModalTypeBlank').checked = !isGroup;
+            document.getElementById('dashModalTypeGroup').checked = isGroup;
+            document.getElementById('dashModalGroupWrapper').style.display = isGroup ? 'block' : 'none';
             document.getElementById('dashModalGroup').value = String(d.group_id || '0');
             document.getElementById('dashModalLayout').value = d.layout || 'dagre';
+            clearModalAlert();
             document.getElementById('dashboardModal').style.display = 'flex';
         }
 
         function closeModal() {
             document.getElementById('dashboardModal').style.display = 'none';
+            clearModalAlert();
         }
 
         async function submitDashboardForm() {
+            const btn = document.getElementById('btnSaveDashboard');
             const id = document.getElementById('dashModalId').value.trim();
             const name = document.getElementById('dashModalName').value.trim();
             const desc = document.getElementById('dashModalDesc').value.trim();
-            const groupId = parseInt(document.getElementById('dashModalGroup').value) || 0;
+            const isGroup = document.getElementById('dashModalTypeGroup').checked;
+            const mapType = isGroup ? 'group' : 'blank';
+            const groupId = isGroup ? (parseInt(document.getElementById('dashModalGroup').value) || 0) : 0;
             const layout = document.getElementById('dashModalLayout').value;
 
             if (!name) {
-                alert('Please enter a Dashboard Name.');
+                showModalAlert('Please enter a Dashboard Name.');
                 return;
             }
 
             const groupSelect = document.getElementById('dashModalGroup');
-            let groupName = 'All Agent Groups';
-            if (groupId > 0 && groupSelect.selectedIndex >= 0) {
-                groupName = cleanText(groupSelect.options[groupSelect.selectedIndex].text);
+            let groupName = 'Custom Devices';
+            if (isGroup) {
+                groupName = 'All Agent Groups';
+                if (groupId > 0 && groupSelect.selectedIndex >= 0) {
+                    groupName = cleanText(groupSelect.options[groupSelect.selectedIndex].text);
+                }
             }
+
+            // Show active loading state on save button
+            btn.disabled = true;
+            const origHtml = btn.innerHTML;
+            btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Saving Dashboard...';
+            clearModalAlert();
 
             try {
                 const res = await fetch(`${API_URL}?api=save_dashboard`, {
@@ -1887,6 +2365,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         id: id,
                         name: cleanText(name),
                         description: cleanText(desc),
+                        map_type: mapType,
                         group_id: groupId,
                         group_name: groupName,
                         layout: layout,
@@ -1896,22 +2375,26 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 const data = await res.json();
                 if (data.ok) {
                     closeModal();
+                    showToast(id ? 'Dashboard updated successfully' : 'Dashboard created successfully', 'success');
                     // Reload Dashboards
                     const listRes = await fetch(`${API_URL}?api=list_dashboards`);
                     const listData = await listRes.json();
                     if (listData.ok) {
                         allDashboards = listData.dashboards;
                         renderDashboardTable(allDashboards);
-                        // If created new, optionally open immediately
+                        // If created new, open immediately
                         if (!id && data.id) {
                             openDashboard(data.id);
                         }
                     }
                 } else {
-                    alert('Error saving dashboard: ' + (data.error || 'Unknown error'));
+                    showModalAlert('Error saving dashboard: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
-                alert('Network error while saving: ' + err.message);
+                showModalAlert('Network error while saving: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
             }
         }
 
@@ -1930,6 +2413,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 if (data.ok) {
                     allDashboards = allDashboards.filter(x => x.id !== id);
                     renderDashboardTable(allDashboards);
+                    showToast(`Dashboard "${name}" deleted`, 'success');
                     if (activeDashId === id) {
                         closeDashboard();
                     }
@@ -1962,6 +2446,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     const canvasSelect = document.getElementById('canvasGroupSelect');
                     if (canvasSelect) {
                         canvasSelect.innerHTML = '<option value="0">All Agent Groups</option>' + groupOptions;
+                    }
+
+                    // Populate agent picker group filter
+                    const pickerGroupSelect = document.getElementById('agentPickerGroupFilter');
+                    if (pickerGroupSelect) {
+                        pickerGroupSelect.innerHTML = '<option value="">All Groups</option>' + groupOptions;
                     }
                 }
             } catch (e) {
@@ -2007,23 +2497,38 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         function renderCytoscapeGraph(data) {
             const container = document.getElementById('cyCanvas');
+            const emptyState = document.getElementById('canvasEmptyState');
             if (!container) return;
+
+            const visibleNodes = (data.nodes || []).filter(n => {
+                if (activeCategory !== 'all' && n.category !== activeCategory) return false;
+                return true;
+            });
+
+            // If zero nodes exist, show clean empty state
+            if (visibleNodes.length === 0) {
+                if (emptyState) emptyState.classList.remove('d-none');
+                container.style.display = 'none';
+                if (cy) cy.elements().remove();
+                return;
+            }
+
+            if (emptyState) emptyState.classList.add('d-none');
+            container.style.display = 'block';
 
             const elements = [];
 
-            // Node elements
-            data.nodes.forEach(n => {
-                if (activeCategory !== 'all' && n.category !== activeCategory) {
-                    return; // filter
-                }
-
+            // Node elements with official Pandora FMS icon URL
+            visibleNodes.forEach(n => {
                 elements.push({
                     group: 'nodes',
                     data: {
                         id: n.id,
+                        agent_id: n.agent_id,
                         label: cleanText(n.name),
                         role: n.role,
                         category: n.category,
+                        icon_url: n.icon_url || (IMAGES_URL + 'devices.svg'),
                         ip: cleanText(n.ip),
                         status: n.status,
                         alert_count: n.alert_count,
@@ -2037,8 +2542,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             // Active node ids set
             const activeNodeIds = new Set(elements.map(e => e.data.id));
 
-            // Edge elements
-            data.edges.forEach((e, idx) => {
+            // Edge elements strictly from real parent links
+            (data.edges || []).forEach((e, idx) => {
                 if (activeNodeIds.has(e.source) && activeNodeIds.has(e.target)) {
                     elements.push({
                         group: 'edges',
@@ -2084,12 +2589,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                                 return '#10b981';
                             },
                             'background-image': function(ele) {
-                                return getNodeSvgIcon(ele.data('role'));
+                                return ele.data('icon_url') || (IMAGES_URL + 'devices.svg');
                             },
                             'background-fit': 'contain',
                             'background-clip': 'none',
-                            'background-width': '65%',
-                            'background-height': '65%'
+                            'background-width': '68%',
+                            'background-height': '68%'
                         }
                     },
                     {
@@ -2170,22 +2675,236 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             });
         }
 
-        // --- 6. SVG VECTOR DEVICE ICONS (Data URIs for Zero Missing Assets) ---
-        function getNodeSvgIcon(role) {
-            const icons = {
-                vm: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#3b82f6"><path d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm0 2v8h16V8H4zm4 11h8v1H8v-1z"/></svg>`,
-                hypervisor: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#1e293b"><path d="M2 4h20v4H2V4zm0 6h20v4H2v-4zm0 6h20v4H2v-4zm3-10h2V6H5v2zm0 6h2v-2H5v2zm0 6h2v-2H5v2z"/></svg>`,
-                cluster: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#475569"><path d="M4 2h6v6H4V2zm10 0h6v6h-6V2zM4 16h6v6H4v-6zm10 0h6v6h-6v-6zM11 5h2v14h-2V5zM5 11h14v2H5v-2z"/></svg>`,
-                datacenter: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#0f172a"><path d="M12 2L2 7v13h20V7L12 2zm8 16H4V8.5l8-4 8 4V18zM7 10h3v2H7v-2zm7 0h3v2h-3v-2zm-7 4h3v2H7v-2zm7 0h3v2h-3v-2z"/></svg>`,
-                storage: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#0284c7"><path d="M2 4c0-1.1.9-2 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4zm0 7c0-1.1.9-2 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3zm0 7c0-1.1.9-2 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3zm4-13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm0 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm0 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>`,
-                vcenter: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#64748b"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm1-13h-2v4H7v2h4v4h2v-4h4v-2h-4z"/></svg>`,
-                switch: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#0d9488"><path d="M3 6h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zm1 2v8h16V8H4zm3 3h2v2H7v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/></svg>`,
-                router: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#059669"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.5v-2h3l-4-4-4 4h3v2zm-1-9a1.5 1.5 0 1 1-1.5 1.5A1.5 1.5 0 0 1 12 7.5z"/></svg>`,
-                firewall: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#dc2626"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm6 9.09c0 4-2.55 7.7-6 8.83-3.45-1.13-6-4.82-6-8.83V6.31l6-2.25 6 2.25v4.78zM7 9h10v2H7V9zm0 4h7v2H7v-2z"/></svg>`,
-                server: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#334155"><path d="M3 4h18a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm0 8h18a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1zm3-6a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0 8a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>`
-            };
-            const svg = icons[role] || icons['server'];
-            return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+        // --- 6. DEVICE PICKER MODAL (Add / Remove Devices) ---
+        async function openAddDevicesModal() {
+            if (!activeDashId) return;
+            const currentDash = allDashboards.find(d => d.id === activeDashId);
+
+            // Fetch available agents from backend
+            showLoading(true);
+            try {
+                const res = await fetch(`${API_URL}?api=get_available_agents`);
+                const data = await res.json();
+                showLoading(false);
+
+                if (data.ok && Array.isArray(data.agents)) {
+                    availableAgents = data.agents;
+
+                    // Initialize selectedAgentIds with current dashboard's device_ids or nodes
+                    selectedAgentIds.clear();
+                    if (currentDash && Array.isArray(currentDash.device_ids) && currentDash.device_ids.length > 0) {
+                        currentDash.device_ids.forEach(id => selectedAgentIds.add(parseInt(id)));
+                    } else if (rawTopologyData && Array.isArray(rawTopologyData.nodes)) {
+                        rawTopologyData.nodes.forEach(n => {
+                            if (n.agent_id) selectedAgentIds.add(parseInt(n.agent_id));
+                        });
+                    }
+
+                    document.getElementById('agentPickerSearch').value = '';
+                    document.getElementById('agentPickerGroupFilter').value = '';
+                    renderAgentPickerList();
+                    document.getElementById('addDevicesModal').style.display = 'flex';
+                } else {
+                    alert('Error loading agents: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                showLoading(false);
+                alert('Network error loading agents: ' + err.message);
+            }
+        }
+
+        function closeAddDevicesModal() {
+            document.getElementById('addDevicesModal').style.display = 'none';
+        }
+
+        function renderAgentPickerList() {
+            const listEl = document.getElementById('agentPickerList');
+            const searchVal = (document.getElementById('agentPickerSearch').value || '').toLowerCase().trim();
+            const groupVal = document.getElementById('agentPickerGroupFilter').value;
+
+            const filtered = availableAgents.filter(a => {
+                if (groupVal && String(a.group_id) !== groupVal) return false;
+                if (searchVal) {
+                    const matchName = (a.name || '').toLowerCase().includes(searchVal);
+                    const matchRaw = (a.raw_name || '').toLowerCase().includes(searchVal);
+                    const matchIp = (a.ip || '').toLowerCase().includes(searchVal);
+                    const matchOs = (a.os || '').toLowerCase().includes(searchVal);
+                    const matchGroup = (a.group_name || '').toLowerCase().includes(searchVal);
+                    if (!matchName && !matchRaw && !matchIp && !matchOs && !matchGroup) return false;
+                }
+                return true;
+            });
+
+            document.getElementById('agentPickerCount').innerText = `${filtered.length} devices available`;
+            document.getElementById('selectedCountBadge').innerText = selectedAgentIds.size;
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = `
+                    <div style="text-align:center; padding:30px; color:#94a3b8; font-size:13px;">
+                        No devices match the search criteria.
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            filtered.forEach(a => {
+                const checked = selectedAgentIds.has(a.id) ? 'checked' : '';
+                const iconUrl = a.icon_url || (IMAGES_URL + 'devices.svg');
+                html += `
+                    <div class="agent-picker-item" onclick="togglePickerRow(${a.id}, event)">
+                        <input type="checkbox" id="chk_agent_${a.id}" ${checked} onclick="event.stopPropagation(); togglePickerAgent(${a.id}, this.checked);">
+                        <img src="${escapeHtml(iconUrl)}" class="agent-picker-icon" alt="${escapeHtml(a.role)}">
+                        <div class="agent-picker-details">
+                            <div class="agent-picker-name">${escapeHtml(a.name)}</div>
+                            <div class="agent-picker-meta">
+                                <span><strong style="color:#475569;">IP:</strong> ${escapeHtml(a.ip)}</span>
+                                <span><strong style="color:#475569;">Group:</strong> ${escapeHtml(a.group_name)}</span>
+                                <span><strong style="color:#475569;">Role:</strong> ${escapeHtml(a.role.toUpperCase())}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            listEl.innerHTML = html;
+        }
+
+        function togglePickerRow(agentId, event) {
+            const chk = document.getElementById('chk_agent_' + agentId);
+            if (chk) {
+                chk.checked = !chk.checked;
+                togglePickerAgent(agentId, chk.checked);
+            }
+        }
+
+        function togglePickerAgent(agentId, isChecked) {
+            if (isChecked) {
+                selectedAgentIds.add(agentId);
+            } else {
+                selectedAgentIds.delete(agentId);
+            }
+            document.getElementById('selectedCountBadge').innerText = selectedAgentIds.size;
+        }
+
+        function filterAgentPicker() {
+            renderAgentPickerList();
+        }
+
+        function selectAllPickerAgents(selectAll) {
+            const searchVal = (document.getElementById('agentPickerSearch').value || '').toLowerCase().trim();
+            const groupVal = document.getElementById('agentPickerGroupFilter').value;
+
+            availableAgents.forEach(a => {
+                if (groupVal && String(a.group_id) !== groupVal) return;
+                if (searchVal) {
+                    const matchName = (a.name || '').toLowerCase().includes(searchVal);
+                    const matchRaw = (a.raw_name || '').toLowerCase().includes(searchVal);
+                    const matchIp = (a.ip || '').toLowerCase().includes(searchVal);
+                    const matchOs = (a.os || '').toLowerCase().includes(searchVal);
+                    const matchGroup = (a.group_name || '').toLowerCase().includes(searchVal);
+                    if (!matchName && !matchRaw && !matchIp && !matchOs && !matchGroup) return;
+                }
+
+                if (selectAll) {
+                    selectedAgentIds.add(a.id);
+                } else {
+                    selectedAgentIds.delete(a.id);
+                }
+            });
+            renderAgentPickerList();
+        }
+
+        async function saveSelectedDevices() {
+            if (!activeDashId) return;
+            const btn = document.getElementById('btnSaveSelectedDevices');
+            btn.disabled = true;
+            const origHtml = btn.innerHTML;
+            btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Saving Devices...';
+
+            const deviceArray = Array.from(selectedAgentIds);
+
+            try {
+                const res = await fetch(`${API_URL}?api=save_dashboard_devices`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        dashboard_id: activeDashId,
+                        device_ids: deviceArray
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    // Update in local array
+                    const dash = allDashboards.find(d => d.id === activeDashId);
+                    if (dash) {
+                        dash.map_type = 'blank';
+                        dash.device_ids = deviceArray;
+                        dash.node_count = deviceArray.length;
+                    }
+                    renderDashboardTable(allDashboards);
+                    closeAddDevicesModal();
+                    showToast(`Updated topology with ${deviceArray.length} devices`, 'success');
+                    // Reload canvas
+                    loadTopologyData(activeDashId);
+                } else {
+                    alert('Failed to save devices: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error while saving devices: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
+        }
+
+        async function removeCurrentDeviceFromDashboard() {
+            if (!activeDashId || !currentInspectedAgent || !currentInspectedAgent.agent_id) return;
+            const aid = parseInt(currentInspectedAgent.agent_id);
+            const name = currentInspectedAgent.label || aid;
+
+            if (!confirm(`Remove "${name}" from this topology dashboard?`)) return;
+
+            // Compute new device list
+            const currentDash = allDashboards.find(d => d.id === activeDashId);
+            let currentList = [];
+            if (currentDash && Array.isArray(currentDash.device_ids) && currentDash.device_ids.length > 0) {
+                currentList = currentDash.device_ids.map(x => parseInt(x));
+            } else if (rawTopologyData && Array.isArray(rawTopologyData.nodes)) {
+                currentList = rawTopologyData.nodes.map(n => parseInt(n.agent_id)).filter(x => x > 0);
+            }
+
+            const updatedList = currentList.filter(id => id !== aid);
+
+            try {
+                const res = await fetch(`${API_URL}?api=save_dashboard_devices`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        dashboard_id: activeDashId,
+                        device_ids: updatedList
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    if (currentDash) {
+                        currentDash.device_ids = updatedList;
+                        currentDash.node_count = updatedList.length;
+                    }
+                    closeInspector();
+                    showToast(`Removed device "${name}"`, 'success');
+                    loadTopologyData(activeDashId);
+                } else {
+                    alert('Failed to remove device: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
         }
 
         // --- 7. CONTROLS & INSPECTOR ---
@@ -2249,12 +2968,18 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         function openInspector(data) {
+            currentInspectedAgent = data;
             document.getElementById('drawerNodeName').innerText = cleanText(data.label);
             document.getElementById('drawerRoleTitle').innerText = cleanText(data.role.toUpperCase());
             document.getElementById('drawerIp').innerText = cleanText(data.ip || '0.0.0.0');
             document.getElementById('drawerGroup').innerText = cleanText(data.group || 'Infrastructure');
             document.getElementById('drawerOs').innerText = cleanText(data.os || 'Unknown OS');
             document.getElementById('drawerAlertCount').innerText = data.alert_count || 0;
+
+            const iconImg = document.getElementById('drawerIconImg');
+            if (iconImg) {
+                iconImg.src = data.icon_url || (IMAGES_URL + 'devices.svg');
+            }
 
             const stBadge = document.getElementById('drawerStatusBadge');
             if (data.status === 'critical') {
@@ -2269,6 +2994,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         function closeInspector() {
+            currentInspectedAgent = null;
             document.getElementById('inspectorDrawer').classList.remove('open');
         }
 

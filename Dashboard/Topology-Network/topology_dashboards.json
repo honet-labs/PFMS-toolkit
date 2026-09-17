@@ -6,6 +6,7 @@
         "group_id": 0,
         "group_name": "All Agent Groups",
         "layout": "dagre",
+        "map_type": "group",
         "is_demo": false,
         "node_count": 0,
         "created_at": "2026-09-18 00:00:00",
