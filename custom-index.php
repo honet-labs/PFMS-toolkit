@@ -95,6 +95,10 @@ $sys_files = ['custom-index.php'];
 $active_exclude_dirs = array_unique(array_merge($config_data['exclude_dirs'], $sys_dirs));
 $active_exclude_files = array_unique(array_merge($config_data['exclude_files'], $sys_files));
 
+// Core dashboard directories must NEVER be excluded by local config overrides
+$core_dashboards = ['Network-Mapping', 'network-mapping', 'Traffic-Dashboard', 'traffic-dashboard', 'Route-Parser', 'route-parser', 'Netflow-Explorer', 'netflow-explorer', 'Metrics-Dashboard', 'metrics-dashboard', 'Dynamic-Dashboard', 'dynamic-dashboard', 'Table-Viewer', 'table-viewer'];
+$active_exclude_dirs = array_values(array_diff($active_exclude_dirs, $core_dashboards));
+
 // API Forwarding / Routing to sub-pages to prevent 500 errors caused by direct execution blocks in webservers
 if (isset($_GET['api']) && !empty($_GET['page'])) {
     $target_page = $_GET['page'];
@@ -108,8 +112,33 @@ if (isset($_GET['api']) && !empty($_GET['page'])) {
 }
 
 // =====================================================================
-// 4. AJAX ENDPOINT FOR SAVING SETTINGS
+// 4. AJAX ENDPOINTS
 // =====================================================================
+if (isset($_GET['api']) && $_GET['api'] === 'debug_menu') {
+    ob_clean();
+    header('Content-Type: application/json');
+    $dash_path = $base_dir . '/Dashboard';
+    $netmap_path = $dash_path . '/Network-Mapping';
+    $netmap_lower = $dash_path . '/network-mapping';
+    
+    $info = [
+        'portal_version' => PORTAL_VERSION,
+        'base_dir' => $base_dir,
+        'dashboard_dir_exists' => is_dir($dash_path),
+        'dashboard_items' => is_dir($dash_path) ? scandir($dash_path) : [],
+        'network_mapping_dir_exists' => is_dir($netmap_path),
+        'network_mapping_dir_readable' => is_readable($netmap_path),
+        'network_mapping_files' => is_dir($netmap_path) ? @scandir($netmap_path) : [],
+        'active_exclude_dirs' => $active_exclude_dirs,
+        'active_exclude_files' => $active_exclude_files,
+        'portal_config_local_exists' => file_exists($base_dir . '/portal_config_local.json'),
+        'portal_config_local_data' => file_exists($base_dir . '/portal_config_local.json') ? json_decode(@file_get_contents($base_dir . '/portal_config_local.json'), true) : null,
+        'menu_cache_file_exists' => file_exists($menu_cache_file),
+        'menu_cache_mtime' => file_exists($menu_cache_file) ? date('Y-m-d H:i:s', filemtime($menu_cache_file)) : null
+    ];
+    echo json_encode($info, JSON_PRETTY_PRINT);
+    exit;
+}
 if (isset($_GET['api']) && $_GET['api'] === 'read_docs') {
     ob_clean();
     header('Content-Type: application/json');
