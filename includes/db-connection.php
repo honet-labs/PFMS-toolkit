@@ -321,9 +321,15 @@ if (!function_exists('h')) {
 if (!function_exists('pretty_text')) {
     function pretty_text($s) {
         if ($s === null || $s === '') return '';
-        $text = html_entity_decode((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        return str_replace(['&#x20;', '&nbsp;'], ' ', $text);
+        $text = (string)$s;
+        // Strip common Pandora FMS entity artifacts
+        $text = str_replace(['&#x20;', '&#X20;', '&#32;', '&nbsp;', '&#160;', '&amp;#x20;', '&amp;#32;', '#@20;'], ' ', $text);
+        for ($i = 0; $i < 3; $i++) {
+            if (strpos($text, '&') === false) break;
+            $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+        $text = str_replace(['&#x20;', '&#X20;', '&#32;', '&nbsp;', '&#160;', '&amp;#x20;', '&amp;#32;', '#@20;'], ' ', $text);
+        return trim(preg_replace('/\s+/', ' ', $text));
     }
 }
 

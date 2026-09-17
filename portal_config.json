@@ -8,7 +8,8 @@
         "snmp-explorer",
         "scratch",
         "vendor",
-        "Engine"
+        "Engine",
+        "engine"
     ],
     "exclude_files": [
         "nfx_local_config.php",
@@ -22,6 +23,7 @@
         "api_network.php",
         "api-network.php",
         "api-topology.php",
+        "DeviceClassifier.php",
         "debug.php",
         "cron.php",
         "topology-cron.php",

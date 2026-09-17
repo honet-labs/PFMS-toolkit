@@ -63,14 +63,32 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_resources') {
     ob_clean(); header('Content-Type: application/json');
     try {
         if (!$db_status) throw new Exception("Database not connected.");
-        $groups = $pdo->query("SELECT id_grupo, nombre FROM tgrupo ORDER BY nombre ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $raw_groups = $pdo->query("SELECT id_grupo, nombre FROM tgrupo ORDER BY nombre ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $groups = [];
+        foreach ($raw_groups as $rg) {
+            $groups[] = ['id_grupo' => $rg['id_grupo'], 'nombre' => pretty_text($rg['nombre'])];
+        }
         
         $ipCol = 'direccion';
         $checkIpCol = $pdo->query("SHOW COLUMNS FROM tagente LIKE 'ip_address'");
         if ($checkIpCol->rowCount() > 0) $ipCol = 'ip_address';
         
-        $agents = $pdo->query("SELECT id_agente, alias as name, $ipCol as address, id_grupo FROM tagente WHERE disabled = 0 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
-        $fields = $pdo->query("SELECT id_field, name FROM tagent_custom_fields ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $raw_agents = $pdo->query("SELECT id_agente, alias as name, $ipCol as address, id_grupo FROM tagente WHERE disabled = 0 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $agents = [];
+        foreach ($raw_agents as $ra) {
+            $agents[] = [
+                'id_agente' => $ra['id_agente'],
+                'name' => pretty_text($ra['name']),
+                'address' => $ra['address'],
+                'id_grupo' => $ra['id_grupo']
+            ];
+        }
+
+        $raw_fields = $pdo->query("SELECT id_field, name FROM tagent_custom_fields ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $fields = [];
+        foreach ($raw_fields as $rf) {
+            $fields[] = ['id_field' => $rf['id_field'], 'name' => pretty_text($rf['name'])];
+        }
 
         echo json_encode(['ok' => true, 'agents' => $agents, 'groups' => $groups, 'fields' => $fields]);
     } catch (Exception $e) { echo json_encode(['ok' => false, 'error' => $e->getMessage()]); }

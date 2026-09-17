@@ -68,8 +68,8 @@ $csrf_token = $_SESSION['pfms_csrf_token'];
 // =====================================================================
 // Default Configuration
 $config_data = [
-    'exclude_dirs' => ['temp', 'cache', 'assets', 'includes', 'versions', 'scanning-mib', 'snmp-explorer', 'scratch'],
-    'exclude_files' => ['nfx_local_config.php', 'pdb_local_config.php', 'config.php', 'utils.php', 'check_cols.php,', 'check_schema.php', 'check_schema_v2.php', 'temp_query.php', 'pfms_latency_map.php', 'api_network.php', 'cron.php', 'pfms_latency_map.php', 'pfms_lib.php', ],
+    'exclude_dirs' => ['temp', 'cache', 'assets', 'includes', 'versions', 'scanning-mib', 'snmp-explorer', 'scratch', 'Engine', 'engine'],
+    'exclude_files' => ['nfx_local_config.php', 'pdb_local_config.php', 'config.php', 'utils.php', 'check_cols.php,', 'check_schema.php', 'check_schema_v2.php', 'temp_query.php', 'pfms_latency_map.php', 'api_network.php', 'api-network.php', 'api-topology.php', 'DeviceClassifier.php', 'cron.php', 'pfms_latency_map.php', 'pfms_lib.php'],
     'custom_connections' => [],
     'primary_override' => null,
     'history_override' => null,

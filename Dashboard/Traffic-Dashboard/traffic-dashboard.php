@@ -395,7 +395,7 @@ if ($api === 'groups') {
     try {
         $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
         while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
-            $dropdown[] = ['id' => get_node_uuid('primary') . ':' . $g['id'], 'name' => '[Primary] ' . html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
+            $dropdown[] = ['id' => get_node_uuid('primary') . ':' . $g['id'], 'name' => '[Primary] ' . pretty_text($g['name'])]; 
         }
     } catch (Throwable $e) {}
     
@@ -410,7 +410,7 @@ if ($api === 'groups') {
             try {
                 $stmt = $cpdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
                 while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
-                    $dropdown[] = ['id' => get_node_uuid($cid) . ':' . $g['id'], 'name' => '[' . $cname . '] ' . html_entity_decode((string)$g['name'], ENT_QUOTES, 'UTF-8')]; 
+                    $dropdown[] = ['id' => get_node_uuid($cid) . ':' . $g['id'], 'name' => '[' . $cname . '] ' . pretty_text($g['name'])]; 
                 }
             } catch (Throwable $e) {}
         }
