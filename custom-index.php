@@ -17,11 +17,13 @@ header("Pragma: no-cache");
 header("Expires: Thu, 01 Jan 1970 00:00:00 GMT");
 
 if (isset($_GET['clear_cache'])) {
-    if (function_exists('opcache_reset') && opcache_reset()) {
-        echo "PHP OpCache reset successfully!";
-    } else {
-        echo "OpCache is not enabled or failed to reset.";
+    if (file_exists(__DIR__ . '/temp/menu_cache.json')) @unlink(__DIR__ . '/temp/menu_cache.json');
+    if (file_exists(__DIR__ . '/temp/update_cache.json')) @unlink(__DIR__ . '/temp/update_cache.json');
+    $opcache_status = false;
+    if (function_exists('opcache_reset')) {
+        $opcache_status = @opcache_reset();
     }
+    echo "Menu Cache cleared successfully! OpCache status: " . ($opcache_status ? "Reset OK" : "Bypassed/Disabled");
     exit;
 }
 
