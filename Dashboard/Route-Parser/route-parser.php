@@ -1527,15 +1527,15 @@ if (!$current_dashboard):
                             <td colspan="5" style="text-align:center; padding:45px 20px; color:#64748b;">
                                 <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;">
                                     <span class="material-symbols-outlined" style="font-size:48px; color:#94a3b8;">radar</span>
-                                    <div style="font-size:15px; font-weight:600; color:#334155;">Belum ada Route Parser Dashboard yang dikonfigurasi</div>
-                                    <div style="font-size:13px; color:#94a3b8; max-width:480px;">Sistem dapat memindai otomatis seluruh agen di Pandora FMS yang memiliki modul RouteStep dan RouteTarget.</div>
+                                    <div style="font-size:15px; font-weight:600; color:#334155;">No Route Parser Dashboards Configured Yet</div>
+                                    <div style="font-size:13px; color:#94a3b8; max-width:480px;">The system can automatically scan all agents in Pandora FMS with RouteStep and RouteTarget modules.</div>
                                     <div style="display:flex; gap:10px; margin-top:8px;">
                                         <button class="btn-apply" onclick="triggerAutoScan()">
                                             <span class="material-symbols-outlined" style="font-size:18px;">radar</span>
-                                            Auto Scan Agents Sekarang
+                                            Auto Scan Agents Now
                                         </button>
                                         <button class="btn-secondary-custom" onclick="openCreateModal()">
-                                            Setup Manual
+                                            Manual Setup
                                         </button>
                                     </div>
                                 </div>
@@ -2040,20 +2040,20 @@ if (!$current_dashboard):
                 const json = await res.json();
                 if (json.ok) {
                     const msg = json.added > 0 
-                        ? `Auto Scan Selesai! Ditemukan ${json.scanned} agen (${json.added} dashboard baru ditambahkan).`
-                        : `Auto Scan Selesai! Ditemukan ${json.scanned} agen dengan modul rute.`;
+                        ? `Auto Scan Finished! Found ${json.scanned} agents (${json.added} new dashboards added).`
+                        : `Auto Scan Finished! Found ${json.scanned} agents with route modules.`;
                     showToast(msg);
                     setTimeout(() => {
                         location.reload();
                     }, 1000);
                 } else {
-                    alert('Gagal auto scan: ' + (json.error || 'Unknown error'));
+                    alert('Auto scan failed: ' + (json.error || 'Unknown error'));
                     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
                     if (icon) icon.style.animation = '';
                     if (text) text.textContent = 'Auto Scan Agents';
                 }
             } catch (err) {
-                alert('Network error saat auto scan: ' + err.message);
+                alert('Network error during auto scan: ' + err.message);
                 if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
                 if (icon) icon.style.animation = '';
                 if (text) text.textContent = 'Auto Scan Agents';
@@ -3146,7 +3146,7 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
 
                 <div class="rp-info-card" id="valInfoText">
                     <span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; margin-right:4px;">info</span>
-                    Klik edge untuk melihat detail koneksi. Double-click node untuk membuka modul di Pandora FMS.
+                    Click an edge to view connection details. Double-click a node to open module in Pandora FMS.
                 </div>
             </div>
         </div>
@@ -3419,7 +3419,7 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                 valMinMs.textContent = parseFloat(n.min_ms || 0).toFixed(3) + ' ms';
                 valMaxMs.textContent = parseFloat(n.max_ms || 0).toFixed(3) + ' ms';
 
-                valInfoText.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; margin-right:4px;">info</span> Double-click node untuk membuka halaman modul di Pandora FMS.';
+                valInfoText.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; margin-right:4px;">info</span> Double-click a node to open module page in Pandora FMS.';
             };
 
             window.selectEdge = function(fromKey, toKey, updateClear = true) {

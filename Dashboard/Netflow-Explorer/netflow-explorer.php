@@ -411,7 +411,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
             </div>
         </div>
         <div class="info-pop" id="sankeyInfoBox" style="padding: 15px; background: #fff3cd; border-bottom: 1px solid #ffe69c; color: #856404; font-size: 12px; display: none;">
-            Mode Sankey bisa diganti dari toolbar. Node kecil akan dikelompokkan ke <strong>Other</strong> untuk menjaga chart tetap stabil saat data besar. Hover pada flow akan menyorot seluruh jalur terkait.
+            Sankey mode can be switched from the toolbar. Small nodes will be grouped into <strong>Other</strong> to keep the chart stable with high data volume. Hovering over a flow will highlight the entire corresponding path.
         </div>
         <div class="dashboard-card-body p-4">
             <div class="sankey-inner"><div id="sankeyChart" class="sankey-canvas" style="min-height: 400px;"></div></div>

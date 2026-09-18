@@ -1528,7 +1528,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         <div style="margin-bottom:18px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px 15px;">
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-weight:500; font-size:13px; color:#1e293b;">
                 <input type="checkbox" id="shareHideHeaderChk" style="width:16px; height:16px; cursor:pointer;" onchange="updateShareUrls()">
-                <span><strong>Hide Card Header</strong> (Sembunyikan Title & Timestamp untuk Iframe / Visual Console)</span>
+                <span><strong>Hide Card Header</strong> (Hide Title & Timestamp for Iframe / Visual Console)</span>
             </label>
         </div>
 
@@ -1993,7 +1993,7 @@ function saveConfigToServer(callback, quiet = false) {
     .then(r => r.json())
     .then(res => {
         if (!res.ok) {
-            if (!quiet) alert("Gagal menyimpan ke server: " + (res.error?.message || res.error || 'Permission Denied'));
+            if (!quiet) alert("Failed to save to server: " + (res.error?.message || res.error || 'Permission Denied'));
             return false;
         } else {
             if (callback) callback();
@@ -2001,7 +2001,7 @@ function saveConfigToServer(callback, quiet = false) {
         }
     })
     .catch((e) => {
-        if (!quiet) alert("Gagal berkomunikasi dengan server.");
+        if (!quiet) alert("Failed to communicate with server.");
         return false;
     });
 }
@@ -2391,7 +2391,7 @@ function saveDashboardMeta() {
 function deleteDashboard(id) {
     const d = masterDashboards.find(x => x.id === id);
     if (!d) return;
-    if (confirm(`Apakah Anda yakin ingin menghapus dashboard "${d.title}"? Semua widget di dalamnya akan terhapus permanent.`)) {
+    if (confirm(`Are you sure you want to delete dashboard "${d.title}"? All widgets in it will be permanently deleted.`)) {
         masterDashboards = masterDashboards.filter(x => x.id !== id);
         saveConfigToServer(() => {
             renderDashboardList();
@@ -2407,7 +2407,7 @@ function duplicateDashboardFromList(id) {
     newDash.title = d.title + ' (Copy)';
     masterDashboards.push(newDash);
     saveConfigToServer(() => {
-        alert('Dashboard berhasil diduplikasi!');
+        alert('Dashboard duplicated successfully!');
         renderDashboardList();
     });
 }
@@ -2619,7 +2619,7 @@ function fetchCardData(card) {
         }
     }).catch(err => {
         console.error("Widget fetch error:", err);
-        document.getElementById(`content_view_${card.id}`).innerHTML = `<div style="padding:20px; color:#e74c3c; text-align:center; font-weight: normal;">Koneksi ke database lambat atau terputus. Silakan perkecil scope filter Agent.</div>`;
+        document.getElementById(`content_view_${card.id}`).innerHTML = `<div style="padding:20px; color:#e74c3c; text-align:center; font-weight: normal;">Database connection slow or disconnected. Please narrow down the Agent filter scope.</div>`;
     });
 }
 
@@ -3828,7 +3828,7 @@ function importDashboardConfig(event) {
                     alert("Widgets loaded successfully!");
                 });
             } else {
-                alert("Format file JSON tidak valid. Harus berupa array widget.");
+                alert("Invalid JSON file format. Must be an array of widgets.");
             }
         } catch (err) { alert("Invalid JSON file: " + err.message); }
         finally {

@@ -969,22 +969,22 @@ function render_pfms_access_denied(string $user_id, string $pandora_base = '/pan
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'ok' => false,
-            'error' => 'Akses Ditolak (403 Forbidden): Hanya profil Pandora Administrator yang diizinkan mengakses fitur PFMS-Toolkit.'
+            'error' => 'Access Denied (403 Forbidden): Only the Pandora Administrator profile is authorized to access PFMS-Toolkit features.'
         ]);
         exit;
     }
 
     $profiles = ($pdo && !empty($user_id)) ? get_user_pandora_profiles($pdo, $user_id) : [];
-    $profileText = !empty($profiles) ? implode(', ', array_map('htmlspecialchars', $profiles)) : 'Bukan Pandora Administrator';
+    $profileText = !empty($profiles) ? implode(', ', array_map('htmlspecialchars', $profiles)) : 'Not Pandora Administrator';
     $vendor_url = rtrim($pandora_base, '/') . '/custom/panel/vendor';
     $login_url = rtrim($pandora_base, '/') . '/index.php';
     ?>
     <!DOCTYPE html>
-    <html lang="id">
+    <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>403 Akses Ditolak - PFMS Toolkit</title>
+        <title>403 Access Denied - PFMS Toolkit</title>
         <link rel="stylesheet" href="<?= htmlspecialchars($vendor_url) ?>/fonts/fonts.css">
         <style>
             :root {
@@ -1151,37 +1151,37 @@ function render_pfms_access_denied(string $user_id, string $pandora_base = '/pan
                 <div class="denied-icon-wrap">
                     <span class="material-symbols-outlined">gpp_bad</span>
                 </div>
-                <h1 class="denied-title">Akses Ditolak (403 Forbidden)</h1>
-                <div class="denied-subtitle">Hak Akses Tidak Memenuhi Syarat</div>
+                <h1 class="denied-title">Access Denied (403 Forbidden)</h1>
+                <div class="denied-subtitle">Insufficient Permissions</div>
             </div>
             <div class="denied-body">
-                <p>Halaman <strong>PFMS-Toolkit</strong> ini dikhususkan dan hanya dapat diakses oleh pengguna dengan profil <strong>Pandora Administrator</strong>.</p>
+                <p>This <strong>PFMS-Toolkit</strong> page is restricted and can only be accessed by users with the <strong>Pandora Administrator</strong> profile.</p>
                 
                 <div class="info-box">
                     <div class="info-row">
-                        <span class="info-label">Akun Anda:</span>
+                        <span class="info-label">Your Account:</span>
                         <span class="info-val"><?= htmlspecialchars($user_id) ?></span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">Profil Terdeteksi:</span>
+                        <span class="info-label">Detected Profiles:</span>
                         <span style="color:#b91c1c; font-weight:600;"><?= $profileText ?></span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">Profil Diperlukan:</span>
+                        <span class="info-label">Required Profile:</span>
                         <span class="info-required">Pandora Administrator</span>
                     </div>
                 </div>
 
-                <p style="font-size:12.5px; color:#64748b;">Silakan hubungi administrator sistem atau login kembali menggunakan akun yang memiliki hak akses Pandora Administrator.</p>
+                <p style="font-size:12.5px; color:#64748b;">Please contact your system administrator or sign in using an account with Pandora Administrator privileges.</p>
             </div>
             <div class="denied-footer">
                 <a href="<?= htmlspecialchars($login_url) ?>" class="btn-primary">
                     <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
-                    Kembali ke Pandora FMS
+                    Back to Pandora FMS
                 </a>
                 <a href="<?= htmlspecialchars($login_url) ?>?bye=1" class="btn-secondary">
                     <span class="material-symbols-outlined" style="font-size:18px;">logout</span>
-                    Ganti Akun
+                    Switch Account
                 </a>
             </div>
         </div>
@@ -1227,7 +1227,7 @@ if (php_sapi_name() !== 'cli') {
                 http_response_code(403);
                 echo json_encode([
                     'ok' => false, 
-                    'error' => 'Akses Terbatas (View Only): Dashboard ini bersifat View Only. Hanya akun dengan profil Pandora Administrator yang dapat mengubah, mengedit, atau mengelola konfigurasi.'
+                    'error' => 'Restricted Access (View Only): This dashboard is View Only. Only accounts with the Pandora Administrator profile can modify, edit, or manage configurations.'
                 ]);
                 exit;
             }

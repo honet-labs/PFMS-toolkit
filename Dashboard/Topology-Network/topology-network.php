@@ -642,7 +642,7 @@ if (!empty($api)) {
             http_response_code(403);
             echo json_encode([
                 'ok' => false, 
-                'error' => 'Akses Terbatas (View Only): Anda hanya memiliki hak akses lihat. Hanya akun dengan profil Pandora Administrator yang dapat mengedit atau mengubah konfigurasi topologi.'
+                'error' => 'Restricted Access (View Only): You have view-only access. Only accounts with the Pandora Administrator profile can edit or modify topology configurations.'
             ]);
             exit;
         }
@@ -3721,7 +3721,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 <!-- Quick Help Tip -->
                 <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:10px 14px; display:flex; align-items:flex-start; gap:8px; font-size:11.5px; color:#1e40af; line-height:1.4;">
                     <span class="material-symbols-outlined" style="font-size:18px; color:#2563eb; flex-shrink:0;">info</span>
-                    <span><strong>Embed Ready:</strong> URL embed mendukung akses langsung tanpa blokir frame dan otomatis mendeteksi status link/node secara real-time.</span>
+                    <span><strong>Embed Ready:</strong> Embed URL supports direct frame embedding and automatically detects link/node status in real-time.</span>
                 </div>
             </div>
 
@@ -5593,15 +5593,15 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     exitConnectMode();
 
                     if (!hasInterface) {
-                        showToast(`Koneksi antar ${srcLabel} dan ${tgtLabel} berhasil dibuat (tanpa modul interface spesifik).`, 'info');
+                        showToast(`Connection between ${srcLabel} and ${tgtLabel} created successfully (without specific interface modules).`, 'info');
                     } else {
-                        showToast(`Interface link berhasil dihubungkan antara ${srcLabel} (${srcIface || 'None'}) dan ${tgtLabel} (${tgtIface || 'None'})`, 'success');
+                        showToast(`Interface link connected successfully between ${srcLabel} (${srcIface || 'None'}) and ${tgtLabel} (${tgtIface || 'None'})`, 'success');
                     }
                 } else {
-                    showToast('Gagal menyimpan link: ' + (data.error || 'Unknown error'), 'error');
+                    showToast('Failed to save link: ' + (data.error || 'Unknown error'), 'error');
                 }
             } catch (err) {
-                showToast('Terjadi kendala saat menyimpan interface link: ' + err.message, 'error');
+                showToast('Error occurred while saving interface link: ' + err.message, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
@@ -5827,9 +5827,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         const label = document.getElementById('savePositionsLabel');
                         if (label) label.innerText = 'Save Positions';
                     }
-                    showToast('Memuat posisi node dan zoom viewport yang tersimpan', 'success');
+                    showToast('Loading saved node positions and viewport zoom', 'success');
                 } else {
-                    showToast('Belum ada posisi node tersimpan untuk dashboard ini', 'warning');
+                    showToast('No saved node positions found for this dashboard', 'warning');
                 }
                 return;
             }
@@ -5860,7 +5860,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         async function saveCurrentNodePositions() {
             if (!cy || !activeDashId) {
-                showToast('Tidak ada dashboard aktif yang dipilih', 'warning');
+                showToast('No active dashboard selected', 'warning');
                 return;
             }
 
@@ -5939,19 +5939,19 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         if (label) label.innerText = 'Save Positions';
                     }, 2000);
 
-                    showToast(data.msg || 'Posisi layout node & zoom viewport berhasil disimpan!', 'success');
+                    showToast(data.msg || 'Node layout positions & viewport zoom saved successfully!', 'success');
                 } else {
                     if (btn) btn.disabled = false;
                     if (icon) icon.innerText = 'save';
                     if (label) label.innerText = 'Save Positions *';
-                    showToast((data && data.msg) || 'Gagal menyimpan posisi layout node', 'error');
+                    showToast((data && data.msg) || 'Failed to save node layout positions', 'error');
                 }
             } catch (err) {
                 console.error('Error saving node positions:', err);
                 if (btn) btn.disabled = false;
                 if (icon) icon.innerText = 'save';
                 if (label) label.innerText = 'Save Positions *';
-                showToast('Terjadi kesalahan jaringan saat menyimpan posisi node: ' + err.message, 'error');
+                showToast('Network error while saving node positions: ' + err.message, 'error');
             }
         }
 
@@ -6439,7 +6439,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             if (!currentInspectedAgent || !cy || !activeDashId) return;
             const targetSelect = document.getElementById('drawerTargetDeviceSelect');
             if (!targetSelect || !targetSelect.value) {
-                showToast('Pilih perangkat target terlebih dahulu.', 'warning');
+                showToast('Please select a target device first.', 'warning');
                 return;
             }
 
@@ -6551,15 +6551,15 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     renderDrawerConnectedLinks(sourceId);
 
                     if (!srcIface && !tgtIface) {
-                        showToast(`Koneksi antar ${srcLabel} dan ${tgtLabel} berhasil dibuat (tanpa modul interface spesifik).`, 'info');
+                        showToast(`Connection between ${srcLabel} and ${tgtLabel} created successfully (without specific interface modules).`, 'info');
                     } else {
-                        showToast(`Interface link berhasil dihubungkan antara ${srcLabel} (${srcIface || 'None'}) dan ${tgtLabel} (${tgtIface || 'None'})`, 'success');
+                        showToast(`Interface link connected successfully between ${srcLabel} (${srcIface || 'None'}) and ${tgtLabel} (${tgtIface || 'None'})`, 'success');
                     }
                 } else {
-                    showToast('Gagal menyimpan interface link: ' + (data.error || 'Unknown error'), 'error');
+                    showToast('Failed to save interface link: ' + (data.error || 'Unknown error'), 'error');
                 }
             } catch (err) {
-                showToast('Terjadi kendala saat menyimpan link: ' + err.message, 'error');
+                showToast('Error occurred while saving link: ' + err.message, 'error');
             } finally {
                 if (btn) {
                     btn.disabled = false;

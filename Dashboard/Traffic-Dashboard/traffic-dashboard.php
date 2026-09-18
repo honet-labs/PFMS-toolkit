@@ -133,7 +133,7 @@ if ($api === 'save_config') {
     if ($bytes === false) {
         $err = error_get_last();
         $errMsg = $err['message'] ?? 'Permission Denied / Unknown Error';
-        echo json_encode(['ok' => false, 'error' => "Gagal menulis ke file ($CONFIG_FILE). Alasan: $errMsg", 'file' => basename($CONFIG_FILE)]);
+        echo json_encode(['ok' => false, 'error' => "Failed writing to file ($CONFIG_FILE). Reason: $errMsg", 'file' => basename($CONFIG_FILE)]);
     } else {
         // Also keep alternate file in sync if it exists
         $alt_file = ($CONFIG_FILE === __DIR__ . '/traffic-dashboard-saved.json') ? __DIR__ . '/traffic-interface-saved.json' : __DIR__ . '/traffic-dashboard-saved.json';
@@ -2281,7 +2281,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         document.getElementById('last_update_text').innerText = `Update: ${res.updated_at || '-'}`;
 
         if (!res.data || res.data.length === 0) {
-            body.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#64748b; padding:30px; font-weight:500;">Tidak ada antarmuka (interface) yang ditemukan untuk filter ini.<br><span style="font-size:11px; color:#94a3b8; font-weight:normal;">Periksa kembali konfigurasi target Agent/Node, atau filter Group & Kategori.</span></td></tr>`;
+            body.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#64748b; padding:30px; font-weight:500;">No interfaces found matching this filter.<br><span style="font-size:11px; color:#94a3b8; font-weight:normal;">Check target Agent/Node configuration, or Group & Category filter.</span></td></tr>`;
             renderPagination(res.pagination || { total: 0, page: 1, total_pages: 0 });
             resetTimer();
             return;
@@ -2738,7 +2738,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 const loaded = JSON.parse(e.target.result);
                 if (loaded && typeof loaded === 'object' && !Array.isArray(loaded)) {
                     if (loaded.group_id === undefined || !loaded.name) {
-                        alert("Format file tidak valid. Pastikan file JSON berisi konfigurasi dashboard traffic yang benar.");
+                        alert("Invalid file format. Please ensure the JSON file contains valid traffic dashboard configuration.");
                         return;
                     }
                     masterDashboards = masterDashboards.map(d => {
@@ -2762,7 +2762,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         }
                     });
                 } else {
-                    alert("Format file JSON tidak valid.");
+                    alert("Invalid JSON file format.");
                 }
             } catch (err) {
                 alert("Invalid JSON file: " + err.message);

@@ -1067,7 +1067,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         <div style="margin-bottom:18px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px 15px;">
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-weight:500; font-size:13px; color:#1e293b;">
                 <input type="checkbox" id="shareHideHeaderChk" style="width:16px; height:16px; cursor:pointer;" onchange="updateShareUrls()">
-                <span><strong>Hide Card Header</strong> (Sembunyikan Title & Timestamp untuk Iframe / Visual Console)</span>
+                <span><strong>Hide Card Header</strong> (Hide Title & Timestamp for Iframe / Visual Console)</span>
             </label>
         </div>
 
@@ -1294,7 +1294,7 @@ function renderGrid() {
             div.ondragend = (e) => handleDragEnd(e);
         }
 
-        let searchBtn = c.view_type === 'cards' ? '' : `<input type="text" id="search_inp_${c.id}" class="search-input-header" placeholder="Cari module..." onkeyup="filterTableRows('${c.id}')"><button class="icon-btn-card" onclick="toggleSearchInput('${c.id}')" title="Search Table"><span class="material-symbols-outlined">search</span></button>`;
+        let searchBtn = c.view_type === 'cards' ? '' : `<input type="text" id="search_inp_${c.id}" class="search-input-header" placeholder="Search module..." onkeyup="filterTableRows('${c.id}')"><button class="icon-btn-card" onclick="toggleSearchInput('${c.id}')" title="Search Table"><span class="material-symbols-outlined">search</span></button>`;
         
         let acts = `<div class="card-actions">
             ${searchBtn}

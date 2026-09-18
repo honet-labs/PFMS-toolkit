@@ -104,7 +104,7 @@ if ($api === 'save_config') {
     if ($bytes === false) {
         $err = error_get_last();
         $errMsg = $err['message'] ?? 'Permission Denied / Unknown Error';
-        echo json_encode(['ok' => false, 'error' => "Gagal menulis ke file ($CONFIG_FILE). Alasan: $errMsg", 'file' => basename($CONFIG_FILE)]);
+        echo json_encode(['ok' => false, 'error' => "Failed writing to file ($CONFIG_FILE). Reason: $errMsg", 'file' => basename($CONFIG_FILE)]);
     } else {
         echo json_encode(['ok' => true, 'file' => basename($CONFIG_FILE)]); 
     }
@@ -191,7 +191,7 @@ if (!function_exists('get_hierarchical_groups')) {
 if ($api === 'groups') {
     if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
     if (!$db_status) { echo json_encode(['error' => 'DB Connection Error: ' . $db_error]); exit; }
-    $dropdown = [['id' => '0', 'name' => '-- Semua Group (All Groups) --']];
+    $dropdown = [['id' => '0', 'name' => '-- All Groups --']];
     
     // 1. Primary DB groups (Hierarchical Tree)
     $primary_groups = get_hierarchical_groups($pdo, 'primary', '');
@@ -1051,7 +1051,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             <div class="form-group">
                 <label>Default Startup Group</label>
                 <select id="m_default_group" class="form-control-fix"></select>
-                <small style="color:#7f8c8d; font-size:11px;">Grup yang akan otomatis terpilih saat dashboard ini dibuka.</small>
+                <small style="color:#7f8c8d; font-size:11px;">Group automatically selected when this dashboard is opened.</small>
             </div>
         </div>
         <div class="modal-footer-custom">
@@ -1270,7 +1270,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 </label>
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin:0;">
                     <input type="checkbox" id="p_hidden" style="width:18px; height:18px; cursor:pointer;">
-                    <span style="font-size:13px; font-weight:500; color:#4a5568;">Hide Panel (Benar-benar sembunyikan dari Dashboard & Share URL)</span>
+                    <span style="font-size:13px; font-weight:500; color:#4a5568;">Hide Panel (Completely hide from Dashboard & Share URL)</span>
                 </label>
                 <small style="color:#bdc3c7; font-size:10px; display:block; margin-top:5px;">* Leaves blank to show raw numeric value (1/0).</small>
             </div>
@@ -1290,12 +1290,12 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         <div style="padding:20px 25px; border-bottom:1px solid #f0f3f5; display:flex; justify-content:space-between; align-items:center; background:#fafbfc;">
             <div>
                 <h4 id="statusDetailTitle" style="margin:0; font-size:16px; color:#0b1a26; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Status Details</h4>
-                <p style="margin:5px 0 0; font-size:11px; color:#64748b;">* Menampilkan daftar modul berdasarkan kelompok status yang Anda klik.</p>
+                <p style="margin:5px 0 0; font-size:11px; color:#64748b;">* Displays module list based on the clicked status group.</p>
             </div>
             <div style="display:flex; gap:10px; align-items:center;">
                 <div style="position:relative;">
                     <span class="material-symbols-outlined" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:16px!important;">search</span>
-                    <input type="text" id="statusDetailSearch" class="form-control-fix" style="margin-bottom:0; padding-left:32px; width:250px; height:34px; font-size:12px;" placeholder="Cari agent atau module..." onkeyup="filterStatusDetailTable()">
+                    <input type="text" id="statusDetailSearch" class="form-control-fix" style="margin-bottom:0; padding-left:32px; width:250px; height:34px; font-size:12px;" placeholder="Search agent or module..." onkeyup="filterStatusDetailTable()">
                 </div>
                 <button class="icon-btn" onclick="closeStatusDetailModal()" style="padding:5px;"><span class="material-symbols-outlined" style="font-size:24px!important;">close</span></button>
             </div>
@@ -1574,11 +1574,11 @@ function copyDashboardShareLink(dashId = null) {
     
     if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(u.toString()).then(() => {
-            alert('Link Standalone untuk Dashboard "' + card.title + '" berhasil disalin!');
+            alert('Standalone Link for Dashboard "' + card.title + '" copied successfully!');
         });
     } else {
         const textArea = document.createElement("textarea"); textArea.value = u.toString(); document.body.appendChild(textArea); textArea.select();
-        try { document.execCommand('copy'); alert('Link Standalone untuk Dashboard "' + card.title + '" berhasil disalin!'); } catch (err) {}
+        try { document.execCommand('copy'); alert('Standalone Link for Dashboard "' + card.title + '" copied successfully!'); } catch (err) {}
         document.body.removeChild(textArea);
     }
 }
@@ -1594,11 +1594,11 @@ function copyPanelShareLink(panelId) {
 
     if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(u.toString()).then(() => {
-            alert('Link Standalone untuk Widget ini berhasil disalin ke clipboard!');
+            alert('Standalone Link for this widget copied to clipboard!');
         });
     } else {
         const textArea = document.createElement("textarea"); textArea.value = u.toString(); document.body.appendChild(textArea); textArea.select();
-        try { document.execCommand('copy'); alert('Link Standalone untuk Widget ini berhasil disalin ke clipboard!'); } catch (err) {}
+        try { document.execCommand('copy'); alert('Standalone Link for this widget copied to clipboard!'); } catch (err) {}
         document.body.removeChild(textArea);
     }
 }
@@ -1923,7 +1923,7 @@ function importDashboardConfig(event) {
             if (Array.isArray(loaded)) {
                 const isValid = loaded.every(p => p && typeof p === 'object' && 'id' in p && 'title' in p);
                 if (!isValid) {
-                    alert("Format file tidak valid. Pastikan file JSON berisi konfigurasi panel yang benar.");
+                    alert("Invalid file format. Please make sure the JSON file contains valid panel configuration.");
                     return;
                 }
                 masterDashboards = masterDashboards.map(d => {
@@ -1942,7 +1942,7 @@ function importDashboardConfig(event) {
                     alert("Widgets loaded successfully!");
                 });
             } else {
-                alert("Format file JSON tidak valid. Harus berupa array panel.");
+                alert("Invalid JSON file format. Must be an array of panels.");
             }
         } catch (err) {
             alert("Invalid JSON file: " + err.message);
@@ -2008,8 +2008,8 @@ function openDashboard(id, initGroupId = null, initAgentId = null) {
                 document.getElementById('panelsGrid').innerHTML = `
                     <div style="grid-column: span 12; text-align:center; padding:100px 20px; background:#fff; border-radius:8px; border:1px dashed #e0e4e8;">
                         <span class="material-symbols-outlined" style="font-size:64px; color:#e74c3c; margin-bottom:20px;">visibility_off</span>
-                        <h2 style="color:#2c3e50; margin-bottom:10px;">Panel ini sedang disembunyikan</h2>
-                        <p style="color:#7f8c8d;">Widget ini telah dinonaktifkan oleh administrator dan tidak dapat diakses secara publik.</p>
+                        <h2 style="color:#2c3e50; margin-bottom:10px;">This panel is currently hidden</h2>
+                        <p style="color:#7f8c8d;">This widget has been disabled by an administrator and cannot be accessed publicly.</p>
                     </div>`;
                 return;
             }
@@ -3502,7 +3502,7 @@ function duplicatePanel(id) {
 }
 
 function deletePanel(id) {
-    if(confirm('Apakah Anda yakin ingin menghapus panel ini?')) {
+    if(confirm('Are you sure you want to delete this panel?')) {
         const dash = masterDashboards.find(d => d.id === currentDashId);
         dash.panels = dash.panels.filter(x => x.id !== id);
         
