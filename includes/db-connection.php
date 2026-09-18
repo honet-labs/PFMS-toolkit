@@ -1190,19 +1190,54 @@ function render_pfms_access_denied(string $user_id, string $pandora_base = '/pan
     <?php
 }
 
-// Global Automated Guard: If running in web context with an active Pandora session, enforce Pandora Administrator restriction
+// Global Automated Guard: Enforce strict access control between Management Portal and Shared/Embedded Dashboards
 if (php_sapi_name() !== 'cli') {
     if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
         @session_start();
     }
     $active_user = $_SESSION['id_usuario'] ?? '';
-    $allow_embed = !empty($_GET['embed']) || !empty($_GET['standalone']);
 
-    if (!empty($active_user) && !$allow_embed && isset($pdo) && ($pdo instanceof PDO)) {
-        if (!is_pandora_administrator($pdo, $active_user)) {
-            $p_base = !empty($PANDORA_BASE_URL) ? $PANDORA_BASE_URL : '/pandora_console';
-            render_pfms_access_denied((string)$active_user, $p_base, $pdo);
-            exit;
+    // Check if this request is an embed / shared dashboard or widget (e.g. inside Pandora FMS dashboard or NOC wallboard)
+    $is_embed_request = !empty($_GET['embed']) 
+        || !empty($_GET['standalone']) 
+        || (isset($_GET['s']) && ($_GET['s'] === '1' || $_GET['s'] === 1 || $_GET['s'] === 'true'))
+        || (isset($_GET['pure']) && $_GET['pure'] === '1')
+        || (isset($_GET['minimal']) && $_GET['minimal'] === '1')
+        || (!empty($_SERVER['HTTP_SEC_FETCH_DEST']) && $_SERVER['HTTP_SEC_FETCH_DEST'] === 'iframe')
+        || (!empty($_SERVER['HTTP_REFERER']) && (
+            strpos($_SERVER['HTTP_REFERER'], 'sec=dashboard') !== false ||
+            strpos($_SERVER['HTTP_REFERER'], 'sec=operation') !== false ||
+            strpos($_SERVER['HTTP_REFERER'], 'embed=') !== false ||
+            strpos($_SERVER['HTTP_REFERER'], 'standalone=') !== false ||
+            strpos($_SERVER['HTTP_REFERER'], 's=1') !== false
+        ));
+
+    if (!empty($active_user) && isset($pdo) && ($pdo instanceof PDO)) {
+        $is_admin = is_pandora_administrator($pdo, $active_user);
+
+        if (!$is_admin) {
+            // STRICT VIEW-ONLY ENFORCEMENT: Non-administrators can NEVER perform write/mutating/management operations
+            $is_write_action = ($_SERVER['REQUEST_METHOD'] === 'POST') ||
+                               (!empty($_GET['action']) && preg_match('/save|delete|create|edit|update|import|reset|remove|connect/i', (string)$_GET['action'])) ||
+                               (!empty($_GET['api']) && preg_match('/save|delete|create|edit|update|import|reset|remove|connect/i', (string)$_GET['api']));
+
+            if ($is_write_action) {
+                while (ob_get_level() > 0) ob_end_clean();
+                header('Content-Type: application/json; charset=utf-8');
+                http_response_code(403);
+                echo json_encode([
+                    'ok' => false, 
+                    'error' => 'Akses Terbatas (View Only): Dashboard ini bersifat View Only. Hanya akun dengan profil Pandora Administrator yang dapat mengubah, mengedit, atau mengelola konfigurasi.'
+                ]);
+                exit;
+            }
+
+            // If it's a direct browser access (NOT an embed/shared dashboard/widget), block non-administrators from accessing the management toolkit
+            if (!$is_embed_request) {
+                $p_base = !empty($PANDORA_BASE_URL) ? $PANDORA_BASE_URL : '/pandora_console';
+                render_pfms_access_denied((string)$active_user, $p_base, $pdo);
+                exit;
+            }
         }
     }
 }

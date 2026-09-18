@@ -23,7 +23,7 @@ $DEFAULT_TZ = "Asia/Jakarta";
 date_default_timezone_set($DEFAULT_TZ);
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 
-$is_embed = isset($_GET['embed']) || isset($_GET['standalone']);
+$is_embed = isset($_GET['embed']) || isset($_GET['standalone']) || (isset($_GET['s']) && $_GET['s'] == '1');
 $is_minimal = (isset($_GET['minimal']) && $_GET['minimal'] == '1');
 
 if ($is_embed) {
@@ -64,6 +64,9 @@ if (empty($csrf_token)) {
 // Immediately release session lock to allow parallel non-blocking AJAX requests
 session_write_close();
 
+$is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pandora_administrator($pdo, $user_id);
+$is_view_only = $is_embed || !$is_admin;
+
 $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
 if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
     $PANDORA_BASE_URL = rtrim($matches[1], '/');
@@ -77,7 +80,7 @@ if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
 }
 $pandora_base = $PANDORA_BASE_URL;
 
-$is_standalone = isset($_GET['standalone']) || isset($_GET['embed']);
+$is_standalone = isset($_GET['standalone']) || isset($_GET['embed']) || (isset($_GET['s']) && $_GET['s'] == '1');
 if (empty($user_id) && !$is_standalone) {
     if (!empty($_GET['api'])) {
         while (ob_get_level() > 0) ob_end_clean();
@@ -627,6 +630,23 @@ if (!empty($api)) {
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     http_response_code(200);
+
+    // RESTRICTION: Mutating API actions can ONLY be performed by Pandora Administrator
+    $mutating_apis = [
+        'save_dashboard', 'delete_dashboard', 'save_positions', 
+        'save_dashboard_devices', 'save_interface_link', 'delete_interface_link',
+        'update_device_role', 'remove_device'
+    ];
+    if (in_array($api, $mutating_apis, true)) {
+        if (!$is_admin) {
+            http_response_code(403);
+            echo json_encode([
+                'ok' => false, 
+                'error' => 'Akses Terbatas (View Only): Anda hanya memiliki hak akses lihat. Hanya akun dengan profil Pandora Administrator yang dapat mengedit atau mengubah konfigurasi topologi.'
+            ]);
+            exit;
+        }
+    }
 
     // 1. API: LIST DASHBOARDS
     if ($api === 'list_dashboards') {
@@ -3012,10 +3032,33 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
 
+        /* VIEW-ONLY MODE (Embed / Shared Canvas) */
+        body.view-only-mode #btnAddDevicesToolbar,
+        body.view-only-mode #btnConnectMode,
+        body.view-only-mode #btnSavePositions,
+        body.view-only-mode #btnShareModal,
+        body.view-only-mode .saved-indicator,
+        body.view-only-mode #btnOpenConnectSection,
+        body.view-only-mode #drawerConnectBox,
+        body.view-only-mode #btnRemoveFromDashboard,
+        body.view-only-mode #btnDeleteSelectedEdge,
+        body.view-only-mode .btn-delete-connected-link,
+        body.view-only-mode #canvasContextMenu,
+        body.view-only-mode #nodeContextMenu,
+        body.view-only-mode #edgeContextMenu {
+            display: none !important;
+        }
+        body.view-only-mode #drawerRoleSelect {
+            pointer-events: none !important;
+            opacity: 0.85 !important;
+            background: #f8fafc !important;
+            cursor: not-allowed !important;
+        }
+
         .d-none { display: none !important; }
     </style>
 </head>
-<body class="<?= $is_embed ? 'embed-view' : '' ?> <?= $is_minimal ? 'minimal-mode' : '' ?>">
+<body class="<?= $is_embed ? 'embed-view' : '' ?> <?= $is_minimal ? 'minimal-mode' : '' ?> <?= $is_view_only ? 'view-only-mode' : '' ?>">
 
     <!-- ========================================================================= -->
     <!-- VIEW 1: MASTER DASHBOARD LIST (Identical flow to Dynamic Dashboard)       -->
@@ -3745,6 +3788,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <script>
         const CSRF_TOKEN = <?= json_encode($csrf_token) ?>;
         const IMAGES_URL = <?= json_encode(rtrim($PANDORA_BASE_URL, '/') . '/images/') ?>;
+        const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
+        const IS_EMBED = <?= $is_embed ? 'true' : 'false' ?>;
+        const IS_VIEW_ONLY = <?= $is_view_only ? 'true' : 'false' ?>;
         let allDashboards = <?= json_encode($dashboards) ?>;
         let activeDashId = <?= json_encode($selected_dash_id) ?>;
         let cy = null;
@@ -4607,6 +4653,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 elements: elements,
                 wheelSensitivity: 0.25,
                 boxSelectionEnabled: false,
+                autoungrabify: IS_VIEW_ONLY,
                 textureOnViewport: true,
                 hideEdgesOnViewport: false,
                 pixelRatio: 'auto',
@@ -5572,6 +5619,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         // CONTEXT MENU ACTIONS (Screenshot 1)
         // =========================================================================
         function showCanvasContextMenu(x, y) {
+            if (IS_VIEW_ONLY) return;
             const menu = document.getElementById('canvasContextMenu');
             if (!menu) return;
             menu.style.left = Math.min(x, window.innerWidth - 190) + 'px';
@@ -5580,6 +5628,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         function showNodeContextMenu(node, x, y) {
+            if (IS_VIEW_ONLY) {
+                if (node && node.id) inspectNode(node.id());
+                return;
+            }
             contextActiveNode = node;
             const menu = document.getElementById('nodeContextMenu');
             if (!menu) return;
@@ -5589,6 +5641,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         function showEdgeContextMenu(edge, x, y) {
+            if (IS_VIEW_ONLY) return;
             contextActiveEdge = edge;
             const menu = document.getElementById('edgeContextMenu');
             if (!menu) return;

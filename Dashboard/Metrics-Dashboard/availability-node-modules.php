@@ -1304,9 +1304,7 @@ function renderGrid() {
             <button class="icon-btn-card" onclick="duplicatePanel('${c.id}')" title="Duplicate"><span class="material-symbols-outlined">content_copy</span></button>
             <button class="icon-btn-card" onclick="openEdit('${c.id}')" title="Edit"><span class="material-symbols-outlined">edit</span></button>
             <button class="icon-btn-card" onclick="deleteCard('${c.id}')" title="Delete"><span class="material-symbols-outlined" style="color:#e74c3c;">delete</span></button>
-            ` : `
-            <button class="icon-btn-card" onclick="openEdit('${c.id}')" title="Edit"><span class="material-symbols-outlined">edit</span></button>
-            `}
+            ` : ''}
         </div>`;
         
         let lblOk = c.lbl_ok || 'UP';
