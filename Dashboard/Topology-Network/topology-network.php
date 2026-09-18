@@ -23,7 +23,16 @@ $DEFAULT_TZ = "Asia/Jakarta";
 date_default_timezone_set($DEFAULT_TZ);
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 
-header("X-Frame-Options: SAMEORIGIN");
+$is_embed = isset($_GET['embed']) || isset($_GET['standalone']);
+$is_minimal = (isset($_GET['minimal']) && $_GET['minimal'] == '1');
+
+if ($is_embed) {
+    // Allow embedding in external portals, Grafana, and wallboards
+    header_remove("X-Frame-Options");
+    header("Content-Security-Policy: frame-ancestors *;");
+} else {
+    header("X-Frame-Options: SAMEORIGIN");
+}
 header("X-Content-Type-Options: nosniff");
 header("X-XSS-Protection: 1; mode=block");
 header("Referrer-Policy: strict-origin-when-cross-origin");
@@ -1613,6 +1622,9 @@ if (!empty($selected_dash_id)) {
             break;
         }
     }
+} elseif ($is_embed && !empty($dashboards)) {
+    $current_dashboard = $dashboards[0];
+    $selected_dash_id = $current_dashboard['id'];
 }
 
 $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY NETWORK";
@@ -2872,10 +2884,132 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             margin-top: 2px;
         }
 
+        /* AUTO REFRESH CONTROLS */
+        .auto-refresh-wrapper {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0 8px;
+            height: 34px;
+            transition: all 0.15s ease;
+        }
+        .auto-refresh-wrapper:hover {
+            border-color: #94a3b8;
+        }
+        .auto-refresh-wrapper select {
+            border: none;
+            background: transparent;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-dark);
+            padding: 0 4px;
+            height: 28px;
+            cursor: pointer;
+            outline: none;
+        }
+        .auto-refresh-wrapper select:focus {
+            outline: none;
+        }
+        .auto-refresh-badge {
+            font-size: 10px;
+            font-weight: 700;
+            color: #0d9488;
+            background: #ccfbf1;
+            padding: 2px 6px;
+            border-radius: 10px;
+            line-height: 1;
+        }
+        .auto-pulse {
+            animation: rotateSlow 3s linear infinite;
+        }
+        @keyframes rotateSlow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spin-icon {
+            animation: spinRotate 0.8s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spinRotate {
+            100% { transform: rotate(360deg); }
+        }
+
+        /* EMBED & MINIMAL KIOSK MODE */
+        body.embed-view {
+            background: #f8fafc !important;
+            overflow: hidden !important;
+        }
+        body.embed-view .pandora-header-top {
+            display: none !important;
+        }
+        body.embed-view #view_list {
+            display: none !important;
+        }
+        body.embed-view #view_canvas {
+            display: block !important;
+            height: 100vh !important;
+        }
+        body.embed-view .pandora-header-bottom button[title="Back to Dashboard List"] {
+            display: none !important;
+        }
+        body.embed-view:not(.minimal-mode) .canvas-wrapper {
+            height: calc(100vh - 100px) !important;
+        }
+        body.embed-view.minimal-mode .pandora-header-bottom {
+            display: none !important;
+        }
+        body.embed-view.minimal-mode .canvas-toolbar {
+            display: none !important;
+        }
+        body.embed-view.minimal-mode .canvas-wrapper {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            margin: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+        }
+        .minimal-floating-bar {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            z-index: 15;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            color: #ffffff;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 11.5px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+            pointer-events: auto;
+        }
+        .pulse-dot-live {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            animation: livePulse 2s infinite;
+        }
+        @keyframes livePulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
         .d-none { display: none !important; }
     </style>
 </head>
-<body>
+<body class="<?= $is_embed ? 'embed-view' : '' ?> <?= $is_minimal ? 'minimal-mode' : '' ?>">
 
     <!-- ========================================================================= -->
     <!-- VIEW 1: MASTER DASHBOARD LIST (Identical flow to Dynamic Dashboard)       -->
@@ -2933,14 +3067,35 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 </div>
             </div>
 
-            <div class="top-controls">
+            <div class="top-controls" style="display:flex; align-items:center; gap:8px;">
+                <!-- Auto Refresh Selector -->
+                <div class="auto-refresh-wrapper" title="Auto Refresh Data Interval">
+                    <span class="material-symbols-outlined" id="autoRefreshIcon" style="font-size:18px; color:var(--text-muted);">sync</span>
+                    <select id="autoRefreshSelect" onchange="changeAutoRefreshInterval(this.value)">
+                        <option value="0">Auto: Off</option>
+                        <option value="30">Every 30s</option>
+                        <option value="60">Every 1m</option>
+                        <option value="180">Every 3m</option>
+                        <option value="300">Every 5m</option>
+                        <option value="600">Every 10m</option>
+                    </select>
+                    <span id="autoRefreshBadge" class="auto-refresh-badge" style="display:none;">30s</span>
+                </div>
+
+                <button class="btn-secondary-custom" id="btnManualRefresh" onclick="refreshCurrentTopology(true)" title="Refresh Data Now">
+                    <span class="material-symbols-outlined" id="manualRefreshIcon">refresh</span>
+                    Refresh
+                </button>
+
                 <button class="btn-secondary-custom" onclick="fitTopologyView()" title="Fit View">
                     <span class="material-symbols-outlined">fit_screen</span>
                     Fit View
                 </button>
-                <button class="btn-secondary-custom" onclick="refreshCurrentTopology()" title="Refresh Data">
-                    <span class="material-symbols-outlined">refresh</span>
-                    Refresh
+
+                <!-- Share & Embed Button -->
+                <button class="btn-secondary-custom" id="btnShareModal" onclick="openShareModal()" title="Share & Embed Topology Canvas" style="color:var(--brand-green); font-weight:600;">
+                    <span class="material-symbols-outlined" style="font-size:18px;">share</span>
+                    Share
                 </button>
             </div>
         </div>
@@ -3009,10 +3164,18 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 </div>
             </div>
 
+            <!-- Minimal Mode Floating Info Bar (Visible in Kiosk / Embed minimal mode) -->
+            <div id="minimalFloatingBar" class="minimal-floating-bar" style="display:none;">
+                <span class="pulse-dot-live"></span>
+                <span id="minimalDashTitleText">Live Topology</span>
+                <span id="minimalRefreshBadge" class="auto-refresh-badge" style="background:rgba(13,148,136,0.25); color:#2dd4bf;">Auto: Off</span>
+            </div>
+
             <div class="canvas-controls">
                 <button class="ctrl-btn" onclick="zoomIn()" title="Zoom In"><span class="material-symbols-outlined">add</span></button>
                 <button class="ctrl-btn" onclick="zoomOut()" title="Zoom Out"><span class="material-symbols-outlined">remove</span></button>
                 <button class="ctrl-btn" onclick="fitTopologyView()" title="Fit View"><span class="material-symbols-outlined">crop_free</span></button>
+                <button class="ctrl-btn" onclick="refreshCurrentTopology(true)" title="Refresh Data"><span class="material-symbols-outlined">refresh</span></button>
             </div>
 
             <div id="loadingOverlay" class="loading-overlay">
@@ -3422,6 +3585,109 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     </div>
 
     <!-- ========================================================================= -->
+    <!-- MODAL: SHARE & EMBED TOPOLOGY                                             -->
+    <!-- ========================================================================= -->
+    <div id="shareModal" class="custom-modal-overlay" style="display:none;">
+        <div class="custom-modal-dialog" style="max-width:620px;">
+            <div class="custom-modal-header" style="background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:16px 20px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:36px; height:36px; border-radius:8px; background:#ecfdf5; display:flex; align-items:center; justify-content:center; color:#059669;">
+                        <span class="material-symbols-outlined" style="font-size:22px;">share</span>
+                    </div>
+                    <div>
+                        <h3 style="font-size:16px; font-weight:700; color:#0f172a; margin:0;">Share & Embed Topology</h3>
+                        <p style="font-size:12px; color:#64748b; margin:2px 0 0 0;" id="shareModalSubtitle">Share direct link or embed live canvas in external dashboards</p>
+                    </div>
+                </div>
+                <button type="button" class="btn-modal-close" onclick="closeShareModal()">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <div class="custom-modal-body" style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+                <!-- Options configuration -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
+                    <div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                        <span class="material-symbols-outlined" style="font-size:16px; color:#0284c7;">tune</span>
+                        Embed & Display Settings
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                        <div>
+                            <label style="display:block; font-size:11px; font-weight:600; color:#64748b; margin-bottom:4px;">Display Mode</label>
+                            <select id="shareDisplayMode" class="form-control-custom" style="width:100%; height:32px; font-size:12px; background:#ffffff;" onchange="updateShareUrls()">
+                                <option value="standard">Standard (With Title & Controls)</option>
+                                <option value="minimal">Minimal / Kiosk (100% Canvas Only for NOC)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:11px; font-weight:600; color:#64748b; margin-bottom:4px;">Auto-Refresh Interval</label>
+                            <select id="shareRefreshInterval" class="form-control-custom" style="width:100%; height:32px; font-size:12px; background:#ffffff;" onchange="updateShareUrls()">
+                                <option value="0">Auto-Refresh: Off</option>
+                                <option value="30" selected>Every 30 seconds</option>
+                                <option value="60">Every 1 minute</option>
+                                <option value="180">Every 3 minutes</option>
+                                <option value="300">Every 5 minutes</option>
+                                <option value="600">Every 10 minutes</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 1. Direct Share Link -->
+                <div>
+                    <label style="display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; color:#1e293b; margin-bottom:6px;">
+                        <span style="display:flex; align-items:center; gap:6px;">
+                            <span class="material-symbols-outlined" style="font-size:16px; color:#059669;">link</span>
+                            Direct Shareable Link
+                        </span>
+                        <span style="font-size:11px; color:#64748b; font-weight:normal;">Direct access URL for browser/wallboard</span>
+                    </label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="shareDirectUrlInput" class="form-control-custom" readonly style="flex:1; height:36px; font-size:12px; background:#ffffff; font-family:monospace; color:#334155;" onclick="this.select()">
+                        <button type="button" class="btn-apply" id="btnCopyDirectUrl" onclick="copyShareDirectUrl()" style="height:36px; padding:0 14px; font-size:12px; white-space:nowrap;">
+                            <span class="material-symbols-outlined" style="font-size:16px;">content_copy</span>
+                            Copy Link
+                        </button>
+                        <button type="button" class="btn-secondary-custom" onclick="openShareUrlInNewTab()" style="height:36px; padding:0 10px;" title="Open preview in new tab">
+                            <span class="material-symbols-outlined" style="font-size:16px;">open_in_new</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. iFrame HTML Embed Code -->
+                <div>
+                    <label style="display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; color:#1e293b; margin-bottom:6px;">
+                        <span style="display:flex; align-items:center; gap:6px;">
+                            <span class="material-symbols-outlined" style="font-size:16px; color:#0284c7;">code</span>
+                            HTML Embed Code (iFrame)
+                        </span>
+                        <span style="font-size:11px; color:#64748b; font-weight:normal;">For Grafana, Portal, or intranet web pages</span>
+                    </label>
+                    <div style="position:relative;">
+                        <textarea id="shareIframeCodeInput" class="form-control-custom" rows="3" readonly style="width:100%; font-size:11.5px; font-family:monospace; padding:10px; resize:none; background:#ffffff; color:#334155; line-height:1.5;" onclick="this.select()"></textarea>
+                        <button type="button" class="btn-apply" id="btnCopyIframeCode" onclick="copyShareIframeCode()" style="position:absolute; right:8px; bottom:8px; height:28px; padding:0 10px; font-size:11px;">
+                            <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
+                            Copy iFrame
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quick Help Tip -->
+                <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:10px 14px; display:flex; align-items:flex-start; gap:10px; font-size:11.5px; color:#1e40af; line-height:1.5;">
+                    <span class="material-symbols-outlined" style="font-size:18px; color:#2563eb; flex-shrink:0;">info</span>
+                    <div>
+                        <strong>Embed Ready:</strong> URL embed mendukung akses langsung tanpa blokir <code>X-Frame-Options</code> dan otomatis melakukan deteksi real-time ketika ada port/link yang down.
+                    </div>
+                </div>
+            </div>
+
+            <div class="custom-modal-footer" style="padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
+                <button type="button" class="btn-secondary-custom" onclick="closeShareModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
     <!-- CANVAS CONTEXT MENU (Screenshot 1)                                        -->
     <!-- ========================================================================= -->
     <div id="canvasContextMenu" class="canvas-context-menu" style="display:none;">
@@ -3599,6 +3865,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                                 <span class="material-symbols-outlined" style="font-size:16px;">visibility</span>
                                 View
                             </button>
+                            <button class="btn-action-text" onclick="openShareModal('${escapeHtml(d.id)}')" title="Share & Embed">
+                                <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">share</span>
+                                Share
+                            </button>
                             <button class="btn-action-text" onclick="editDashboard('${escapeHtml(d.id)}')">
                                 <span class="material-symbols-outlined" style="font-size:15px;">edit</span>
                                 Edit
@@ -3636,6 +3906,14 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             document.getElementById('view_list').classList.add('d-none');
             document.getElementById('view_canvas').classList.remove('d-none');
             document.getElementById('canvasTitleText').innerText = cleanText(dash.name);
+            const minTitle = document.getElementById('minimalDashTitleText');
+            if (minTitle) minTitle.innerText = cleanText(dash.name);
+
+            const isMinimal = document.body.classList.contains('minimal-mode');
+            const floatingBar = document.getElementById('minimalFloatingBar');
+            if (floatingBar) {
+                floatingBar.style.display = isMinimal ? 'flex' : 'none';
+            }
 
             // Update URL without reloading page
             const newUrl = new URL(window.location.href);
@@ -3658,9 +3936,68 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             window.history.pushState({}, '', newUrl.toString());
         }
 
-        function refreshCurrentTopology() {
+        function refreshCurrentTopology(manual = false) {
             if (activeDashId) {
-                loadTopologyData(activeDashId);
+                loadTopologyData(activeDashId, null, !manual);
+                if (manual) {
+                    showToast('Memperbarui data node & link status...', 'info');
+                }
+            }
+        }
+
+        // --- AUTO REFRESH ENGINE (30s, 1m, 3m, 5m, 10m) ---
+        let autoRefreshTimer = null;
+        let autoRefreshSeconds = 0;
+
+        function changeAutoRefreshInterval(seconds) {
+            seconds = parseInt(seconds) || 0;
+            autoRefreshSeconds = seconds;
+
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+                autoRefreshTimer = null;
+            }
+
+            try {
+                localStorage.setItem('pfms_topology_auto_refresh', seconds);
+            } catch(e) {}
+
+            const badge = document.getElementById('autoRefreshBadge');
+            const minBadge = document.getElementById('minimalRefreshBadge');
+            const icon = document.getElementById('autoRefreshIcon');
+            const sel = document.getElementById('autoRefreshSelect');
+            const shareSel = document.getElementById('shareRefreshInterval');
+
+            if (sel && sel.value != seconds) sel.value = seconds;
+            if (shareSel && shareSel.value != seconds) shareSel.value = seconds;
+
+            const label = seconds < 60 ? (seconds + 's') : (Math.floor(seconds / 60) + 'm');
+
+            if (seconds > 0) {
+                if (badge) {
+                    badge.innerText = label;
+                    badge.style.display = 'inline-block';
+                }
+                if (minBadge) {
+                    minBadge.innerText = 'Auto: ' + label;
+                    minBadge.style.display = 'inline-block';
+                }
+                if (icon) {
+                    icon.style.color = '#0d9488';
+                    icon.classList.add('auto-pulse');
+                }
+                autoRefreshTimer = setInterval(() => {
+                    if (activeDashId) {
+                        loadTopologyData(activeDashId, null, true);
+                    }
+                }, seconds * 1000);
+            } else {
+                if (badge) badge.style.display = 'none';
+                if (minBadge) minBadge.innerText = 'Auto: Off';
+                if (icon) {
+                    icon.style.color = 'var(--text-muted)';
+                    icon.classList.remove('auto-pulse');
+                }
             }
         }
 
@@ -3874,9 +4211,114 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             loadTopologyData(activeDashId, parseInt(val) || 0);
         }
 
+        // --- 4. SHARE & EMBED TOPOLOGY ENGINE ---
+        let shareTargetDashId = null;
+
+        function openShareModal(dashId = null) {
+            shareTargetDashId = dashId || activeDashId;
+            if (!shareTargetDashId && allDashboards.length > 0) {
+                shareTargetDashId = allDashboards[0].id;
+            }
+            const targetDash = allDashboards.find(d => d.id === shareTargetDashId);
+            const title = targetDash ? cleanText(targetDash.name) : 'Topology Canvas';
+
+            const sub = document.getElementById('shareModalSubtitle');
+            if (sub) sub.innerText = `Dashboard: ${title}`;
+
+            // Sync current auto-refresh setting with share interval selector
+            const shareRefresh = document.getElementById('shareRefreshInterval');
+            if (shareRefresh && autoRefreshSeconds > 0) {
+                shareRefresh.value = String(autoRefreshSeconds);
+            }
+
+            updateShareUrls();
+
+            const modal = document.getElementById('shareModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeShareModal() {
+            const modal = document.getElementById('shareModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function updateShareUrls() {
+            const dashId = shareTargetDashId || activeDashId;
+            const mode = document.getElementById('shareDisplayMode')?.value || 'standard';
+            const refreshSec = parseInt(document.getElementById('shareRefreshInterval')?.value || 30);
+            const isMinimal = (mode === 'minimal');
+
+            // Build direct embed URL to topology-network.php
+            let path = window.location.pathname;
+            if (path.includes('custom-index.php')) {
+                path = path.replace('custom-index.php', 'Dashboard/Topology-Network/topology-network.php');
+            }
+            const directUrl = new URL(window.location.origin + path);
+            if (dashId) directUrl.searchParams.set('dashboard_id', dashId);
+            directUrl.searchParams.set('embed', '1');
+            if (isMinimal) directUrl.searchParams.set('minimal', '1');
+            if (refreshSec > 0) directUrl.searchParams.set('refresh', String(refreshSec));
+
+            const finalUrl = directUrl.toString();
+
+            const urlInput = document.getElementById('shareDirectUrlInput');
+            if (urlInput) urlInput.value = finalUrl;
+
+            const iframeInput = document.getElementById('shareIframeCodeInput');
+            if (iframeInput) {
+                iframeInput.value = `<iframe src="${finalUrl}" width="100%" height="650" frameborder="0" style="border:1px solid #cbd5e1; border-radius:8px; overflow:hidden;" allowfullscreen></iframe>`;
+            }
+        }
+
+        function copyShareDirectUrl() {
+            const input = document.getElementById('shareDirectUrlInput');
+            if (!input) return;
+            input.select();
+            navigator.clipboard.writeText(input.value).then(() => {
+                const btn = document.getElementById('btnCopyDirectUrl');
+                if (btn) {
+                    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">check</span> Copied!';
+                    setTimeout(() => {
+                        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">content_copy</span> Copy Link';
+                    }, 2000);
+                }
+                showToast('Direct link copied to clipboard!', 'success');
+            }).catch(() => {
+                showToast('Link copied: ' + input.value, 'info');
+            });
+        }
+
+        function copyShareIframeCode() {
+            const input = document.getElementById('shareIframeCodeInput');
+            if (!input) return;
+            input.select();
+            navigator.clipboard.writeText(input.value).then(() => {
+                const btn = document.getElementById('btnCopyIframeCode');
+                if (btn) {
+                    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">check</span> Copied!';
+                    setTimeout(() => {
+                        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">content_copy</span> Copy iFrame';
+                    }, 2000);
+                }
+                showToast('iFrame embed code copied to clipboard!', 'success');
+            }).catch(() => {
+                showToast('iFrame code copied', 'info');
+            });
+        }
+
+        function openShareUrlInNewTab() {
+            const urlInput = document.getElementById('shareDirectUrlInput');
+            if (urlInput && urlInput.value) {
+                window.open(urlInput.value, '_blank');
+            }
+        }
+
         // --- 5. TOPOLOGY VISUALIZATION (CYTOSCAPE) ---
-        async function loadTopologyData(dashId, customGroupId = null) {
-            showLoading(true);
+        async function loadTopologyData(dashId, customGroupId = null, isSilent = false) {
+            if (!isSilent) showLoading(true);
+            const refIcon = document.getElementById('manualRefreshIcon');
+            if (refIcon) refIcon.classList.add('spin-icon');
+
             try {
                 const extra = { dashboard_id: dashId || '' };
                 if (customGroupId !== null) {
@@ -3887,7 +4329,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     throw new Error(`HTTP ${res.status}: ${res.statusText}`);
                 }
                 const data = await res.json();
-                showLoading(false);
+                if (!isSilent) showLoading(false);
+                if (refIcon) setTimeout(() => refIcon.classList.remove('spin-icon'), 350);
 
                 if (data.ok) {
                     rawTopologyData = { 
@@ -3896,13 +4339,64 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         dashboard: data.dashboard || null
                     };
                     updateStatusCounters(data.stats);
-                    renderCytoscapeGraph(rawTopologyData);
+
+                    // If Cytoscape already rendered and this is a silent auto-refresh, perform smooth live sync
+                    if (cy && cy.elements().length > 0 && isSilent) {
+                        updateCytoscapeLive(data);
+                    } else {
+                        renderCytoscapeGraph(rawTopologyData);
+                    }
                 } else {
                     console.warn('Topology error:', data.error);
                 }
             } catch (err) {
-                showLoading(false);
+                if (!isSilent) showLoading(false);
+                if (refIcon) refIcon.classList.remove('spin-icon');
                 console.error('Network load error:', err);
+            }
+        }
+
+        function updateCytoscapeLive(data) {
+            if (!cy) return;
+
+            cy.batch(() => {
+                // 1. Update live node metrics and alerts
+                const incomingNodes = new Map();
+                (data.nodes || []).forEach(n => incomingNodes.set(n.id, n));
+
+                cy.nodes().forEach(cyNode => {
+                    const fresh = incomingNodes.get(cyNode.id());
+                    if (fresh) {
+                        cyNode.data({
+                            status: fresh.status,
+                            alert_count: fresh.alert_count,
+                            ip: cleanText(fresh.ip),
+                            role: fresh.role,
+                            category: fresh.category
+                        });
+                    }
+                });
+
+                // 2. Update live edge link status (Real-time Down link detection!)
+                const incomingEdges = new Map();
+                (data.edges || []).forEach(e => incomingEdges.set(e.id, e));
+
+                cy.edges().forEach(cyEdge => {
+                    const fresh = incomingEdges.get(cyEdge.id());
+                    if (fresh) {
+                        cyEdge.data({
+                            status: fresh.status,
+                            source_status: fresh.source_status,
+                            target_status: fresh.target_status,
+                            label: cleanText(fresh.label || '')
+                        });
+                    }
+                });
+            });
+
+            // If Device Inspector drawer is open for a device, refresh its links
+            if (currentInspectedAgent) {
+                renderDrawerConnectedLinks(currentInspectedAgent.id);
             }
         }
 
@@ -6130,8 +6624,27 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         document.addEventListener('DOMContentLoaded', () => {
             renderDashboardTable(allDashboards);
 
-            if (activeDashId) {
-                openDashboard(activeDashId);
+            const urlParams = new URLSearchParams(window.location.search);
+            const isEmbed = urlParams.has('embed') || urlParams.has('standalone');
+            const targetDashId = urlParams.get('dashboard_id') || urlParams.get('id') || activeDashId;
+            const refreshParam = urlParams.get('refresh');
+
+            if (targetDashId) {
+                openDashboard(targetDashId);
+            } else if (isEmbed && allDashboards.length > 0) {
+                openDashboard(allDashboards[0].id);
+            }
+
+            // Restore or apply auto-refresh
+            if (refreshParam !== null) {
+                changeAutoRefreshInterval(parseInt(refreshParam) || 0);
+            } else {
+                try {
+                    const saved = localStorage.getItem('pfms_topology_auto_refresh');
+                    if (saved !== null && parseInt(saved) > 0) {
+                        changeAutoRefreshInterval(parseInt(saved));
+                    }
+                } catch(e) {}
             }
 
             // Lazy load agent groups in background so it doesn't block initial render
