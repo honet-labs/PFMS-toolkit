@@ -1396,6 +1396,10 @@ if (!empty($api)) {
                     break;
                 }
             }
+            if ($current_dash && !$is_admin && !check_dashboard_access($current_dash['access_control'] ?? null, (string)$user_id, 'view', $pdo)) {
+                echo json_encode(['ok' => false, 'error' => 'Access Denied: You do not have view permissions for this dashboard.']);
+                exit;
+            }
         }
 
         // Active group filter: if user requested a specific group from canvas dropdown, use it; else fallback to dashboard's default
@@ -1740,12 +1744,15 @@ if (!empty($selected_dash_id)) {
         }
     }
     if (!$current_dashboard) {
-        render_pfms_access_denied((string)$user_id, $pandora_base ?: '/pandora_console', $pdo);
+        render_pfms_access_denied((string)$user_id, $pandora_base ?: '/pandora_console', $pdo, 'You do not have permission to view the requested dashboard (' . htmlspecialchars($selected_dash_id) . ').');
         exit;
     }
-} elseif ($is_embed && !empty($dashboards)) {
+} elseif (!empty($dashboards)) {
     $current_dashboard = $dashboards[0];
     $selected_dash_id = $current_dashboard['id'];
+} else {
+    render_pfms_access_denied((string)$user_id, $pandora_base ?: '/pandora_console', $pdo, 'You do not currently have view permissions for any Network Topology dashboards.');
+    exit;
 }
 
 $has_edit_rights = $current_dashboard ? check_dashboard_access($current_dashboard['access_control'] ?? null, (string)$user_id, 'edit', $pdo) : $is_admin;

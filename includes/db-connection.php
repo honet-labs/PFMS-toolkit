@@ -904,24 +904,14 @@ function is_pandora_administrator($pdo, $user_id): bool {
             }
         }
 
-        // 2. Check tusuario_perfil joined with tperfil (matches profile name 'Pandora Administrator')
+        // 2. Check profiles assigned to user
         if (!$is_admin) {
-            $sql = "SELECT p.name, p.id_perfil 
-                    FROM tusuario_perfil up 
-                    JOIN tperfil p ON up.id_perfil = p.id_perfil 
-                    WHERE up.id_user = :user_id";
-            $stProf = $pdo->prepare($sql);
-            $stProf->execute([':user_id' => $user_id]);
-            $profiles = $stProf->fetchAll(PDO::FETCH_ASSOC);
-
-            foreach ($profiles as $prof) {
-                $pName = strtolower(trim((string)($prof['name'] ?? '')));
-                $pId = (int)($prof['id_perfil'] ?? 0);
-
-                if ($pId === 1 || 
-                    $pName === 'pandora administrator' || 
-                    strpos($pName, 'pandora administrator') !== false ||
-                    $pName === 'administrator') {
+            $user_profiles = get_user_pandora_profiles($pdo, $user_id_str);
+            foreach ($user_profiles as $pName) {
+                $pClean = strtolower(trim(clean_pandora_text($pName)));
+                if ($pClean === 'pandora administrator' || 
+                    strpos($pClean, 'pandora administrator') !== false ||
+                    $pClean === 'administrator') {
                     $is_admin = true;
                     break;
                 }
@@ -967,20 +957,58 @@ function clean_pandora_text($str): string {
 
 /**
  * Returns list of profile names assigned to the specified user.
+ * Queries both primary profile (tusuario.id_perfil) and group profile mappings (tusuario_perfil).
+ * Supports both standard Pandora FMS column `id_usuario` and custom `id_user`.
  */
 function get_user_pandora_profiles($pdo, $user_id): array {
     if (empty($user_id) || !$pdo || !($pdo instanceof PDO)) return [];
     $names = [];
+    $user_id_str = trim((string)$user_id);
+
+    // 1. Primary profile from tusuario (id_perfil -> tperfil)
     try {
-        $stProf = $pdo->prepare("SELECT DISTINCT p.name FROM tusuario_perfil up JOIN tperfil p ON up.id_perfil = p.id_perfil WHERE up.id_user = :user_id");
-        $stProf->execute([':user_id' => $user_id]);
-        while ($r = $stProf->fetch(PDO::FETCH_ASSOC)) {
+        $stUser = $pdo->prepare("SELECT p.name 
+                                 FROM tusuario u 
+                                 JOIN tperfil p ON u.id_perfil = p.id_perfil 
+                                 WHERE u.id_user = :user_id OR LOWER(u.id_user) = LOWER(:user_id_lower)");
+        $stUser->execute([
+            ':user_id' => $user_id_str,
+            ':user_id_lower' => strtolower($user_id_str)
+        ]);
+        while ($r = $stUser->fetch(PDO::FETCH_ASSOC)) {
             if (!empty($r['name'])) {
                 $cleaned = clean_pandora_text($r['name']);
                 if ($cleaned !== '') $names[] = $cleaned;
             }
         }
     } catch (Throwable $e) {}
+
+    // 2. Secondary profile mappings from tusuario_perfil
+    // Standard Pandora FMS schema uses column `id_usuario` for user ID.
+    // Some versions or customizations may use `id_user`. We try id_usuario first, then fallback to id_user.
+    $userCols = ['id_usuario', 'id_user'];
+    foreach ($userCols as $col) {
+        try {
+            $stProf = $pdo->prepare("SELECT DISTINCT p.name 
+                                     FROM tusuario_perfil up 
+                                     JOIN tperfil p ON up.id_perfil = p.id_perfil 
+                                     WHERE up.`$col` = :user_id OR LOWER(up.`$col`) = LOWER(:user_id_lower)");
+            $stProf->execute([
+                ':user_id' => $user_id_str,
+                ':user_id_lower' => strtolower($user_id_str)
+            ]);
+            while ($r = $stProf->fetch(PDO::FETCH_ASSOC)) {
+                if (!empty($r['name'])) {
+                    $cleaned = clean_pandora_text($r['name']);
+                    if ($cleaned !== '') $names[] = $cleaned;
+                }
+            }
+            break; // Query succeeded without error, column exists
+        } catch (Throwable $e) {
+            continue; // Column does not exist in this database schema, try next
+        }
+    }
+
     return array_values(array_unique($names));
 }
 
@@ -1052,9 +1080,11 @@ function check_dashboard_access(?array $acl, string $user_id, string $action = '
     }
 
     $user_profiles = ($pdo) ? get_user_pandora_profiles($pdo, $user_id) : [];
-    $user_profiles_lower = array_map('clean_pandora_text', $user_profiles);
-    $user_profiles_lower = array_map('strtolower', array_map('trim', $user_profiles_lower));
-    $user_id_lower = strtolower(clean_pandora_text($user_id));
+    $user_profiles_clean = array_map('clean_pandora_text', $user_profiles);
+    $user_profiles_clean = array_map('trim', $user_profiles_clean);
+    $user_profiles_lower = array_map('strtolower', $user_profiles_clean);
+    $user_id_clean = trim(clean_pandora_text($user_id));
+    $user_id_lower = strtolower($user_id_clean);
 
     if ($action === 'edit' || $action === 'manage') {
         $edit_policy = $acl['edit_policy'] ?? 'admin_only';
@@ -1063,16 +1093,26 @@ function check_dashboard_access(?array $acl, string $user_id, string $action = '
         }
         if ($edit_policy === 'profiles') {
             $allowed_profiles = array_map('clean_pandora_text', $acl['edit_profiles'] ?? []);
-            $allowed_profiles = array_map('strtolower', array_map('trim', $allowed_profiles));
+            $allowed_profiles = array_map('trim', $allowed_profiles);
+            $allowed_profiles_lower = array_map('strtolower', $allowed_profiles);
             foreach ($user_profiles_lower as $up) {
-                if (in_array($up, $allowed_profiles, true)) return true;
+                if ($up === '') continue;
+                foreach ($allowed_profiles_lower as $ap) {
+                    if ($ap === '') continue;
+                    if ($up === $ap || strcasecmp($up, $ap) === 0) return true;
+                }
             }
             return false;
         }
         if ($edit_policy === 'users') {
             $allowed_users = array_map('clean_pandora_text', $acl['edit_users'] ?? []);
-            $allowed_users = array_map('strtolower', array_map('trim', $allowed_users));
-            return in_array($user_id_lower, $allowed_users, true);
+            $allowed_users = array_map('trim', $allowed_users);
+            $allowed_users_lower = array_map('strtolower', $allowed_users);
+            foreach ($allowed_users_lower as $au) {
+                if ($au === '') continue;
+                if ($user_id_lower === $au || strcasecmp($user_id_lower, $au) === 0) return true;
+            }
+            return false;
         }
         return false;
     }
@@ -1087,16 +1127,26 @@ function check_dashboard_access(?array $acl, string $user_id, string $action = '
     }
     if ($view_policy === 'profiles') {
         $allowed_profiles = array_map('clean_pandora_text', $acl['view_profiles'] ?? []);
-        $allowed_profiles = array_map('strtolower', array_map('trim', $allowed_profiles));
+        $allowed_profiles = array_map('trim', $allowed_profiles);
+        $allowed_profiles_lower = array_map('strtolower', $allowed_profiles);
         foreach ($user_profiles_lower as $up) {
-            if (in_array($up, $allowed_profiles, true)) return true;
+            if ($up === '') continue;
+            foreach ($allowed_profiles_lower as $ap) {
+                if ($ap === '') continue;
+                if ($up === $ap || strcasecmp($up, $ap) === 0) return true;
+            }
         }
         return false;
     }
     if ($view_policy === 'users') {
         $allowed_users = array_map('clean_pandora_text', $acl['view_users'] ?? []);
-        $allowed_users = array_map('strtolower', array_map('trim', $allowed_users));
-        return in_array($user_id_lower, $allowed_users, true);
+        $allowed_users = array_map('trim', $allowed_users);
+        $allowed_users_lower = array_map('strtolower', $allowed_users);
+        foreach ($allowed_users_lower as $au) {
+            if ($au === '') continue;
+            if ($user_id_lower === $au || strcasecmp($user_id_lower, $au) === 0) return true;
+        }
+        return false;
     }
 
     return false;
@@ -1110,8 +1160,11 @@ function user_has_any_dashboard_access(string $user_id, $pdo = null): bool {
     if ($pdo && is_pandora_administrator($pdo, $user_id)) return true;
 
     $base = dirname(__DIR__);
+    $sys_temp = sys_get_temp_dir();
     $files = [
         $base . '/Dashboard/Topology-Network/topology_dashboards.json',
+        $base . '/temp/topology_dashboards.json',
+        $sys_temp . '/pfms_topology_dashboards.json',
         $base . '/Dashboard/Metrics-Dashboard/metrics_config.json',
         $base . '/Dashboard/Metrics-Dashboard/metrics-dashboards-saved.json',
         $base . '/Dashboard/Dynamic-Dashboard/dynamic-dashboards-master.json',
@@ -1124,13 +1177,15 @@ function user_has_any_dashboard_access(string $user_id, $pdo = null): bool {
     foreach ($files as $file) {
         if (file_exists($file)) {
             $content = @file_get_contents($file);
-            $data = json_decode($content, true);
+            $data = json_decode((string)$content, true);
             $dashboards = [];
             if (is_array($data)) {
                 if (isset($data['dashboards']) && is_array($data['dashboards'])) {
                     $dashboards = $data['dashboards'];
                 } else if (isset($data[0])) {
                     $dashboards = $data;
+                } else {
+                    $dashboards = array_values($data);
                 }
             }
             foreach ($dashboards as $d) {
@@ -1246,7 +1301,7 @@ function save_dashboard_acl_to_file(string $file, string $id, array $acl, bool $
 /**
  * Renders a secure 403 Forbidden Access Denied page when a non-admin tries to access PFMS-Toolkit.
  */
-function render_pfms_access_denied(string $user_id, string $pandora_base = '/pandora_console', $pdo = null): void {
+function render_pfms_access_denied(string $user_id, string $pandora_base = '/pandora_console', $pdo = null, string $custom_reason = ''): void {
     if (!headers_sent()) {
         http_response_code(403);
         header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
@@ -1257,13 +1312,14 @@ function render_pfms_access_denied(string $user_id, string $pandora_base = '/pan
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'ok' => false,
-            'error' => 'Access Denied (403 Forbidden): Only the Pandora Administrator profile is authorized to access PFMS-Toolkit features.'
+            'error' => !empty($custom_reason) ? $custom_reason : 'Access Denied (403 Forbidden): Insufficient permissions to access this PFMS-Toolkit resource.'
         ]);
         exit;
     }
 
     $profiles = ($pdo && !empty($user_id)) ? get_user_pandora_profiles($pdo, $user_id) : [];
-    $profileText = !empty($profiles) ? implode(', ', array_map('htmlspecialchars', $profiles)) : 'Not Pandora Administrator';
+    $hasProfiles = !empty($profiles);
+    $profileText = $hasProfiles ? implode(', ', array_map('htmlspecialchars', $profiles)) : 'Standard User (No Profile Assigned)';
     $vendor_url = rtrim($pandora_base, '/') . '/custom/panel/vendor';
     $login_url = rtrim($pandora_base, '/') . '/index.php';
     ?>
@@ -1443,7 +1499,7 @@ function render_pfms_access_denied(string $user_id, string $pandora_base = '/pan
                 <div class="denied-subtitle">Insufficient Permissions</div>
             </div>
             <div class="denied-body">
-                <p>This <strong>PFMS-Toolkit</strong> page is restricted and can only be accessed by users with the <strong>Pandora Administrator</strong> profile.</p>
+                <p><?= !empty($custom_reason) ? htmlspecialchars($custom_reason) : 'This <strong>PFMS-Toolkit</strong> page or dashboard is restricted. Access must be granted to your profile or account by a <strong>Pandora Administrator</strong>.' ?></p>
                 
                 <div class="info-box">
                     <div class="info-row">
@@ -1452,15 +1508,15 @@ function render_pfms_access_denied(string $user_id, string $pandora_base = '/pan
                     </div>
                     <div class="info-row">
                         <span class="info-label">Detected Profiles:</span>
-                        <span style="color:#b91c1c; font-weight:600;"><?= $profileText ?></span>
+                        <span style="color:<?= $hasProfiles ? '#059669' : '#b91c1c' ?>; font-weight:600;"><?= $profileText ?></span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">Required Profile:</span>
-                        <span class="info-required">Pandora Administrator</span>
+                        <span class="info-label">Required Access:</span>
+                        <span class="info-required">Authorized Profile / User or Admin</span>
                     </div>
                 </div>
 
-                <p style="font-size:12.5px; color:#64748b;">Please contact your system administrator or sign in using an account with Pandora Administrator privileges.</p>
+                <p style="font-size:12.5px; color:#64748b;">Please contact your system administrator to configure access permissions or sign in using an account with appropriate privileges.</p>
             </div>
             <div class="denied-footer">
                 <a href="<?= htmlspecialchars($login_url) ?>" class="btn-primary">
