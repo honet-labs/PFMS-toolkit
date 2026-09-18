@@ -3597,38 +3597,34 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <!-- MODAL: SHARE & EMBED TOPOLOGY                                             -->
     <!-- ========================================================================= -->
     <div class="modal-overlay" id="shareModal" style="display:none; z-index:2500;" onclick="if(event.target === this) closeShareModal()">
-        <div class="modal-card" style="width:620px; max-width:92vw; border-radius:8px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 45px rgba(0,0,0,0.25);">
-            <div class="modal-head" style="padding:16px 20px; background:#fafbfc; border-bottom:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <div style="width:36px; height:36px; border-radius:8px; background:#ecfdf5; display:flex; align-items:center; justify-content:center; color:#059669;">
-                        <span class="material-symbols-outlined" style="font-size:22px;">share</span>
-                    </div>
-                    <div>
-                        <h3 style="font-size:15px; font-weight:700; color:var(--primary-navy); margin:0;">Share & Embed Topology</h3>
-                        <p style="font-size:12px; color:#64748b; margin:2px 0 0 0;" id="shareModalSubtitle">Share direct link or embed live canvas in external dashboards</p>
-                    </div>
-                </div>
-                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size:22px;" onclick="closeShareModal()">close</span>
+        <div class="modal-card" style="width:580px; max-width:94vw;">
+            <div class="modal-head">
+                <h3>
+                    <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:20px;">share</span>
+                    <span>Share & Embed Topology</span>
+                </h3>
+                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeShareModal()">close</span>
             </div>
 
-            <div class="modal-body" style="padding:20px; display:flex; flex-direction:column; gap:16px;">
-                <!-- Options configuration -->
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
-                    <div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-                        <span class="material-symbols-outlined" style="font-size:16px; color:#0284c7;">tune</span>
-                        Embed & Display Settings
-                    </div>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+            <div class="modal-body" style="padding:20px 24px;">
+                <div style="font-size:13px; color:#64748b; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                    <span class="material-symbols-outlined" style="font-size:16px; color:#0d9488;">hub</span>
+                    <span>Dashboard: <strong id="shareModalSubtitle" style="color:var(--primary-navy);">Topology Canvas</strong></span>
+                </div>
+
+                <!-- Embed & Display Settings -->
+                <div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:6px; padding:12px 16px; margin:10px 0 16px 0;">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px;">
                         <div>
-                            <label style="display:block; font-size:11px; font-weight:600; color:#64748b; margin-bottom:4px;">Display Mode</label>
-                            <select id="shareDisplayMode" class="form-control-custom" style="width:100%; height:32px; font-size:12px; background:#ffffff;" onchange="updateShareUrls()">
-                                <option value="standard">Standard (With Title & Controls)</option>
-                                <option value="minimal">Minimal / Kiosk (100% Canvas Only for NOC)</option>
+                            <label class="form-label" style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:4px; display:block;">Display Mode</label>
+                            <select id="shareDisplayMode" class="form-control-custom" style="width:100%; height:34px; font-size:12px;" onchange="updateShareUrls()">
+                                <option value="standard">Standard (With Controls)</option>
+                                <option value="minimal">Minimal / Kiosk (100% Canvas NOC)</option>
                             </select>
                         </div>
                         <div>
-                            <label style="display:block; font-size:11px; font-weight:600; color:#64748b; margin-bottom:4px;">Auto-Refresh Interval</label>
-                            <select id="shareRefreshInterval" class="form-control-custom" style="width:100%; height:32px; font-size:12px; background:#ffffff;" onchange="updateShareUrls()">
+                            <label class="form-label" style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:4px; display:block;">Auto-Refresh Interval</label>
+                            <select id="shareRefreshInterval" class="form-control-custom" style="width:100%; height:34px; font-size:12px;" onchange="updateShareUrls()">
                                 <option value="0">Auto-Refresh: Off</option>
                                 <option value="30" selected>Every 30 seconds</option>
                                 <option value="60">Every 1 minute</option>
@@ -3641,54 +3637,52 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 </div>
 
                 <!-- 1. Direct Share Link -->
-                <div>
-                    <label style="display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; color:#1e293b; margin-bottom:6px;">
-                        <span style="display:flex; align-items:center; gap:6px;">
-                            <span class="material-symbols-outlined" style="font-size:16px; color:#059669;">link</span>
-                            Direct Shareable Link
+                <div style="margin-bottom:14px;">
+                    <label style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; display:flex; align-items:center; gap:4px;">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#0d9488;">link</span>
+                            1. Direct Shareable Link
                         </span>
-                        <span style="font-size:11px; color:#64748b; font-weight:normal;">Direct access URL for browser/wallboard</span>
+                        <span style="font-size:11px; color:#94a3b8;">For browser / wallboard</span>
                     </label>
                     <div style="display:flex; gap:8px;">
-                        <input type="text" id="shareDirectUrlInput" class="form-control-custom" readonly style="flex:1; height:36px; font-size:12px; background:#ffffff; font-family:monospace; color:#334155;" onclick="this.select()">
-                        <button type="button" class="btn-apply" id="btnCopyDirectUrl" onclick="copyShareDirectUrl()" style="height:36px; padding:0 14px; font-size:12px; white-space:nowrap;">
+                        <input type="text" id="shareDirectUrlInput" class="form-control-custom" readonly style="flex:1; height:36px; font-family:monospace; font-size:12px; background:#f8fafc;" onclick="this.select()">
+                        <button type="button" class="btn-apply" id="btnCopyDirectUrl" onclick="copyShareDirectUrl()" style="height:36px; padding:0 16px; font-size:12px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;">
                             <span class="material-symbols-outlined" style="font-size:16px;">content_copy</span>
-                            Copy Link
+                            <span>Copy</span>
                         </button>
-                        <button type="button" class="btn-secondary-custom" onclick="openShareUrlInNewTab()" style="height:36px; padding:0 10px;" title="Open preview in new tab">
-                            <span class="material-symbols-outlined" style="font-size:16px;">open_in_new</span>
+                        <button type="button" class="btn-secondary-custom" onclick="openShareUrlInNewTab()" style="height:36px; padding:0 10px; display:inline-flex; align-items:center; justify-content:center;" title="Open preview in new tab">
+                            <span class="material-symbols-outlined" style="font-size:18px;">open_in_new</span>
                         </button>
                     </div>
                 </div>
 
                 <!-- 2. iFrame HTML Embed Code -->
-                <div>
-                    <label style="display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; color:#1e293b; margin-bottom:6px;">
-                        <span style="display:flex; align-items:center; gap:6px;">
-                            <span class="material-symbols-outlined" style="font-size:16px; color:#0284c7;">code</span>
-                            HTML Embed Code (iFrame)
+                <div style="margin-bottom:14px;">
+                    <label style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; display:flex; align-items:center; gap:4px;">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">code</span>
+                            2. HTML Embed Code (iFrame)
                         </span>
-                        <span style="font-size:11px; color:#64748b; font-weight:normal;">For Grafana, Portal, or intranet web pages</span>
+                        <span style="font-size:11px; color:#94a3b8;">For Grafana, Portal, or intranet</span>
                     </label>
-                    <div style="position:relative;">
-                        <textarea id="shareIframeCodeInput" class="form-control-custom" rows="3" readonly style="width:100%; font-size:11.5px; font-family:monospace; padding:10px; resize:none; background:#ffffff; color:#334155; line-height:1.5;" onclick="this.select()"></textarea>
-                        <button type="button" class="btn-apply" id="btnCopyIframeCode" onclick="copyShareIframeCode()" style="position:absolute; right:8px; bottom:8px; height:28px; padding:0 10px; font-size:11px;">
-                            <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
-                            Copy iFrame
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="shareIframeCodeInput" class="form-control-custom" readonly style="flex:1; height:36px; font-family:monospace; font-size:12px; background:#f8fafc;" onclick="this.select()">
+                        <button type="button" class="btn-apply" id="btnCopyIframeCode" onclick="copyShareIframeCode()" style="height:36px; padding:0 16px; font-size:12px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;">
+                            <span class="material-symbols-outlined" style="font-size:16px;">content_copy</span>
+                            <span>Copy</span>
                         </button>
                     </div>
                 </div>
 
                 <!-- Quick Help Tip -->
-                <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:10px 14px; display:flex; align-items:flex-start; gap:10px; font-size:11.5px; color:#1e40af; line-height:1.5;">
+                <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:10px 14px; display:flex; align-items:flex-start; gap:8px; font-size:11.5px; color:#1e40af; line-height:1.4;">
                     <span class="material-symbols-outlined" style="font-size:18px; color:#2563eb; flex-shrink:0;">info</span>
-                    <div>
-                        <strong>Embed Ready:</strong> URL embed mendukung akses langsung tanpa blokir <code>X-Frame-Options</code> dan otomatis melakukan deteksi real-time ketika ada port/link yang down.
-                    </div>
+                    <span><strong>Embed Ready:</strong> URL embed mendukung akses langsung tanpa blokir frame dan otomatis mendeteksi status link/node secara real-time.</span>
                 </div>
             </div>
 
-            <div class="modal-foot" style="padding:12px 20px; background:#fafbfc; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end;">
+            <div class="modal-foot">
                 <button type="button" class="btn-secondary-custom" onclick="closeShareModal()">Close</button>
             </div>
         </div>
