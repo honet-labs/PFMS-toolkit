@@ -754,7 +754,7 @@ if (!empty($api)) {
         exit;
     }
 
-    // 3b. API: SAVE NODE POSITIONS (Persist user-dragged coordinates for topology)
+    // 3b. API: SAVE NODE POSITIONS (Persist user-dragged coordinates & zoom/pan viewport for topology)
     if ($api === 'save_node_positions') {
         $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
@@ -765,6 +765,11 @@ if (!empty($api)) {
 
         $id = trim((string)($input['dashboard_id'] ?? ''));
         $positions = isset($input['positions']) && is_array($input['positions']) ? $input['positions'] : [];
+        $zoom = isset($input['zoom']) ? (float)$input['zoom'] : null;
+        $pan = (isset($input['pan']) && is_array($input['pan'])) ? [
+            'x' => round((float)($input['pan']['x'] ?? 0), 2),
+            'y' => round((float)($input['pan']['y'] ?? 0), 2)
+        ] : null;
 
         if (empty($id)) {
             echo json_encode(['ok' => false, 'error' => 'Dashboard ID required']);
@@ -785,6 +790,12 @@ if (!empty($api)) {
                     }
                 }
                 $d['node_positions'] = $clean_positions;
+                if ($zoom !== null && $zoom > 0) {
+                    $d['zoom'] = round($zoom, 4);
+                }
+                if ($pan !== null) {
+                    $d['pan'] = $pan;
+                }
                 $d['layout'] = 'preset';
                 $d['updated_at'] = date('Y-m-d H:i:s');
                 $found = true;
@@ -795,7 +806,7 @@ if (!empty($api)) {
 
         if ($found) {
             save_topology_dashboards($DASHBOARD_FILE, $dashboards);
-            echo json_encode(['ok' => true, 'count' => count($clean_positions)]);
+            echo json_encode(['ok' => true, 'count' => count($clean_positions), 'zoom' => $zoom, 'pan' => $pan]);
         } else {
             echo json_encode(['ok' => false, 'error' => 'Dashboard not found']);
         }
@@ -1564,7 +1575,9 @@ if (!empty($api)) {
                     'id' => $current_dash['id'],
                     'name' => pretty_text($current_dash['name']),
                     'layout' => $current_dash['layout'] ?? 'dagre',
-                    'node_positions' => $current_dash['node_positions'] ?? null
+                    'node_positions' => $current_dash['node_positions'] ?? null,
+                    'zoom' => isset($current_dash['zoom']) ? (float)$current_dash['zoom'] : null,
+                    'pan' => $current_dash['pan'] ?? null
                 ] : null,
                 'nodes' => $nodes,
                 'edges' => $edges,
@@ -3949,6 +3962,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 || (currentDash && currentDash.node_positions) 
                 || null;
             const hasSavedPositions = savedPositions && typeof savedPositions === 'object' && Object.keys(savedPositions).length > 0;
+            const savedZoom = (data && data.dashboard && data.dashboard.zoom !== undefined && data.dashboard.zoom !== null)
+                ? Number(data.dashboard.zoom)
+                : (currentDash && currentDash.zoom !== undefined && currentDash.zoom !== null ? Number(currentDash.zoom) : null);
+            const savedPan = (data && data.dashboard && data.dashboard.pan)
+                ? data.dashboard.pan
+                : (currentDash && currentDash.pan ? currentDash.pan : null);
+            const hasSavedViewport = (savedZoom !== null && !isNaN(savedZoom) && savedZoom > 0 && savedPan && typeof savedPan.x === 'number' && typeof savedPan.y === 'number');
 
             const elements = [];
 
@@ -4154,7 +4174,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 ],
                 layout: (preferredLayout === 'preset') ? {
                     name: 'preset',
-                    fit: true,
+                    fit: false,
                     padding: 100
                 } : {
                     name: preferredLayout,
@@ -4167,20 +4187,50 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 }
             });
 
-            // Prevent excessive default zoom-in when there are few nodes on canvas
-            cy.on('layoutstop', function() {
-                if (cy && cy.elements().length > 0) {
+            let isGraphInitializing = true;
+
+            const applyGraphViewport = function() {
+                if (!cy || cy.elements().length === 0) return;
+                if (preferredLayout === 'preset' && hasSavedViewport) {
+                    cy.viewport({
+                        zoom: savedZoom,
+                        pan: { x: Number(savedPan.x), y: Number(savedPan.y) }
+                    });
+                } else {
                     cy.fit(null, 100);
                     if (cy.zoom() > 0.8) {
-                        cy.zoom(0.75);
+                        cy.zoom(0.7);
                         cy.center();
                     }
                 }
+            };
+
+            cy.ready(function() {
+                applyGraphViewport();
+                setTimeout(() => {
+                    applyGraphViewport();
+                    isGraphInitializing = false;
+                }, 150);
+            });
+
+            // Prevent excessive default zoom-in and restore viewport when layout finishes
+            cy.on('layoutstop', function() {
+                applyGraphViewport();
+                setTimeout(() => {
+                    isGraphInitializing = false;
+                }, 200);
             });
 
             // Listen for node drag events to highlight Save Positions button
             cy.on('dragfree', 'node', function() {
                 markPositionsModified();
+            });
+
+            // Listen for user zoom / pan viewport events to highlight Save Positions button
+            cy.on('viewport', function() {
+                if (!isGraphInitializing) {
+                    markPositionsModified();
+                }
             });
 
             // Node Click Event
@@ -5099,6 +5149,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const savedPositions = (rawTopologyData && rawTopologyData.dashboard && rawTopologyData.dashboard.node_positions)
                 || (currentDash && currentDash.node_positions)
                 || null;
+            const savedZoom = (rawTopologyData && rawTopologyData.dashboard && rawTopologyData.dashboard.zoom !== undefined && rawTopologyData.dashboard.zoom !== null)
+                ? Number(rawTopologyData.dashboard.zoom)
+                : (currentDash && currentDash.zoom !== undefined && currentDash.zoom !== null ? Number(currentDash.zoom) : null);
+            const savedPan = (rawTopologyData && rawTopologyData.dashboard && rawTopologyData.dashboard.pan)
+                ? rawTopologyData.dashboard.pan
+                : (currentDash && currentDash.pan ? currentDash.pan : null);
+            const hasSavedViewport = (savedZoom !== null && !isNaN(savedZoom) && savedZoom > 0 && savedPan && typeof savedPan.x === 'number' && typeof savedPan.y === 'number');
 
             if (layoutName === 'preset') {
                 if (savedPositions && typeof savedPositions === 'object' && Object.keys(savedPositions).length > 0) {
@@ -5110,10 +5167,17 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                             }
                         });
                     });
-                    cy.fit(null, 100);
-                    if (cy.zoom() > 0.8) {
-                        cy.zoom(0.75);
-                        cy.center();
+                    if (hasSavedViewport) {
+                        cy.viewport({
+                            zoom: savedZoom,
+                            pan: { x: Number(savedPan.x), y: Number(savedPan.y) }
+                        });
+                    } else {
+                        cy.fit(null, 100);
+                        if (cy.zoom() > 0.8) {
+                            cy.zoom(0.7);
+                            cy.center();
+                        }
                     }
                     hasUnsavedPositions = false;
                     const btn = document.getElementById('btnSavePositions');
@@ -5122,7 +5186,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         const label = document.getElementById('savePositionsLabel');
                         if (label) label.innerText = 'Save Positions';
                     }
-                    showToast('Memuat posisi node yang tersimpan', 'success');
+                    showToast('Memuat posisi node dan zoom viewport yang tersimpan', 'success');
                 } else {
                     showToast('Belum ada posisi node tersimpan untuk dashboard ini', 'warning');
                 }
@@ -5138,7 +5202,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     if (cy && cy.elements().length > 0) {
                         cy.fit(null, 100);
                         if (cy.zoom() > 0.8) {
-                            cy.zoom(0.75);
+                            cy.zoom(0.7);
                             cy.center();
                         }
                     }
@@ -5178,6 +5242,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 }
             });
 
+            const currentZoom = Math.round(cy.zoom() * 10000) / 10000;
+            const currentPanRaw = cy.pan();
+            const currentPan = {
+                x: Math.round(currentPanRaw.x * 100) / 100,
+                y: Math.round(currentPanRaw.y * 100) / 100
+            };
+
             try {
                 const res = await fetch(getApiUrl('save_node_positions'), {
                     method: 'POST',
@@ -5188,7 +5259,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     body: JSON.stringify({
                         csrf_token: CSRF_TOKEN,
                         dashboard_id: activeDashId,
-                        positions: positions
+                        positions: positions,
+                        zoom: currentZoom,
+                        pan: currentPan
                     })
                 });
 
@@ -5206,10 +5279,14 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     const cur = allDashboards.find(d => d.id === activeDashId);
                     if (cur) {
                         cur.node_positions = positions;
+                        cur.zoom = currentZoom;
+                        cur.pan = currentPan;
                         cur.layout = 'preset';
                     }
                     if (rawTopologyData && rawTopologyData.dashboard) {
                         rawTopologyData.dashboard.node_positions = positions;
+                        rawTopologyData.dashboard.zoom = currentZoom;
+                        rawTopologyData.dashboard.pan = currentPan;
                         rawTopologyData.dashboard.layout = 'preset';
                     }
 
@@ -5221,7 +5298,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         if (label) label.innerText = 'Save Positions';
                     }, 2000);
 
-                    showToast(data.msg || 'Posisi layout node berhasil disimpan!', 'success');
+                    showToast(data.msg || 'Posisi layout node & zoom viewport berhasil disimpan!', 'success');
                 } else {
                     if (btn) btn.disabled = false;
                     if (icon) icon.innerText = 'save';
@@ -5255,19 +5332,29 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             }
         });
 
-
         function fitTopologyView() {
             if (cy && cy.elements().length > 0) {
                 cy.fit(null, 100);
                 if (cy.zoom() > 0.8) {
-                    cy.zoom(0.75);
+                    cy.zoom(0.7);
                     cy.center();
                 }
+                markPositionsModified();
             }
         }
 
-        function zoomIn() { if (cy) cy.zoom({ level: cy.zoom() * 1.25, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } }); }
-        function zoomOut() { if (cy) cy.zoom({ level: cy.zoom() * 0.8, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } }); }
+        function zoomIn() { 
+            if (cy) { 
+                cy.zoom({ level: cy.zoom() * 1.25, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
+                markPositionsModified();
+            } 
+        }
+        function zoomOut() { 
+            if (cy) { 
+                cy.zoom({ level: cy.zoom() * 0.8, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } }); 
+                markPositionsModified();
+            } 
+        }
 
         function onDeviceSearch(query) {
             query = (query || '').toLowerCase().trim();
