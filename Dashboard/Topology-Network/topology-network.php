@@ -2750,6 +2750,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             border: 1px solid #e2e8f0;
             border-radius: 6px;
             overflow: hidden;
+            table-layout: fixed;
         }
         .agent-paginate-table th {
             background: #f8fafc;
@@ -2766,6 +2767,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             border-bottom: 1px solid #f1f5f9;
             color: #1e293b;
             vertical-align: middle;
+            overflow: hidden;
         }
         .agent-paginate-table tr:hover td {
             background: #f0fdfa;
@@ -3593,7 +3595,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <!-- ADD NODE MODAL (Screenshot 3 - Preloaded 10 agents with pagination & search) -->
     <!-- ========================================================================= -->
     <div class="modal-overlay" id="addNodeModal">
-        <div class="modal-card" style="max-width: 820px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
+        <div class="modal-card" style="max-width: 900px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
             <div class="modal-head modal-head-teal">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span class="material-symbols-outlined" style="font-size: 20px;">add_circle</span>
@@ -3616,15 +3618,22 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 </div>
 
                 <!-- 10-Agent Paginated Table -->
-                <div style="border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; background: #ffffff;">
-                    <table class="agent-paginate-table" style="margin: 0; border: none; border-radius: 0;">
+                <div style="border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; background: #ffffff;">
+                    <table class="agent-paginate-table" style="margin: 0; border: none; border-radius: 0; width: 100%; table-layout: fixed; min-width: 720px;">
+                        <colgroup>
+                            <col style="width: 48px;">
+                            <col style="width: auto;">
+                            <col style="width: 130px;">
+                            <col style="width: 160px;">
+                            <col style="width: 105px;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th style="width: 44px; text-align: center;">Select</th>
+                                <th style="width: 48px; text-align: center;">Select</th>
                                 <th>Agent Name / Alias</th>
-                                <th>IP Address</th>
-                                <th>Group</th>
-                                <th style="width: 100px; text-align: center;">Status</th>
+                                <th style="width: 130px;">IP Address</th>
+                                <th style="width: 160px;">Group</th>
+                                <th style="width: 105px; text-align: center;">Status</th>
                             </tr>
                         </thead>
                         <tbody id="addNodeTableBody">
@@ -5493,22 +5502,22 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
                     html += `
                         <tr class="${isSelected ? 'selected' : ''}" onclick="selectAddNodeAgent(${a.id})" style="cursor:pointer; transition: background 0.15s;">
-                            <td style="text-align:center; width:44px;">
+                            <td style="text-align:center; width:48px;">
                                 <input type="radio" name="add_node_agent_choice" value="${a.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); selectAddNodeAgent(${a.id});" style="cursor:pointer; accent-color:#094d4a;">
                             </td>
-                            <td>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <strong style="color:#0f172a; font-size:12px;">${escapeHtml(cleanText(a.name))}</strong>
-                                    ${a.raw_name && a.raw_name !== a.name ? `<span style="font-size:11px; color:#64748b;">(${escapeHtml(cleanText(a.raw_name))})</span>` : ''}
+                            <td style="overflow:hidden;">
+                                <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+                                    <strong style="color:#0f172a; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(cleanText(a.name))}">${escapeHtml(cleanText(a.name))}</strong>
+                                    ${a.raw_name && a.raw_name !== a.name ? `<span style="font-size:11px; color:#64748b; word-break:break-all; line-height:1.25;" title="${escapeHtml(cleanText(a.raw_name))}">(${escapeHtml(cleanText(a.raw_name))})</span>` : ''}
                                 </div>
                             </td>
-                            <td style="color:#475569; font-size:12px; font-family:monospace;">${escapeHtml(cleanText(a.ip || '-'))}</td>
-                            <td>
-                                <span style="display:inline-block; padding:2px 8px; background:#f1f5f9; border-radius:4px; font-size:11px; color:#334155;">
+                            <td style="color:#475569; font-size:12px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(cleanText(a.ip || '-'))}</td>
+                            <td style="overflow:hidden;">
+                                <span style="display:inline-block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:2px 8px; background:#f1f5f9; border-radius:4px; font-size:11px; color:#334155;" title="${escapeHtml(cleanText(a.group_name || 'Unknown'))}">
                                     ${escapeHtml(cleanText(a.group_name || 'Unknown'))}
                                 </span>
                             </td>
-                            <td style="text-align:center;">${statusBadge}</td>
+                            <td style="text-align:center; white-space:nowrap;">${statusBadge}</td>
                         </tr>
                     `;
                 });
