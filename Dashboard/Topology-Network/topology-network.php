@@ -5650,6 +5650,36 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             listEl.innerHTML = html;
         }
 
+        function populateInterfaceSelect(selectEl, interfaces) {
+            if (!selectEl) return;
+            let html = '<option value="" data-id="0" data-status="0">None (No specific interface)</option>';
+            if (Array.isArray(interfaces) && interfaces.length > 0) {
+                interfaces.forEach(itf => {
+                    const cleanName = cleanText(itf.clean_port || itf.name);
+                    const fullName = cleanText(itf.name);
+                    const statusDot = (itf.estado === 1) ? '● Down' : (itf.estado === 0 ? '● Up' : (itf.estado === 2 ? '● Warn' : '●'));
+                    const displayName = cleanName || fullName;
+                    html += `<option value="${escapeHtml(cleanName)}" data-id="${itf.id}" data-status="${itf.estado}" data-fullname="${escapeHtml(fullName)}">${escapeHtml(displayName)} (${statusDot})</option>`;
+                });
+            }
+            selectEl.innerHTML = html;
+        }
+
+        function selectMatchingOption(selectEl, ifaceName, modId) {
+            if (!selectEl) return;
+            for (let i = 0; i < selectEl.options.length; i++) {
+                const opt = selectEl.options[i];
+                if (modId && opt.getAttribute('data-id') == modId) {
+                    selectEl.selectedIndex = i;
+                    return;
+                }
+                if (opt.value === ifaceName || opt.getAttribute('data-fullname') === ifaceName) {
+                    selectEl.selectedIndex = i;
+                    return;
+                }
+            }
+        }
+
         let drawerCachedSrcInterfaces = [];
         let drawerCachedTgtInterfaces = [];
 
@@ -5691,6 +5721,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     drawerCachedSrcInterfaces = Array.isArray(dataSrc.interfaces) ? dataSrc.interfaces : [];
                     populateInterfaceSelect(srcSelect, drawerCachedSrcInterfaces);
                 } catch (e) {
+                    console.error("Error fetching source interfaces for drawer:", e);
                     if (srcSelect) srcSelect.innerHTML = '<option value="">None</option>';
                 }
 
@@ -5720,7 +5751,33 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 const dataTgt = await resTgt.json();
                 drawerCachedTgtInterfaces = Array.isArray(dataTgt.interfaces) ? dataTgt.interfaces : [];
                 populateInterfaceSelect(tgtSelect, drawerCachedTgtInterfaces);
+
+                // Auto-select if existing link exists between inspected agent and target
+                if (currentInspectedAgent) {
+                    const sourceId = currentInspectedAgent.id;
+                    const existingEdges = cy.edges().filter(e => 
+                        (e.data('source') === sourceId && e.data('target') === targetId) ||
+                        (e.data('source') === targetId && e.data('target') === sourceId)
+                    );
+                    if (existingEdges.length > 0) {
+                        const edgeData = existingEdges[0].data();
+                        const isFwd = edgeData.source === sourceId;
+                        const srcPort = isFwd ? edgeData.source_interface : edgeData.target_interface;
+                        const srcMod = isFwd ? edgeData.source_module_id : edgeData.target_module_id;
+                        const tgtPort = isFwd ? edgeData.target_interface : edgeData.source_interface;
+                        const tgtMod = isFwd ? edgeData.target_module_id : edgeData.source_module_id;
+
+                        const srcSelect = document.getElementById('drawerSourceInterfaceSelect');
+                        if (srcSelect && (srcPort || srcMod)) {
+                            selectMatchingOption(srcSelect, srcPort, srcMod);
+                        }
+                        if (tgtSelect && (tgtPort || tgtMod)) {
+                            selectMatchingOption(tgtSelect, tgtPort, tgtMod);
+                        }
+                    }
+                }
             } catch (e) {
+                console.error("Error fetching target interfaces for drawer:", e);
                 tgtSelect.innerHTML = '<option value="">None</option>';
             }
         }
@@ -5898,7 +5955,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             if (box) box.style.display = 'none';
 
             if (srcNode.length > 0 && tgtNode.length > 0) {
-                openInterfaceLinkModal(srcNode, tgtNode);
+                const sourceId = currentInspectedAgent.id;
+                const existingEdge = cy.edges().filter(e => 
+                    (e.data('source') === sourceId && e.data('target') === targetId) ||
+                    (e.data('source') === targetId && e.data('target') === sourceId)
+                );
+                openInterfaceLinkModal(srcNode, tgtNode, existingEdge.length > 0 ? existingEdge[0] : null);
             }
         }
 
