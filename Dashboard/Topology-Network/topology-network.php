@@ -2243,7 +2243,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             display: none;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: 2500;
             backdrop-filter: blur(2px);
         }
         .modal-card {
@@ -2914,13 +2914,19 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             outline: none;
         }
         .auto-refresh-badge {
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 700;
             color: #0d9488;
             background: #ccfbf1;
-            padding: 2px 6px;
-            border-radius: 10px;
-            line-height: 1;
+            padding: 2px 7px;
+            border-radius: 12px;
+            line-height: 1.2;
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            font-variant-numeric: tabular-nums;
+            box-shadow: inset 0 0 0 1px rgba(13, 148, 136, 0.25);
+            transition: all 0.2s ease;
         }
         .auto-pulse {
             animation: rotateSlow 3s linear infinite;
@@ -3079,7 +3085,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         <option value="300">Every 5m</option>
                         <option value="600">Every 10m</option>
                     </select>
-                    <span id="autoRefreshBadge" class="auto-refresh-badge" style="display:none;">30s</span>
+                    <span id="autoRefreshBadge" class="auto-refresh-badge" style="display:none;" title="Countdown to next refresh">
+                        <span class="material-symbols-outlined" style="font-size:12px; margin-right:1px;">timer</span>
+                        <span id="autoRefreshCountdownText">--</span>
+                    </span>
                 </div>
 
                 <button class="btn-secondary-custom" id="btnManualRefresh" onclick="refreshCurrentTopology(true)" title="Refresh Data Now">
@@ -3587,24 +3596,22 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <!-- ========================================================================= -->
     <!-- MODAL: SHARE & EMBED TOPOLOGY                                             -->
     <!-- ========================================================================= -->
-    <div id="shareModal" class="custom-modal-overlay" style="display:none;">
-        <div class="custom-modal-dialog" style="max-width:620px;">
-            <div class="custom-modal-header" style="background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:16px 20px;">
+    <div class="modal-overlay" id="shareModal" style="display:none; z-index:2500;" onclick="if(event.target === this) closeShareModal()">
+        <div class="modal-card" style="width:620px; max-width:92vw; border-radius:8px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 45px rgba(0,0,0,0.25);">
+            <div class="modal-head" style="padding:16px 20px; background:#fafbfc; border-bottom:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between;">
                 <div style="display:flex; align-items:center; gap:10px;">
                     <div style="width:36px; height:36px; border-radius:8px; background:#ecfdf5; display:flex; align-items:center; justify-content:center; color:#059669;">
                         <span class="material-symbols-outlined" style="font-size:22px;">share</span>
                     </div>
                     <div>
-                        <h3 style="font-size:16px; font-weight:700; color:#0f172a; margin:0;">Share & Embed Topology</h3>
+                        <h3 style="font-size:15px; font-weight:700; color:var(--primary-navy); margin:0;">Share & Embed Topology</h3>
                         <p style="font-size:12px; color:#64748b; margin:2px 0 0 0;" id="shareModalSubtitle">Share direct link or embed live canvas in external dashboards</p>
                     </div>
                 </div>
-                <button type="button" class="btn-modal-close" onclick="closeShareModal()">
-                    <span class="material-symbols-outlined">close</span>
-                </button>
+                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size:22px;" onclick="closeShareModal()">close</span>
             </div>
 
-            <div class="custom-modal-body" style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+            <div class="modal-body" style="padding:20px; display:flex; flex-direction:column; gap:16px;">
                 <!-- Options configuration -->
                 <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
                     <div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
@@ -3681,7 +3688,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 </div>
             </div>
 
-            <div class="custom-modal-footer" style="padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
+            <div class="modal-foot" style="padding:12px 20px; background:#fafbfc; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end;">
                 <button type="button" class="btn-secondary-custom" onclick="closeShareModal()">Close</button>
             </div>
         </div>
@@ -3941,21 +3948,73 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 loadTopologyData(activeDashId, null, !manual);
                 if (manual) {
                     showToast('Memperbarui data node & link status...', 'info');
+                    if (autoRefreshSeconds > 0) {
+                        secondsRemaining = autoRefreshSeconds;
+                        updateCountdownDisplay();
+                    }
                 }
             }
         }
 
-        // --- AUTO REFRESH ENGINE (30s, 1m, 3m, 5m, 10m) ---
+        // --- AUTO REFRESH ENGINE (30s, 1m, 3m, 5m, 10m) WITH LIVE COUNTDOWN ---
         let autoRefreshTimer = null;
+        let countdownTicker = null;
         let autoRefreshSeconds = 0;
+        let secondsRemaining = 0;
+
+        function updateCountdownDisplay() {
+            const badge = document.getElementById('autoRefreshBadge');
+            const countdownEl = document.getElementById('autoRefreshCountdownText');
+            const minBadge = document.getElementById('minimalRefreshBadge');
+
+            if (autoRefreshSeconds <= 0) {
+                if (badge) badge.style.display = 'none';
+                if (minBadge) {
+                    minBadge.innerHTML = 'Auto: Off';
+                    minBadge.style.display = 'inline-flex';
+                }
+                return;
+            }
+
+            // Format countdown string: e.g. "59s" or "1m 15s"
+            let timeStr = '';
+            if (secondsRemaining >= 60) {
+                const m = Math.floor(secondsRemaining / 60);
+                const s = secondsRemaining % 60;
+                timeStr = s > 0 ? `${m}m ${s}s` : `${m}m 00s`;
+            } else {
+                timeStr = `${secondsRemaining}s`;
+            }
+
+            if (countdownEl) {
+                countdownEl.innerText = timeStr;
+            } else if (badge) {
+                badge.innerHTML = `<span class="material-symbols-outlined" style="font-size:12px; margin-right:1px;">timer</span> <span>${timeStr}</span>`;
+            }
+
+            if (badge) {
+                badge.style.display = 'inline-flex';
+                badge.title = `Auto-refresh in ${timeStr} (Interval: ${autoRefreshSeconds < 60 ? autoRefreshSeconds + 's' : Math.floor(autoRefreshSeconds/60) + 'm'})`;
+            }
+
+            if (minBadge) {
+                minBadge.innerHTML = `<span style="width:6px; height:6px; display:inline-block; border-radius:50%; background:#2dd4bf; margin-right:4px;"></span> Auto: ${timeStr}`;
+                minBadge.style.display = 'inline-flex';
+            }
+        }
 
         function changeAutoRefreshInterval(seconds) {
             seconds = parseInt(seconds) || 0;
             autoRefreshSeconds = seconds;
+            secondsRemaining = seconds;
 
             if (autoRefreshTimer) {
                 clearInterval(autoRefreshTimer);
                 autoRefreshTimer = null;
+            }
+            if (countdownTicker) {
+                clearInterval(countdownTicker);
+                countdownTicker = null;
             }
 
             try {
@@ -3971,29 +4030,26 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             if (sel && sel.value != seconds) sel.value = seconds;
             if (shareSel && shareSel.value != seconds) shareSel.value = seconds;
 
-            const label = seconds < 60 ? (seconds + 's') : (Math.floor(seconds / 60) + 'm');
-
             if (seconds > 0) {
-                if (badge) {
-                    badge.innerText = label;
-                    badge.style.display = 'inline-block';
-                }
-                if (minBadge) {
-                    minBadge.innerText = 'Auto: ' + label;
-                    minBadge.style.display = 'inline-block';
-                }
                 if (icon) {
                     icon.style.color = '#0d9488';
                     icon.classList.add('auto-pulse');
                 }
-                autoRefreshTimer = setInterval(() => {
-                    if (activeDashId) {
-                        loadTopologyData(activeDashId, null, true);
+                updateCountdownDisplay();
+
+                // Live 1-second countdown ticker
+                countdownTicker = setInterval(() => {
+                    secondsRemaining--;
+                    if (secondsRemaining <= 0) {
+                        secondsRemaining = autoRefreshSeconds;
+                        if (activeDashId) {
+                            loadTopologyData(activeDashId, null, true);
+                        }
                     }
-                }, seconds * 1000);
+                    updateCountdownDisplay();
+                }, 1000);
             } else {
-                if (badge) badge.style.display = 'none';
-                if (minBadge) minBadge.innerText = 'Auto: Off';
+                updateCountdownDisplay();
                 if (icon) {
                     icon.style.color = 'var(--text-muted)';
                     icon.classList.remove('auto-pulse');
@@ -4216,11 +4272,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         function openShareModal(dashId = null) {
             shareTargetDashId = dashId || activeDashId;
-            if (!shareTargetDashId && allDashboards.length > 0) {
+            if (!shareTargetDashId && typeof allDashboards !== 'undefined' && Array.isArray(allDashboards) && allDashboards.length > 0) {
                 shareTargetDashId = allDashboards[0].id;
             }
-            const targetDash = allDashboards.find(d => d.id === shareTargetDashId);
-            const title = targetDash ? cleanText(targetDash.name) : 'Topology Canvas';
+            const targetDash = (typeof allDashboards !== 'undefined' && Array.isArray(allDashboards))
+                ? allDashboards.find(d => d.id === shareTargetDashId)
+                : null;
+            const title = targetDash ? cleanText(targetDash.name) : (document.getElementById('canvasTitleText')?.innerText || 'Topology Canvas');
 
             const sub = document.getElementById('shareModalSubtitle');
             if (sub) sub.innerText = `Dashboard: ${title}`;
@@ -4234,7 +4292,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             updateShareUrls();
 
             const modal = document.getElementById('shareModal');
-            if (modal) modal.style.display = 'flex';
+            if (modal) {
+                modal.style.display = 'flex';
+            }
         }
 
         function closeShareModal() {
@@ -4254,6 +4314,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 path = path.replace('custom-index.php', 'Dashboard/Topology-Network/topology-network.php');
             }
             const directUrl = new URL(window.location.origin + path);
+            directUrl.search = '';
             if (dashId) directUrl.searchParams.set('dashboard_id', dashId);
             directUrl.searchParams.set('embed', '1');
             if (isMinimal) directUrl.searchParams.set('minimal', '1');
@@ -4274,36 +4335,60 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const input = document.getElementById('shareDirectUrlInput');
             if (!input) return;
             input.select();
-            navigator.clipboard.writeText(input.value).then(() => {
-                const btn = document.getElementById('btnCopyDirectUrl');
-                if (btn) {
-                    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">check</span> Copied!';
-                    setTimeout(() => {
-                        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">content_copy</span> Copy Link';
-                    }, 2000);
+            input.setSelectionRange(0, 99999);
+
+            let copied = false;
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(input.value);
+                    copied = true;
                 }
-                showToast('Direct link copied to clipboard!', 'success');
-            }).catch(() => {
-                showToast('Link copied: ' + input.value, 'info');
-            });
+            } catch(e) {}
+
+            if (!copied) {
+                try {
+                    document.execCommand('copy');
+                    copied = true;
+                } catch(e) {}
+            }
+
+            const btn = document.getElementById('btnCopyDirectUrl');
+            if (btn) {
+                const oldHtml = btn.innerHTML;
+                btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">check</span> Copied!';
+                setTimeout(() => { btn.innerHTML = oldHtml; }, 2000);
+            }
+            showToast('Direct link copied to clipboard!', 'success');
         }
 
         function copyShareIframeCode() {
             const input = document.getElementById('shareIframeCodeInput');
             if (!input) return;
             input.select();
-            navigator.clipboard.writeText(input.value).then(() => {
-                const btn = document.getElementById('btnCopyIframeCode');
-                if (btn) {
-                    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">check</span> Copied!';
-                    setTimeout(() => {
-                        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">content_copy</span> Copy iFrame';
-                    }, 2000);
+            input.setSelectionRange(0, 99999);
+
+            let copied = false;
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(input.value);
+                    copied = true;
                 }
-                showToast('iFrame embed code copied to clipboard!', 'success');
-            }).catch(() => {
-                showToast('iFrame code copied', 'info');
-            });
+            } catch(e) {}
+
+            if (!copied) {
+                try {
+                    document.execCommand('copy');
+                    copied = true;
+                } catch(e) {}
+            }
+
+            const btn = document.getElementById('btnCopyIframeCode');
+            if (btn) {
+                const oldHtml = btn.innerHTML;
+                btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">check</span> Copied!';
+                setTimeout(() => { btn.innerHTML = oldHtml; }, 2000);
+            }
+            showToast('iFrame embed code copied to clipboard!', 'success');
         }
 
         function openShareUrlInNewTab() {
