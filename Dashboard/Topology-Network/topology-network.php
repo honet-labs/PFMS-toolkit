@@ -651,7 +651,77 @@ if (!empty($api)) {
     // 1. API: LIST DASHBOARDS
     if ($api === 'list_dashboards') {
         $dashboards = load_topology_dashboards($DASHBOARD_FILE);
+        if (!$is_admin) {
+            $filtered = [];
+            foreach ($dashboards as $id => $d) {
+                if (check_dashboard_access($d['access_control'] ?? null, (string)$user_id, 'view', $pdo)) {
+                    $filtered[$id] = $d;
+                }
+            }
+            $dashboards = $filtered;
+        }
         echo json_encode(['ok' => true, 'dashboards' => array_values($dashboards)]);
+        exit;
+    }
+
+    // API: GET ACL OPTIONS (Profiles & Users) - Pandora Administrator Only
+    if ($api === 'get_acl_options') {
+        if (!$is_admin) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'Forbidden: Only Pandora Administrator can manage access control options.']);
+            exit;
+        }
+        $profiles = get_all_pandora_profiles($pdo);
+        $users = get_all_pandora_users($pdo);
+        echo json_encode([
+            'ok' => true,
+            'profiles' => $profiles,
+            'users' => $users
+        ]);
+        exit;
+    }
+
+    // API: SAVE DASHBOARD ACL - Pandora Administrator Only
+    if ($api === 'save_dashboard_acl') {
+        if (!$is_admin) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'Forbidden: Only Pandora Administrator can modify dashboard permissions.']);
+            exit;
+        }
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['csrf_token'] ?? '';
+        if (!empty($csrf_token) && !empty($client_token) && $client_token !== $csrf_token) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh page.']);
+            exit;
+        }
+
+        $id = trim((string)($input['id'] ?? ''));
+        $acl = $input['access_control'] ?? null;
+        if (empty($id) || !is_array($acl)) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid dashboard ID or access control payload.']);
+            exit;
+        }
+
+        $dashboards = load_topology_dashboards($DASHBOARD_FILE);
+        if (!isset($dashboards[$id])) {
+            echo json_encode(['ok' => false, 'error' => 'Dashboard not found.']);
+            exit;
+        }
+
+        $clean_acl = [
+            'view_policy' => in_array($acl['view_policy'] ?? '', ['all', 'profiles', 'users'], true) ? $acl['view_policy'] : 'all',
+            'view_profiles' => is_array($acl['view_profiles'] ?? null) ? array_values(array_unique(array_map('trim', $acl['view_profiles']))) : [],
+            'view_users' => is_array($acl['view_users'] ?? null) ? array_values(array_unique(array_map('trim', $acl['view_users']))) : [],
+            'edit_policy' => in_array($acl['edit_policy'] ?? '', ['admin_only', 'profiles', 'users'], true) ? $acl['edit_policy'] : 'admin_only',
+            'edit_profiles' => is_array($acl['edit_profiles'] ?? null) ? array_values(array_unique(array_map('trim', $acl['edit_profiles']))) : [],
+            'edit_users' => is_array($acl['edit_users'] ?? null) ? array_values(array_unique(array_map('trim', $acl['edit_users']))) : [],
+        ];
+
+        $dashboards[$id]['access_control'] = $clean_acl;
+        $dashboards[$id]['updated_at'] = date('Y-m-d H:i:s');
+        save_topology_dashboards($DASHBOARD_FILE, $dashboards);
+
+        echo json_encode(['ok' => true, 'msg' => 'Access permissions saved successfully!', 'access_control' => $clean_acl]);
         exit;
     }
 
@@ -1632,6 +1702,18 @@ if (!empty($api)) {
 // UI LOGIC: 2-VIEW SYSTEM
 // =====================================================================
 $dashboards = load_topology_dashboards($DASHBOARD_FILE);
+
+// Filter dashboards according to view permissions for non-administrators
+if (!$is_admin) {
+    $filtered = [];
+    foreach ($dashboards as $d) {
+        if (check_dashboard_access($d['access_control'] ?? null, (string)$user_id, 'view', $pdo)) {
+            $filtered[] = $d;
+        }
+    }
+    $dashboards = $filtered;
+}
+
 $selected_dash_id = trim((string)($_GET['dashboard_id'] ?? $_GET['id'] ?? ''));
 $current_dashboard = null;
 
@@ -1642,10 +1724,17 @@ if (!empty($selected_dash_id)) {
             break;
         }
     }
+    if (!$current_dashboard) {
+        render_pfms_access_denied((string)$user_id, $pandora_base ?: '/pandora_console', $pdo);
+        exit;
+    }
 } elseif ($is_embed && !empty($dashboards)) {
     $current_dashboard = $dashboards[0];
     $selected_dash_id = $current_dashboard['id'];
 }
+
+$has_edit_rights = $current_dashboard ? check_dashboard_access($current_dashboard['access_control'] ?? null, (string)$user_id, 'edit', $pdo) : $is_admin;
+$is_view_only = $is_embed || !$has_edit_rights;
 
 $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY NETWORK";
 ?>
@@ -3037,6 +3126,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         body.view-only-mode #btnConnectMode,
         body.view-only-mode #btnSavePositions,
         body.view-only-mode #btnShareModal,
+        body.view-only-mode #btnAclModalToolbar,
         body.view-only-mode .saved-indicator,
         body.view-only-mode #btnOpenConnectSection,
         body.view-only-mode #drawerConnectBox,
@@ -3149,6 +3239,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     <span class="material-symbols-outlined" style="font-size:18px;">share</span>
                     Share
                 </button>
+
+                <?php if ($is_admin): ?>
+                <button class="btn-secondary-custom" id="btnAclModalToolbar" onclick="openDashboardAclModal(activeDashId)" title="Configure Access Permissions (Profiles & Users)" style="color:#0d9488; font-weight:600;">
+                    <span class="material-symbols-outlined" style="font-size:18px;">lock_person</span>
+                    Permissions
+                </button>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -3732,6 +3829,129 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     </div>
 
     <!-- ========================================================================= -->
+    <!-- MODAL: CONFIGURE ACCESS PERMISSIONS (PROFILES & USERS)                    -->
+    <!-- ========================================================================= -->
+    <div class="modal-overlay" id="dashboardAclModal" style="display:none; z-index:2500;" onclick="if(event.target === this) closeDashboardAclModal()">
+        <div class="modal-card" style="width:680px; max-width:95vw; max-height:90vh; display:flex; flex-direction:column;">
+            <div class="modal-head">
+                <h3>
+                    <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:20px;">lock_person</span>
+                    <span>Access Permissions</span>
+                </h3>
+                <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeDashboardAclModal()">close</span>
+            </div>
+
+            <div class="modal-body" style="padding:16px 22px; overflow-y:auto; flex:1;">
+                <input type="hidden" id="aclDashboardId" value="">
+                
+                <div style="margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid #e2e8f0;">
+                    <div style="font-size:13px; color:#64748b;">
+                        Dashboard: <strong id="aclModalDashName" style="color:var(--primary-navy); font-size:14px;">-</strong>
+                    </div>
+                    <div style="font-size:11.5px; color:#94a3b8; margin-top:2px;">
+                        Configure which Pandora FMS Profiles and User accounts can view or edit this dashboard.
+                    </div>
+                </div>
+
+                <!-- SECTION 1: VIEW PERMISSION -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 16px; margin-bottom:16px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <span class="material-symbols-outlined" style="font-size:18px; color:#0284c7;">visibility</span>
+                        <span style="font-weight:600; font-size:13px; color:#0f172a;">Who can View this dashboard?</span>
+                    </div>
+                    <div style="font-size:11.5px; color:#64748b; margin-bottom:10px;">
+                        Users with view access can see node status, links, and metrics in View-Only mode.
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
+                            <input type="radio" name="acl_view_policy" value="all" checked onchange="toggleAclPolicyViews()">
+                            <span><strong>Everyone:</strong> All authenticated users & embedded views</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
+                            <input type="radio" name="acl_view_policy" value="profiles" onchange="toggleAclPolicyViews()">
+                            <span><strong>Specific Pandora FMS Profiles:</strong> Only users assigned to selected profiles</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
+                            <input type="radio" name="acl_view_policy" value="users" onchange="toggleAclPolicyViews()">
+                            <span><strong>Specific Users:</strong> Only designated user accounts</span>
+                        </label>
+                    </div>
+
+                    <!-- View Profiles List -->
+                    <div id="aclViewProfilesBox" style="display:none; margin-top:10px; padding:10px 12px; background:#fff; border:1px solid #cbd5e1; border-radius:6px;">
+                        <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:6px;">Select Authorized Profiles:</div>
+                        <div id="aclViewProfilesList" style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; max-height:140px; overflow-y:auto;">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+
+                    <!-- View Users List -->
+                    <div id="aclViewUsersBox" style="display:none; margin-top:10px; padding:10px 12px; background:#fff; border:1px solid #cbd5e1; border-radius:6px;">
+                        <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:6px;">Select Authorized Users:</div>
+                        <div id="aclViewUsersList" style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; max-height:140px; overflow-y:auto;">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECTION 2: EDIT & MANAGE PERMISSION -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 16px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <span class="material-symbols-outlined" style="font-size:18px; color:#0d9488;">edit_document</span>
+                        <span style="font-weight:600; font-size:13px; color:#0f172a;">Who can Edit & Manage this dashboard?</span>
+                    </div>
+                    <div style="font-size:11.5px; color:#64748b; margin-bottom:10px;">
+                        Users with edit access can add devices, connect links, move node positions, and delete elements.
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
+                            <input type="radio" name="acl_edit_policy" value="admin_only" checked onchange="toggleAclPolicyViews()">
+                            <span><strong>Pandora Administrator Only:</strong> Strict administrator control (Default)</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
+                            <input type="radio" name="acl_edit_policy" value="profiles" onchange="toggleAclPolicyViews()">
+                            <span><strong>Specific Pandora FMS Profiles:</strong> (e.g. Chief Operator, Operator Write)</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
+                            <input type="radio" name="acl_edit_policy" value="users" onchange="toggleAclPolicyViews()">
+                            <span><strong>Specific Users:</strong> Individual designated editors</span>
+                        </label>
+                    </div>
+
+                    <!-- Edit Profiles List -->
+                    <div id="aclEditProfilesBox" style="display:none; margin-top:10px; padding:10px 12px; background:#fff; border:1px solid #cbd5e1; border-radius:6px;">
+                        <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:6px;">Select Authorized Editor Profiles:</div>
+                        <div id="aclEditProfilesList" style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; max-height:140px; overflow-y:auto;">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Edit Users List -->
+                    <div id="aclEditUsersBox" style="display:none; margin-top:10px; padding:10px 12px; background:#fff; border:1px solid #cbd5e1; border-radius:6px;">
+                        <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:6px;">Select Authorized Editor Users:</div>
+                        <div id="aclEditUsersList" style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; max-height:140px; overflow-y:auto;">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-foot" style="display:flex; justify-content:space-between; align-items:center;">
+                <span id="aclModalStatus" style="font-size:11.5px; color:#64748b;"></span>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" class="btn-secondary-custom" onclick="closeDashboardAclModal()">Cancel</button>
+                    <button type="button" class="btn-apply" id="btnSaveDashboardAcl" onclick="saveDashboardAcl()">
+                        <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+                        Save Permissions
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
     <!-- CANVAS CONTEXT MENU (Screenshot 1)                                        -->
     <!-- ========================================================================= -->
     <div id="canvasContextMenu" class="canvas-context-menu" style="display:none;">
@@ -3916,6 +4136,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                                 <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">share</span>
                                 Share
                             </button>
+                            ${IS_ADMIN ? `
+                            <button class="btn-action-text" onclick="openDashboardAclModal('${escapeHtml(d.id)}')" title="Access Permissions (Profiles & Users)">
+                                <span class="material-symbols-outlined" style="font-size:15px; color:#0d9488;">shield_person</span>
+                                Access
+                            </button>
                             <button class="btn-action-text" onclick="editDashboard('${escapeHtml(d.id)}')">
                                 <span class="material-symbols-outlined" style="font-size:15px;">edit</span>
                                 Edit
@@ -3923,6 +4148,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                             <button class="btn-action-text btn-delete-text" onclick="deleteDashboard('${escapeHtml(d.id)}')">
                                 <span class="material-symbols-outlined" style="font-size:15px;">delete</span>
                             </button>
+                            ` : ''}
                         </td>
                     </tr>
                 `;
@@ -4435,6 +4661,179 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const urlInput = document.getElementById('shareDirectUrlInput');
             if (urlInput && urlInput.value) {
                 window.open(urlInput.value, '_blank');
+            }
+        }
+
+        // =========================================================================
+        // ACCESS PERMISSIONS (PROFILES & USERS) LOGIC
+        // =========================================================================
+        let aclCachedProfiles = [];
+        let aclCachedUsers = [];
+        let aclCurrentDashId = null;
+
+        async function fetchAclOptions() {
+            if (aclCachedProfiles.length > 0 && aclCachedUsers.length > 0) return;
+            try {
+                const res = await fetch(`?api=get_acl_options`);
+                const data = await res.json();
+                if (data.ok) {
+                    aclCachedProfiles = data.profiles || [];
+                    aclCachedUsers = data.users || [];
+                }
+            } catch (err) {
+                console.error("Failed to load ACL options:", err);
+            }
+        }
+
+        async function openDashboardAclModal(dashId) {
+            const dash = allDashboards.find(d => d.id === dashId);
+            if (!dash) return;
+
+            aclCurrentDashId = dashId;
+            document.getElementById('aclDashboardId').value = dashId;
+            document.getElementById('aclModalDashName').innerText = cleanText(dash.name || dashId);
+            document.getElementById('aclModalStatus').innerText = '';
+
+            await fetchAclOptions();
+
+            const acl = dash.access_control || {
+                view_policy: 'all',
+                view_profiles: [],
+                view_users: [],
+                edit_policy: 'admin_only',
+                edit_profiles: [],
+                edit_users: []
+            };
+
+            // Set View Policy
+            const viewPolicyRadios = document.getElementsByName('acl_view_policy');
+            viewPolicyRadios.forEach(r => {
+                r.checked = (r.value === (acl.view_policy || 'all'));
+            });
+
+            // Set Edit Policy
+            const editPolicyRadios = document.getElementsByName('acl_edit_policy');
+            editPolicyRadios.forEach(r => {
+                r.checked = (r.value === (acl.edit_policy || 'admin_only'));
+            });
+
+            // Populate View Profiles
+            const vpList = document.getElementById('aclViewProfilesList');
+            vpList.innerHTML = aclCachedProfiles.map(p => {
+                const isChecked = (acl.view_profiles || []).includes(p.name) ? 'checked' : '';
+                return `<label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
+                    <input type="checkbox" class="acl-vp-chk" value="${escapeHtml(p.name)}" ${isChecked}>
+                    <span>${escapeHtml(p.name)}</span>
+                </label>`;
+            }).join('');
+
+            // Populate View Users
+            const vuList = document.getElementById('aclViewUsersList');
+            vuList.innerHTML = aclCachedUsers.map(u => {
+                const isChecked = (acl.view_users || []).includes(u.id_user) ? 'checked' : '';
+                const name = u.comments ? `${u.id_user} (${u.comments})` : u.id_user;
+                return `<label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
+                    <input type="checkbox" class="acl-vu-chk" value="${escapeHtml(u.id_user)}" ${isChecked}>
+                    <span>${escapeHtml(name)}</span>
+                </label>`;
+            }).join('');
+
+            // Populate Edit Profiles
+            const epList = document.getElementById('aclEditProfilesList');
+            epList.innerHTML = aclCachedProfiles.map(p => {
+                const isChecked = (acl.edit_profiles || []).includes(p.name) ? 'checked' : '';
+                return `<label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
+                    <input type="checkbox" class="acl-ep-chk" value="${escapeHtml(p.name)}" ${isChecked}>
+                    <span>${escapeHtml(p.name)}</span>
+                </label>`;
+            }).join('');
+
+            // Populate Edit Users
+            const euList = document.getElementById('aclEditUsersList');
+            euList.innerHTML = aclCachedUsers.map(u => {
+                const isChecked = (acl.edit_users || []).includes(u.id_user) ? 'checked' : '';
+                const name = u.comments ? `${u.id_user} (${u.comments})` : u.id_user;
+                return `<label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
+                    <input type="checkbox" class="acl-eu-chk" value="${escapeHtml(u.id_user)}" ${isChecked}>
+                    <span>${escapeHtml(name)}</span>
+                </label>`;
+            }).join('');
+
+            toggleAclPolicyViews();
+
+            const modal = document.getElementById('dashboardAclModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeDashboardAclModal() {
+            const modal = document.getElementById('dashboardAclModal');
+            if (modal) modal.style.display = 'none';
+            aclCurrentDashId = null;
+        }
+
+        function toggleAclPolicyViews() {
+            const viewPolicy = document.querySelector('input[name="acl_view_policy"]:checked')?.value || 'all';
+            const editPolicy = document.querySelector('input[name="acl_edit_policy"]:checked')?.value || 'admin_only';
+
+            document.getElementById('aclViewProfilesBox').style.display = (viewPolicy === 'profiles') ? 'block' : 'none';
+            document.getElementById('aclViewUsersBox').style.display = (viewPolicy === 'users') ? 'block' : 'none';
+
+            document.getElementById('aclEditProfilesBox').style.display = (editPolicy === 'profiles') ? 'block' : 'none';
+            document.getElementById('aclEditUsersBox').style.display = (editPolicy === 'users') ? 'block' : 'none';
+        }
+
+        async function saveDashboardAcl() {
+            if (!aclCurrentDashId) return;
+
+            const btn = document.getElementById('btnSaveDashboardAcl');
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">hourglass_empty</span> Saving...';
+
+            const viewPolicy = document.querySelector('input[name="acl_view_policy"]:checked')?.value || 'all';
+            const editPolicy = document.querySelector('input[name="acl_edit_policy"]:checked')?.value || 'admin_only';
+
+            const viewProfiles = Array.from(document.querySelectorAll('.acl-vp-chk:checked')).map(el => el.value);
+            const viewUsers = Array.from(document.querySelectorAll('.acl-vu-chk:checked')).map(el => el.value);
+            const editProfiles = Array.from(document.querySelectorAll('.acl-ep-chk:checked')).map(el => el.value);
+            const editUsers = Array.from(document.querySelectorAll('.acl-eu-chk:checked')).map(el => el.value);
+
+            const aclPayload = {
+                view_policy: viewPolicy,
+                view_profiles: viewProfiles,
+                view_users: viewUsers,
+                edit_policy: editPolicy,
+                edit_profiles: editProfiles,
+                edit_users: editUsers
+            };
+
+            try {
+                const res = await fetch(`?api=save_dashboard_acl`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        id: aclCurrentDashId,
+                        access_control: aclPayload,
+                        csrf_token: CSRF_TOKEN
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    const dash = allDashboards.find(d => d.id === aclCurrentDashId);
+                    if (dash) dash.access_control = data.access_control || aclPayload;
+                    showToast('Access permissions saved successfully!', 'success');
+                    closeDashboardAclModal();
+                } else {
+                    showToast('Failed to save permissions: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (err) {
+                showToast('Error saving permissions: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
             }
         }
 

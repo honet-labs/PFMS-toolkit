@@ -9,6 +9,14 @@
         "map_type": "group",
         "is_demo": false,
         "node_count": 0,
+        "access_control": {
+            "view_policy": "all",
+            "view_profiles": [],
+            "view_users": [],
+            "edit_policy": "admin_only",
+            "edit_profiles": [],
+            "edit_users": []
+        },
         "created_at": "2026-09-18 00:00:00",
         "updated_at": "2026-09-18 00:00:00"
     }

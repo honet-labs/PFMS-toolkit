@@ -58,8 +58,11 @@ if (empty($current_user_id)) {
     exit;
 }
 
-// RESTRICTION: Only users with 'Pandora Administrator' profile can access PFMS-Toolkit
-if (!is_pandora_administrator($pdo, $current_user_id)) {
+$is_admin = is_pandora_administrator($pdo, $current_user_id);
+$has_access = $is_admin || user_has_any_dashboard_access((string)$current_user_id, $pdo);
+
+// RESTRICTION: Only users with 'Pandora Administrator' or granted dashboard viewer access can access PFMS-Toolkit
+if (!$has_access) {
     render_pfms_access_denied((string)$current_user_id, $pandora_base ?: '/pandora_console', $pdo);
     exit;
 }
@@ -927,6 +930,32 @@ if (empty($menuTree) || !is_array($menuTree)) {
     @file_put_contents($menu_cache_file, json_encode($menuTree));
 }
 
+// In Viewer Mode (Non-Administrator), only display Dashboard pages
+if (!$is_admin && !empty($menuTree) && is_array($menuTree)) {
+    $filterDashboardOnly = function($items) use (&$filterDashboardOnly) {
+        $result = [];
+        foreach ($items as $item) {
+            if ($item['type'] === 'dir') {
+                if (stripos($item['name'], 'dashboard') !== false) {
+                    $result[] = $item;
+                } else {
+                    $filteredChildren = $filterDashboardOnly($item['children'] ?? []);
+                    if (!empty($filteredChildren)) {
+                        $item['children'] = $filteredChildren;
+                        $result[] = $item;
+                    }
+                }
+            } else {
+                if (stripos($item['path'], 'dashboard') !== false) {
+                    $result[] = $item;
+                }
+            }
+        }
+        return $result;
+    };
+    $menuTree = $filterDashboardOnly($menuTree);
+}
+
 // =====================================================================
 // 6. SECURITY & PAGE ROUTING
 // =====================================================================
@@ -935,6 +964,13 @@ $iframe_src = '';
 
 if (!empty($current_page)) {
     if (preg_match('/\.\./', $current_page)) die("Invalid path detected.");
+    
+    // Non-administrators are restricted strictly to dashboard pages
+    if (!$is_admin && stripos($current_page, 'dashboard') === false) {
+        render_pfms_access_denied((string)$current_user_id, $pandora_base ?: '/pandora_console', $pdo);
+        exit;
+    }
+    
     $target_file = $base_dir . '/' . $current_page;
     if (file_exists($target_file) && pathinfo($target_file, PATHINFO_EXTENSION) === 'php') {
         $v = filemtime($target_file);
@@ -1095,6 +1131,7 @@ if (!empty($current_page)) {
         <button class="nav-icon-btn" title="Documentation & Changelog" onclick="openDocs()">
             <span class="material-symbols-outlined">menu_book</span>
         </button>
+        <?php if ($is_admin): ?>
         <button class="nav-icon-btn" id="updateNavBtn" title="Check for Updates" onclick="openUpdater()" style="position: relative;">
             <span class="material-symbols-outlined">system_update_alt</span>
             <span id="updateBadge" class="update-badge badge-pulse" style="display: none;"></span>
@@ -1102,6 +1139,11 @@ if (!empty($current_page)) {
         <button class="nav-icon-btn" title="Portal Settings" onclick="openSettings()">
             <span class="material-symbols-outlined">settings</span>
         </button>
+        <?php else: ?>
+        <span style="font-size:11.5px; background:#e0f2fe; color:#0369a1; padding:4px 10px; border-radius:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; border:1px solid #bae6fd;">
+            <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">visibility</span> Viewer
+        </span>
+        <?php endif; ?>
         <a href="<?= htmlspecialchars($pandora_base ?: '') ?>/index.php" class="nav-icon-btn" title="Back to Pandora Console">
             <span class="material-symbols-outlined">logout</span>
         </a>

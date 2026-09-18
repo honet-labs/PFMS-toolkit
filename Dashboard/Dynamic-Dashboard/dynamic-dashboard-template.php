@@ -71,6 +71,8 @@ require_once __DIR__ . '/../../includes/db-connection.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
+$user_id = $_SESSION['id_usuario'] ?? '';
+$is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pandora_administrator($pdo, $user_id);
 session_write_close();
 
 // 3. HELPERS (Using global ones from db-connection.php)
@@ -84,13 +86,28 @@ if (!empty($api)) {
 
 if ($api === 'load_config') {
     if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
-    if(file_exists($CONFIG_FILE)) { echo file_get_contents($CONFIG_FILE); } 
+    if(file_exists($CONFIG_FILE)) { 
+        $content = file_get_contents($CONFIG_FILE);
+        $dashboards = json_decode($content, true);
+        if (!$is_admin && is_array($dashboards)) {
+            $dashboards = array_values(array_filter($dashboards, function($d) use ($user_id, $pdo) {
+                return check_dashboard_access($d['access_control'] ?? null, (string)$user_id, 'view', $pdo);
+            }));
+        }
+        echo json_encode($dashboards ?: []);
+    } 
     else { echo json_encode([]); } 
     exit;
 }
 
 if ($api === 'save_config') {
     if (ob_get_level() > 0) ob_clean(); header('Content-Type: application/json');
+
+    if (!$is_admin) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'Restricted Access (View Only): Only accounts with the Pandora Administrator profile can modify dashboard configurations.']);
+        exit;
+    }
 
     // CSRF Validation
     $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';

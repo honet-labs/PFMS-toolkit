@@ -956,6 +956,130 @@ function get_user_pandora_profiles($pdo, $user_id): array {
 }
 
 /**
+ * Returns list of all available Pandora FMS profiles from tperfil.
+ */
+function get_all_pandora_profiles($pdo): array {
+    if (!$pdo || !($pdo instanceof PDO)) return [];
+    try {
+        $stmt = $pdo->query("SELECT id_perfil, name FROM tperfil ORDER BY name ASC");
+        return $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+/**
+ * Returns list of all available Pandora FMS users from tusuario.
+ */
+function get_all_pandora_users($pdo): array {
+    if (!$pdo || !($pdo instanceof PDO)) return [];
+    try {
+        $stmt = $pdo->query("SELECT id_user, comments, email FROM tusuario ORDER BY id_user ASC");
+        return $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+/**
+ * Checks if a user has 'view' or 'edit' permission for a given dashboard ACL configuration.
+ *
+ * @param array|null $acl The dashboard's access_control object
+ * @param string $user_id The active Pandora FMS user ID
+ * @param string $action 'view' or 'edit'
+ * @param PDO|null $pdo Database PDO instance
+ * @return bool True if permitted, false otherwise
+ */
+function check_dashboard_access(?array $acl, string $user_id, string $action = 'view', $pdo = null): bool {
+    if (empty($user_id)) return false;
+
+    // Super Admin (Pandora Administrator) ALWAYS has full access
+    if ($pdo && is_pandora_administrator($pdo, $user_id)) {
+        return true;
+    }
+
+    if (empty($acl) || !is_array($acl)) {
+        // Default backward-compatible behavior: View is open to all authenticated users, Edit is admin-only
+        return ($action === 'view');
+    }
+
+    $user_profiles = ($pdo) ? get_user_pandora_profiles($pdo, $user_id) : [];
+    $user_profiles_lower = array_map('strtolower', array_map('trim', $user_profiles));
+    $user_id_lower = strtolower(trim($user_id));
+
+    if ($action === 'edit' || $action === 'manage') {
+        $edit_policy = $acl['edit_policy'] ?? 'admin_only';
+        if ($edit_policy === 'admin_only') {
+            return false;
+        }
+        if ($edit_policy === 'profiles') {
+            $allowed_profiles = array_map('strtolower', array_map('trim', $acl['edit_profiles'] ?? []));
+            foreach ($user_profiles_lower as $up) {
+                if (in_array($up, $allowed_profiles, true)) return true;
+            }
+            return false;
+        }
+        if ($edit_policy === 'users') {
+            $allowed_users = array_map('strtolower', array_map('trim', $acl['edit_users'] ?? []));
+            return in_array($user_id_lower, $allowed_users, true);
+        }
+        return false;
+    }
+
+    // View action
+    $view_policy = $acl['view_policy'] ?? 'all';
+    if ($view_policy === 'all') {
+        return true;
+    }
+    if ($view_policy === 'profiles') {
+        $allowed_profiles = array_map('strtolower', array_map('trim', $acl['view_profiles'] ?? []));
+        foreach ($user_profiles_lower as $up) {
+            if (in_array($up, $allowed_profiles, true)) return true;
+        }
+        return false;
+    }
+    if ($view_policy === 'users') {
+        $allowed_users = array_map('strtolower', array_map('trim', $acl['view_users'] ?? []));
+        return in_array($user_id_lower, $allowed_users, true);
+    }
+
+    return false;
+}
+
+/**
+ * Checks if a user or any of their profiles has view permission on at least one dashboard.
+ */
+function user_has_any_dashboard_access(string $user_id, $pdo = null): bool {
+    if (empty($user_id)) return false;
+    if ($pdo && is_pandora_administrator($pdo, $user_id)) return true;
+
+    $base = dirname(__DIR__);
+    $files = [
+        $base . '/Dashboard/Topology-Network/topology_dashboards.json',
+        $base . '/Dashboard/Metrics-Dashboard/metrics-dashboards-saved.json',
+        $base . '/Dashboard/Dynamic-Dashboard/dynamic-dashboards-master.json',
+        $base . '/Dashboard/Traffic-Dashboard/traffic-dashboard-saved.json'
+    ];
+
+    foreach ($files as $file) {
+        if (file_exists($file)) {
+            $content = @file_get_contents($file);
+            $dashboards = json_decode($content, true);
+            if (is_array($dashboards)) {
+                foreach ($dashboards as $d) {
+                    $acl = $d['access_control'] ?? null;
+                    if (check_dashboard_access($acl, $user_id, 'view', $pdo)) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
  * Renders a secure 403 Forbidden Access Denied page when a non-admin tries to access PFMS-Toolkit.
  */
 function render_pfms_access_denied(string $user_id, string $pandora_base = '/pandora_console', $pdo = null): void {
@@ -1232,11 +1356,14 @@ if (php_sapi_name() !== 'cli') {
                 exit;
             }
 
-            // If it's a direct browser access (NOT an embed/shared dashboard/widget), block non-administrators from accessing the management toolkit
+            // If it's a direct browser access (NOT an embed/shared dashboard/widget), allow access if user or their profile has view permission on at least one dashboard
             if (!$is_embed_request) {
-                $p_base = !empty($PANDORA_BASE_URL) ? $PANDORA_BASE_URL : '/pandora_console';
-                render_pfms_access_denied((string)$active_user, $p_base, $pdo);
-                exit;
+                $has_dash_access = user_has_any_dashboard_access((string)$active_user, $pdo);
+                if (!$has_dash_access) {
+                    $p_base = !empty($PANDORA_BASE_URL) ? $PANDORA_BASE_URL : '/pandora_console';
+                    render_pfms_access_denied((string)$active_user, $p_base, $pdo);
+                    exit;
+                }
             }
         }
     }
