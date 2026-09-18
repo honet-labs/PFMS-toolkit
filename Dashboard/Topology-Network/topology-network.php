@@ -3266,89 +3266,66 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     <!-- ADD NODE MODAL (Screenshot 3 - Preloaded 10 agents with pagination & search) -->
     <!-- ========================================================================= -->
     <div class="modal-overlay" id="addNodeModal">
-        <div class="modal-card" style="max-width: 760px; width: 94%; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-card" style="max-width: 820px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
             <div class="modal-head modal-head-teal">
-                <h3>Add node</h3>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="material-symbols-outlined" style="font-size: 20px;">add_circle</span>
+                    <h3 style="margin: 0; font-size: 15px; font-weight: 700;">Add node to topology</h3>
+                </div>
                 <span class="material-symbols-outlined modal-close-btn" onclick="closeAddNodeModal()">close</span>
             </div>
-            <div class="modal-body" style="overflow-y: auto; padding: 20px; gap: 16px;">
-                <!-- Section 1: Add agent node -->
-                <div class="add-node-section">
-                    <div class="add-node-section-head">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span class="material-symbols-outlined" style="font-size:18px; color:#64748b;">expand_less</span>
-                            <span>Add agent node</span>
-                        </div>
+            <div class="modal-body" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto;">
+                <!-- Filter Toolbar: Search Input + Group Filter -->
+                <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                    <div style="position: relative; flex: 1; min-width: 240px;">
+                        <input type="text" id="addNodeAgentSearch" class="form-control-custom" placeholder="Search agent by name, IP, group, OS..." oninput="onAddNodeSearch(this.value)" style="padding-right: 36px;">
+                        <span class="material-symbols-outlined" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 18px; pointer-events: none;">search</span>
                     </div>
-                    <div class="add-node-section-body">
-                        <div>
-                            <label class="form-label" style="font-size:13px; color:#0f172a; margin-bottom:6px;">Agent</label>
-                            <div style="position:relative;">
-                                <input type="text" id="addNodeAgentSearch" class="form-control-custom" placeholder="Search agent by name, IP, group, OS..." oninput="onAddNodeSearch(this.value)">
-                                <span class="material-symbols-outlined" style="position:absolute; right:10px; top:9px; color:#94a3b8;">search</span>
-                            </div>
-                            <div style="font-size:11px; color:#64748b; margin-top:4px;">Type at least two characters to search.</div>
-                        </div>
-
-                        <!-- Preloaded Agent List (10 agents per page with pagination) -->
-                        <div style="margin-top:6px;">
-                            <table class="agent-paginate-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width:40px; text-align:center;">Select</th>
-                                        <th>Agent Name / Alias</th>
-                                        <th>IP Address</th>
-                                        <th>Group</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="addNodeTableBody">
-                                    <!-- Rendered dynamically with 10 agents -->
-                                </tbody>
-                            </table>
-
-                            <!-- Pagination Controls -->
-                            <div class="paginate-controls" id="addNodePaginationControls">
-                                <span id="addNodePageInfo">Showing 1-10 of 0 agents</span>
-                                <div class="page-btn-group" id="addNodePageButtons">
-                                    <!-- Rendered dynamically -->
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style="display:flex; justify-content:flex-end; margin-top:6px;">
-                            <button type="button" class="btn-outline-teal" id="btnAddAgentNodeSubmit" onclick="submitAddAgentNode()">
-                                Add agent node
-                            </button>
-                        </div>
+                    <div style="min-width: 200px;">
+                        <select id="addNodeGroupSelect" class="form-control-custom" onchange="onAddNodeGroupSelect(this.value)">
+                            <option value="">All Groups</option>
+                        </select>
                     </div>
                 </div>
 
-                <!-- Section 2: Add agent node (filter by group) -->
-                <div class="add-node-section">
-                    <div class="add-node-section-head">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span class="material-symbols-outlined" style="font-size:18px; color:#64748b;">expand_less</span>
-                            <span>Add agent node (filter by group)</span>
-                        </div>
+                <!-- 10-Agent Paginated Table -->
+                <div style="border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; background: #ffffff;">
+                    <table class="agent-paginate-table" style="margin: 0; border: none; border-radius: 0;">
+                        <thead>
+                            <tr>
+                                <th style="width: 44px; text-align: center;">Select</th>
+                                <th>Agent Name / Alias</th>
+                                <th>IP Address</th>
+                                <th>Group</th>
+                                <th style="width: 100px; text-align: center;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="addNodeTableBody">
+                            <!-- Rendered dynamically with 10 agents per page -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Prominent Pagination Controls Bar -->
+                <div class="paginate-controls" id="addNodePaginationControls" style="display: flex; align-items: center; justify-content: space-between; padding: 4px 2px; margin-top: -2px;">
+                    <span id="addNodePageInfo" style="font-size: 12px; color: #475569; font-weight: 500;">Showing 0 of 0 agents</span>
+                    <div class="page-btn-group" id="addNodePageButtons" style="display: flex; align-items: center; gap: 4px;">
+                        <!-- Rendered dynamically with 10-agent pagination -->
                     </div>
-                    <div class="add-node-section-body">
-                        <div style="display:grid; grid-template-columns: 1fr auto; gap: 16px; align-items: flex-end;">
-                            <div>
-                                <label class="form-label" style="font-size:13px; color:#0f172a; margin-bottom:6px;">Group</label>
-                                <select id="addNodeGroupSelect" class="form-control-custom" onchange="onAddNodeGroupSelect(this.value)">
-                                    <option value="">None</option>
-                                </select>
-                            </div>
-                            <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
-                                <label class="form-label" style="font-size:13px; color:#0f172a; margin-bottom:0;">Recursion</label>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="addNodeRecursionToggle" checked onchange="onAddNodeRecursionChange()">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
+                </div>
+            </div>
+
+            <!-- Fixed Modal Footer -->
+            <div class="modal-foot" style="justify-content: space-between; align-items: center; padding: 14px 20px;">
+                <div style="font-size: 12px; color: #475569;">
+                    Selected: <strong id="addNodeSelectedLabel" style="color: #094d4a;">None</strong>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn-secondary-custom" onclick="closeAddNodeModal()">Cancel</button>
+                    <button type="button" class="btn-apply" id="btnAddAgentNodeSubmit" onclick="submitAddAgentNode()">
+                        <span class="material-symbols-outlined" style="font-size: 16px;">add_circle</span>
+                        Add agent node
+                    </button>
                 </div>
             </div>
         </div>
@@ -4341,6 +4318,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             if (searchInput) searchInput.value = '';
             const groupSelect = document.getElementById('addNodeGroupSelect');
             if (groupSelect) groupSelect.value = '';
+            const lbl = document.getElementById('addNodeSelectedLabel');
+            if (lbl) lbl.innerText = 'None';
 
             renderAddNodePage();
             document.getElementById('addNodeModal').style.display = 'flex';
@@ -4361,7 +4340,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 const res = await fetch(getApiUrl('get_groups'));
                 const data = await res.json();
                 if (data.ok && Array.isArray(data.groups)) {
-                    let html = '<option value="">None</option>';
+                    let html = '<option value="">All Groups</option>';
                     data.groups.forEach(g => {
                         html += `<option value="${g.id}">${escapeHtml(g.display_name || g.name)}</option>`;
                     });
@@ -4383,8 +4362,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         function onAddNodeRecursionChange() {
-            const toggle = document.getElementById('addNodeRecursionToggle');
-            addNodeRecursion = toggle ? toggle.checked : true;
             addNodePage = 1;
             renderAddNodePage();
         }
@@ -4423,17 +4400,25 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             // Update Page Info
             if (pageInfo) {
                 if (total === 0) {
-                    pageInfo.innerText = '0 agents found';
+                    pageInfo.innerHTML = 'Showing <strong>0</strong> of 0 agents';
                 } else {
-                    pageInfo.innerText = `Showing ${startIndex + 1}-${endIndex} of ${total} agents`;
+                    pageInfo.innerHTML = `Showing <strong>${startIndex + 1} - ${endIndex}</strong> of <strong>${total}</strong> agents`;
                 }
             }
 
-            // Render Table Rows
+            // Update Selected Label in Footer
+            const curPick = availableAgents.find(x => x.id === addNodePickedAgentId);
+            const lbl = document.getElementById('addNodeSelectedLabel');
+            if (lbl) {
+                lbl.innerText = curPick ? `${cleanText(curPick.name)} (${cleanText(curPick.ip || '-')})` : 'None';
+            }
+
+            // Render Table Rows (10 agents per page)
             if (pageItems.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="5" style="text-align:center; padding:24px; color:#94a3b8;">
+                        <td colspan="5" style="text-align:center; padding:36px 16px; color:#94a3b8; font-size:13px;">
+                            <span class="material-symbols-outlined" style="font-size:32px; color:#cbd5e1; display:block; margin-bottom:6px;">search_off</span>
                             No agents match the search criteria.
                         </td>
                     </tr>
@@ -4442,18 +4427,32 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 let html = '';
                 pageItems.forEach(a => {
                     const isSelected = (addNodePickedAgentId === a.id);
-                    const statusBadge = a.status === 'critical' ? '<span style="color:#ef4444; font-weight:600;">Critical</span>' : (a.status === 'warning' ? '<span style="color:#f59e0b; font-weight:600;">Warning</span>' : '<span style="color:#10b981; font-weight:600;">Normal</span>');
+                    const statusVal = a.status || 'normal';
+                    let statusBadge = '<span class="status-pill-up">● Normal</span>';
+                    if (statusVal === 'critical') {
+                        statusBadge = '<span class="status-pill-down">● Critical</span>';
+                    } else if (statusVal === 'warning') {
+                        statusBadge = '<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; background:#fef3c7; color:#b45309;">● Warning</span>';
+                    }
+
                     html += `
-                        <tr class="${isSelected ? 'selected' : ''}" onclick="selectAddNodeAgent(${a.id})">
-                            <td style="text-align:center;">
-                                <input type="radio" name="add_node_agent_choice" value="${a.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); selectAddNodeAgent(${a.id});">
+                        <tr class="${isSelected ? 'selected' : ''}" onclick="selectAddNodeAgent(${a.id})" style="cursor:pointer; transition: background 0.15s;">
+                            <td style="text-align:center; width:44px;">
+                                <input type="radio" name="add_node_agent_choice" value="${a.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); selectAddNodeAgent(${a.id});" style="cursor:pointer; accent-color:#094d4a;">
                             </td>
                             <td>
-                                <strong style="color:#0f172a;">${escapeHtml(cleanText(a.name))}</strong>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <strong style="color:#0f172a; font-size:12px;">${escapeHtml(cleanText(a.name))}</strong>
+                                    ${a.raw_name && a.raw_name !== a.name ? `<span style="font-size:11px; color:#64748b;">(${escapeHtml(cleanText(a.raw_name))})</span>` : ''}
+                                </div>
                             </td>
-                            <td>${escapeHtml(cleanText(a.ip))}</td>
-                            <td>${escapeHtml(cleanText(a.group_name))}</td>
-                            <td>${statusBadge}</td>
+                            <td style="color:#475569; font-size:12px; font-family:monospace;">${escapeHtml(cleanText(a.ip || '-'))}</td>
+                            <td>
+                                <span style="display:inline-block; padding:2px 8px; background:#f1f5f9; border-radius:4px; font-size:11px; color:#334155;">
+                                    ${escapeHtml(cleanText(a.group_name || 'Unknown'))}
+                                </span>
+                            </td>
+                            <td style="text-align:center;">${statusBadge}</td>
                         </tr>
                     `;
                 });
@@ -4462,21 +4461,37 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
             // Render Pagination Buttons
             if (pageBtns) {
-                let btnHtml = '';
-                btnHtml += `<button type="button" class="page-btn" ${addNodePage <= 1 ? 'disabled' : ''} onclick="changeAddNodePage(${addNodePage - 1})">&laquo; Prev</button>`;
-                
-                let startPage = Math.max(1, addNodePage - 2);
-                let endPage = Math.min(totalPages, startPage + 4);
-                if (endPage - startPage < 4) {
-                    startPage = Math.max(1, endPage - 4);
-                }
+                if (totalPages <= 1) {
+                    pageBtns.innerHTML = `<span style="font-size:11px; color:#94a3b8; font-weight:500;">Page 1 of 1</span>`;
+                } else {
+                    let btnHtml = '';
+                    btnHtml += `
+                        <button type="button" class="pagination-btn" ${addNodePage <= 1 ? 'disabled' : ''} onclick="changeAddNodePage(${addNodePage - 1})">
+                            <span class="material-symbols-outlined" style="font-size:14px;">chevron_left</span> Prev
+                        </button>
+                    `;
 
-                for (let p = startPage; p <= endPage; p++) {
-                    btnHtml += `<button type="button" class="page-btn ${p === addNodePage ? 'active' : ''}" onclick="changeAddNodePage(${p})">${p}</button>`;
-                }
+                    let startPage = Math.max(1, addNodePage - 2);
+                    let endPage = Math.min(totalPages, startPage + 4);
+                    if (endPage - startPage < 4) {
+                        startPage = Math.max(1, endPage - 4);
+                    }
 
-                btnHtml += `<button type="button" class="page-btn" ${addNodePage >= totalPages ? 'disabled' : ''} onclick="changeAddNodePage(${addNodePage + 1})">Next &raquo;</button>`;
-                pageBtns.innerHTML = btnHtml;
+                    for (let p = startPage; p <= endPage; p++) {
+                        btnHtml += `
+                            <button type="button" class="page-btn ${p === addNodePage ? 'active' : ''}" onclick="changeAddNodePage(${p})">
+                                ${p}
+                            </button>
+                        `;
+                    }
+
+                    btnHtml += `
+                        <button type="button" class="pagination-btn" ${addNodePage >= totalPages ? 'disabled' : ''} onclick="changeAddNodePage(${addNodePage + 1})">
+                            Next <span class="material-symbols-outlined" style="font-size:14px;">chevron_right</span>
+                        </button>
+                    `;
+                    pageBtns.innerHTML = btnHtml;
+                }
             }
         }
 
@@ -4486,7 +4501,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         function selectAddNodeAgent(agentId) {
-            addNodePickedAgentId = agentId;
+            addNodePickedAgentId = parseInt(agentId);
             renderAddNodePage();
         }
 
