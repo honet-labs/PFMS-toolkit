@@ -51,9 +51,16 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-if (empty($_SESSION['id_usuario'])) {
+$current_user_id = $_SESSION['id_usuario'] ?? '';
+if (empty($current_user_id)) {
     // If no valid session (not logged in), redirect to home page
     header("Location: " . ($pandora_base ?: '') . "/index.php");
+    exit;
+}
+
+// RESTRICTION: Only users with 'Pandora Administrator' profile can access PFMS-Toolkit
+if (!is_pandora_administrator($pdo, $current_user_id)) {
+    render_pfms_access_denied((string)$current_user_id, $pandora_base ?: '/pandora_console', $pdo);
     exit;
 }
 

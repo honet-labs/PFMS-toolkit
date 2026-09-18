@@ -843,3 +843,367 @@ function get_modules_history_data_batch($pdo, $pdo_history, $modIds, $start, $en
     return $results;
 }
 
+// =====================================================================
+// 5. SECURITY & ACCESS CONTROL: PANDORA ADMINISTRATOR PROFILE RESTRICTION
+// =====================================================================
+
+/**
+ * Checks if the current user has the 'Pandora Administrator' profile.
+ * Verifies against:
+ * 1. Default superadmin username 'admin'
+ * 2. Session flag `$_SESSION['is_admin']`
+ * 3. Table `tusuario.is_admin = 1` or `tusuario.id_perfil = 1`
+ * 4. Profile assignment table `tusuario_perfil` joined with `tperfil`
+ */
+function is_pandora_administrator($pdo, $user_id): bool {
+    if (empty($user_id)) return false;
+
+    // Fast check: root admin account
+    if (strtolower(trim((string)$user_id)) === 'admin') {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION['pfms_checked_user'] = $user_id;
+            $_SESSION['pfms_is_pandora_admin'] = true;
+        }
+        return true;
+    }
+
+    // Session cache check (per-session and per-user)
+    if (session_status() === PHP_SESSION_ACTIVE &&
+        isset($_SESSION['pfms_checked_user']) && 
+        $_SESSION['pfms_checked_user'] === $user_id && 
+        isset($_SESSION['pfms_is_pandora_admin'])) {
+        return (bool)$_SESSION['pfms_is_pandora_admin'];
+    }
+
+    // Session is_admin flag check
+    if (!empty($_SESSION['is_admin']) && ((int)$_SESSION['is_admin'] === 1 || $_SESSION['is_admin'] === true)) {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION['pfms_checked_user'] = $user_id;
+            $_SESSION['pfms_is_pandora_admin'] = true;
+        }
+        return true;
+    }
+
+    if (!$pdo || !($pdo instanceof PDO)) {
+        return false;
+    }
+
+    $is_admin = false;
+
+    try {
+        // 1. Check tusuario table
+        $stUser = $pdo->prepare("SELECT is_admin, id_perfil FROM tusuario WHERE id_user = :user_id LIMIT 1");
+        $stUser->execute([':user_id' => $user_id]);
+        $userRow = $stUser->fetch(PDO::FETCH_ASSOC);
+
+        if ($userRow) {
+            if (!empty($userRow['is_admin']) && (int)$userRow['is_admin'] === 1) {
+                $is_admin = true;
+            } elseif (isset($userRow['id_perfil']) && (int)$userRow['id_perfil'] === 1) {
+                $is_admin = true;
+            }
+        }
+
+        // 2. Check tusuario_perfil joined with tperfil (matches profile name 'Pandora Administrator')
+        if (!$is_admin) {
+            $sql = "SELECT p.name, p.id_perfil 
+                    FROM tusuario_perfil up 
+                    JOIN tperfil p ON up.id_perfil = p.id_perfil 
+                    WHERE up.id_user = :user_id";
+            $stProf = $pdo->prepare($sql);
+            $stProf->execute([':user_id' => $user_id]);
+            $profiles = $stProf->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($profiles as $prof) {
+                $pName = strtolower(trim((string)($prof['name'] ?? '')));
+                $pId = (int)($prof['id_perfil'] ?? 0);
+
+                if ($pId === 1 || 
+                    $pName === 'pandora administrator' || 
+                    strpos($pName, 'pandora administrator') !== false ||
+                    $pName === 'administrator') {
+                    $is_admin = true;
+                    break;
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        error_log("PFMS Security: Error checking Pandora Administrator profile: " . $e->getMessage());
+    }
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $_SESSION['pfms_checked_user'] = $user_id;
+        $_SESSION['pfms_is_pandora_admin'] = $is_admin;
+    }
+
+    return $is_admin;
+}
+
+/**
+ * Returns list of profile names assigned to the specified user.
+ */
+function get_user_pandora_profiles($pdo, $user_id): array {
+    if (empty($user_id) || !$pdo || !($pdo instanceof PDO)) return [];
+    $names = [];
+    try {
+        $stProf = $pdo->prepare("SELECT DISTINCT p.name FROM tusuario_perfil up JOIN tperfil p ON up.id_perfil = p.id_perfil WHERE up.id_user = :user_id");
+        $stProf->execute([':user_id' => $user_id]);
+        while ($r = $stProf->fetch(PDO::FETCH_ASSOC)) {
+            if (!empty($r['name'])) $names[] = trim($r['name']);
+        }
+    } catch (Throwable $e) {}
+    return $names;
+}
+
+/**
+ * Renders a secure 403 Forbidden Access Denied page when a non-admin tries to access PFMS-Toolkit.
+ */
+function render_pfms_access_denied(string $user_id, string $pandora_base = '/pandora_console', $pdo = null): void {
+    if (!headers_sent()) {
+        http_response_code(403);
+        header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    }
+
+    // Clean JSON response for API or AJAX calls
+    if (!empty($_GET['api']) || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false) || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Akses Ditolak (403 Forbidden): Hanya profil Pandora Administrator yang diizinkan mengakses fitur PFMS-Toolkit.'
+        ]);
+        exit;
+    }
+
+    $profiles = ($pdo && !empty($user_id)) ? get_user_pandora_profiles($pdo, $user_id) : [];
+    $profileText = !empty($profiles) ? implode(', ', array_map('htmlspecialchars', $profiles)) : 'Bukan Pandora Administrator';
+    $vendor_url = rtrim($pandora_base, '/') . '/custom/panel/vendor';
+    $login_url = rtrim($pandora_base, '/') . '/index.php';
+    ?>
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>403 Akses Ditolak - PFMS Toolkit</title>
+        <link rel="stylesheet" href="<?= htmlspecialchars($vendor_url) ?>/fonts/fonts.css">
+        <style>
+            :root {
+                --brand-green: #004d40;
+                --brand-green-hover: #00695c;
+                --primary-navy: #0b1a26;
+                --danger-red: #ef4444;
+                --border-color: #e2e8f0;
+            }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body {
+                font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                color: #1e293b;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 24px;
+            }
+            .denied-card {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 16px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+                max-width: 520px;
+                width: 100%;
+                overflow: hidden;
+                text-align: center;
+                animation: popIn 0.25s ease-out;
+            }
+            @keyframes popIn {
+                from { transform: scale(0.96); opacity: 0; }
+                to { transform: scale(1); opacity: 1; }
+            }
+            .denied-header {
+                background: #fef2f2;
+                border-bottom: 1px solid #fee2e2;
+                padding: 32px 24px 24px 24px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            .denied-icon-wrap {
+                width: 64px;
+                height: 64px;
+                border-radius: 50%;
+                background: #fee2e2;
+                color: #dc2626;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-bottom: 14px;
+                box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.12);
+            }
+            .denied-icon-wrap .material-symbols-outlined {
+                font-size: 36px;
+            }
+            .denied-title {
+                font-size: 20px;
+                font-weight: 800;
+                color: #991b1b;
+                margin-bottom: 6px;
+            }
+            .denied-subtitle {
+                font-size: 13px;
+                color: #b91c1c;
+                font-weight: 500;
+            }
+            .denied-body {
+                padding: 28px 24px;
+                font-size: 13.5px;
+                line-height: 1.6;
+                color: #475569;
+            }
+            .info-box {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+                padding: 14px 18px;
+                margin: 20px 0;
+                text-align: left;
+                font-size: 12.5px;
+            }
+            .info-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 6px 0;
+                border-bottom: 1px dashed #e2e8f0;
+            }
+            .info-row:last-child {
+                border-bottom: none;
+            }
+            .info-label {
+                color: #64748b;
+                font-weight: 600;
+            }
+            .info-val {
+                color: #0f172a;
+                font-weight: 700;
+                font-family: monospace;
+                background: #ffffff;
+                padding: 2px 8px;
+                border-radius: 4px;
+                border: 1px solid #cbd5e1;
+            }
+            .info-required {
+                color: #059669;
+                font-weight: 700;
+                background: #ecfdf5;
+                padding: 2px 8px;
+                border-radius: 4px;
+                border: 1px solid #a7f3d0;
+            }
+            .denied-footer {
+                padding: 16px 24px 24px 24px;
+                display: flex;
+                gap: 12px;
+                justify-content: center;
+            }
+            .btn-primary {
+                background: var(--brand-green);
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-size: 13px;
+                font-weight: 600;
+                text-decoration: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+                transition: background 0.15s ease;
+            }
+            .btn-primary:hover {
+                background: var(--brand-green-hover);
+            }
+            .btn-secondary {
+                background: #ffffff;
+                color: #475569;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 10px 18px;
+                font-size: 13px;
+                font-weight: 600;
+                text-decoration: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+            }
+            .btn-secondary:hover {
+                background: #f1f5f9;
+                color: #0f172a;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="denied-card">
+            <div class="denied-header">
+                <div class="denied-icon-wrap">
+                    <span class="material-symbols-outlined">gpp_bad</span>
+                </div>
+                <h1 class="denied-title">Akses Ditolak (403 Forbidden)</h1>
+                <div class="denied-subtitle">Hak Akses Tidak Memenuhi Syarat</div>
+            </div>
+            <div class="denied-body">
+                <p>Halaman <strong>PFMS-Toolkit</strong> ini dikhususkan dan hanya dapat diakses oleh pengguna dengan profil <strong>Pandora Administrator</strong>.</p>
+                
+                <div class="info-box">
+                    <div class="info-row">
+                        <span class="info-label">Akun Anda:</span>
+                        <span class="info-val"><?= htmlspecialchars($user_id) ?></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Profil Terdeteksi:</span>
+                        <span style="color:#b91c1c; font-weight:600;"><?= $profileText ?></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Profil Diperlukan:</span>
+                        <span class="info-required">Pandora Administrator</span>
+                    </div>
+                </div>
+
+                <p style="font-size:12.5px; color:#64748b;">Silakan hubungi administrator sistem atau login kembali menggunakan akun yang memiliki hak akses Pandora Administrator.</p>
+            </div>
+            <div class="denied-footer">
+                <a href="<?= htmlspecialchars($login_url) ?>" class="btn-primary">
+                    <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+                    Kembali ke Pandora FMS
+                </a>
+                <a href="<?= htmlspecialchars($login_url) ?>?bye=1" class="btn-secondary">
+                    <span class="material-symbols-outlined" style="font-size:18px;">logout</span>
+                    Ganti Akun
+                </a>
+            </div>
+        </div>
+    </body>
+    </html>
+    <?php
+}
+
+// Global Automated Guard: If running in web context with an active Pandora session, enforce Pandora Administrator restriction
+if (php_sapi_name() !== 'cli') {
+    if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+        @session_start();
+    }
+    $active_user = $_SESSION['id_usuario'] ?? '';
+    $allow_embed = !empty($_GET['embed']) || !empty($_GET['standalone']);
+
+    if (!empty($active_user) && !$allow_embed && isset($pdo) && ($pdo instanceof PDO)) {
+        if (!is_pandora_administrator($pdo, $active_user)) {
+            $p_base = !empty($PANDORA_BASE_URL) ? $PANDORA_BASE_URL : '/pandora_console';
+            render_pfms_access_denied((string)$active_user, $p_base, $pdo);
+            exit;
+        }
+    }
+}
+
