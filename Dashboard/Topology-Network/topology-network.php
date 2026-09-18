@@ -2404,33 +2404,168 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             box-shadow: 0 2px 6px rgba(9, 77, 74, 0.25);
         }
 
-        /* Interface Link Box (Screenshot 4) */
-        .interface-link-box {
-            background: #d5eae6;
-            border: 1px solid #b2dfdb;
-            border-radius: 6px;
-            padding: 18px 20px;
-            display: grid;
-            grid-template-columns: 1fr 1.3fr 1.3fr 1fr;
-            gap: 16px;
+        /* Interface Link Modal & Module Picker */
+        .link-peer-header-banner {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px 18px;
+            display: flex;
             align-items: center;
+            justify-content: space-between;
         }
-        .interface-link-col {
+        .link-peer-node {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .link-peer-connector {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #e0f2fe;
+        }
+        .interface-select-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 14px;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
         }
-        .interface-link-col-title {
-            font-size: 12px;
-            font-weight: 700;
-            color: #0f172a;
-        }
-        .interface-link-node-name {
+        .interface-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
             font-size: 13px;
             font-weight: 700;
             color: #0f172a;
-            word-break: break-word;
-            padding: 7px 0;
+        }
+        .badge-selected-iface {
+            font-size: 11px;
+            padding: 3px 9px;
+            border-radius: 12px;
+            background: #e0f2fe;
+            color: #0369a1;
+            font-weight: 600;
+            max-width: 170px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .interface-module-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-height: 230px;
+        }
+        .interface-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            background: #ffffff;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .interface-item:hover {
+            border-color: #004d40;
+            background: #f8fafc;
+        }
+        .interface-item.selected {
+            border-color: #004d40;
+            background: #ecfdf5;
+            box-shadow: 0 0 0 1px #004d40;
+        }
+        .interface-item-radio {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .interface-item-info {
+            flex-grow: 1;
+            min-width: 0;
+        }
+        .interface-item-name {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f172a;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .interface-item-full {
+            font-size: 11px;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .interface-item-status {
+            flex-shrink: 0;
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .status-pill-up {
+            color: #15803d;
+            background: #dcfce7;
+            padding: 2px 7px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .status-pill-down {
+            color: #b91c1c;
+            background: #fee2e2;
+            padding: 2px 7px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .interface-pagination-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid #f1f5f9;
+        }
+        .pagination-btn {
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            font-size: 11px;
+            font-weight: 600;
+            color: #334155;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
         }
 
         /* Add Node Accordions & Pagination (Screenshot 3) */
@@ -3207,59 +3342,85 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
     </div>
 
     <!-- ========================================================================= -->
-    <!-- INTERFACE LINK MODAL (Screenshot 4)                                       -->
+    <!-- INTERFACE LINK MODAL (Searchable & Paginated Interface Modules)           -->
     <!-- ========================================================================= -->
     <div class="modal-overlay" id="interfaceLinkModal">
-        <div class="modal-card" style="max-width: 720px; width: 94%; border-radius: 8px; overflow:hidden;">
+        <div class="modal-card" style="max-width: 860px; width: 95%; max-height: 90vh; border-radius: 8px; overflow:hidden; display: flex; flex-direction: column;">
             <div class="modal-head modal-head-teal">
                 <h3>Interface link</h3>
                 <span class="material-symbols-outlined modal-close-btn" onclick="closeInterfaceLinkModal()">close</span>
             </div>
-            <div class="modal-body" style="padding: 24px;">
+            <div class="modal-body" style="padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
                 <input type="hidden" id="linkSourceNodeId" value="">
                 <input type="hidden" id="linkTargetNodeId" value="">
                 
-                <!-- Light teal box matching Screenshot 4 with search filter -->
-                <div class="interface-link-box">
-                    <div class="interface-link-col">
-                        <div class="interface-link-col-title">Node source</div>
-                        <div class="interface-link-node-name" id="linkSourceNodeName">-</div>
-                    </div>
-
-                    <div class="interface-link-col">
-                        <div class="interface-link-col-title">Interface source</div>
-                        <div style="position:relative; margin-bottom:6px;">
-                            <input type="text" id="linkSourceSearch" class="form-control-custom" placeholder="Search module / port..." style="background:#ffffff; height:30px; font-size:11px; padding-left:26px;" oninput="filterInterfaceOptions('src', this.value)">
-                            <span class="material-symbols-outlined" style="position:absolute; left:6px; top:7px; font-size:16px; color:#94a3b8; pointer-events:none;">search</span>
+                <!-- Connected Devices Header Banner -->
+                <div class="link-peer-header-banner">
+                    <div class="link-peer-node">
+                        <span class="material-symbols-outlined" style="color: #004d40; font-size:24px;">router</span>
+                        <div>
+                            <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Node source</div>
+                            <strong id="linkSourceNodeName" style="font-size:14px; color:#0f172a;">-</strong>
                         </div>
-                        <select id="linkSourceInterfaceSelect" class="form-control-custom" style="background:#ffffff; height:36px;">
-                            <option value="">None</option>
-                        </select>
                     </div>
-
-                    <div class="interface-link-col">
-                        <div class="interface-link-col-title">Interface target</div>
-                        <div style="position:relative; margin-bottom:6px;">
-                            <input type="text" id="linkTargetSearch" class="form-control-custom" placeholder="Search module / port..." style="background:#ffffff; height:30px; font-size:11px; padding-left:26px;" oninput="filterInterfaceOptions('tgt', this.value)">
-                            <span class="material-symbols-outlined" style="position:absolute; left:6px; top:7px; font-size:16px; color:#94a3b8; pointer-events:none;">search</span>
+                    <div class="link-peer-connector">
+                        <span class="material-symbols-outlined" style="font-size:22px; color:#0284c7;">swap_horiz</span>
+                    </div>
+                    <div class="link-peer-node" style="justify-content: flex-end; text-align: right;">
+                        <div>
+                            <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Node target</div>
+                            <strong id="linkTargetNodeName" style="font-size:14px; color:#0f172a;">-</strong>
                         </div>
-                        <select id="linkTargetInterfaceSelect" class="form-control-custom" style="background:#ffffff; height:36px;">
-                            <option value="">None</option>
-                        </select>
-                    </div>
-
-                    <div class="interface-link-col">
-                        <div class="interface-link-col-title">Node target</div>
-                        <div class="interface-link-node-name" id="linkTargetNodeName">-</div>
+                        <span class="material-symbols-outlined" style="color: #004d40; font-size:24px;">hub</span>
                     </div>
                 </div>
 
-                <div id="interfaceLinkLoading" style="display:none; text-align:center; padding:12px; color:#094d4a; font-size:12px;">
+                <!-- 2-Column Interface Selection Area (5 items per page with search & pagination) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <!-- LEFT COLUMN: Source Interface -->
+                    <div class="interface-select-card">
+                        <div class="interface-card-header">
+                            <span>Interface source</span>
+                            <span id="linkSourceSelectedBadge" class="badge-selected-iface">None</span>
+                        </div>
+                        <div style="position:relative; margin-bottom:10px;">
+                            <input type="text" id="linkSourceSearch" class="form-control-custom" placeholder="Search module / port..." style="height:32px; font-size:12px; padding-left:28px;" oninput="onInterfaceSearch('src', this.value)">
+                            <span class="material-symbols-outlined" style="position:absolute; left:8px; top:8px; font-size:16px; color:#94a3b8; pointer-events:none;">search</span>
+                        </div>
+                        <div class="interface-module-list" id="linkSourceModuleList">
+                            <!-- Rendered 5 modules per page -->
+                        </div>
+                        <div class="interface-pagination-bar" id="linkSourcePagination">
+                            <!-- Pagination controls -->
+                        </div>
+                    </div>
+
+                    <!-- RIGHT COLUMN: Target Interface -->
+                    <div class="interface-select-card">
+                        <div class="interface-card-header">
+                            <span>Interface target</span>
+                            <span id="linkTargetSelectedBadge" class="badge-selected-iface">None</span>
+                        </div>
+                        <div style="position:relative; margin-bottom:10px;">
+                            <input type="text" id="linkTargetSearch" class="form-control-custom" placeholder="Search module / port..." style="height:32px; font-size:12px; padding-left:28px;" oninput="onInterfaceSearch('tgt', this.value)">
+                            <span class="material-symbols-outlined" style="position:absolute; left:8px; top:8px; font-size:16px; color:#94a3b8; pointer-events:none;">search</span>
+                        </div>
+                        <div class="interface-module-list" id="linkTargetModuleList">
+                            <!-- Rendered 5 modules per page -->
+                        </div>
+                        <div class="interface-pagination-bar" id="linkTargetPagination">
+                            <!-- Pagination controls -->
+                        </div>
+                    </div>
+                </div>
+
+                <div id="interfaceLinkLoading" style="display:none; text-align:center; padding:8px; color:#004d40; font-size:12px;">
                     <span class="material-symbols-outlined spin-icon" style="font-size:16px;">progress_activity</span> Loading interface modules (ifOperStatus/ifAdmin)...
                 </div>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 18px;">
-                    <button type="button" class="btn-outline-teal" id="btnAddInterfaceLinkSubmit" onclick="submitInterfaceLink()">
+                <!-- Action buttons -->
+                <div style="display:flex; justify-content:space-between; align-items:center; padding-top: 10px; border-top: 1px solid #e2e8f0;">
+                    <button type="button" class="btn-apply" id="btnAddInterfaceLinkSubmit" onclick="submitInterfaceLink()">
                         Add interface link
                     </button>
                     <button type="button" class="btn-secondary-custom" id="btnDeleteInterfaceLink" onclick="deleteCurrentInterfaceLink()" style="display:none; color:#dc2626; border-color:#fecaca;">
@@ -4340,13 +4501,22 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         // =========================================================================
-        // INTERFACE LINK MODAL ENGINE (Screenshot 4)
+        // INTERFACE LINK MODAL ENGINE (Searchable & Paginated, 5 items per page)
         // =========================================================================
         let currentLinkSourceNode = null;
         let currentLinkTargetNode = null;
         let currentEditingEdgeId = null;
         let cachedSrcInterfaces = [];
         let cachedTgtInterfaces = [];
+
+        // Pagination & Selection State
+        const IFACE_PAGE_SIZE = 5;
+        let srcIfacePage = 1;
+        let tgtIfacePage = 1;
+        let srcIfaceSearch = '';
+        let tgtIfaceSearch = '';
+        let selectedSrcIface = { id: 0, name: '', status: 0, fullName: 'None' };
+        let selectedTgtIface = { id: 0, name: '', status: 0, fullName: 'None' };
 
         async function openInterfaceLinkModal(sourceNode, targetNode, existingEdge = null) {
             currentLinkSourceNode = sourceNode;
@@ -4363,21 +4533,58 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             document.getElementById('linkSourceNodeName').innerText = srcName;
             document.getElementById('linkTargetNodeName').innerText = tgtName;
 
-            const srcSearch = document.getElementById('linkSourceSearch');
-            if (srcSearch) srcSearch.value = '';
-            const tgtSearch = document.getElementById('linkTargetSearch');
-            if (tgtSearch) tgtSearch.value = '';
+            srcIfaceSearch = '';
+            tgtIfaceSearch = '';
+            srcIfacePage = 1;
+            tgtIfacePage = 1;
 
-            const srcSelect = document.getElementById('linkSourceInterfaceSelect');
-            const tgtSelect = document.getElementById('linkTargetInterfaceSelect');
-            srcSelect.innerHTML = '<option value="">Loading...</option>';
-            tgtSelect.innerHTML = '<option value="">Loading...</option>';
+            const srcSearchInput = document.getElementById('linkSourceSearch');
+            if (srcSearchInput) srcSearchInput.value = '';
+            const tgtSearchInput = document.getElementById('linkTargetSearch');
+            if (tgtSearchInput) tgtSearchInput.value = '';
+
+            // Default selections
+            selectedSrcIface = { id: 0, name: '', status: 0, fullName: 'None' };
+            selectedTgtIface = { id: 0, name: '', status: 0, fullName: 'None' };
+
+            if (existingEdge) {
+                const eData = existingEdge.data();
+                if (eData.source_interface) {
+                    selectedSrcIface = {
+                        id: parseInt(eData.source_module_id || 0),
+                        name: cleanText(eData.source_interface),
+                        status: parseInt(eData.source_status || 0),
+                        fullName: cleanText(eData.source_interface)
+                    };
+                }
+                if (eData.target_interface) {
+                    selectedTgtIface = {
+                        id: parseInt(eData.target_module_id || 0),
+                        name: cleanText(eData.target_interface),
+                        status: parseInt(eData.target_status || 0),
+                        fullName: cleanText(eData.target_interface)
+                    };
+                }
+            }
+
+            const srcBadge = document.getElementById('linkSourceSelectedBadge');
+            if (srcBadge) srcBadge.innerText = selectedSrcIface.name || 'None';
+            const tgtBadge = document.getElementById('linkTargetSelectedBadge');
+            if (tgtBadge) tgtBadge.innerText = selectedTgtIface.name || 'None';
 
             const deleteBtn = document.getElementById('btnDeleteInterfaceLink');
             if (deleteBtn) deleteBtn.style.display = existingEdge ? 'inline-flex' : 'none';
 
+            const submitBtn = document.getElementById('btnAddInterfaceLinkSubmit');
+            if (submitBtn) submitBtn.innerText = existingEdge ? 'Save interface link' : 'Add interface link';
+
             const loadingEl = document.getElementById('interfaceLinkLoading');
             if (loadingEl) loadingEl.style.display = 'block';
+
+            const srcList = document.getElementById('linkSourceModuleList');
+            const tgtList = document.getElementById('linkTargetModuleList');
+            if (srcList) srcList.innerHTML = '<div style="padding:30px; text-align:center; color:#94a3b8; font-size:12px;"><span class="material-symbols-outlined spin-icon">progress_activity</span> Loading modules...</div>';
+            if (tgtList) tgtList.innerHTML = '<div style="padding:30px; text-align:center; color:#94a3b8; font-size:12px;"><span class="material-symbols-outlined spin-icon">progress_activity</span> Loading modules...</div>';
 
             document.getElementById('interfaceLinkModal').style.display = 'flex';
 
@@ -4395,78 +4602,193 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 cachedSrcInterfaces = Array.isArray(dataSrc.interfaces) ? dataSrc.interfaces : [];
                 cachedTgtInterfaces = Array.isArray(dataTgt.interfaces) ? dataTgt.interfaces : [];
 
-                populateInterfaceSelect(srcSelect, cachedSrcInterfaces);
-                populateInterfaceSelect(tgtSelect, cachedTgtInterfaces);
-
-                // If editing existing edge, preselect
-                if (existingEdge) {
-                    const eData = existingEdge.data();
-                    if (eData.source_interface) {
-                        selectMatchingOption(srcSelect, eData.source_interface, eData.source_module_id);
-                    }
-                    if (eData.target_interface) {
-                        selectMatchingOption(tgtSelect, eData.target_interface, eData.target_module_id);
+                if (selectedSrcIface.id > 0 || selectedSrcIface.name) {
+                    const match = cachedSrcInterfaces.find(x => x.id === selectedSrcIface.id || x.clean_port === selectedSrcIface.name || x.name === selectedSrcIface.name);
+                    if (match) {
+                        selectedSrcIface.fullName = cleanText(match.name);
+                        selectedSrcIface.status = match.estado;
+                        const idx = cachedSrcInterfaces.indexOf(match);
+                        if (idx >= 0) srcIfacePage = Math.floor((idx + 1) / IFACE_PAGE_SIZE) + 1;
                     }
                 }
+                if (selectedTgtIface.id > 0 || selectedTgtIface.name) {
+                    const match = cachedTgtInterfaces.find(x => x.id === selectedTgtIface.id || x.clean_port === selectedTgtIface.name || x.name === selectedTgtIface.name);
+                    if (match) {
+                        selectedTgtIface.fullName = cleanText(match.name);
+                        selectedTgtIface.status = match.estado;
+                        const idx = cachedTgtInterfaces.indexOf(match);
+                        if (idx >= 0) tgtIfacePage = Math.floor((idx + 1) / IFACE_PAGE_SIZE) + 1;
+                    }
+                }
+
+                if (srcBadge) srcBadge.innerText = selectedSrcIface.name || 'None';
+                if (tgtBadge) tgtBadge.innerText = selectedTgtIface.name || 'None';
+
+                renderInterfaceModulePicker('src');
+                renderInterfaceModulePicker('tgt');
             } catch (err) {
                 if (loadingEl) loadingEl.style.display = 'none';
-                srcSelect.innerHTML = '<option value="">None</option>';
-                tgtSelect.innerHTML = '<option value="">None</option>';
                 console.error("Error loading interfaces:", err);
+                renderInterfaceModulePicker('src');
+                renderInterfaceModulePicker('tgt');
             }
         }
 
-        function filterInterfaceOptions(side, query) {
-            query = (query || '').toLowerCase().trim();
-            const selectEl = (side === 'src') 
-                ? document.getElementById('linkSourceInterfaceSelect') 
-                : document.getElementById('linkTargetInterfaceSelect');
-            const interfaces = (side === 'src') ? cachedSrcInterfaces : cachedTgtInterfaces;
-            if (!selectEl) return;
-
-            const currentVal = selectEl.value;
-            const currentId = selectEl.options[selectEl.selectedIndex]?.getAttribute('data-id');
-
-            const filtered = query 
-                ? interfaces.filter(itf => {
-                    const name = (itf.name || '').toLowerCase();
-                    const cleanPort = (itf.clean_port || '').toLowerCase();
-                    const datos = (itf.datos || '').toLowerCase();
-                    return name.includes(query) || cleanPort.includes(query) || datos.includes(query);
-                })
-                : interfaces;
-
-            populateInterfaceSelect(selectEl, filtered);
-
-            // Re-select previously selected item if present in filtered list
-            if (currentId && currentId !== '0') {
-                selectMatchingOption(selectEl, currentVal, currentId);
-            }
-        }
-
-        function populateInterfaceSelect(selectEl, interfaces) {
-            let html = '<option value="" data-id="0" data-status="0">None</option>';
-            interfaces.forEach(itf => {
-                const cleanName = cleanText(itf.clean_port || itf.name);
-                const fullName = cleanText(itf.name);
-                const statusDot = (itf.estado === 1) ? '● (Down)' : (itf.estado === 0 ? '● (Up)' : '●');
-                html += `<option value="${escapeHtml(cleanName)}" data-id="${itf.id}" data-status="${itf.estado}" data-fullname="${escapeHtml(fullName)}">
-                    ${escapeHtml(fullName)} ${statusDot}
-                </option>`;
+        function getFilteredInterfaces(side) {
+            const list = (side === 'src') ? cachedSrcInterfaces : cachedTgtInterfaces;
+            const query = (side === 'src' ? srcIfaceSearch : tgtIfaceSearch).toLowerCase().trim();
+            if (!query) return list;
+            return list.filter(itf => {
+                const name = (itf.name || '').toLowerCase();
+                const cleanPort = (itf.clean_port || '').toLowerCase();
+                const datos = (itf.datos || '').toLowerCase();
+                return name.includes(query) || cleanPort.includes(query) || datos.includes(query);
             });
-            selectEl.innerHTML = html;
         }
 
-        function selectMatchingOption(selectEl, ifaceName, modId) {
-            for (let i = 0; i < selectEl.options.length; i++) {
-                const opt = selectEl.options[i];
-                if (modId && opt.getAttribute('data-id') == modId) {
-                    selectEl.selectedIndex = i;
-                    return;
+        function onInterfaceSearch(side, query) {
+            if (side === 'src') {
+                srcIfaceSearch = query || '';
+                srcIfacePage = 1;
+            } else {
+                tgtIfaceSearch = query || '';
+                tgtIfacePage = 1;
+            }
+            renderInterfaceModulePicker(side);
+        }
+
+        function changeInterfacePage(side, delta) {
+            const filtered = getFilteredInterfaces(side);
+            const totalItems = filtered.length + 1; // including None option
+            const totalPages = Math.max(1, Math.ceil(totalItems / IFACE_PAGE_SIZE));
+            if (side === 'src') {
+                srcIfacePage = Math.max(1, Math.min(totalPages, srcIfacePage + delta));
+            } else {
+                tgtIfacePage = Math.max(1, Math.min(totalPages, tgtIfacePage + delta));
+            }
+            renderInterfaceModulePicker(side);
+        }
+
+        function selectInterfaceItem(side, id, cleanName, status, fullName) {
+            const obj = {
+                id: parseInt(id || 0),
+                name: cleanText(cleanName || ''),
+                status: parseInt(status || 0),
+                fullName: cleanText(fullName || cleanName || 'None')
+            };
+
+            if (side === 'src') {
+                selectedSrcIface = obj;
+                const badge = document.getElementById('linkSourceSelectedBadge');
+                if (badge) {
+                    badge.innerText = obj.name || 'None';
+                    badge.title = obj.fullName;
                 }
-                if (opt.value === ifaceName || opt.getAttribute('data-fullname') === ifaceName) {
-                    selectEl.selectedIndex = i;
-                    return;
+            } else {
+                selectedTgtIface = obj;
+                const badge = document.getElementById('linkTargetSelectedBadge');
+                if (badge) {
+                    badge.innerText = obj.name || 'None';
+                    badge.title = obj.fullName;
+                }
+            }
+            renderInterfaceModulePicker(side);
+        }
+
+        function renderInterfaceModulePicker(side) {
+            const container = (side === 'src') 
+                ? document.getElementById('linkSourceModuleList') 
+                : document.getElementById('linkTargetModuleList');
+            const pagContainer = (side === 'src')
+                ? document.getElementById('linkSourcePagination')
+                : document.getElementById('linkTargetPagination');
+            if (!container) return;
+
+            const filtered = getFilteredInterfaces(side);
+            const currentPage = (side === 'src') ? srcIfacePage : tgtIfacePage;
+            const currentSelected = (side === 'src') ? selectedSrcIface : selectedTgtIface;
+
+            // Prepend a "None" object to the list so users can always choose direct link
+            const allOptions = [
+                { id: 0, clean_port: '', name: 'None (No specific interface)', estado: 0, isNone: true },
+                ...filtered
+            ];
+
+            const totalItems = allOptions.length;
+            const totalPages = Math.max(1, Math.ceil(totalItems / IFACE_PAGE_SIZE));
+            const safePage = Math.min(currentPage, totalPages);
+            if (side === 'src') srcIfacePage = safePage;
+            else tgtIfacePage = safePage;
+
+            const startIndex = (safePage - 1) * IFACE_PAGE_SIZE;
+            const pageItems = allOptions.slice(startIndex, startIndex + IFACE_PAGE_SIZE);
+
+            if (pageItems.length === 0) {
+                container.innerHTML = '<div style="font-size:12px; color:#94a3b8; text-align:center; padding:24px 10px;">No interface modules found matching search.</div>';
+            } else {
+                let html = '';
+                pageItems.forEach(itf => {
+                    const isNone = itf.isNone || (!itf.id && !itf.clean_port);
+                    const cleanName = isNone ? '' : cleanText(itf.clean_port || itf.name);
+                    const fullName = cleanText(itf.name);
+                    const isSelected = isNone 
+                        ? (currentSelected.id === 0 && !currentSelected.name) 
+                        : (currentSelected.id === itf.id || (cleanName && currentSelected.name === cleanName));
+
+                    const statusVal = itf.estado;
+                    const statusClass = (statusVal === 1) ? 'status-pill-down' : 'status-pill-up';
+                    const statusText = (statusVal === 1) ? '● Down' : (statusVal === 0 ? '● Up' : '●');
+
+                    if (isNone) {
+                        html += `
+                            <div class="interface-item ${isSelected ? 'selected' : ''}" onclick="selectInterfaceItem('${side}', 0, '', 0, 'None')">
+                                <div class="interface-item-radio">
+                                    <span class="material-symbols-outlined" style="font-size:18px; color:${isSelected ? '#004d40' : '#cbd5e1'};">
+                                        ${isSelected ? 'radio_button_checked' : 'radio_button_unchecked'}
+                                    </span>
+                                </div>
+                                <div class="interface-item-info">
+                                    <div class="interface-item-name" style="font-style:italic; color:#64748b;">None (No specific interface)</div>
+                                    <div class="interface-item-full">Direct link without port binding</div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        html += `
+                            <div class="interface-item ${isSelected ? 'selected' : ''}" onclick="selectInterfaceItem('${side}', '${itf.id}', '${escapeHtml(cleanName)}', '${itf.estado}', '${escapeHtml(fullName)}')">
+                                <div class="interface-item-radio">
+                                    <span class="material-symbols-outlined" style="font-size:18px; color:${isSelected ? '#004d40' : '#cbd5e1'};">
+                                        ${isSelected ? 'radio_button_checked' : 'radio_button_unchecked'}
+                                    </span>
+                                </div>
+                                <div class="interface-item-info">
+                                    <div class="interface-item-name">${escapeHtml(cleanName)}</div>
+                                    <div class="interface-item-full" title="${escapeHtml(fullName)}">${escapeHtml(fullName)}</div>
+                                </div>
+                                <div class="interface-item-status">
+                                    <span class="${statusClass}">${statusText}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+                container.innerHTML = html;
+            }
+
+            // Pagination Controls: show navigation if more than 5 items
+            if (pagContainer) {
+                if (totalItems <= IFACE_PAGE_SIZE) {
+                    pagContainer.innerHTML = `<span>Total ${totalItems} module${totalItems === 1 ? '' : 's'}</span><span></span>`;
+                } else {
+                    pagContainer.innerHTML = `
+                        <button type="button" class="pagination-btn" onclick="changeInterfacePage('${side}', -1)" ${safePage <= 1 ? 'disabled' : ''}>
+                            <span class="material-symbols-outlined" style="font-size:14px;">chevron_left</span> Prev
+                        </button>
+                        <span>Page <strong>${safePage}</strong> of <strong>${totalPages}</strong> (${totalItems} items)</span>
+                        <button type="button" class="pagination-btn" onclick="changeInterfacePage('${side}', 1)" ${safePage >= totalPages ? 'disabled' : ''}>
+                            Next <span class="material-symbols-outlined" style="font-size:14px;">chevron_right</span>
+                        </button>
+                    `;
                 }
             }
         }
@@ -4476,23 +4798,20 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             currentLinkSourceNode = null;
             currentLinkTargetNode = null;
             currentEditingEdgeId = null;
+            selectedSrcIface = { id: 0, name: '', status: 0, fullName: 'None' };
+            selectedTgtIface = { id: 0, name: '', status: 0, fullName: 'None' };
         }
 
         async function submitInterfaceLink() {
             if (!currentLinkSourceNode || !currentLinkTargetNode || !activeDashId) return;
 
-            const srcSelect = document.getElementById('linkSourceInterfaceSelect');
-            const tgtSelect = document.getElementById('linkTargetInterfaceSelect');
-            const srcOpt = srcSelect ? srcSelect.options[srcSelect.selectedIndex] : null;
-            const tgtOpt = tgtSelect ? tgtSelect.options[tgtSelect.selectedIndex] : null;
+            const srcIface = selectedSrcIface.name || '';
+            const srcModId = selectedSrcIface.id || 0;
+            const srcStatus = selectedSrcIface.status || 0;
 
-            const srcIface = srcOpt ? srcOpt.value : '';
-            const srcModId = srcOpt ? parseInt(srcOpt.getAttribute('data-id') || 0) : 0;
-            const srcStatus = srcOpt ? parseInt(srcOpt.getAttribute('data-status') || 0) : 0;
-
-            const tgtIface = tgtOpt ? tgtOpt.value : '';
-            const tgtModId = tgtOpt ? parseInt(tgtOpt.getAttribute('data-id') || 0) : 0;
-            const tgtStatus = tgtOpt ? parseInt(tgtOpt.getAttribute('data-status') || 0) : 0;
+            const tgtIface = selectedTgtIface.name || '';
+            const tgtModId = selectedTgtIface.id || 0;
+            const tgtStatus = selectedTgtIface.status || 0;
 
             const sourceId = currentLinkSourceNode.id();
             const targetId = currentLinkTargetNode.id();
