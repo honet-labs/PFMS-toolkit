@@ -164,7 +164,7 @@ if ($api === 'save_dashboard_acl') {
     if (ob_get_level() > 0) ob_clean(); 
     header('Content-Type: application/json; charset=utf-8');
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
-    $id = trim((string)($input['dashboard_id'] ?? ''));
+    $id = trim((string)($input['dashboard_id'] ?? $input['id'] ?? ''));
     $acl = $input['access_control'] ?? null;
     $res = save_dashboard_acl_to_file($CONFIG_FILE, $id, $acl, $is_admin, $csrf_token);
     $alt_file = ($CONFIG_FILE === __DIR__ . '/traffic-dashboard-saved.json') ? __DIR__ . '/traffic-interface-saved.json' : __DIR__ . '/traffic-dashboard-saved.json';

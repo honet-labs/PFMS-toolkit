@@ -435,6 +435,7 @@ define('PFMS_ACL_MODAL_INCLUDED', true);
                 },
                 body: JSON.stringify({
                     dashboard_id: aclCurrentDashId,
+                    id: aclCurrentDashId,
                     access_control: aclPayload
                 })
             });

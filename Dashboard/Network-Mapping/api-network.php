@@ -164,7 +164,7 @@ try {
         $user_id = $_SESSION['id_usuario'] ?? '';
         $is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pandora_administrator($pdo, $user_id);
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
-        $id = trim((string)($input['dashboard_id'] ?? ''));
+        $id = trim((string)($input['dashboard_id'] ?? $input['id'] ?? ''));
         $acl = $input['access_control'] ?? null;
         $res = save_dashboard_acl_to_file($layout_file, $id, $acl, $is_admin, $csrf_token);
         echo json_encode($res);

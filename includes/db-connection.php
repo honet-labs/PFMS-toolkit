@@ -1213,7 +1213,7 @@ function save_dashboard_acl_to_file(string $file, string $id, array $acl, bool $
             $list = &$data['dashboards'];
         }
         foreach ($list as &$d) {
-            if (is_array($d) && ($d['id'] ?? '') === $id) {
+            if (is_array($d) && (string)($d['id'] ?? '') === (string)$id) {
                 $d['access_control'] = $clean_acl;
                 $d['updated_at'] = date('Y-m-d H:i:s');
                 $found = true;
@@ -1225,6 +1225,14 @@ function save_dashboard_acl_to_file(string $file, string $id, array $acl, bool $
 
     if (!$found) {
         return ['ok' => false, 'error' => 'Dashboard not found in storage.'];
+    }
+
+    $dir = dirname($file);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0777, true);
+    }
+    if (file_exists($file) && !is_writable($file)) {
+        @chmod($file, 0666);
     }
 
     $written = @file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));

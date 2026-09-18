@@ -695,7 +695,7 @@ if (!empty($api)) {
             exit;
         }
 
-        $id = trim((string)($input['id'] ?? ''));
+        $id = trim((string)($input['dashboard_id'] ?? $input['id'] ?? ''));
         $acl = $input['access_control'] ?? null;
         if (empty($id) || !is_array($acl)) {
             echo json_encode(['ok' => false, 'error' => 'Invalid dashboard ID or access control payload.']);
@@ -703,7 +703,22 @@ if (!empty($api)) {
         }
 
         $dashboards = load_topology_dashboards($DASHBOARD_FILE);
-        if (!isset($dashboards[$id])) {
+        $found = false;
+        $target_key = null;
+        if (isset($dashboards[$id]) && is_array($dashboards[$id])) {
+            $target_key = $id;
+            $found = true;
+        } else {
+            foreach ($dashboards as $k => $d) {
+                if (is_array($d) && (string)($d['id'] ?? '') === (string)$id) {
+                    $target_key = $k;
+                    $found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!$found || $target_key === null) {
             echo json_encode(['ok' => false, 'error' => 'Dashboard not found.']);
             exit;
         }
@@ -717,8 +732,8 @@ if (!empty($api)) {
             'edit_users' => is_array($acl['edit_users'] ?? null) ? array_values(array_unique(array_map('clean_pandora_text', $acl['edit_users']))) : [],
         ];
 
-        $dashboards[$id]['access_control'] = $clean_acl;
-        $dashboards[$id]['updated_at'] = date('Y-m-d H:i:s');
+        $dashboards[$target_key]['access_control'] = $clean_acl;
+        $dashboards[$target_key]['updated_at'] = date('Y-m-d H:i:s');
         save_topology_dashboards($DASHBOARD_FILE, $dashboards);
 
         echo json_encode(['ok' => true, 'msg' => 'Access permissions saved successfully!', 'access_control' => $clean_acl]);
@@ -4837,6 +4852,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     },
                     body: JSON.stringify({
                         id: aclCurrentDashId,
+                        dashboard_id: aclCurrentDashId,
                         access_control: aclPayload,
                         csrf_token: CSRF_TOKEN
                     })
