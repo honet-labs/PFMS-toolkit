@@ -4088,6 +4088,46 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 .trim();
         }
 
+        // Wraps interface text neatly at delimiters (-, _, /, space) or every maxCharsPerLine
+        function wrapInterfaceText(str, maxCharsPerLine = 12) {
+            if (!str) return '';
+            str = cleanText(String(str)).trim();
+            if (!str || str.length <= maxCharsPerLine) return str;
+            if (str.includes('\n')) return str;
+
+            const tokens = str.split(/([ \-_/]+)/);
+            let lines = [];
+            let current = '';
+
+            for (let i = 0; i < tokens.length; i++) {
+                const token = tokens[i];
+                if (!token) continue;
+
+                if (!current) {
+                    current = token;
+                } else if ((current + token).length <= maxCharsPerLine) {
+                    current += token;
+                } else {
+                    lines.push(current.trim());
+                    current = token.trim();
+                }
+            }
+            if (current) lines.push(current.trim());
+
+            let finalLines = [];
+            for (let l of lines) {
+                if (l.length > maxCharsPerLine + 3) {
+                    for (let i = 0; i < l.length; i += maxCharsPerLine) {
+                        finalLines.push(l.slice(i, i + maxCharsPerLine));
+                    }
+                } else {
+                    finalLines.push(l);
+                }
+            }
+
+            return finalLines.filter(Boolean).join('\n');
+        }
+
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toastNotification');
             if (!toast) return;
@@ -5174,30 +5214,34 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                                 return (s === 1 || s === 'critical' || s === '1') ? '#ef4444' : '#10b981';
                             },
                             'source-label': function(ele) {
-                                return cleanText(ele.data('source_interface') || '');
+                                return wrapInterfaceText(ele.data('source_interface') || '', 12);
                             },
-                            'source-text-offset': 48,
-                            'source-text-margin-y': -12,
+                            'source-text-offset': 62,
+                            'source-text-margin-y': -14,
                             'source-text-rotation': 'autorotate',
                             'target-label': function(ele) {
-                                return cleanText(ele.data('target_interface') || '');
+                                return wrapInterfaceText(ele.data('target_interface') || '', 12);
                             },
-                            'target-text-offset': 48,
-                            'target-text-margin-y': -12,
+                            'target-text-offset': 62,
+                            'target-text-margin-y': -14,
                             'target-text-rotation': 'autorotate',
                             'label': function(ele) {
                                 if (ele.data('source_interface') || ele.data('target_interface')) {
                                     return '';
                                 }
-                                return cleanText(ele.data('label') || '');
+                                return wrapInterfaceText(ele.data('label') || '', 14);
                             },
+                            'text-wrap': 'wrap',
+                            'text-max-width': '95px',
+                            'text-justification': 'center',
+                            'line-height': 1.25,
                             'font-family': 'Inter, system-ui, -apple-system, sans-serif',
-                            'font-size': 11,
+                            'font-size': 10.5,
                             'font-weight': 600,
                             'color': '#0f172a',
-                            'text-background-opacity': 0.95,
+                            'text-background-opacity': 0.96,
                             'text-background-color': '#ffffff',
-                            'text-background-padding': 3,
+                            'text-background-padding': 4,
                             'text-background-shape': 'roundrectangle',
                             'text-border-opacity': 0.85,
                             'text-border-width': 1,
