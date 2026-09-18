@@ -33,6 +33,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
+$user_id = $_SESSION['id_usuario'] ?? '';
+$is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pandora_administrator($pdo, $user_id);
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
 $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / NETWORK TOPOLOGY";
 ?>
@@ -854,8 +856,12 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / NETWORK TO
 
 <script>
     const CSRF = "<?= $csrf_token ?>";
+    const CSRF_TOKEN = "<?= $csrf_token ?>";
+    const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
     const API_URL = "api-topology.php";
     const LEGACY_API = "api-network.php";
+    window.ACL_API_URL = "api-network.php?api=save_dashboard_acl";
+    window.ACL_GET_URL = "api-network.php?api=get_acl_options";
     const PANDORA_BASE_URL = "<?= htmlspecialchars($PANDORA_BASE_URL) ?>";
 
     let masterDashboards = [];
@@ -1100,6 +1106,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / NETWORK TO
                     <button class="btn-action" title="Open Map" onclick="openDashboard('${d.id}')">
                         <span class="material-symbols-outlined">visibility</span>
                     </button>
+                    ${IS_ADMIN ? `
+                    <button class="btn-action" title="Access Permissions (Profiles & Users)" onclick="openDashboardAclModal('${d.id}', '${d.name ? d.name.replace(/'/g, "\\'") : ''}')">
+                        <span class="material-symbols-outlined">shield_person</span>
+                    </button>
                     <button class="btn-action" title="Duplicate Map" onclick="duplicateDashboard('${d.id}')">
                         <span class="material-symbols-outlined">content_copy</span>
                     </button>
@@ -1109,6 +1119,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / NETWORK TO
                     <button class="btn-action btn-delete" title="Delete Map" onclick="deleteDashboard('${d.id}')">
                         <span class="material-symbols-outlined">delete</span>
                     </button>
+                    ` : ''}
                 </td>
             `;
             tbody.appendChild(tr);
@@ -2008,5 +2019,6 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / NETWORK TO
         printNext();
     }
 </script>
+<?php require_once __DIR__ . '/../../includes/dashboard-acl-modal.php'; ?>
 </body>
 </html>

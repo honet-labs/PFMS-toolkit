@@ -940,6 +940,32 @@ function is_pandora_administrator($pdo, $user_id): bool {
 }
 
 /**
+ * Robustly decodes and cleans Pandora FMS text strings, removing raw HTML entities
+ * like &#x20;, &#40;, &#41;, &amp;#x20;, &nbsp;, etc.
+ */
+function clean_pandora_text($str): string {
+    if ($str === null || $str === '') return '';
+    // Pass 1: standard entity decoding
+    $decoded = html_entity_decode((string)$str, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    // Pass 2: decode any hex or decimal numeric entities (e.g. &#x20;, &#40;)
+    $decoded = preg_replace_callback('/&#(?:x([0-9a-fA-F]+)|([0-9]+));/i', function($m) {
+        $code = !empty($m[1]) ? hexdec($m[1]) : intval($m[2]);
+        return mb_chr($code, 'UTF-8');
+    }, $decoded);
+    // Pass 3: handle any double-escaped &amp;#... remnants
+    $decoded = html_entity_decode($decoded, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $decoded = preg_replace_callback('/&#(?:x([0-9a-fA-F]+)|([0-9]+));/i', function($m) {
+        $code = !empty($m[1]) ? hexdec($m[1]) : intval($m[2]);
+        return mb_chr($code, 'UTF-8');
+    }, $decoded);
+    // Explicit string replacements for common Pandora FMS artifacts
+    $decoded = str_ireplace(['&#x20;', '&amp;#x20;', '#@20;', '&nbsp;'], ' ', $decoded);
+    $decoded = str_ireplace(['&#40;', '&#x28;'], '(', $decoded);
+    $decoded = str_ireplace(['&#41;', '&#x29;'], ')', $decoded);
+    return trim($decoded);
+}
+
+/**
  * Returns list of profile names assigned to the specified user.
  */
 function get_user_pandora_profiles($pdo, $user_id): array {
@@ -949,10 +975,13 @@ function get_user_pandora_profiles($pdo, $user_id): array {
         $stProf = $pdo->prepare("SELECT DISTINCT p.name FROM tusuario_perfil up JOIN tperfil p ON up.id_perfil = p.id_perfil WHERE up.id_user = :user_id");
         $stProf->execute([':user_id' => $user_id]);
         while ($r = $stProf->fetch(PDO::FETCH_ASSOC)) {
-            if (!empty($r['name'])) $names[] = trim($r['name']);
+            if (!empty($r['name'])) {
+                $cleaned = clean_pandora_text($r['name']);
+                if ($cleaned !== '') $names[] = $cleaned;
+            }
         }
     } catch (Throwable $e) {}
-    return $names;
+    return array_values(array_unique($names));
 }
 
 /**
@@ -962,7 +991,17 @@ function get_all_pandora_profiles($pdo): array {
     if (!$pdo || !($pdo instanceof PDO)) return [];
     try {
         $stmt = $pdo->query("SELECT id_perfil, name FROM tperfil ORDER BY name ASC");
-        return $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        $res = [];
+        foreach ($rows as $r) {
+            $cleaned = clean_pandora_text($r['name']);
+            $res[] = [
+                'id_perfil' => $r['id_perfil'],
+                'name' => $cleaned,
+                'raw_name' => $r['name']
+            ];
+        }
+        return $res;
     } catch (Throwable $e) {
         return [];
     }
@@ -975,7 +1014,16 @@ function get_all_pandora_users($pdo): array {
     if (!$pdo || !($pdo instanceof PDO)) return [];
     try {
         $stmt = $pdo->query("SELECT id_user, comments, email FROM tusuario ORDER BY id_user ASC");
-        return $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        $res = [];
+        foreach ($rows as $r) {
+            $res[] = [
+                'id_user' => clean_pandora_text($r['id_user']),
+                'comments' => clean_pandora_text($r['comments'] ?? ''),
+                'email' => clean_pandora_text($r['email'] ?? '')
+            ];
+        }
+        return $res;
     } catch (Throwable $e) {
         return [];
     }
@@ -998,14 +1046,15 @@ function check_dashboard_access(?array $acl, string $user_id, string $action = '
         return true;
     }
 
+    // Default policy: Strict Pandora Administrator only. Non-admin users have no access.
     if (empty($acl) || !is_array($acl)) {
-        // Default backward-compatible behavior: View is open to all authenticated users, Edit is admin-only
-        return ($action === 'view');
+        return false;
     }
 
     $user_profiles = ($pdo) ? get_user_pandora_profiles($pdo, $user_id) : [];
-    $user_profiles_lower = array_map('strtolower', array_map('trim', $user_profiles));
-    $user_id_lower = strtolower(trim($user_id));
+    $user_profiles_lower = array_map('clean_pandora_text', $user_profiles);
+    $user_profiles_lower = array_map('strtolower', array_map('trim', $user_profiles_lower));
+    $user_id_lower = strtolower(clean_pandora_text($user_id));
 
     if ($action === 'edit' || $action === 'manage') {
         $edit_policy = $acl['edit_policy'] ?? 'admin_only';
@@ -1013,33 +1062,40 @@ function check_dashboard_access(?array $acl, string $user_id, string $action = '
             return false;
         }
         if ($edit_policy === 'profiles') {
-            $allowed_profiles = array_map('strtolower', array_map('trim', $acl['edit_profiles'] ?? []));
+            $allowed_profiles = array_map('clean_pandora_text', $acl['edit_profiles'] ?? []);
+            $allowed_profiles = array_map('strtolower', array_map('trim', $allowed_profiles));
             foreach ($user_profiles_lower as $up) {
                 if (in_array($up, $allowed_profiles, true)) return true;
             }
             return false;
         }
         if ($edit_policy === 'users') {
-            $allowed_users = array_map('strtolower', array_map('trim', $acl['edit_users'] ?? []));
+            $allowed_users = array_map('clean_pandora_text', $acl['edit_users'] ?? []);
+            $allowed_users = array_map('strtolower', array_map('trim', $allowed_users));
             return in_array($user_id_lower, $allowed_users, true);
         }
         return false;
     }
 
-    // View action
-    $view_policy = $acl['view_policy'] ?? 'all';
+    // View action: default is admin_only unless explicitly granted
+    $view_policy = $acl['view_policy'] ?? 'admin_only';
+    if ($view_policy === 'admin_only') {
+        return false;
+    }
     if ($view_policy === 'all') {
         return true;
     }
     if ($view_policy === 'profiles') {
-        $allowed_profiles = array_map('strtolower', array_map('trim', $acl['view_profiles'] ?? []));
+        $allowed_profiles = array_map('clean_pandora_text', $acl['view_profiles'] ?? []);
+        $allowed_profiles = array_map('strtolower', array_map('trim', $allowed_profiles));
         foreach ($user_profiles_lower as $up) {
             if (in_array($up, $allowed_profiles, true)) return true;
         }
         return false;
     }
     if ($view_policy === 'users') {
-        $allowed_users = array_map('strtolower', array_map('trim', $acl['view_users'] ?? []));
+        $allowed_users = array_map('clean_pandora_text', $acl['view_users'] ?? []);
+        $allowed_users = array_map('strtolower', array_map('trim', $allowed_users));
         return in_array($user_id_lower, $allowed_users, true);
     }
 
@@ -1056,27 +1112,127 @@ function user_has_any_dashboard_access(string $user_id, $pdo = null): bool {
     $base = dirname(__DIR__);
     $files = [
         $base . '/Dashboard/Topology-Network/topology_dashboards.json',
+        $base . '/Dashboard/Metrics-Dashboard/metrics_config.json',
         $base . '/Dashboard/Metrics-Dashboard/metrics-dashboards-saved.json',
         $base . '/Dashboard/Dynamic-Dashboard/dynamic-dashboards-master.json',
-        $base . '/Dashboard/Traffic-Dashboard/traffic-dashboard-saved.json'
+        $base . '/Dashboard/Traffic-Dashboard/traffic-dashboard-saved.json',
+        $base . '/Dashboard/Traffic-Dashboard/traffic-interface-saved.json',
+        $base . '/Dashboard/Route-Parser/route_dashboards.json',
+        $base . '/Dashboard/Network-Mapping/mapping_layout.json'
     ];
 
     foreach ($files as $file) {
         if (file_exists($file)) {
             $content = @file_get_contents($file);
-            $dashboards = json_decode($content, true);
-            if (is_array($dashboards)) {
-                foreach ($dashboards as $d) {
-                    $acl = $d['access_control'] ?? null;
-                    if (check_dashboard_access($acl, $user_id, 'view', $pdo)) {
-                        return true;
-                    }
+            $data = json_decode($content, true);
+            $dashboards = [];
+            if (is_array($data)) {
+                if (isset($data['dashboards']) && is_array($data['dashboards'])) {
+                    $dashboards = $data['dashboards'];
+                } else if (isset($data[0])) {
+                    $dashboards = $data;
+                }
+            }
+            foreach ($dashboards as $d) {
+                if (!is_array($d)) continue;
+                $acl = $d['access_control'] ?? null;
+                if (check_dashboard_access($acl, $user_id, 'view', $pdo)) {
+                    return true;
                 }
             }
         }
     }
 
     return false;
+}
+
+// Centralized AJAX endpoint for ACL options (profiles and users)
+if (isset($_GET['api']) && $_GET['api'] === 'get_acl_options') {
+    if (ob_get_level() > 0) ob_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    if (!$pdo || !($pdo instanceof PDO)) {
+        echo json_encode(['ok' => false, 'error' => 'Database connection unavailable']);
+        exit;
+    }
+    $profiles = get_all_pandora_profiles($pdo);
+    $users = get_all_pandora_users($pdo);
+    echo json_encode([
+        'ok' => true,
+        'profiles' => $profiles,
+        'users' => $users
+    ]);
+    exit;
+}
+
+/**
+ * Universal helper to save dashboard Access Control List (ACL) to a JSON file.
+ * Handles both associative mapping (id => dash) and list arrays ([ dash1, dash2 ]).
+ */
+function save_dashboard_acl_to_file(string $file, string $id, array $acl, bool $is_admin, string $csrf_token): array {
+    if (!$is_admin) {
+        http_response_code(403);
+        return ['ok' => false, 'error' => 'Unauthorized: Only the Pandora Administrator profile can configure access permissions.'];
+    }
+
+    $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
+    if (!empty($csrf_token) && !empty($client_token) && $client_token !== $csrf_token) {
+        return ['ok' => false, 'error' => 'Invalid CSRF Token. Refresh page.'];
+    }
+
+    if (empty($id) || !is_array($acl)) {
+        return ['ok' => false, 'error' => 'Invalid dashboard ID or access control payload.'];
+    }
+
+    if (!file_exists($file)) {
+        return ['ok' => false, 'error' => 'Dashboard configuration file not found.'];
+    }
+
+    $clean_acl = [
+        'view_policy' => in_array($acl['view_policy'] ?? '', ['admin_only', 'profiles', 'users', 'all'], true) ? $acl['view_policy'] : 'admin_only',
+        'view_profiles' => is_array($acl['view_profiles'] ?? null) ? array_values(array_unique(array_map('clean_pandora_text', $acl['view_profiles']))) : [],
+        'view_users' => is_array($acl['view_users'] ?? null) ? array_values(array_unique(array_map('clean_pandora_text', $acl['view_users']))) : [],
+        'edit_policy' => in_array($acl['edit_policy'] ?? '', ['admin_only', 'profiles', 'users'], true) ? $acl['edit_policy'] : 'admin_only',
+        'edit_profiles' => is_array($acl['edit_profiles'] ?? null) ? array_values(array_unique(array_map('clean_pandora_text', $acl['edit_profiles']))) : [],
+        'edit_users' => is_array($acl['edit_users'] ?? null) ? array_values(array_unique(array_map('clean_pandora_text', $acl['edit_users']))) : [],
+    ];
+
+    $content = @file_get_contents($file);
+    $data = json_decode($content, true);
+    if (!is_array($data)) $data = [];
+
+    $found = false;
+    // Case 1: Associative map (id => dashboard)
+    if (isset($data[$id]) && is_array($data[$id])) {
+        $data[$id]['access_control'] = $clean_acl;
+        $data[$id]['updated_at'] = date('Y-m-d H:i:s');
+        $found = true;
+    } else {
+        // Case 2: List of dashboards [ {...}, {...} ] or { dashboards: [ ... ] }
+        $list = &$data;
+        if (isset($data['dashboards']) && is_array($data['dashboards'])) {
+            $list = &$data['dashboards'];
+        }
+        foreach ($list as &$d) {
+            if (is_array($d) && ($d['id'] ?? '') === $id) {
+                $d['access_control'] = $clean_acl;
+                $d['updated_at'] = date('Y-m-d H:i:s');
+                $found = true;
+                break;
+            }
+        }
+        unset($d);
+    }
+
+    if (!$found) {
+        return ['ok' => false, 'error' => 'Dashboard not found in storage.'];
+    }
+
+    $written = @file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
+    if ($written === false) {
+        return ['ok' => false, 'error' => 'Failed writing permissions to storage file. Check file permissions.'];
+    }
+
+    return ['ok' => true, 'msg' => 'Access permissions saved successfully!', 'access_control' => $clean_acl];
 }
 
 /**

@@ -128,6 +128,17 @@ if ($api === 'save_config') {
     exit;
 }
 
+if ($api === 'save_dashboard_acl') {
+    if (ob_get_level() > 0) ob_clean(); 
+    header('Content-Type: application/json; charset=utf-8');
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $id = trim((string)($input['dashboard_id'] ?? ''));
+    $acl = $input['access_control'] ?? null;
+    $res = save_dashboard_acl_to_file($CONFIG_FILE, $id, $acl, $is_admin, $csrf_token);
+    echo json_encode($res);
+    exit;
+}
+
 if (!function_exists('get_hierarchical_groups')) {
     function get_hierarchical_groups(PDO $pdo, string $prefix_id = 'primary', string $node_label = ''): array {
         try {
@@ -1042,6 +1053,9 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 <span>Hidden</span>
             </button>
             <button class="btn-secondary-custom" onclick="copyDashboardShareLink()"><span class="material-symbols-outlined" style="font-size:18px!important;">share</span> Share</button>
+            <?php if ($is_admin): ?>
+            <button class="btn-secondary-custom" onclick="openDashboardAclModal(currentDashId)" title="Access Permissions (Profiles & Users)" style="color:#0d9488; font-weight:600;"><span class="material-symbols-outlined" style="font-size:18px!important; color:#0d9488;">shield_person</span> Access</button>
+            <?php endif; ?>
             <button class="btn-secondary-custom" onclick="duplicateDashboard()"><span class="material-symbols-outlined" style="font-size:18px!important;">content_copy</span> Duplicate</button>
             <button class="btn-secondary-custom" onclick="openDashMetaModal(true)"><span class="material-symbols-outlined" style="font-size:18px!important;">settings</span> Edit Info</button>
             <button class="btn-secondary-custom" onclick="openPanelBuilder()"><span class="material-symbols-outlined" style="font-size:18px!important;">add</span> Add Panel</button>
@@ -1416,6 +1430,8 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
 
 <script src="<?= h($vendor_url) ?>/sortablejs/Sortable.min.js"></script>
 <script>
+const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
+const CSRF_TOKEN = "<?= h($csrf_token) ?>";
 const PANDORA_URL = "<?= h($PANDORA_BASE_URL) ?>";
 const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
 const apiPage = 'Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php';
@@ -1829,6 +1845,10 @@ function renderDashboardList() {
                 <button class="btn-action" onclick="openDashboard('${d.id}')" title="Open Dashboard">
                     <span class="material-symbols-outlined">visibility</span>
                 </button>
+                ${IS_ADMIN ? `
+                <button class="btn-action" onclick="openDashboardAclModal('${d.id}', '${d.title ? d.title.replace(/'/g, "\\'") : ''}')" title="Access Permissions (Profiles & Users)">
+                    <span class="material-symbols-outlined">shield_person</span>
+                </button>
                 <button class="btn-action" onclick="editDashboardSettingsFromList('${d.id}')" title="Configure">
                     <span class="material-symbols-outlined">settings</span>
                 </button>
@@ -1844,6 +1864,7 @@ function renderDashboardList() {
                 <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')" title="Delete">
                     <span class="material-symbols-outlined">delete</span>
                 </button>
+                ` : ''}
             </td>
         `;
         tbody.appendChild(tr);
@@ -4431,5 +4452,6 @@ function downplayDynamicEchartsSeries(uniqueId, seriesName) {
 }
 
 </script>
+<?php require_once __DIR__ . '/../../includes/dashboard-acl-modal.php'; ?>
 </body>
 </html>

@@ -709,12 +709,12 @@ if (!empty($api)) {
         }
 
         $clean_acl = [
-            'view_policy' => in_array($acl['view_policy'] ?? '', ['all', 'profiles', 'users'], true) ? $acl['view_policy'] : 'all',
-            'view_profiles' => is_array($acl['view_profiles'] ?? null) ? array_values(array_unique(array_map('trim', $acl['view_profiles']))) : [],
-            'view_users' => is_array($acl['view_users'] ?? null) ? array_values(array_unique(array_map('trim', $acl['view_users']))) : [],
+            'view_policy' => in_array($acl['view_policy'] ?? '', ['admin_only', 'profiles', 'users', 'all'], true) ? $acl['view_policy'] : 'admin_only',
+            'view_profiles' => is_array($acl['view_profiles'] ?? null) ? array_values(array_unique(array_map('clean_pandora_text', $acl['view_profiles']))) : [],
+            'view_users' => is_array($acl['view_users'] ?? null) ? array_values(array_unique(array_map('clean_pandora_text', $acl['view_users']))) : [],
             'edit_policy' => in_array($acl['edit_policy'] ?? '', ['admin_only', 'profiles', 'users'], true) ? $acl['edit_policy'] : 'admin_only',
-            'edit_profiles' => is_array($acl['edit_profiles'] ?? null) ? array_values(array_unique(array_map('trim', $acl['edit_profiles']))) : [],
-            'edit_users' => is_array($acl['edit_users'] ?? null) ? array_values(array_unique(array_map('trim', $acl['edit_users']))) : [],
+            'edit_profiles' => is_array($acl['edit_profiles'] ?? null) ? array_values(array_unique(array_map('clean_pandora_text', $acl['edit_profiles']))) : [],
+            'edit_users' => is_array($acl['edit_users'] ?? null) ? array_values(array_unique(array_map('clean_pandora_text', $acl['edit_users']))) : [],
         ];
 
         $dashboards[$id]['access_control'] = $clean_acl;
@@ -3865,8 +3865,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
                     <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
                         <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
-                            <input type="radio" name="acl_view_policy" value="all" checked onchange="toggleAclPolicyViews()">
-                            <span><strong>Everyone:</strong> All authenticated users & embedded views</span>
+                            <input type="radio" name="acl_view_policy" value="admin_only" checked onchange="toggleAclPolicyViews()">
+                            <span><strong>Pandora Administrator Only:</strong> Strict administrator access (Default)</span>
                         </label>
                         <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
                             <input type="radio" name="acl_view_policy" value="profiles" onchange="toggleAclPolicyViews()">
@@ -3875,6 +3875,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
                             <input type="radio" name="acl_view_policy" value="users" onchange="toggleAclPolicyViews()">
                             <span><strong>Specific Users:</strong> Only designated user accounts</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; color:#334155;">
+                            <input type="radio" name="acl_view_policy" value="all" onchange="toggleAclPolicyViews()">
+                            <span><strong>Everyone:</strong> All authenticated users & embedded views</span>
                         </label>
                     </div>
 
@@ -4042,12 +4046,19 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         // Universal Client-Side Text Sanitizer: strips any raw entity remnants
         function cleanText(str) {
             if (!str) return '';
-            return String(str)
+            let txt = String(str);
+            try {
+                const doc = new DOMParser().parseFromString(txt, 'text/html');
+                txt = doc.body.textContent || txt;
+            } catch (e) {}
+            return txt
                 .replace(/&#x20;/gi, ' ')
                 .replace(/&amp;#x20;/gi, ' ')
                 .replace(/&#32;/gi, ' ')
                 .replace(/&nbsp;/gi, ' ')
                 .replace(/#@20;/gi, ' ')
+                .replace(/&#40;/gi, '(')
+                .replace(/&#41;/gi, ')')
                 .trim();
         }
 
@@ -4697,7 +4708,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             await fetchAclOptions();
 
             const acl = dash.access_control || {
-                view_policy: 'all',
+                view_policy: 'admin_only',
                 view_profiles: [],
                 view_users: [],
                 edit_policy: 'admin_only',
@@ -4705,10 +4716,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 edit_users: []
             };
 
-            // Set View Policy
+            // Set View Policy (default to admin_only)
             const viewPolicyRadios = document.getElementsByName('acl_view_policy');
             viewPolicyRadios.forEach(r => {
-                r.checked = (r.value === (acl.view_policy || 'all'));
+                r.checked = (r.value === (acl.view_policy || 'admin_only'));
             });
 
             // Set Edit Policy
@@ -4719,42 +4730,52 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
             // Populate View Profiles
             const vpList = document.getElementById('aclViewProfilesList');
+            const cleanViewProfiles = (acl.view_profiles || []).map(cleanText);
             vpList.innerHTML = aclCachedProfiles.map(p => {
-                const isChecked = (acl.view_profiles || []).includes(p.name) ? 'checked' : '';
+                const cName = cleanText(p.name);
+                const isChecked = cleanViewProfiles.includes(cName) ? 'checked' : '';
                 return `<label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
-                    <input type="checkbox" class="acl-vp-chk" value="${escapeHtml(p.name)}" ${isChecked}>
-                    <span>${escapeHtml(p.name)}</span>
+                    <input type="checkbox" class="acl-vp-chk" value="${escapeHtml(cName)}" ${isChecked}>
+                    <span>${escapeHtml(cName)}</span>
                 </label>`;
             }).join('');
 
             // Populate View Users
             const vuList = document.getElementById('aclViewUsersList');
+            const cleanViewUsers = (acl.view_users || []).map(cleanText);
             vuList.innerHTML = aclCachedUsers.map(u => {
-                const isChecked = (acl.view_users || []).includes(u.id_user) ? 'checked' : '';
-                const name = u.comments ? `${u.id_user} (${u.comments})` : u.id_user;
+                const cUser = cleanText(u.id_user);
+                const isChecked = cleanViewUsers.includes(cUser) ? 'checked' : '';
+                const cComm = cleanText(u.comments);
+                const name = cComm ? `${cUser} (${cComm})` : cUser;
                 return `<label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
-                    <input type="checkbox" class="acl-vu-chk" value="${escapeHtml(u.id_user)}" ${isChecked}>
+                    <input type="checkbox" class="acl-vu-chk" value="${escapeHtml(cUser)}" ${isChecked}>
                     <span>${escapeHtml(name)}</span>
                 </label>`;
             }).join('');
 
             // Populate Edit Profiles
             const epList = document.getElementById('aclEditProfilesList');
+            const cleanEditProfiles = (acl.edit_profiles || []).map(cleanText);
             epList.innerHTML = aclCachedProfiles.map(p => {
-                const isChecked = (acl.edit_profiles || []).includes(p.name) ? 'checked' : '';
+                const cName = cleanText(p.name);
+                const isChecked = cleanEditProfiles.includes(cName) ? 'checked' : '';
                 return `<label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
-                    <input type="checkbox" class="acl-ep-chk" value="${escapeHtml(p.name)}" ${isChecked}>
-                    <span>${escapeHtml(p.name)}</span>
+                    <input type="checkbox" class="acl-ep-chk" value="${escapeHtml(cName)}" ${isChecked}>
+                    <span>${escapeHtml(cName)}</span>
                 </label>`;
             }).join('');
 
             // Populate Edit Users
             const euList = document.getElementById('aclEditUsersList');
+            const cleanEditUsers = (acl.edit_users || []).map(cleanText);
             euList.innerHTML = aclCachedUsers.map(u => {
-                const isChecked = (acl.edit_users || []).includes(u.id_user) ? 'checked' : '';
-                const name = u.comments ? `${u.id_user} (${u.comments})` : u.id_user;
+                const cUser = cleanText(u.id_user);
+                const isChecked = cleanEditUsers.includes(cUser) ? 'checked' : '';
+                const cComm = cleanText(u.comments);
+                const name = cComm ? `${cUser} (${cComm})` : cUser;
                 return `<label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
-                    <input type="checkbox" class="acl-eu-chk" value="${escapeHtml(u.id_user)}" ${isChecked}>
+                    <input type="checkbox" class="acl-eu-chk" value="${escapeHtml(cUser)}" ${isChecked}>
                     <span>${escapeHtml(name)}</span>
                 </label>`;
             }).join('');
@@ -4772,7 +4793,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         function toggleAclPolicyViews() {
-            const viewPolicy = document.querySelector('input[name="acl_view_policy"]:checked')?.value || 'all';
+            const viewPolicy = document.querySelector('input[name="acl_view_policy"]:checked')?.value || 'admin_only';
             const editPolicy = document.querySelector('input[name="acl_edit_policy"]:checked')?.value || 'admin_only';
 
             document.getElementById('aclViewProfilesBox').style.display = (viewPolicy === 'profiles') ? 'block' : 'none';
@@ -4790,7 +4811,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             btn.disabled = true;
             btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">hourglass_empty</span> Saving...';
 
-            const viewPolicy = document.querySelector('input[name="acl_view_policy"]:checked')?.value || 'all';
+            const viewPolicy = document.querySelector('input[name="acl_view_policy"]:checked')?.value || 'admin_only';
             const editPolicy = document.querySelector('input[name="acl_edit_policy"]:checked')?.value || 'admin_only';
 
             const viewProfiles = Array.from(document.querySelectorAll('.acl-vp-chk:checked')).map(el => el.value);

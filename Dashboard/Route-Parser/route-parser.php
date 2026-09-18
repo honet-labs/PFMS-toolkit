@@ -45,8 +45,9 @@ if (file_exists($db_connection_file)) {
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-$user_id = $_SESSION['id_usuario'] ?? 0;
+$user_id = $_SESSION['id_usuario'] ?? '';
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
+$is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pandora_administrator($pdo, $user_id);
 $is_standalone = isset($_GET['standalone']) || isset($_GET['embed']);
 $is_demo_param = isset($_GET['demo']) || isset($_GET['debug']);
 $is_realtime_api = (isset($_GET['api']) && $_GET['api'] === 'get_realtime_data');
@@ -426,8 +427,26 @@ if (empty($dashboards) && !empty($available_agents)) {
     }
 }
 
+// Filter dashboards for non-admin viewers
+if (!$is_admin && is_array($dashboards)) {
+    $dashboards = array_values(array_filter($dashboards, function($d) use ($user_id, $pdo) {
+        return check_dashboard_access($d['access_control'] ?? null, (string)$user_id, 'view', $pdo);
+    }));
+}
+
 // --- 4. AJAX API ENDPOINTS ---
 $api = $_GET['api'] ?? '';
+
+if ($api === 'save_dashboard_acl') {
+    if (ob_get_level() > 0) ob_clean(); 
+    header('Content-Type: application/json; charset=utf-8');
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $id = trim((string)($input['dashboard_id'] ?? ''));
+    $acl = $input['access_control'] ?? null;
+    $res = save_dashboard_acl_to_file($CONFIG_FILE, $id, $acl, $is_admin, $csrf_token);
+    echo json_encode($res);
+    exit;
+}
 
 if ($api === 'auto_scan') {
     if (ob_get_level() > 0) ob_clean();
@@ -1589,8 +1608,11 @@ if (!$current_dashboard):
                                 <td style="text-align:right; white-space:nowrap;">
                                     <a href="<?= $dash_url ?>" class="btn-action-text" title="View Topology">View</a>
                                     <button class="btn-action-text" title="Share URL" onclick="openShareModal('<?= h($d['id']) ?>', '<?= h(addslashes($dash_name)) ?>', '<?= h($standalone_url) ?>', '<?= h($dash_url) ?>')">Share</button>
+                                    <?php if ($is_admin): ?>
+                                    <button class="btn-action-text" title="Access Permissions (Profiles & Users)" style="color:#0d9488; font-weight:600;" onclick="openDashboardAclModal('<?= h($d['id']) ?>', '<?= h(addslashes($dash_name)) ?>')">Access</button>
                                     <button class="btn-action-text" title="Edit Settings" onclick="openEditModal(<?= htmlspecialchars(json_encode($d), ENT_QUOTES, 'UTF-8') ?>)">Edit</button>
                                     <button class="btn-action-text btn-delete-text" title="Delete Dashboard" onclick="deleteDashboard('<?= h($d['id']) ?>', '<?= h(addslashes($dash_name)) ?>')">Delete</button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -2944,6 +2966,12 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
                     <span class="material-symbols-outlined" style="font-size:16px;">share</span>
                     Share
                 </button>
+                <?php if ($is_admin): ?>
+                <button class="btn-action-icon" title="Configure Access Permissions (Profiles & Users)" style="color:#0d9488; font-weight:600;" onclick="openDashboardAclModal('<?= h($active_dashboard['id'] ?? '') ?>', '<?= h(addslashes($active_dashboard['name'] ?? 'Route Path')) ?>')">
+                    <span class="material-symbols-outlined" style="font-size:16px; color:#0d9488;">shield_person</span>
+                    Access
+                </button>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -3765,5 +3793,6 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
 
         })();
     </script>
+    <?php require_once __DIR__ . '/../../includes/dashboard-acl-modal.php'; ?>
 </body>
 </html>

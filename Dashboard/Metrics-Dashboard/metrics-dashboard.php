@@ -121,6 +121,17 @@ if ($api === 'save_config') {
     ]); 
     exit;
 }
+
+if ($api === 'save_dashboard_acl') {
+    ob_clean(); 
+    header('Content-Type: application/json; charset=utf-8');
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $id = trim((string)($input['dashboard_id'] ?? ''));
+    $acl = $input['access_control'] ?? null;
+    $res = save_dashboard_acl_to_file($CONFIG_FILE, $id, $acl, $is_admin, $csrf_token);
+    echo json_encode($res);
+    exit;
+}
 if (!function_exists('get_hierarchical_groups')) {
     function get_hierarchical_groups(PDO $pdo, string $prefix_id = 'primary', string $node_label = ''): array {
         try {
@@ -1160,7 +1171,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
     
     <div class="top-controls d-none" id="detailTopControls">
         <button class="btn-secondary-custom" onclick="closeDashboard()" title="Back to List"><span class="material-symbols-outlined">arrow_back</span> Back</button>
+        <?php if ($is_admin): ?>
+        <button class="btn-secondary-custom" onclick="openDashboardAclModal(currentDashId)" title="Access Permissions (Profiles & Users)" style="color:#0d9488; font-weight:600;"><span class="material-symbols-outlined" style="font-size:18px!important; color:#0d9488;">shield_person</span> Access</button>
         <button class="btn-apply" onclick="openBuilder()"><span class="material-symbols-outlined">add</span> Add Widget</button>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -1921,6 +1935,8 @@ function closeNativeModuleDetailModal() {
     }
 }
 
+const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
+const CSRF_TOKEN = "<?= h($csrf_token) ?>";
 const iconChart  = `<span class="material-symbols-outlined" style="font-size:16px!important; color:#1976d2;">monitoring</span>`;
 const iconEdit = `<span class="material-symbols-outlined">edit</span>`;
 const iconDelete = `<span class="material-symbols-outlined" style="color:#e74c3c;">delete</span>`;
@@ -2270,6 +2286,10 @@ function renderDashboardList() {
                 <button class="btn-action" onclick="openDashboard('${d.id}')" title="Open Dashboard">
                     <span class="material-symbols-outlined">visibility</span>
                 </button>
+                ${IS_ADMIN ? `
+                <button class="btn-action" onclick="openDashboardAclModal('${d.id}', '${d.title ? d.title.replace(/'/g, "\\'") : ''}')" title="Access Permissions (Profiles & Users)">
+                    <span class="material-symbols-outlined">shield_person</span>
+                </button>
                 <button class="btn-action" onclick="editDashboardSettingsFromList('${d.id}')" title="Rename Settings">
                     <span class="material-symbols-outlined">settings</span>
                 </button>
@@ -2285,6 +2305,7 @@ function renderDashboardList() {
                 <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')" title="Delete Dashboard">
                     <span class="material-symbols-outlined">delete</span>
                 </button>
+                ` : ''}
             </td>
         `;
         tbody.appendChild(tr);
@@ -4973,6 +4994,7 @@ function escapeHtml(unsafe) {
 }
 
 </script>
+<?php require_once __DIR__ . '/../../includes/dashboard-acl-modal.php'; ?>
 </body>
 </html>
 

@@ -45,6 +45,8 @@ if (empty($csrf_token)) {
     $csrf_token = bin2hex(random_bytes(32));
     $_SESSION['pfms_csrf_token'] = $csrf_token;
 }
+$user_id = $_SESSION['id_usuario'] ?? '';
+$is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pandora_administrator($pdo, $user_id);
 
 // 3. HELPERS
 if (!function_exists('valid_ip')) {
@@ -116,14 +118,27 @@ $api = $_GET['api'] ?? '';
 if ($api === 'load_config') {
     http_response_code(200);
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
-    if(file_exists($CONFIG_FILE)) { echo file_get_contents($CONFIG_FILE); } 
-    else { echo json_encode([]); } 
+    if(file_exists($CONFIG_FILE)) { 
+        $content = file_get_contents($CONFIG_FILE); 
+        $dashboards = json_decode($content, true);
+        if (!$is_admin && is_array($dashboards)) {
+            $dashboards = array_values(array_filter($dashboards, function($d) use ($user_id, $pdo) {
+                return check_dashboard_access($d['access_control'] ?? null, (string)$user_id, 'view', $pdo);
+            }));
+        }
+        echo json_encode($dashboards ?: []);
+    } else { echo json_encode([]); } 
     exit;
 }
 
 if ($api === 'save_config') {
     http_response_code(200);
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
+    if (!$is_admin) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'Restricted Access (View Only): Only Pandora Administrator can modify configurations.']);
+        exit;
+    }
     $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if (empty($csrf_token) || $client_token !== $csrf_token) {
         echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh portal.']); exit;
@@ -142,6 +157,21 @@ if ($api === 'save_config') {
         }
         echo json_encode(['ok' => true, 'file' => basename($CONFIG_FILE)]);
     }
+    exit;
+}
+
+if ($api === 'save_dashboard_acl') {
+    if (ob_get_level() > 0) ob_clean(); 
+    header('Content-Type: application/json; charset=utf-8');
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $id = trim((string)($input['dashboard_id'] ?? ''));
+    $acl = $input['access_control'] ?? null;
+    $res = save_dashboard_acl_to_file($CONFIG_FILE, $id, $acl, $is_admin, $csrf_token);
+    $alt_file = ($CONFIG_FILE === __DIR__ . '/traffic-dashboard-saved.json') ? __DIR__ . '/traffic-interface-saved.json' : __DIR__ . '/traffic-dashboard-saved.json';
+    if (file_exists($alt_file) && $res['ok']) {
+        @file_put_contents($alt_file, file_get_contents($CONFIG_FILE));
+    }
+    echo json_encode($res);
     exit;
 }
 
@@ -1587,6 +1617,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         </div>
                     </div>
                     <button class="btn-neutral" style="height:32px; padding:0 12px;" onclick="copyShareLink()" title="Share Dashboard"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">share</span> <span class="btn-text">Share</span></button>
+                    <?php if ($is_admin): ?>
+                    <button class="btn-neutral" style="height:32px; padding:0 12px; color:#0d9488; font-weight:600;" onclick="openDashboardAclModal(currentDashId)" title="Access Permissions (Profiles & Users)"><span class="material-symbols-outlined" style="font-size:16px!important; color:#0d9488;">shield_person</span> <span class="btn-text">Access</span></button>
+                    <?php endif; ?>
                     <button class="btn-neutral" style="height:32px; padding:0 12px;" onclick="fetchData()" title="Refresh Data"><span class="material-symbols-outlined" style="font-size:16px!important; color:#64748b;">sync</span> <span class="btn-text">Refresh</span></button>
                 </div>
             </div>
@@ -1744,6 +1777,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
 <script>
     const CSRF_TOKEN = '<?= $csrf_token ?>';
+    const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
     const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
     const DIRECT_SCRIPT_URL = '<?= $directScriptUrl ?>';
     const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
@@ -1935,6 +1969,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                     <button class="btn-action" onclick="openDashboard('${d.id}')" title="Open Dashboard">
                         <span class="material-symbols-outlined">visibility</span>
                     </button>
+                    ${IS_ADMIN ? `
+                    <button class="btn-action" onclick="openDashboardAclModal('${d.id}', '${d.name ? d.name.replace(/'/g, "\\'") : ''}')" title="Access Permissions (Profiles & Users)">
+                        <span class="material-symbols-outlined">shield_person</span>
+                    </button>
                     <button class="btn-action" onclick="editDashboard('${d.id}')" title="Configure">
                         <span class="material-symbols-outlined">settings</span>
                     </button>
@@ -1950,6 +1988,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                     <button class="btn-action btn-delete" onclick="deleteDashboard('${d.id}')" title="Delete">
                         <span class="material-symbols-outlined">delete</span>
                     </button>
+                    ` : ''}
                 </div>
                 <div class="action-dropdown-mobile dropdown">
                     <button class="btn-icon-only btn-more" onclick="toggleActionDropdown(event, this)" title="Actions">
@@ -1958,6 +1997,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                     <div class="dropdown-menu-custom">
                         <a href="#" onclick="event.preventDefault(); openDashboard('${d.id}')">
                             <span class="material-symbols-outlined">visibility</span> Open Dashboard
+                        </a>
+                        ${IS_ADMIN ? `
+                        <a href="#" onclick="event.preventDefault(); openDashboardAclModal('${d.id}', '${d.name ? d.name.replace(/'/g, "\\'") : ''}')">
+                            <span class="material-symbols-outlined">shield_person</span> Access Permissions
                         </a>
                         <a href="#" onclick="event.preventDefault(); editDashboard('${d.id}')">
                             <span class="material-symbols-outlined">settings</span> Configure
@@ -1974,6 +2017,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                         <a href="#" class="delete-item" onclick="event.preventDefault(); deleteDashboard('${d.id}')">
                             <span class="material-symbols-outlined">delete</span> Delete
                         </a>
+                        ` : ''}
                     </div>
                 </div>
             </td>
@@ -3025,5 +3069,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
     });
 </script>
+<?php require_once __DIR__ . '/../../includes/dashboard-acl-modal.php'; ?>
 </body>
 </html>

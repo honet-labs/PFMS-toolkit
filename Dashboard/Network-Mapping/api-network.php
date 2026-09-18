@@ -138,18 +138,36 @@ if (!$db_status) {
 try {
     if ($api === 'load_config') {
         $config = load_multi_dashboard_config($layout_file);
+        $user_id = $_SESSION['id_usuario'] ?? '';
+        $is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pandora_administrator($pdo, $user_id);
         $dashes = [];
         foreach ($config['dashboards'] as $d) {
+            if (!$is_admin && !check_dashboard_access($d['access_control'] ?? null, (string)$user_id, 'view', $pdo)) {
+                continue;
+            }
             $dashes[] = [
                 'id' => $d['id'],
                 'name' => $d['name'],
                 'group_id' => $d['group_id'] ?? '0',
                 'group_name' => $d['group_name'] ?? 'All Groups',
                 'agent_id' => $d['agent_id'] ?? '0',
-                'agent_name' => $d['agent_name'] ?? 'All Nodes'
+                'agent_name' => $d['agent_name'] ?? 'All Nodes',
+                'access_control' => $d['access_control'] ?? null
             ];
         }
         echo json_encode($dashes);
+        exit;
+    }
+
+    if ($api === 'save_dashboard_acl') {
+        ob_clean();
+        $user_id = $_SESSION['id_usuario'] ?? '';
+        $is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pandora_administrator($pdo, $user_id);
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $id = trim((string)($input['dashboard_id'] ?? ''));
+        $acl = $input['access_control'] ?? null;
+        $res = save_dashboard_acl_to_file($layout_file, $id, $acl, $is_admin, $csrf_token);
+        echo json_encode($res);
         exit;
     }
 
