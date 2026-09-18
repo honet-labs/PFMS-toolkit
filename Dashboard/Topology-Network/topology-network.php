@@ -3629,7 +3629,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         </colgroup>
                         <thead>
                             <tr>
-                                <th style="width: 48px; text-align: center;">Select</th>
+                                <th style="width: 48px; text-align: center;">
+                                    <input type="checkbox" id="addNodeSelectAll" onchange="toggleSelectAllAddNode(this.checked)" style="cursor: pointer; accent-color: #094d4a; width: 16px; height: 16px; vertical-align: middle;" title="Select / Deselect all on this page">
+                                </th>
                                 <th>Agent Name / Alias</th>
                                 <th style="width: 130px;">IP Address</th>
                                 <th style="width: 160px;">Group</th>
@@ -5338,7 +5340,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         let addNodeSearchQuery = '';
         let addNodeSelectedGroupId = '';
         let addNodeRecursion = true;
-        let addNodePickedAgentId = null;
+        let addNodePickedAgentIds = new Set();
+        let currentFilteredPageItems = [];
         let contextActiveNode = null;
         let contextActiveEdge = null;
 
@@ -5377,14 +5380,13 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             addNodePage = 1;
             addNodeSearchQuery = '';
             addNodeSelectedGroupId = '';
-            addNodePickedAgentId = null;
+            addNodePickedAgentIds.clear();
             
             const searchInput = document.getElementById('addNodeAgentSearch');
             if (searchInput) searchInput.value = '';
             const groupSelect = document.getElementById('addNodeGroupSelect');
             if (groupSelect) groupSelect.value = '';
-            const lbl = document.getElementById('addNodeSelectedLabel');
-            if (lbl) lbl.innerText = 'None';
+            updateAddNodeSelectedLabel();
 
             renderAddNodePage();
             document.getElementById('addNodeModal').style.display = 'flex';
@@ -5461,6 +5463,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const startIndex = (addNodePage - 1) * ADD_NODE_PAGE_SIZE;
             const endIndex = Math.min(startIndex + ADD_NODE_PAGE_SIZE, total);
             const pageItems = filtered.slice(startIndex, endIndex);
+            currentFilteredPageItems = pageItems;
 
             // Update Page Info
             if (pageInfo) {
@@ -5471,12 +5474,23 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 }
             }
 
-            // Update Selected Label in Footer
-            const curPick = availableAgents.find(x => x.id === addNodePickedAgentId);
-            const lbl = document.getElementById('addNodeSelectedLabel');
-            if (lbl) {
-                lbl.innerText = curPick ? `${cleanText(curPick.name)} (${cleanText(curPick.ip || '-')})` : 'None';
+            // Update Select All Checkbox state on header
+            const selectAllEl = document.getElementById('addNodeSelectAll');
+            if (selectAllEl) {
+                if (pageItems.length > 0 && pageItems.every(a => addNodePickedAgentIds.has(parseInt(a.id)))) {
+                    selectAllEl.checked = true;
+                    selectAllEl.indeterminate = false;
+                } else if (pageItems.some(a => addNodePickedAgentIds.has(parseInt(a.id)))) {
+                    selectAllEl.checked = false;
+                    selectAllEl.indeterminate = true;
+                } else {
+                    selectAllEl.checked = false;
+                    selectAllEl.indeterminate = false;
+                }
             }
+
+            // Update Selected Count / Label in Footer
+            updateAddNodeSelectedLabel();
 
             // Render Table Rows (10 agents per page)
             if (pageItems.length === 0) {
@@ -5491,7 +5505,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             } else {
                 let html = '';
                 pageItems.forEach(a => {
-                    const isSelected = (addNodePickedAgentId === a.id);
+                    const isSelected = addNodePickedAgentIds.has(parseInt(a.id));
                     const statusVal = a.status || 'normal';
                     let statusBadge = '<span class="status-pill-up">● Normal</span>';
                     if (statusVal === 'critical') {
@@ -5501,9 +5515,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     }
 
                     html += `
-                        <tr class="${isSelected ? 'selected' : ''}" onclick="selectAddNodeAgent(${a.id})" style="cursor:pointer; transition: background 0.15s;">
+                        <tr class="${isSelected ? 'selected' : ''}" onclick="toggleAddNodeAgent(${a.id})" style="cursor:pointer; transition: background 0.15s;">
                             <td style="text-align:center; width:48px;">
-                                <input type="radio" name="add_node_agent_choice" value="${a.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); selectAddNodeAgent(${a.id});" style="cursor:pointer; accent-color:#094d4a;">
+                                <input type="checkbox" class="add-node-agent-chk" value="${a.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleAddNodeAgent(${a.id});" style="cursor:pointer; accent-color:#094d4a; width:16px; height:16px; vertical-align:middle;">
                             </td>
                             <td style="overflow:hidden;">
                                 <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
@@ -5560,20 +5574,58 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             }
         }
 
+        function updateAddNodeSelectedLabel() {
+            const lbl = document.getElementById('addNodeSelectedLabel');
+            const submitBtn = document.getElementById('btnAddAgentNodeSubmit');
+            const count = addNodePickedAgentIds.size;
+            if (lbl) {
+                if (count === 0) {
+                    lbl.innerText = 'None';
+                } else if (count === 1) {
+                    const onlyId = Array.from(addNodePickedAgentIds)[0];
+                    const a = availableAgents.find(x => parseInt(x.id) === onlyId);
+                    lbl.innerText = a ? `${cleanText(a.name)} (${cleanText(a.ip || '-')})` : '1 agent selected';
+                } else {
+                    lbl.innerText = `${count} agents selected`;
+                }
+            }
+            if (submitBtn) {
+                submitBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size: 16px;">add_circle</span> Add ${count > 1 ? count + ' agent nodes' : 'agent node'}`;
+            }
+        }
+
         function changeAddNodePage(p) {
             addNodePage = p;
             renderAddNodePage();
         }
 
-        function selectAddNodeAgent(agentId) {
-            addNodePickedAgentId = parseInt(agentId);
+        function toggleAddNodeAgent(agentId) {
+            agentId = parseInt(agentId);
+            if (addNodePickedAgentIds.has(agentId)) {
+                addNodePickedAgentIds.delete(agentId);
+            } else {
+                addNodePickedAgentIds.add(agentId);
+            }
+            renderAddNodePage();
+        }
+
+        function toggleSelectAllAddNode(checked) {
+            const items = currentFilteredPageItems || [];
+            items.forEach(a => {
+                const aid = parseInt(a.id);
+                if (checked) {
+                    addNodePickedAgentIds.add(aid);
+                } else {
+                    addNodePickedAgentIds.delete(aid);
+                }
+            });
             renderAddNodePage();
         }
 
         async function submitAddAgentNode() {
             if (!activeDashId) return;
-            if (!addNodePickedAgentId) {
-                alert('Please select an agent to add.');
+            if (addNodePickedAgentIds.size === 0) {
+                alert('Please select at least one agent to add.');
                 return;
             }
 
@@ -5585,17 +5637,25 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 currentList = rawTopologyData.nodes.map(n => parseInt(n.agent_id)).filter(x => x > 0);
             }
 
-            if (currentList.includes(addNodePickedAgentId)) {
-                showToast('Agent is already on this topology map', 'warning');
+            const newPicked = Array.from(addNodePickedAgentIds).map(x => parseInt(x));
+            let addedCount = 0;
+            newPicked.forEach(id => {
+                if (!currentList.includes(id)) {
+                    currentList.push(id);
+                    addedCount++;
+                }
+            });
+
+            if (addedCount === 0) {
+                showToast('All selected agents are already on this topology map', 'warning');
                 closeAddNodeModal();
                 return;
             }
 
-            currentList.push(addNodePickedAgentId);
             const btn = document.getElementById('btnAddAgentNodeSubmit');
             btn.disabled = true;
             const origHtml = btn.innerHTML;
-            btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Adding...';
+            btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Adding agents...';
 
             try {
                 const res = await fetch(getApiUrl('save_dashboard_devices'), {
@@ -5617,10 +5677,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         currentDash.node_count = currentList.length;
                     }
                     closeAddNodeModal();
-                    showToast('Agent added to topology map', 'success');
+                    showToast(`${addedCount} agent node${addedCount > 1 ? 's' : ''} added to topology`, 'success');
                     loadTopologyData(activeDashId);
                 } else {
-                    alert('Failed to add agent: ' + (data.error || 'Unknown error'));
+                    alert('Failed to add agents: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
                 alert('Network error: ' + err.message);
