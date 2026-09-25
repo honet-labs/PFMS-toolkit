@@ -282,6 +282,24 @@ if ($db_status && $pdo) {
 $node_uuid_to_id[$primary_uuid] = 'primary';
 $node_id_to_uuid['primary'] = $primary_uuid;
 
+// Resolve Historical Database UUID
+$history_uuid = 'history';
+if ($history_db_status && $pdo_history) {
+    try {
+        $stmt = $pdo_history->query("SELECT value FROM tconfig WHERE token = 'server_unique_identifier'");
+        if ($stmt) {
+            $val = $stmt->fetchColumn();
+            if (!empty($val)) {
+                $history_uuid = trim($val);
+            }
+        }
+    } catch (Throwable $e) {
+        error_log("Failed to resolve history server_unique_identifier: " . $e->getMessage());
+    }
+}
+$node_uuid_to_id[$history_uuid] = 'history';
+$node_id_to_uuid['history'] = $history_uuid;
+
 // Resolve Custom Connections
 if (!empty($custom_pdos)) {
     foreach ($custom_pdos as $cid => $cpdo) {

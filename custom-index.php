@@ -98,6 +98,8 @@ if (file_exists($portal_config_file)) {
         $config_data['github_token'] = $loaded_config['github_token'] ?? '';
     }
 }
+$primary_override = $config_data['primary_override'];
+$history_override = $config_data['history_override'];
 
 // Ensure critical system files/dirs are ALWAYS excluded
 $sys_dirs = ['.', '..', '.git'];
@@ -1861,11 +1863,18 @@ if (!empty($current_page)) {
         
         if (type === 'primary') {
             primaryOverrideCopy = overrideObj;
+            const statEl = document.getElementById('primary_conn_status');
+            if (statEl) {
+                statEl.innerHTML = '<span style="display:inline-block; width:8px; height:8px; background-color:#0284c7; border-radius:50%;"></span><span style="font-size:11px; color:#0369a1; font-weight:600; background-color:#e0f2fe; padding:2px 6px; border-radius:4px;">Pending Save (Click Save & Reload)</span>';
+            }
         } else {
             historyOverrideCopy = overrideObj;
+            const statEl = document.getElementById('default_history_conn_status');
+            if (statEl) {
+                statEl.innerHTML = '<span style="display:inline-block; width:8px; height:8px; background-color:#0284c7; border-radius:50%;"></span><span style="font-size:11px; color:#0369a1; font-weight:600; background-color:#e0f2fe; padding:2px 6px; border-radius:4px;">Pending Save (Click Save & Reload)</span>';
+            }
         }
 
-        alert((type === 'primary' ? 'Primary' : 'Historical') + ' Database override settings saved to memory. Click "Save & Reload" to apply permanently.');
         cancelCoreOverrideForm();
     }
 
@@ -2064,6 +2073,26 @@ if (!empty($current_page)) {
     }
 
     async function saveSettings() {
+        // Auto-commit Core Override Form if user left it open with input values
+        const coreForm = document.getElementById('coreOverrideForm');
+        if (coreForm && coreForm.style.display !== 'none') {
+            const coreType = document.getElementById('core_override_type').value;
+            const cHost = document.getElementById('core_override_host').value.trim();
+            const cPort = document.getElementById('core_override_port').value.trim() || '3306';
+            const cDb = document.getElementById('core_override_dbname').value.trim();
+            const cUser = document.getElementById('core_override_user').value.trim();
+            const cPass = document.getElementById('core_override_pass').value;
+
+            if (cHost && cDb && cUser) {
+                const coreObj = { host: cHost, port: cPort, dbname: cDb, user: cUser, pass: cPass };
+                if (coreType === 'primary') {
+                    primaryOverrideCopy = coreObj;
+                } else {
+                    historyOverrideCopy = coreObj;
+                }
+            }
+        }
+
         const btn = event.currentTarget;
         btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px!important;">sync</span> Saving...';
         btn.disabled = true;
