@@ -5,7 +5,6 @@
         "assets",
         "includes",
         "scanning-mib",
-        "snmp-explorer",
         "scratch",
         "vendor",
         "Engine",

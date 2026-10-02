@@ -2,6 +2,24 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.8] - 2026-10-02 (SNMP Explorer - Device Discovery, Sensor Normalization & Pandora Provisioning)
+### Added
+- **Brand New Module: `SNMP Explorer` (`tools/snmp-explorer/`):**
+  - Mengadopsi arsitektur dan kapabilitas dari `snmp-bridge` dengan modernisasi antarmuka pengguna (UI/UX) sesuai standar PFMS-Toolkit.
+  - Sidebar scanner secara otomatis merender menu baru **`Tools` > `Snmp Explorer`**.
+- **Discovery Engine & Multi-Profile Scanner:**
+  - Mendukung pemindaian perangkat tunggal (*Single IP*) dan Subnet (*CIDR Range* e.g. `192.168.1.0/24`).
+  - Dilengkapi 9 profil pemindaian: `provisioning`, `network`, `system`, `router_switch`, `olt`, `rectifier`, `cctv`, `printer`, dan `full`.
+  - Integrasi adapter vendor cerdas: **Huawei** (dengan formula offset GPON optical DDM), **Cisco**, **ZTE**, **Raisecom**, **Alcatel/Nokia**, **Dahua**, **F5**, dan **Epson**.
+  - Normalisasi satuan otomatis (dBm, Celsius, Volt, Ampere, bps, rpm) dan penyaringan nilai sentinel tak valid.
+- **Sensor Inventory & Batch Management:**
+  - Tabel inventaris sensor terpadu dengan pencarian OID/Nama Sensor, filter vendor, filter sensor class, dan filter status provisioning.
+  - Checkbox pemilihan sensor massal (*bulk select*) dengan badge indikator interaktif.
+- **Direct Pandora FMS Provisioning Engine:**
+  - Integrasi langsung ke tabel `tagente_modulo` dan `tagente` menggunakan koneksi `$pdo` aktif Pandora FMS.
+  - Mendukung pemilihan agen target yang ada atau pembuatan agen baru secara instan (*Quick Create Agent*).
+  - Mekanisme idempotent berbasis `custom_id` (`snmpbridge:sensor:{id}`) untuk mencegah duplikasi modul.
+
 ## [2.7] - 2026-09-18 (Topology Network - Brand New Module with Group/Agent Discovery & VMware SDDC Visualization)
 ### Added
 - **Brand New Module: `Topology Network` (`Dashboard/Topology-Network/`):**
