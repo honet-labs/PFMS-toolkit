@@ -4,7 +4,7 @@
  * Version: 1.0.4 (Architecture Update & Auto-Updater)
  */
 
-define('PORTAL_VERSION', '1.0.4');
+define('PORTAL_VERSION', '2.8');
 
 // 1. SECURITY HEADERS
 header("X-Frame-Options: SAMEORIGIN");
@@ -584,7 +584,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
     ];
 
     $cache_file = $base_dir . '/temp/update_cache.json';
-    $cache_lifetime = 10800; // 3 hours
+    $cache_lifetime = 60; // 1 minute (auto-detection stays fresh)
     $force = isset($_GET['force']) && $_GET['force'] === '1';
 
     if (!$force && file_exists($cache_file) && (time() - filemtime($cache_file)) < $cache_lifetime) {
@@ -595,38 +595,65 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
         }
     }
 
+    // 1. Resolve local SHA and version (from version.json or git rev-parse)
+    $local_sha = '';
+    $local_version = defined('PORTAL_VERSION') ? PORTAL_VERSION : '2.8';
+    $version_file = $base_dir . '/version.json';
+    if (file_exists($version_file)) {
+        $v_data = json_decode(@file_get_contents($version_file), true);
+        if (is_array($v_data)) {
+            if (!empty($v_data['commit_sha'])) $local_sha = trim($v_data['commit_sha']);
+            if (!empty($v_data['version'])) $local_version = trim($v_data['version']);
+        }
+    }
+
     $is_git = is_dir($base_dir . '/.git');
     $git_available = false;
     if ($is_git) {
         @exec('git --version', $out, $status);
         if ($status === 0) {
             $git_available = true;
+            $git_sha = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-parse HEAD 2>&1'));
+            if (!empty($git_sha) && strlen($git_sha) === 40) {
+                $local_sha = $git_sha;
+            }
         }
     }
 
     if ($git_available) {
-        $remote_url = trim(@shell_exec('git remote get-url origin 2>&1'));
+        $remote_url = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' remote get-url origin 2>&1'));
         if (stripos($remote_url, 'aannddrrii294/PFMS-Toolkit') !== false) {
-            @exec('git remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
+            @exec('git -C ' . escapeshellarg($base_dir) . ' remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
         }
 
         $fetch_output = [];
         $fetch_status = -1;
-        @exec('git fetch origin main 2>&1', $fetch_output, $fetch_status);
+        @exec('git -C ' . escapeshellarg($base_dir) . ' fetch origin main 2>&1', $fetch_output, $fetch_status);
 
         if ($fetch_status === 0) {
-            $local_sha = trim(@shell_exec('git rev-parse HEAD'));
-            $remote_sha = trim(@shell_exec('git rev-parse origin/main'));
+            $git_head = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-parse HEAD 2>&1'));
+            $remote_sha = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-parse origin/main 2>&1'));
 
-            if ($local_sha !== $remote_sha && !empty($remote_sha)) {
-                $count = trim(@shell_exec('git rev-list --count HEAD..origin/main'));
-                $commits_log = @shell_exec('git log HEAD..origin/main --oneline -n 3');
+            if (!empty($remote_sha)) {
+                $local_short = !empty($git_head) ? substr($git_head, 0, 7) : (!empty($local_sha) ? substr($local_sha, 0, 7) : $local_version);
+                $remote_short = substr($remote_sha, 0, 7);
 
-                $response['update_available'] = true;
-                $response['remote_version'] = substr($remote_sha, 0, 7);
-                $response['local_version'] = substr($local_sha, 0, 7);
-                $response['commit_message'] = "Found " . $count . " new commit(s) on GitHub:\n" . trim($commits_log);
-                $response['method'] = 'git';
+                if (empty($git_head) || $git_head !== $remote_sha) {
+                    $count = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-list --count HEAD..origin/main 2>&1'));
+                    $commits_log = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' log HEAD..origin/main --oneline -n 3 2>&1'));
+
+                    $response['update_available'] = true;
+                    $response['remote_version'] = $remote_short;
+                    $response['local_version'] = $local_short;
+                    $response['commit_message'] = (!empty($count) ? "Found {$count} new commit(s) on GitHub:\n" : "New updates available:\n") . $commits_log;
+                    $response['method'] = 'git';
+                } else {
+                    $response['update_available'] = false;
+                    $response['remote_version'] = $remote_short;
+                    $response['local_version'] = $local_short;
+                    $response['commit_message'] = 'Your system is up to date.';
+                    $response['method'] = 'git';
+                }
             }
         } else {
             $git_available = false;
@@ -645,19 +672,21 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
             if (is_array($data) && isset($data['sha'])) {
                 $remote_sha = $data['sha'];
                 $commit_msg = $data['commit']['message'] ?? '';
-                
-                $local_sha = '';
-                if ($is_git) {
-                    $local_sha = trim(@shell_exec('git rev-parse HEAD'));
-                }
-                
-                if (empty($local_sha)) {
-                    $response['update_available'] = false;
-                } else if ($local_sha !== $remote_sha) {
+                $remote_short = substr($remote_sha, 0, 7);
+                $local_short = !empty($local_sha) ? substr($local_sha, 0, 7) : $local_version;
+
+                // When local_sha is missing or differs from remote SHA, an update is available!
+                if (empty($local_sha) || strtolower(substr($local_sha, 0, 7)) !== strtolower($remote_short)) {
                     $response['update_available'] = true;
-                    $response['remote_version'] = substr($remote_sha, 0, 7);
-                    $response['local_version'] = substr($local_sha, 0, 7);
-                    $response['commit_message'] = "Latest GitHub Commit:\n" . trim($commit_msg);
+                    $response['remote_version'] = $remote_short;
+                    $response['local_version'] = $local_short;
+                    $response['commit_message'] = "Latest GitHub Commit ({$remote_short}):\n" . trim($commit_msg);
+                    $response['method'] = 'zip';
+                } else {
+                    $response['update_available'] = false;
+                    $response['remote_version'] = $remote_short;
+                    $response['local_version'] = $local_short;
+                    $response['commit_message'] = "Your system is up to date.\nCommit: " . $remote_short;
                     $response['method'] = 'zip';
                 }
             } else {
@@ -792,16 +821,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
         }
 
         // Auto-fix origin remote URL if still pointing to old repo
-        $remote_url = trim(@shell_exec('git remote get-url origin 2>&1'));
+        $remote_url = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' remote get-url origin 2>&1'));
         if (stripos($remote_url, 'aannddrrii294/PFMS-Toolkit') !== false) {
             $logs[] = "Migrating git origin to https://github.com/honet-labs/PFMS-toolkit.git";
-            @exec('git remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
+            @exec('git -C ' . escapeshellarg($base_dir) . ' remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
         }
 
         $fetch_out = [];
         $fetch_status = -1;
         $logs[] = "Executing: git fetch origin main";
-        @exec("git fetch origin main 2>&1", $fetch_out, $fetch_status);
+        @exec('git -C ' . escapeshellarg($base_dir) . ' fetch origin main 2>&1', $fetch_out, $fetch_status);
         $logs = array_merge($logs, $fetch_out);
 
         if ($fetch_status !== 0) {
@@ -813,12 +842,20 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
         $reset_out = [];
         $reset_status = -1;
         $logs[] = "Executing: git reset --hard origin/main";
-        @exec("git reset --hard origin/main 2>&1", $reset_out, $reset_status);
+        @exec('git -C ' . escapeshellarg($base_dir) . ' reset --hard origin/main 2>&1', $reset_out, $reset_status);
         $logs = array_merge($logs, $reset_out);
 
         if ($reset_status === 0) {
             $success = true;
             $logs[] = "Git reset completed successfully.";
+
+            $new_sha = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-parse HEAD 2>&1'));
+            $v_data = [
+                'version' => PORTAL_VERSION,
+                'commit_sha' => !empty($new_sha) ? substr($new_sha, 0, 7) : '2.8',
+                'build_date' => date('Y-m-d H:i:s')
+            ];
+            @file_put_contents($base_dir . '/version.json', json_encode($v_data, JSON_PRETTY_PRINT));
         } else {
             $logs[] = "ERROR: git reset failed with status code " . $reset_status;
         }
@@ -889,6 +926,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
         if ($copy_success) {
             $success = true;
             $logs[] = "ZIP update completed successfully.";
+
+            // Update version.json with remote SHA if possible
+            $v_file = $base_dir . '/version.json';
+            $v_info = [];
+            if (file_exists($v_file)) {
+                $v_info = json_decode(@file_get_contents($v_file), true);
+            }
+            if (!is_array($v_info)) $v_info = [];
+            $v_info['version'] = PORTAL_VERSION;
+            $v_info['updated_at'] = date('Y-m-d H:i:s');
+            @file_put_contents($v_file, json_encode($v_info, JSON_PRETTY_PRINT));
         } else {
             $logs[] = "ERROR: Failed to copy files. Check directory permissions.";
         }
@@ -1233,7 +1281,10 @@ if (!empty($current_page)) {
 
 <script>
     // GLOBAL FORCE REFRESH LOGIC
-    function forceGlobalRefresh() {
+    async function forceGlobalRefresh() {
+        try {
+            await fetch('?clear_cache=1');
+        } catch (e) {}
         const url = new URL(window.location.href);
         url.searchParams.set('t', Date.now());
         window.location.href = url.toString();
