@@ -475,10 +475,37 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SNMP Explorer & Provisioning - PFMS Toolkit</title>
     
-    <!-- Design System Fonts & Material Symbols -->
-    <link rel="stylesheet" href="<?= htmlspecialchars($vendor_url) ?>/fonts/fonts.css">
+    <!-- 1. Offline Local Fallback Relative to File (Direct and guaranteed) -->
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 2. Dynamic Server Base Path Fallbacks -->
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 3. High-res Google Fonts CDN Fallback (Inter & Material Symbols) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     
     <style>
+        /* Fallback local font-face declarations to guarantee rendering */
+        @font-face {
+            font-family: 'Inter';
+            font-style: normal;
+            font-weight: 100 900;
+            font-display: swap;
+            src: url('../../vendor/fonts/Inter-Variable.woff2') format('woff2');
+        }
+        @font-face {
+            font-family: 'Material Symbols Outlined';
+            font-style: normal;
+            font-weight: 100 700;
+            font-display: swap;
+            src: url('../../vendor/fonts/MaterialSymbolsOutlined.woff2') format('woff2'),
+                 url('../../vendor/fonts/material-symbols-outlined.ttf') format('truetype');
+        }
+
         :root {
             --brand-green: #004d40;
             --brand-green-hover: #00695c;
@@ -487,8 +514,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             --muted-text: #94a3b8;
             --bg-body: #f4f6f8;
             --card-bg: #ffffff;
-            --border-color: #e2e8f0;
-            --border-light: #f1f5f9;
+            --border-color: #e0e4e8;
+            --border-light: #f0f3f5;
             --success-color: #10b981;
             --warning-color: #f59e0b;
             --danger-color: #ef4444;
@@ -496,39 +523,60 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body, html, input, button, select, textarea {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+        }
+
         body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background-color: var(--bg-body);
             color: #334155;
             font-size: 13px;
             line-height: 1.5;
             min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
         }
 
-        /* Standard Header Section */
+        /* Material Symbols Outlined Icon Styling (Guarantees icons render as symbols, not raw text) */
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined' !important;
+            font-weight: normal !important;
+            font-style: normal !important;
+            font-size: 18px;
+            line-height: 1 !important;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            vertical-align: middle;
+            font-feature-settings: 'liga' 1;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Standard Header Section matching Inventory Agent & PFMS-Toolkit PRD */
         .header-box {
-            background: #ffffff;
+            background: #f4f6f8;
             border-bottom: 1px solid var(--border-color);
-            padding: 16px 30px;
+            padding: 15px 30px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
         }
         .breadcrumb-text {
             font-size: 10px;
-            font-weight: 700;
+            font-weight: normal;
             color: var(--muted-text);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
             margin-bottom: 4px;
         }
         .page-title {
             font-size: 20px;
-            font-weight: 800;
+            font-weight: 600;
             color: var(--primary-navy);
+            margin: 0;
             display: flex;
             align-items: center;
             gap: 10px;
@@ -645,36 +693,38 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             font-weight: 600;
             color: #475569;
         }
-        .form-control {
-            height: 36px;
+        .form-control, .form-select {
+            height: 34px;
             padding: 0 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
+            border: 1px solid #dce1e5;
+            border-radius: 4px;
             font-size: 13px;
+            font-family: inherit !important;
             color: #1e293b;
             background: #ffffff;
             outline: none;
-            transition: border 0.15s ease;
+            transition: border 0.15s ease, box-shadow 0.15s ease;
         }
-        .form-control:focus {
+        .form-control:focus, .form-select:focus {
             border-color: var(--brand-green);
-            box-shadow: 0 0 0 2px rgba(0,77,64,0.12);
+            box-shadow: 0 0 0 2px rgba(0, 77, 64, 0.12);
         }
 
         /* Buttons */
         .btn-apply {
             background: var(--brand-green);
-            color: #ffffff;
+            color: #ffffff !important;
             border: none;
-            border-radius: 6px;
-            height: 36px;
-            padding: 0 18px;
+            border-radius: 4px;
+            height: 34px;
+            padding: 0 16px;
             font-size: 13px;
             font-weight: 600;
+            font-family: inherit !important;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 6px;
             cursor: pointer;
             transition: background 0.15s ease;
         }
@@ -687,13 +737,14 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         }
         .btn-secondary-custom {
             background: #ffffff;
-            color: #475569;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            height: 36px;
-            padding: 0 16px;
-            font-size: 13px;
-            font-weight: 600;
+            color: #475569 !important;
+            border: 1px solid #dce1e5;
+            border-radius: 4px;
+            height: 32px;
+            padding: 0 14px;
+            font-size: 12px;
+            font-weight: 500;
+            font-family: inherit !important;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -703,7 +754,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         }
         .btn-secondary-custom:hover {
             background: #f8fafc;
-            color: #0f172a;
+            color: #0f172a !important;
             border-color: #94a3b8;
         }
         .btn-danger-custom {
