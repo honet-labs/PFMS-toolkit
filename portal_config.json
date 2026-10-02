@@ -30,5 +30,6 @@
         "traffic-interface.php",
         "mib-webui-(beta).php",
         "mibs-converter-%28beta%29.php"
-    ]
+    ],
+    "github_repository": "honet-labs/PFMS-toolkit"
 }

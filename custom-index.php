@@ -83,6 +83,7 @@ $config_data = [
     'custom_connections' => [],
     'primary_override' => null,
     'history_override' => null,
+    'github_repository' => 'honet-labs/PFMS-toolkit',
     'github_token' => ''
 ];
 
@@ -95,6 +96,7 @@ if (file_exists($portal_config_file)) {
         $config_data['custom_connections'] = $loaded_config['custom_connections'] ?? $config_data['custom_connections'];
         $config_data['primary_override'] = $loaded_config['primary_override'] ?? null;
         $config_data['history_override'] = $loaded_config['history_override'] ?? null;
+        $config_data['github_repository'] = !empty($loaded_config['github_repository']) ? trim($loaded_config['github_repository']) : 'honet-labs/PFMS-toolkit';
         $config_data['github_token'] = $loaded_config['github_token'] ?? '';
     }
 }
@@ -184,6 +186,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'save_settings') {
             'custom_connections' => isset($input['custom_connections']) && is_array($input['custom_connections']) ? $input['custom_connections'] : [],
             'primary_override' => isset($input['primary_override']) ? $input['primary_override'] : null,
             'history_override' => isset($input['history_override']) ? $input['history_override'] : null,
+            'github_repository' => !empty($input['github_repository']) ? trim($input['github_repository']) : 'honet-labs/PFMS-toolkit',
             'github_token' => isset($input['github_token']) ? trim($input['github_token']) : ''
         ];
         $local_config_file = $base_dir . '/portal_config_local.json';
@@ -368,14 +371,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'test_core_connection') {
 }
 
 function get_git_repository_name($base_dir) {
+    global $config_data;
+    if (!empty($config_data['github_repository'])) {
+        return trim($config_data['github_repository']);
+    }
     $config_file = $base_dir . '/.git/config';
     if (file_exists($config_file)) {
         $content = @file_get_contents($config_file);
-        if ($content && preg_match('/url\s*=\s*(https:\/\/github\.com\/|git@github\.com:)([^\s]+)\.git/i', $content, $matches)) {
-            return trim($matches[2]);
+        if ($content && preg_match('/url\s*=\s*(?:https:\/\/github\.com\/|git@github\.com:)([^\s]+)/i', $content, $matches)) {
+            $repo = preg_replace('/\.git$/i', '', trim($matches[1]));
+            // Auto-migrate legacy repository name if still present in git config
+            if (strcasecmp($repo, 'aannddrrii294/PFMS-Toolkit') === 0) {
+                return 'honet-labs/PFMS-toolkit';
+            }
+            return $repo;
         }
     }
-    return 'aannddrrii294/PFMS-Toolkit'; // fallback
+    return 'honet-labs/PFMS-toolkit'; // default repository
 }
 
 function github_api_request($url, $github_token = null) {
@@ -458,6 +470,24 @@ function github_api_request($url, $github_token = null) {
 }
 
 function github_download_file($url, $zip_path, $github_token = null) {
+    $dir = dirname($zip_path);
+    if (!is_dir($dir)) {
+        if (!@mkdir($dir, 0777, true)) {
+            return [
+                'success' => false,
+                'code' => 0,
+                'error' => "Cannot create directory '$dir'. Please check folder write permissions."
+            ];
+        }
+    }
+    if (!is_writable($dir)) {
+        return [
+            'success' => false,
+            'code' => 0,
+            'error' => "Directory '$dir' is not writable by web server. Please check folder permissions."
+        ];
+    }
+
     $headers = [
         'User-Agent: PFMS-Toolkit-Updater'
     ];
@@ -470,8 +500,9 @@ function github_download_file($url, $zip_path, $github_token = null) {
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 90);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         
@@ -481,16 +512,31 @@ function github_download_file($url, $zip_path, $github_token = null) {
         curl_close($ch);
 
         if ($output !== false && $http_code >= 200 && $http_code < 300) {
-            return @file_put_contents($zip_path, $output) !== false;
+            $bytes = @file_put_contents($zip_path, $output);
+            if ($bytes !== false && $bytes > 0) {
+                return ['success' => true, 'code' => $http_code, 'error' => null];
+            } else {
+                @unlink($zip_path);
+                return [
+                    'success' => false,
+                    'code' => $http_code,
+                    'error' => "Downloaded ZIP could not be written to disk ($zip_path). Check disk space and folder permissions."
+                ];
+            }
         }
-        return false;
+
+        return [
+            'success' => false,
+            'code' => $http_code,
+            'error' => !empty($error) ? "cURL Error: $error" : "GitHub returned HTTP $http_code (check repository access or token settings)."
+        ];
     }
 
     $opts = [
         'http' => [
             'method' => 'GET',
             'header' => implode("\r\n", $headers),
-            'timeout' => 60,
+            'timeout' => 90,
             'follow_location' => 1
         ],
         'ssl' => [
@@ -501,9 +547,27 @@ function github_download_file($url, $zip_path, $github_token = null) {
     $context = stream_context_create($opts);
     $zip_data = @file_get_contents($url, false, $context);
     if ($zip_data !== false) {
-        return @file_put_contents($zip_path, $zip_data) !== false;
+        $http_code = 200;
+        if (isset($http_response_header) && is_array($http_response_header)) {
+            if (preg_match('/HTTP\/\d\.\d\s+(\d+)/i', $http_response_header[0], $matches)) {
+                $http_code = (int)$matches[1];
+            }
+        }
+        if ($http_code >= 200 && $http_code < 300) {
+            $bytes = @file_put_contents($zip_path, $zip_data);
+            if ($bytes !== false && $bytes > 0) {
+                return ['success' => true, 'code' => $http_code, 'error' => null];
+            }
+            return ['success' => false, 'code' => $http_code, 'error' => "Failed writing update ZIP to $zip_path."];
+        }
+        return ['success' => false, 'code' => $http_code, 'error' => "GitHub returned HTTP $http_code."];
     }
-    return false;
+
+    return [
+        'success' => false,
+        'code' => 0,
+        'error' => "PHP file_get_contents failed to connect to GitHub URL."
+    ];
 }
 
 if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
@@ -541,6 +605,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
     }
 
     if ($git_available) {
+        $remote_url = trim(@shell_exec('git remote get-url origin 2>&1'));
+        if (stripos($remote_url, 'aannddrrii294/PFMS-Toolkit') !== false) {
+            @exec('git remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
+        }
+
         $fetch_output = [];
         $fetch_status = -1;
         @exec('git fetch origin main 2>&1', $fetch_output, $fetch_status);
@@ -722,6 +791,13 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
             exit;
         }
 
+        // Auto-fix origin remote URL if still pointing to old repo
+        $remote_url = trim(@shell_exec('git remote get-url origin 2>&1'));
+        if (stripos($remote_url, 'aannddrrii294/PFMS-Toolkit') !== false) {
+            $logs[] = "Migrating git origin to https://github.com/honet-labs/PFMS-toolkit.git";
+            @exec('git remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
+        }
+
         $fetch_out = [];
         $fetch_status = -1;
         $logs[] = "Executing: git fetch origin main";
@@ -755,18 +831,21 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
         $extract_dir = $base_dir . '/temp/patch/';
         $github_token = $config_data['github_token'] ?? '';
 
-        $download_ok = github_download_file($zip_url, $zip_file, $github_token);
+        $logs[] = "Target repository: " . $repo;
+        $logs[] = "Downloading from: " . $zip_url;
 
-        if (!$download_ok) {
-            $logs[] = "ERROR: Failed to download update ZIP from GitHub (check credentials or token settings).";
+        $download_res = github_download_file($zip_url, $zip_file, $github_token);
+
+        if (!$download_res['success']) {
+            $logs[] = "ERROR: Failed to download update ZIP from GitHub.";
+            $logs[] = "Detail: " . ($download_res['error'] ?? 'Unknown network or file error');
+            $logs[] = "HTTP Code: " . ($download_res['code'] ?? '0');
+            $logs[] = "Tip: Verify repository name in Settings, check GitHub PAT, or use 'Offline / Local Update'.";
             echo json_encode(['ok' => false, 'logs' => implode("\n", $logs)]);
             exit;
         }
 
-        if (!is_dir(dirname($zip_file))) {
-            @mkdir(dirname($zip_file), 0777, true);
-        }
-        $logs[] = "Downloaded ZIP successfully.";
+        $logs[] = "Downloaded ZIP successfully (" . round(filesize($zip_file) / 1024, 1) . " KB).";
 
         if (!class_exists('ZipArchive')) {
             $logs[] = "ERROR: PHP ZipArchive extension is not enabled.";
@@ -1248,6 +1327,12 @@ if (!empty($current_page)) {
             </div>
 
             <div class="form-group" style="margin-top: 15px;">
+                <label class="form-label">GitHub Repository</label>
+                <input type="text" class="form-control" id="cfg_github_repository" style="min-height: auto; height: 38px; font-family: inherit !important; font-size: 13px !important;" placeholder="honet-labs/PFMS-toolkit">
+                <div class="form-hint">Target GitHub repository formatted as <code>owner/repository</code> (default: <code>honet-labs/PFMS-toolkit</code>).</div>
+            </div>
+
+            <div class="form-group" style="margin-top: 15px;">
                 <label class="form-label">GitHub Personal Access Token (PAT)</label>
                 <input type="password" class="form-control" id="cfg_github_token" style="min-height: auto; height: 38px; font-family: inherit !important; font-size: 13px !important;" placeholder="Optional (ghp_xxxxxxxxxxxxxxxxx)">
                 <div class="form-hint">Optional. Input a GitHub Personal Access Token if the toolkit repository is private or to avoid rate-limiting and connection errors with api.github.com.</div>
@@ -1630,6 +1715,7 @@ if (!empty($current_page)) {
         
         document.getElementById('cfg_dirs').value = dirs;
         document.getElementById('cfg_files').value = files;
+        document.getElementById('cfg_github_repository').value = currentConfig.github_repository || 'honet-labs/PFMS-toolkit';
         document.getElementById('cfg_github_token').value = currentConfig.github_token || '';
 
         // Deep copy custom connections
@@ -2106,6 +2192,7 @@ if (!empty($current_page)) {
             custom_connections: customConnectionsCopy,
             primary_override: primaryOverrideCopy,
             history_override: historyOverrideCopy,
+            github_repository: (document.getElementById('cfg_github_repository').value.trim() || 'honet-labs/PFMS-toolkit'),
             github_token: document.getElementById('cfg_github_token').value.trim()
         };
 
@@ -2293,7 +2380,7 @@ if (!empty($current_page)) {
                     window.location.reload();
                 }, 3000);
             } else {
-                consoleArea.innerText += '\nERROR: Update execution failed. Please verify git write permissions or server logs.\n';
+                consoleArea.innerText += '\nERROR: Update execution failed. Check logs above or try the "Offline / Local Update" option.\n';
                 document.getElementById('closeUpdaterBtn').disabled = false;
             }
         } catch (e) {
