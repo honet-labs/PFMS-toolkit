@@ -1055,6 +1055,40 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     </button>
                 </div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px;" id="scan-summary-grid"></div>
+
+                <!-- Discovered Modules & Sensors Table Preview -->
+                <div style="margin-top: 22px; border-top: 1px solid var(--border-color); padding-top: 18px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h4 style="font-size:13.5px; font-weight:700; color:var(--primary-navy); display:flex; align-items:center; gap:8px;">
+                            <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:18px;">list_alt</span>
+                            Discovered Modules & Sensors Preview (<span id="scan-preview-count">0</span>)
+                        </h4>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn-apply" onclick="switchTab('tab-inventory')" style="font-size:12px; height:32px; padding:0 14px;">
+                                <span class="material-symbols-outlined" style="font-size:16px;">checklist</span>
+                                Manage & Provision in Inventory &rarr;
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 480px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background:#fff;">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:40px; text-align:center;">#</th>
+                                    <th>Sensor / Module Name</th>
+                                    <th>Class</th>
+                                    <th>Current Value</th>
+                                    <th>SNMP OID</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="scan-preview-tbody">
+                                <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No modules scanned yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1512,6 +1546,16 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             });
         }
 
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         function renderScanSummary(data) {
             const card = document.getElementById('scan-result-card');
             const grid = document.getElementById('scan-summary-grid');
@@ -1520,11 +1564,11 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             grid.innerHTML = `
                 <div style="background:#f8fafc; padding:12px; border-radius:6px; border:1px solid #e2e8f0;">
                     <div style="font-size:11px; color:#64748b;">Target Hostname</div>
-                    <strong style="color:#0f172a; font-size:13.5px;">${data.device.hostname || data.device.ip_address}</strong>
+                    <strong style="color:#0f172a; font-size:13.5px;">${escapeHtml(data.device.hostname || data.device.ip_address)}</strong>
                 </div>
                 <div style="background:#f8fafc; padding:12px; border-radius:6px; border:1px solid #e2e8f0;">
                     <div style="font-size:11px; color:#64748b;">Detected Vendor</div>
-                    <span class="badge badge-info" style="margin-top:2px;">${data.vendor || 'Generic'}</span>
+                    <span class="badge badge-info" style="margin-top:2px;">${escapeHtml(data.vendor || 'Generic')}</span>
                 </div>
                 <div style="background:#f8fafc; padding:12px; border-radius:6px; border:1px solid #e2e8f0;">
                     <div style="font-size:11px; color:#64748b;">Discovered Sensors</div>
@@ -1535,6 +1579,43 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     <strong style="color:#334155; font-size:13px;">${(data.scan.duration_sec || 0).toFixed(2)}s</strong>
                 </div>
             `;
+
+            // Render discovered sensors preview table directly on this Scan Console tab
+            const tbody = document.getElementById('scan-preview-tbody');
+            const countEl = document.getElementById('scan-preview-count');
+            const sensors = data.sensors || [];
+            if (countEl) countEl.innerText = sensors.length;
+
+            if (tbody) {
+                if (sensors.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No sensors discovered for this device.</td></tr>';
+                } else {
+                    let rowsHtml = '';
+                    sensors.forEach((s, idx) => {
+                        const val = (s.normalized_value !== null && s.normalized_value !== undefined)
+                            ? `${s.normalized_value} ${s.unit || ''}`
+                            : (s.raw_value || 'N/A');
+                        
+                        let classBadge = 'badge-neutral';
+                        const c = (s.sensor_class || '').toLowerCase();
+                        if (c.includes('interface')) classBadge = 'badge-info';
+                        else if (c.includes('optical') || c.includes('dom') || c.includes('gpon')) classBadge = 'badge-warning';
+                        else if (c.includes('env') || c.includes('temp') || c.includes('cpu') || c.includes('sys')) classBadge = 'badge-success';
+
+                        rowsHtml += `
+                            <tr>
+                                <td class="mono" style="color:#94a3b8; text-align:center;">${idx + 1}</td>
+                                <td><strong style="color:#0f172a;">${escapeHtml(s.sensor_name || 'Unnamed')}</strong></td>
+                                <td><span class="badge ${classBadge}">${escapeHtml(s.sensor_class || 'general')}</span></td>
+                                <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(val)}</td>
+                                <td class="mono text-truncate-cell" title="${escapeHtml(s.oid || '')}">${escapeHtml(s.oid || '-')}</td>
+                                <td><span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:13px;">check_circle</span> Discovered</span></td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = rowsHtml;
+                }
+            }
         }
 
         // Debounced Load Inventory
