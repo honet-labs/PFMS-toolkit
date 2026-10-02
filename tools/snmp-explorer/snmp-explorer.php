@@ -914,26 +914,19 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
     <div class="header-box">
         <div>
             <div class="breadcrumb-text"><?= htmlspecialchars($dynamic_breadcrumb) ?></div>
-            <h1 class="page-title">
-                <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:26px;">hub</span>
-                SNMP Explorer & Provisioning
-            </h1>
+            <h1 class="page-title">SNMP Explorer & Provisioning</h1>
         </div>
         <div class="header-actions">
             <div class="stat-badge">
-                <span class="material-symbols-outlined" style="font-size:16px; color:#64748b;">router</span>
                 Devices: <span class="num" id="stat-devices">0</span>
             </div>
             <div class="stat-badge">
-                <span class="material-symbols-outlined" style="font-size:16px; color:#64748b;">sensors</span>
                 Sensors: <span class="num" id="stat-sensors">0</span>
             </div>
             <div class="stat-badge">
-                <span class="material-symbols-outlined" style="font-size:16px; color:#059669;">check_circle</span>
                 Provisioned: <span class="num" id="stat-provisioned">0</span>
             </div>
             <button class="btn-secondary-custom" onclick="reloadCurrentTab()">
-                <span class="material-symbols-outlined" style="font-size:18px;">refresh</span>
                 Refresh
             </button>
         </div>
@@ -945,21 +938,17 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         <!-- Tab Navigation -->
         <div class="tabs-nav">
             <button class="tab-btn active" data-tab="tab-scan" onclick="switchTab('tab-scan')">
-                <span class="material-symbols-outlined" style="font-size:18px;">radar</span>
                 Scan Console
             </button>
             <button class="tab-btn" data-tab="tab-inventory" onclick="switchTab('tab-inventory')">
-                <span class="material-symbols-outlined" style="font-size:18px;">inventory_2</span>
                 Sensor Inventory
                 <span class="badge-pill" id="inventory-tab-count">0</span>
             </button>
             <button class="tab-btn" data-tab="tab-provision" onclick="switchTab('tab-provision')">
-                <span class="material-symbols-outlined" style="font-size:18px;">cloud_upload</span>
                 Pandora Provisioning
                 <span class="badge-pill" id="selected-provision-count" style="background:#004d40; color:#fff;">0</span>
             </button>
             <button class="tab-btn" data-tab="tab-settings" onclick="switchTab('tab-settings')">
-                <span class="material-symbols-outlined" style="font-size:18px;">tune</span>
                 Settings & Profiles
             </button>
         </div>
@@ -970,10 +959,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         <div id="tab-scan" class="tab-content">
             <div class="dashboard-card">
                 <div class="card-header-clean">
-                    <h3>
-                        <span class="material-symbols-outlined" style="color:var(--brand-green);">search</span>
-                        SNMP Discovery Engine
-                    </h3>
+                    <h3>SNMP Discovery Engine</h3>
                     <div style="display:flex; gap:8px;">
                         <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:600;">
                             <input type="radio" name="scan_mode" value="single" checked onchange="toggleScanMode()">
@@ -1033,7 +1019,6 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                             * Scanned devices and discovered sensors are normalized and saved automatically into inventory.
                         </span>
                         <button type="submit" class="btn-apply" id="btn-start-scan">
-                            <span class="material-symbols-outlined" style="font-size:18px;">play_arrow</span>
                             Start SNMP Discovery
                         </button>
                     </div>
@@ -1046,10 +1031,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             <!-- Last Scan Summary Card -->
             <div class="dashboard-card d-none" id="scan-result-card">
                 <div class="card-header-clean">
-                    <h3>
-                        <span class="material-symbols-outlined" style="color:var(--success-color);">verified</span>
-                        Discovery Result Summary
-                    </h3>
+                    <h3>Discovery Result Summary</h3>
                     <button class="btn-apply" onclick="switchTab('tab-inventory')">
                         View in Inventory &rarr;
                     </button>
@@ -1059,13 +1041,11 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 <!-- Discovered Modules & Sensors Table Preview -->
                 <div style="margin-top: 22px; border-top: 1px solid var(--border-color); padding-top: 18px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <h4 style="font-size:13.5px; font-weight:700; color:var(--primary-navy); display:flex; align-items:center; gap:8px;">
-                            <span class="material-symbols-outlined" style="color:var(--brand-green); font-size:18px;">list_alt</span>
+                        <h4 style="font-size:13.5px; font-weight:700; color:var(--primary-navy);">
                             Discovered Modules & Sensors Preview (<span id="scan-preview-count">0</span>)
                         </h4>
                         <div style="display:flex; gap:8px;">
                             <button class="btn-apply" onclick="switchTab('tab-inventory')" style="font-size:12px; height:32px; padding:0 14px;">
-                                <span class="material-symbols-outlined" style="font-size:16px;">checklist</span>
                                 Manage & Provision in Inventory &rarr;
                             </button>
                         </div>
@@ -1098,17 +1078,12 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         <div id="tab-inventory" class="tab-content d-none">
             <div class="dashboard-card">
                 <div class="card-header-clean">
-                    <h3>
-                        <span class="material-symbols-outlined" style="color:var(--brand-green);">list_alt</span>
-                        Discovered Sensor Inventory
-                    </h3>
+                    <h3>Discovered Sensor Inventory</h3>
                     <div style="display:flex; gap:10px;">
                         <button class="btn-secondary-custom" onclick="clearSelectedSensors()">
-                            <span class="material-symbols-outlined" style="font-size:18px;">deselect</span>
                             Deselect All
                         </button>
                         <button class="btn-apply" onclick="proceedToProvisioning()">
-                            <span class="material-symbols-outlined" style="font-size:18px;">forward</span>
                             Provision Selected (<span id="inv-selected-count">0</span>)
                         </button>
                     </div>
@@ -1192,12 +1167,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         <div id="tab-provision" class="tab-content d-none">
             <div class="dashboard-card">
                 <div class="card-header-clean">
-                    <h3>
-                        <span class="material-symbols-outlined" style="color:var(--brand-green);">cloud_sync</span>
-                        Provisioning to Pandora FMS
-                    </h3>
+                    <h3>Provisioning to Pandora FMS</h3>
                     <button class="btn-secondary-custom" onclick="openCreateAgentModal()">
-                        <span class="material-symbols-outlined" style="font-size:18px;">add</span>
                         Create New Agent
                     </button>
                 </div>
@@ -1220,7 +1191,6 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     </div>
                     <div class="form-group" style="justify-content: flex-end;">
                         <button class="btn-apply" onclick="executeProvisioning()" id="btn-execute-provision">
-                            <span class="material-symbols-outlined" style="font-size:18px;">cloud_upload</span>
                             Deploy Modules to Agent
                         </button>
                     </div>
@@ -1251,10 +1221,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 <!-- Provisioning Log / Feedback Card -->
                 <div class="dashboard-card d-none" id="prov-results-card" style="margin-top:20px; background:#f8fafc;">
                     <div class="card-header-clean">
-                        <h3>
-                            <span class="material-symbols-outlined" style="color:var(--success-color);">task_alt</span>
-                            Provisioning Deployment Summary
-                        </h3>
+                        <h3>Provisioning Deployment Summary</h3>
                     </div>
                     <div id="prov-results-content"></div>
                 </div>
@@ -1267,12 +1234,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         <div id="tab-settings" class="tab-content d-none">
             <div class="dashboard-card">
                 <div class="card-header-clean">
-                    <h3>
-                        <span class="material-symbols-outlined" style="color:var(--brand-green);">tune</span>
-                        Discovery Engine & MIB Configuration
-                    </h3>
+                    <h3>Discovery Engine & MIB Configuration</h3>
                     <button class="btn-apply" onclick="saveSettings()">
-                        <span class="material-symbols-outlined" style="font-size:18px;">save</span>
                         Save Configuration
                     </button>
                 </div>
@@ -1332,13 +1295,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
     <div class="modal-overlay" id="modal-create-agent">
         <div class="modal-card">
             <div class="modal-header">
-                <h3>
-                    <span class="material-symbols-outlined" style="color:var(--brand-green);">person_add</span>
-                    Create Pandora FMS Agent
-                </h3>
-                <button type="button" class="btn-secondary-custom" style="padding:4px 8px; height:auto;" onclick="closeCreateAgentModal()">
-                    <span class="material-symbols-outlined" style="font-size:18px;">close</span>
-                </button>
+                <h3>Create Pandora FMS Agent</h3>
+                <button type="button" class="btn-secondary-custom" style="padding:2px 8px; font-size:16px; line-height:1;" onclick="closeCreateAgentModal()">&times;</button>
             </div>
             <form onsubmit="submitCreateAgent(event)">
                 <div class="modal-body">
@@ -1489,7 +1447,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             const summaryCard = document.getElementById('scan-result-card');
 
             btn.disabled = true;
-            btn.innerHTML = '<span class="material-symbols-outlined" style="animation:spin 1s infinite linear;">sync</span> Scanning...';
+            btn.innerText = 'Scanning...';
             term.style.display = 'block';
             term.innerText = '[INFO] Initializing SNMP scan session...\n';
             summaryCard.classList.add('d-none');
@@ -1520,7 +1478,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             .then(r => r.json())
             .then(res => {
                 btn.disabled = false;
-                btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">play_arrow</span> Start SNMP Discovery';
+                btn.innerText = 'Start SNMP Discovery';
 
                 if (res.ok) {
                     term.innerText += `[SUCCESS] ${res.message || 'Scan completed!'}\n`;
@@ -1541,7 +1499,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             })
             .catch(err => {
                 btn.disabled = false;
-                btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">play_arrow</span> Start SNMP Discovery';
+                btn.innerText = 'Start SNMP Discovery';
                 term.innerText += `[NETWORK ERROR] ${err.message}\n`;
             });
         }
@@ -1609,7 +1567,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                                 <td><span class="badge ${classBadge}">${escapeHtml(s.sensor_class || 'general')}</span></td>
                                 <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(val)}</td>
                                 <td class="mono text-truncate-cell" title="${escapeHtml(s.oid || '')}">${escapeHtml(s.oid || '-')}</td>
-                                <td><span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:13px;">check_circle</span> Discovered</span></td>
+                                <td><span class="badge badge-success">Discovered</span></td>
                             </tr>
                         `;
                     });
@@ -1670,8 +1628,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             res.rows.forEach(r => {
                 const isChecked = !!selectedSensorMap[r.id];
                 const provBadge = (parseInt(r.provisioned) === 1)
-                    ? `<span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:13px;">check_circle</span> Provisioned ${r.agent_name ? '(' + r.agent_name + ')' : ''}</span>`
-                    : `<span class="badge badge-warning"><span class="material-symbols-outlined" style="font-size:13px;">pending</span> Pending</span>`;
+                    ? `<span class="badge badge-success">Provisioned ${r.agent_name ? '(' + r.agent_name + ')' : ''}</span>`
+                    : `<span class="badge badge-warning">Pending</span>`;
 
                 const valDisplay = r.normalized_value !== null ? `${r.normalized_value} ${r.unit || ''}` : (r.raw_value || 'N/A');
 
@@ -1804,7 +1762,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             }
 
             btn.disabled = true;
-            btn.innerHTML = '<span class="material-symbols-outlined" style="animation:spin 1s infinite linear;">sync</span> Deploying...';
+            btn.innerText = 'Deploying...';
             resultsCard.classList.remove('d-none');
             resultsContent.innerHTML = '<div style="color:#64748b;">Deploying SNMP modules into Pandora FMS agent database...</div>';
 
@@ -1823,7 +1781,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             .then(r => r.json())
             .then(res => {
                 btn.disabled = false;
-                btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">cloud_upload</span> Deploy Modules to Agent';
+                btn.innerText = 'Deploy Modules to Agent';
 
                 if (res.ok) {
                     const sum = res.summary;
@@ -1843,7 +1801,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             })
             .catch(err => {
                 btn.disabled = false;
-                btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">cloud_upload</span> Deploy Modules to Agent';
+                btn.innerText = 'Deploy Modules to Agent';
                 resultsContent.innerHTML = `<div style="color:#b91c1c;">Network Error: ${err.message}</div>`;
             });
         }
