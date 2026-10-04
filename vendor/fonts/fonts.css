@@ -1,6 +1,7 @@
-/* Local Fonts & Icons (Offline Support, Instant Load) */
+/* Online High-Resolution CDN Fallback (Loads instantly if internet available) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 
-/* Inter Local Variable Font (Offline Support) */
+/* Local Fallback for Inter Variable Font (Offline Support) */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -9,12 +10,30 @@
   src: url('./Inter-Variable.woff2') format('woff2');
 }
 
-/* Material Symbols Outlined */
+/* Local Fallback for Material Symbols Outlined (Multi-weight compatibility) */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: normal;
+  font-display: block;
+  src: url('./MaterialSymbolsOutlined.woff2') format('woff2'),
+       url('./material-symbols-outlined.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./MaterialSymbolsOutlined.woff2') format('woff2'),
+       url('./material-symbols-outlined.ttf') format('truetype');
+}
+
 @font-face {
   font-family: 'Material Symbols Outlined';
   font-style: normal;
   font-weight: 100 700;
-  font-display: swap;
+  font-display: block;
   src: url('./MaterialSymbolsOutlined.woff2') format('woff2'),
        url('./material-symbols-outlined.ttf') format('truetype');
 }
@@ -50,6 +69,8 @@ body, html, input, button, select, textarea {
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
+  font-feature-settings: 'liga' 1;
+  -webkit-font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;

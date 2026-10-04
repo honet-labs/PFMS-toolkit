@@ -1152,6 +1152,11 @@ if (!empty($current_page)) {
     <link href="<?= htmlspecialchars($base_url) ?>/vendor/fonts/fonts.css" rel="stylesheet">
     <link rel="stylesheet" href="<?= htmlspecialchars($base_url) ?>/vendor/fonts/fonts.css" />
 
+    <!-- Google Fonts CDN Fallback (Inter & Material Symbols) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+
     <script>
         // Hapus Header Ganda di Iframe (Defined early to prevent not defined errors on fast iframe loads)
         function cleanIframeHeader() {
@@ -1168,7 +1173,24 @@ if (!empty($current_page)) {
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;}
-        .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-weight: normal !important; font-style: normal !important; font-size: 18px !important; line-height: 1 !important; display: inline-block; vertical-align: middle; color: inherit !important; }
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined' !important;
+            font-weight: normal !important;
+            font-style: normal !important;
+            font-size: 18px !important;
+            line-height: 1 !important;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            font-feature-settings: 'liga' 1;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+            vertical-align: middle;
+            color: inherit !important;
+        }
 
         /* NAVBAR */
         .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 100; flex-shrink: 0;}

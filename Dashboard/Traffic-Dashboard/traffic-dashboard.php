@@ -1121,14 +1121,35 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <meta charset="utf-8">
     <title>Traffic Dashboard</title>
     <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url ?? "../../vendor") ?>/fonts/fonts.css" rel="stylesheet">
     <script src="../../vendor/echarts/echarts.min.js"></script>
-    <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/echarts/echarts.min.js"></script>
+    <script src="<?= htmlspecialchars($vendor_url ?? "../../vendor") ?>/echarts/echarts.min.js"></script>
+
+    <!-- Google Fonts CDN Fallback (Inter & Material Symbols) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <style>
         :root { --primary-bg: #f4f6f8; --card-bg: #fff; --toolbar-bg: #fff; --border-color: #e0e4e8; --text-main: #334155; --text-dim: #64748b; --accent: #004d40; }
         body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: var(--primary-bg); color: var(--text-main); margin: 0; font-size: 13px; container-type: inline-size; container-name: body-container; -webkit-font-smoothing: antialiased; }
-        .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; }
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined' !important;
+            font-weight: normal !important;
+            font-style: normal !important;
+            font-size: 18px !important;
+            line-height: 1 !important;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            font-feature-settings: 'liga' 1;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+            vertical-align: middle;
+        }
 
         /* HEADER BREADCRUMB SYSTEMS */
         .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 10; }

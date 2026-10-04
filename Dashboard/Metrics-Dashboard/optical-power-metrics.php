@@ -462,14 +462,35 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
     <title>Optical Power Monitoring</title>
     <link rel="icon" href="<?= h($PANDORA_BASE_URL) ?>/images/pandora.ico" type="image/x-icon">
     <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url ?? "../../vendor") ?>/fonts/fonts.css" rel="stylesheet">
     <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url ?? "../../vendor") ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Google Fonts CDN Fallback (Inter & Material Symbols) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <style>
         body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; background-color: #f4f6f8; margin: 0; padding: 0; }
         * { box-sizing: border-box; }
-        .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; line-height: 1; }
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined' !important;
+            font-weight: normal !important;
+            font-style: normal !important;
+            font-size: 18px !important;
+            line-height: 1 !important;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            font-feature-settings: 'liga' 1;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+            vertical-align: middle;
+        }
 
         <?php if ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; }
