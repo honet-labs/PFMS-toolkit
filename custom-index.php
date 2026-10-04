@@ -927,7 +927,28 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
             $success = true;
             $logs[] = "ZIP update completed successfully.";
 
-            // Update version.json with remote SHA if possible
+            // Resolve target commit SHA from request, cache, or GitHub API
+            $target_sha = trim($_GET['sha'] ?? '');
+            if (empty($target_sha)) {
+                $update_cache_file = $base_dir . '/temp/update_cache.json';
+                if (file_exists($update_cache_file)) {
+                    $cached_up = json_decode(@file_get_contents($update_cache_file), true);
+                    if (!empty($cached_up['remote_version'])) {
+                        $target_sha = trim($cached_up['remote_version']);
+                    }
+                }
+            }
+            if (empty($target_sha)) {
+                $c_res = github_api_request("https://api.github.com/repos/{$repo}/commits/main", $github_token);
+                if ($c_res['success']) {
+                    $c_data = json_decode($c_res['body'], true);
+                    if (!empty($c_data['sha'])) {
+                        $target_sha = substr($c_data['sha'], 0, 7);
+                    }
+                }
+            }
+
+            // Update version.json with target SHA and timestamps
             $v_file = $base_dir . '/version.json';
             $v_info = [];
             if (file_exists($v_file)) {
@@ -935,6 +956,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
             }
             if (!is_array($v_info)) $v_info = [];
             $v_info['version'] = PORTAL_VERSION;
+            if (!empty($target_sha)) {
+                $v_info['commit_sha'] = $target_sha;
+                $logs[] = "Recorded updated version commit SHA: " . $target_sha;
+            }
+            $v_info['build_date'] = date('Y-m-d');
             $v_info['updated_at'] = date('Y-m-d H:i:s');
             @file_put_contents($v_file, json_encode($v_info, JSON_PRETTY_PRINT));
         } else {
@@ -2415,7 +2441,11 @@ if (!empty($current_page)) {
         try {
             consoleArea.innerText += 'Connecting to backend... (Method: ' + updateMethod + ')\n';
             
-            const response = await fetch('?api=execute_update&method=' + updateMethod, {
+            const remoteTag = document.getElementById('remoteVersionTag');
+            const targetSha = remoteTag ? remoteTag.innerText.replace(/^v/, '').trim() : '';
+            const endpoint = '?api=execute_update&method=' + updateMethod + (targetSha ? '&sha=' + encodeURIComponent(targetSha) : '');
+            
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': '<?= $csrf_token ?>'
