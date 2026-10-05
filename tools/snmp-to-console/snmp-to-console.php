@@ -66,25 +66,24 @@ if (isset($_POST['api']) && $_POST['api'] === 'walk') {
     
     // Dynamic MIB Path & Load All MIBs
     $cmd .= "-m +ALL ";
+    $dirs = [];
+    $toolkitMibs = realpath(__DIR__ . '/../snmp-explorer/engine/mibs');
+    $pandoraMibs = realpath(__DIR__ . '/../../../../attachment/mibs');
+    if (!$pandoraMibs && is_dir('/var/www/html/pandora_console/attachment/mibs')) {
+        $pandoraMibs = '/var/www/html/pandora_console/attachment/mibs';
+    }
+
     if ($mib_mode === 'pandora') {
-        $mib_dir = realpath(__DIR__ . '/../../../../attachment/mibs');
-        if ($mib_dir) {
-            $cmd .= "-M " . escapeshellarg("+" . $mib_dir) . " ";
-        }
+        if ($pandoraMibs && is_dir($pandoraMibs)) $dirs[] = $pandoraMibs;
     } elseif ($mib_mode === 'toolkit') {
-        $mib_dir = realpath(__DIR__ . '/../snmp-explorer/engine/mibs');
-        if ($mib_dir) {
-            $cmd .= "-M " . escapeshellarg("+" . $mib_dir) . " ";
-        }
+        if ($toolkitMibs && is_dir($toolkitMibs)) $dirs[] = $toolkitMibs;
     } elseif ($mib_mode === 'all') {
-        $dirs = [];
-        $d1 = realpath(__DIR__ . '/../snmp-explorer/engine/mibs');
-        if ($d1) $dirs[] = $d1;
-        $d2 = realpath(__DIR__ . '/../../../../attachment/mibs');
-        if ($d2) $dirs[] = $d2;
-        if (!empty($dirs)) {
-            $cmd .= "-M " . escapeshellarg("+" . implode(':', $dirs)) . " ";
-        }
+        if ($toolkitMibs && is_dir($toolkitMibs)) $dirs[] = $toolkitMibs;
+        if ($pandoraMibs && is_dir($pandoraMibs) && !in_array($pandoraMibs, $dirs, true)) $dirs[] = $pandoraMibs;
+        if (is_dir('/usr/share/snmp/mibs') && !in_array('/usr/share/snmp/mibs', $dirs, true)) $dirs[] = '/usr/share/snmp/mibs';
+    }
+    if (!empty($dirs)) {
+        $cmd .= "-M " . escapeshellarg("+" . implode(':', $dirs)) . " ";
     }
     
     $cmd .= "$target $oid 2>&1";
@@ -426,10 +425,10 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
         <div class="mb-4">
             <label class="form-label">MIB Resolution Mode</label>
             <select id="mibMode" class="form-select">
-                <option value="default">System Default</option>
+                <option value="all" selected>All Available MIBs (Combined Toolkit + Pandora + System)</option>
+                <option value="toolkit">Toolkit MIBs (/snmp-explorer/engine/mibs)</option>
                 <option value="pandora">Pandora Attachment (/attachment/mibs)</option>
-                <option value="toolkit" selected>Toolkit MIBs (/snmp-explorer/engine/mibs)</option>
-                <option value="all">All Available MIBs (Combined)</option>
+                <option value="default">System Default (/usr/share/snmp/mibs only)</option>
             </select>
         </div>
         <button id="runBtn" class="btn-premium" onclick="runWalk()">
