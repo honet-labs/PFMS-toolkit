@@ -23,7 +23,7 @@ final class PandoraProvisioner
      * @param list<int> $sensorIds
      * @return array{created:int,existing:int,skipped:int,results:list<array<string, mixed>>}
      */
-    public function provision(array $sensorIds, int $agentId): array
+    public function provision(array $sensorIds, int $agentId, int $interval = 0): array
     {
         $this->agentResolver->assertExists($agentId);
 
@@ -65,19 +65,23 @@ final class PandoraProvisioner
                 $customId = $customIdsBySensorId[(int) $sensor['id']];
                 $existingModuleId = $existingModules[$customId] ?? null;
 
+                $moduleOverrides = $interval > 0 ? ['module_interval' => $interval] : [];
+                $module = $this->moduleBuilder->build($sensor, $agentId, $moduleOverrides);
+
                 if ($existingModuleId !== null) {
+                    // Update existing module definition with latest SNMP v3 credentials & OID
+                    $this->pandoraRepository->updateModuleDefinition($existingModuleId, $module);
                     $provisionedSensors[] = [(int) $sensor['id'], $agentId, $existingModuleId];
                     $summary['existing']++;
                     $summary['results'][] = [
                         'sensor_id' => (int) $sensor['id'],
                         'sensor_name' => $sensor['sensor_name'],
-                        'status' => 'existing',
+                        'status' => 'updated',
                         'module_id' => $existingModuleId,
                     ];
                     continue;
                 }
 
-                $module = $this->moduleBuilder->build($sensor, $agentId);
                 $moduleId = $this->pandoraRepository->insertModule($module, updateCounters: false);
                 $provisionedSensors[] = [(int) $sensor['id'], $agentId, $moduleId];
 

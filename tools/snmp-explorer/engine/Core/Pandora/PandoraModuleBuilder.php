@@ -37,7 +37,7 @@ final class PandoraModuleBuilder
     /**
      * Build Pandora SNMP module for Direct DB insertion
      */
-    public function build(array $sensor, int $agentId): array
+    public function build(array $sensor, int $agentId, array $overrides = []): array
     {
         $rawValue = $sensor['raw_value'] ?? null;
         $hasRawString = is_string($rawValue) && trim($rawValue) !== '';
@@ -59,7 +59,24 @@ final class PandoraModuleBuilder
         $extraData = $wizardMode ? '' : $this->buildExtraData($sensor);
 
         $snmpVersion = (string) ($sensor['snmp_version'] ?? '2c');
-        $isV3 = in_array(strtolower($snmpVersion), ['3', 'v3'], true);
+        $lowerVersion = strtolower(trim($snmpVersion));
+        $isV3 = str_contains($lowerVersion, '3') || in_array($lowerVersion, ['3', 'v3', 'snmp3', 'snmpv3', 'snmp v3'], true);
+        $isV1 = !$isV3 && (str_contains($lowerVersion, '1') || in_array($lowerVersion, ['1', 'v1', 'snmp1', 'snmpv1', 'snmp v1'], true));
+
+        $interval = (int) ($overrides['module_interval'] ?? $this->config['module_interval'] ?? self::DEFAULT_INTERVAL);
+        if ($interval <= 0) {
+            $interval = self::DEFAULT_INTERVAL;
+        }
+
+        $secLevel = (string) ($sensor['snmp_security_level'] ?? '');
+        if ($secLevel === '' && $isV3) {
+            $secLevel = 'authNoPriv';
+        }
+
+        $authProto = (string) ($sensor['snmp_auth_protocol'] ?? '');
+        if ($authProto === '' && $isV3) {
+            $authProto = 'SHA';
+        }
 
         return [
             'id_agente' => $agentId,
@@ -70,9 +87,9 @@ final class PandoraModuleBuilder
             'descripcion' => $this->buildDescription($sensor),
             'tcp_port' => (int) ($sensor['snmp_port'] ?? 161),
             'snmp_oid' => (string) $sensor['oid'],
-            'snmp_community' => (string) ($sensor['snmp_community'] ?? 'public'),
+            'snmp_community' => $isV3 ? '' : (string) ($sensor['snmp_community'] ?? 'public'),
             'ip_target' => (string) $sensor['ip_address'],
-            'module_interval' => (int) ($this->config['module_interval'] ?? self::DEFAULT_INTERVAL),
+            'module_interval' => $interval,
             'max_timeout' => (int) ($this->config['module_timeout'] ?? self::DEFAULT_SNMP_TIMEOUT),
             'max_retries' => (int) ($this->config['module_retries'] ?? self::DEFAULT_SNMP_RETRIES),
             'unit' => (string) ($sensor['unit'] ?? ''),
@@ -83,13 +100,18 @@ final class PandoraModuleBuilder
             'custom_id' => $wizardMode ? '' : $customId,
             'extended_info' => $extendedInfo,
             'extra_data' => $extraData,
-            'snmp_version' => $isV3 ? 3 : (in_array(strtolower($snmpVersion), ['1', 'v1'], true) ? 1 : 2),
-            'snmp3_sec_level' => $sensor['snmp_security_level'] ?? null,
-            'snmp3_auth_user' => $sensor['snmp_security_name'] ?? null,
-            'snmp3_auth_method' => $sensor['snmp_auth_protocol'] ?? null,
-            'snmp3_auth_pass' => $sensor['snmp_auth_passphrase'] ?? null,
-            'snmp3_priv_method' => $sensor['snmp_priv_protocol'] ?? null,
-            'snmp3_priv_pass' => $sensor['snmp_priv_passphrase'] ?? null,
+            'snmp_version' => $isV3 ? 3 : ($isV1 ? 1 : 2),
+            'snmp3_sec_level' => $isV3 ? $secLevel : null,
+            'snmp3_security_level' => $isV3 ? $secLevel : null,
+            'snmp3_auth_user' => $isV3 ? ($sensor['snmp_security_name'] ?? null) : null,
+            'snmp3_auth_method' => $isV3 ? $authProto : null,
+            'snmp3_auth_pass' => $isV3 ? ($sensor['snmp_auth_passphrase'] ?? null) : null,
+            'snmp3_priv_method' => $isV3 ? ($sensor['snmp_priv_protocol'] ?? null) : null,
+            'snmp3_privacy_method' => $isV3 ? ($sensor['snmp_priv_protocol'] ?? null) : null,
+            'snmp3_priv_pass' => $isV3 ? ($sensor['snmp_priv_passphrase'] ?? null) : null,
+            'snmp3_privacy_pass' => $isV3 ? ($sensor['snmp_priv_passphrase'] ?? null) : null,
+            'snmp3_context' => $isV3 ? ($sensor['snmp_context_name'] ?? null) : null,
+            'snmp3_context_name' => $isV3 ? ($sensor['snmp_context_name'] ?? null) : null,
             'plugin_user' => $isV3 ? ($sensor['snmp_security_name'] ?? null) : null,
             'plugin_pass' => $isV3 ? ($sensor['snmp_auth_passphrase'] ?? null) : null,
             'plugin_parameter' => $isV3 ? ($sensor['snmp_priv_passphrase'] ?? null) : null,

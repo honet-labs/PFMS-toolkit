@@ -100,6 +100,7 @@ final readonly class SensorInventoryRepository
                 NOW()
             )
             ON DUPLICATE KEY UPDATE
+                device_id = VALUES(device_id),
                 vendor = VALUES(vendor),
                 ip_address = VALUES(ip_address),
                 sensor_type = VALUES(sensor_type),
@@ -168,6 +169,7 @@ final readonly class SensorInventoryRepository
                     discovered_at, updated_at
                 ) VALUES %s
                 ON DUPLICATE KEY UPDATE
+                    device_id = VALUES(device_id),
                     vendor = VALUES(vendor),
                     ip_address = VALUES(ip_address),
                     sensor_type = VALUES(sensor_type),
@@ -392,18 +394,19 @@ final readonly class SensorInventoryRepository
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $statement = $this->pdo->prepare(
             'SELECT si.*,
-                    d.snmp_community,
-                    d.snmp_version,
-                    d.snmp_port,
-                    d.snmp_security_level,
-                    d.snmp_security_name,
-                    d.snmp_auth_protocol,
-                    d.snmp_auth_passphrase,
-                    d.snmp_priv_protocol,
-                    d.snmp_priv_passphrase,
-                    d.snmp_context_name
+                    COALESCE(NULLIF(d.snmp_community, ""), d2.snmp_community, "") AS snmp_community,
+                    COALESCE(NULLIF(d.snmp_version, ""), d2.snmp_version, "2c") AS snmp_version,
+                    COALESCE(NULLIF(d.snmp_port, 0), d2.snmp_port, 161) AS snmp_port,
+                    COALESCE(d.snmp_security_level, d2.snmp_security_level) AS snmp_security_level,
+                    COALESCE(d.snmp_security_name, d2.snmp_security_name) AS snmp_security_name,
+                    COALESCE(d.snmp_auth_protocol, d2.snmp_auth_protocol) AS snmp_auth_protocol,
+                    COALESCE(d.snmp_auth_passphrase, d2.snmp_auth_passphrase) AS snmp_auth_passphrase,
+                    COALESCE(d.snmp_priv_protocol, d2.snmp_priv_protocol) AS snmp_priv_protocol,
+                    COALESCE(d.snmp_priv_passphrase, d2.snmp_priv_passphrase) AS snmp_priv_passphrase,
+                    COALESCE(d.snmp_context_name, d2.snmp_context_name) AS snmp_context_name
              FROM sensor_inventory si
-             INNER JOIN devices d ON d.id = si.device_id
+             LEFT JOIN devices d ON d.id = si.device_id
+             LEFT JOIN devices d2 ON d2.ip_address = si.ip_address
              WHERE si.id IN (' . $placeholders . ')'
         );
         $statement->execute($ids);

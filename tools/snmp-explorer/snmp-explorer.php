@@ -336,7 +336,7 @@ if (!empty($api)) {
             $total = (int)$countStmt->fetchColumn();
 
             // Fetch rows
-            $dataSql = "SELECT s.*, d.hostname, a.nombre as agent_name 
+            $dataSql = "SELECT s.*, d.hostname, COALESCE(d.snmp_version, '2c') AS snmp_version, d.snmp_security_level, d.snmp_security_name, a.nombre as agent_name 
                         FROM sensor_inventory s 
                         LEFT JOIN devices d ON s.device_id = d.id 
                         LEFT JOIN tagente a ON s.pandora_agent_id = a.id_agente 
@@ -449,6 +449,7 @@ if (!empty($api)) {
 
         $agentId = (int)($input['agent_id'] ?? 0);
         $sensorIds = array_values(array_filter(array_map('intval', (array)($input['sensor_ids'] ?? []))));
+        $interval = (int)($input['interval'] ?? 300);
 
         if ($agentId <= 0 || empty($sensorIds)) {
             echo json_encode(['ok' => false, 'error' => 'Target Pandora Agent and at least one sensor must be selected.']);
@@ -456,12 +457,12 @@ if (!empty($api)) {
         }
 
         try {
-            $summary = $provisioner->provision($sensorIds, $agentId);
+            $summary = $provisioner->provision($sensorIds, $agentId, $interval);
             echo json_encode([
                 'ok' => true,
                 'summary' => $summary,
                 'message' => sprintf(
-                    'Provisioning completed: %d created, %d already existing, %d skipped.',
+                    'Provisioning completed: %d created, %d already existing / updated, %d skipped.',
                     $summary['created'],
                     $summary['existing'],
                     $summary['skipped']
@@ -3198,12 +3199,15 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     ? `${r.normalized_value} ${r.unit || ''}`.trim()
                     : (r.raw_value !== null && r.raw_value !== undefined && r.raw_value !== '' ? r.raw_value : 'N/A');
 
+                const vStr = r.snmp_version ? (r.snmp_version.toString().toLowerCase().includes('3') ? 'v3' : 'v' + r.snmp_version) : '';
+                const vBadge = vStr ? `<span class="badge ${vStr === 'v3' ? 'badge-primary' : 'badge-neutral'}" style="margin-left:6px; font-size:10px; padding:2px 6px;">${vStr}</span>` : '';
+
                 html += `
                     <tr>
                         <td style="text-align:center;">
                             <input type="checkbox" class="sensor-chk" value="${r.id}" ${isChecked ? 'checked' : ''} onchange="toggleSensorSelect(${r.id}, this.checked, ${JSON.stringify(r).replace(/"/g, '&quot;')})">
                         </td>
-                        <td class="mono"><strong>${r.ip_address}</strong></td>
+                        <td class="mono"><strong>${r.ip_address}</strong>${vBadge}</td>
                         <td><span class="badge badge-info">${r.vendor}</span></td>
                         <td><span class="badge badge-neutral">${r.sensor_class}</span></td>
                         <td class="text-truncate-cell" title="${r.sensor_name}"><strong>${r.sensor_name}</strong></td>
@@ -3300,9 +3304,12 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     ? `${s.normalized_value} ${s.unit || ''}`.trim()
                     : (s.raw_value !== null && s.raw_value !== undefined && s.raw_value !== '' ? s.raw_value : 'N/A');
 
+                const vStr = s.snmp_version ? (s.snmp_version.toString().toLowerCase().includes('3') ? 'v3' : 'v' + s.snmp_version) : '';
+                const vBadge = vStr ? `<span class="badge ${vStr === 'v3' ? 'badge-primary' : 'badge-neutral'}" style="margin-left:6px; font-size:10px; padding:2px 6px;">${vStr}</span>` : '';
+
                 html += `
                     <tr>
-                        <td class="mono"><strong>${escapeHtml(s.ip_address || '')}</strong></td>
+                        <td class="mono"><strong>${escapeHtml(s.ip_address || '')}</strong>${vBadge}</td>
                         <td><strong>${escapeHtml(s.sensor_name || 'Sensor #' + s.id)}</strong></td>
                         <td><span class="badge badge-neutral">${escapeHtml(s.sensor_class || '')}</span></td>
                         <td class="mono text-truncate-cell">${escapeHtml(s.oid || '')}</td>

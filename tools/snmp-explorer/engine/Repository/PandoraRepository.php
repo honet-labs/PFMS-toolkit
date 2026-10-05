@@ -163,6 +163,10 @@ final class PandoraRepository
     private function insertModuleDefinition(array $module): int
     {
         $existingCols = $this->getTagenteModuloColumns();
+        $colMap = [];
+        foreach ($existingCols as $actualCol) {
+            $colMap[strtolower((string) $actualCol)] = (string) $actualCol;
+        }
 
         $fields = [
             'id_agente' => $module['id_agente'] ?? 0,
@@ -188,32 +192,44 @@ final class PandoraRepository
             'extra_data' => $module['extra_data'] ?? null,
         ];
 
-        // Optional SNMP v3 parameters based on table schema availability
+        // Optional SNMP v3 parameters supporting both short and full column names
         $v3Candidates = [
             'snmp_version' => $module['snmp_version'] ?? null,
             'snmp3_sec_level' => $module['snmp3_sec_level'] ?? null,
+            'snmp3_security_level' => $module['snmp3_security_level'] ?? $module['snmp3_sec_level'] ?? null,
             'snmp3_auth_user' => $module['snmp3_auth_user'] ?? null,
             'snmp3_auth_method' => $module['snmp3_auth_method'] ?? null,
             'snmp3_auth_pass' => $module['snmp3_auth_pass'] ?? null,
-            'snmp3_priv_method' => $module['snmp3_priv_method'] ?? null,
-            'snmp3_priv_pass' => $module['snmp3_priv_pass'] ?? null,
+            'snmp3_priv_method' => $module['snmp3_priv_method'] ?? $module['snmp3_privacy_method'] ?? null,
+            'snmp3_privacy_method' => $module['snmp3_privacy_method'] ?? $module['snmp3_priv_method'] ?? null,
+            'snmp3_priv_pass' => $module['snmp3_priv_pass'] ?? $module['snmp3_privacy_pass'] ?? null,
+            'snmp3_privacy_pass' => $module['snmp3_privacy_pass'] ?? $module['snmp3_priv_pass'] ?? null,
+            'snmp3_context' => $module['snmp3_context'] ?? $module['snmp3_context_name'] ?? null,
+            'snmp3_context_name' => $module['snmp3_context_name'] ?? $module['snmp3_context'] ?? null,
             'plugin_user' => $module['plugin_user'] ?? null,
             'plugin_pass' => $module['plugin_pass'] ?? null,
             'plugin_parameter' => $module['plugin_parameter'] ?? null,
         ];
 
         foreach ($v3Candidates as $col => $val) {
-            if ($val !== null && (empty($existingCols) || in_array($col, $existingCols, true))) {
-                $fields[$col] = $val;
+            if ($val !== null) {
+                $lowerCol = strtolower($col);
+                if (empty($colMap) || isset($colMap[$lowerCol])) {
+                    $realCol = $colMap[$lowerCol] ?? $col;
+                    $fields[$realCol] = $val;
+                }
             }
         }
 
-        if (!empty($existingCols)) {
-            $fields = array_filter(
-                $fields,
-                static fn ($val, $col) => in_array($col, $existingCols, true),
-                ARRAY_FILTER_USE_BOTH
-            );
+        if (!empty($colMap)) {
+            $filteredFields = [];
+            foreach ($fields as $col => $val) {
+                $lowerCol = strtolower((string) $col);
+                if (isset($colMap[$lowerCol])) {
+                    $filteredFields[$colMap[$lowerCol]] = $val;
+                }
+            }
+            $fields = $filteredFields;
         }
 
         $colNames = implode(', ', array_keys($fields));
@@ -224,6 +240,57 @@ final class PandoraRepository
         $statement->execute(array_values($fields));
 
         return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * Update existing module definition with latest sensor attributes and SNMP version/credentials
+     */
+    public function updateModuleDefinition(int $moduleId, array $module): void
+    {
+        $existingCols = $this->getTagenteModuloColumns();
+        $colMap = [];
+        foreach ($existingCols as $actualCol) {
+            $colMap[strtolower((string) $actualCol)] = (string) $actualCol;
+        }
+
+        $fields = [
+            'snmp_community' => $module['snmp_community'] ?? '',
+            'snmp_oid' => $module['snmp_oid'] ?? null,
+            'ip_target' => $module['ip_target'] ?? null,
+            'tcp_port' => $module['tcp_port'] ?? 161,
+            'module_interval' => $module['module_interval'] ?? 0,
+            'unit' => $module['unit'] ?? null,
+            'snmp_version' => $module['snmp_version'] ?? null,
+            'snmp3_sec_level' => $module['snmp3_sec_level'] ?? null,
+            'snmp3_security_level' => $module['snmp3_security_level'] ?? $module['snmp3_sec_level'] ?? null,
+            'snmp3_auth_user' => $module['snmp3_auth_user'] ?? null,
+            'snmp3_auth_method' => $module['snmp3_auth_method'] ?? null,
+            'snmp3_auth_pass' => $module['snmp3_auth_pass'] ?? null,
+            'snmp3_priv_method' => $module['snmp3_priv_method'] ?? $module['snmp3_privacy_method'] ?? null,
+            'snmp3_privacy_method' => $module['snmp3_privacy_method'] ?? $module['snmp3_priv_method'] ?? null,
+            'snmp3_priv_pass' => $module['snmp3_priv_pass'] ?? $module['snmp3_privacy_pass'] ?? null,
+            'snmp3_privacy_pass' => $module['snmp3_privacy_pass'] ?? $module['snmp3_priv_pass'] ?? null,
+            'snmp3_context' => $module['snmp3_context'] ?? $module['snmp3_context_name'] ?? null,
+            'snmp3_context_name' => $module['snmp3_context_name'] ?? $module['snmp3_context'] ?? null,
+        ];
+
+        $updates = [];
+        $params = [];
+        foreach ($fields as $col => $val) {
+            $lowerCol = strtolower($col);
+            if (empty($colMap) || isset($colMap[$lowerCol])) {
+                $realCol = $colMap[$lowerCol] ?? $col;
+                $updates[] = "$realCol = ?";
+                $params[] = $val;
+            }
+        }
+
+        if (!empty($updates)) {
+            $params[] = $moduleId;
+            $sql = "UPDATE tagente_modulo SET " . implode(', ', $updates) . " WHERE id_agente_modulo = ?";
+            $statement = $this->pdo->prepare($sql);
+            $statement->execute($params);
+        }
     }
 
     /**
