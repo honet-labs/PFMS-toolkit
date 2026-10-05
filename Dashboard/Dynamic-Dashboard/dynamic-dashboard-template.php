@@ -2348,13 +2348,13 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
 
     if (valCalc === 'avg') {
         if (calcAvg !== null) rawDisplay = (calcAvg % 1 === 0) ? calcAvg.toString() : Number(calcAvg.toFixed(2)).toString();
-        badgeHtml = `<span style="display:inline-block; font-size:10px; font-weight:700; color:#0d9488; background:#ccfbf1; padding:1px 6px; border-radius:4px; margin-bottom:4px; text-transform:uppercase;" title="Average Value over active time range">AVG</span>`;
+        badgeHtml = `<span class="badge-calc badge-calc-avg" style="display:inline-flex; align-items:center; font-size:9px; font-weight:700; color:#0d9488; background:#ccfbf1; border:1px solid rgba(13,148,136,0.3); padding:1px 5px; border-radius:4px; margin-left:4px; text-transform:uppercase; letter-spacing:0.5px; line-height:1.2; vertical-align:middle;" title="Average Value over active time range">AVG</span>`;
     } else if (valCalc === 'max') {
         if (calcMax !== null) rawDisplay = (calcMax % 1 === 0) ? calcMax.toString() : Number(calcMax.toFixed(2)).toString();
-        badgeHtml = `<span style="display:inline-block; font-size:10px; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 6px; border-radius:4px; margin-bottom:4px; text-transform:uppercase;" title="Maximum Value over active time range">MAX</span>`;
+        badgeHtml = `<span class="badge-calc badge-calc-max" style="display:inline-flex; align-items:center; font-size:9px; font-weight:700; color:#b91c1c; background:#fee2e2; border:1px solid rgba(185,28,28,0.3); padding:1px 5px; border-radius:4px; margin-left:4px; text-transform:uppercase; letter-spacing:0.5px; line-height:1.2; vertical-align:middle;" title="Maximum Value over active time range">MAX</span>`;
     } else if (valCalc === 'min') {
         if (calcMin !== null) rawDisplay = (calcMin % 1 === 0) ? calcMin.toString() : Number(calcMin.toFixed(2)).toString();
-        badgeHtml = `<span style="display:inline-block; font-size:10px; font-weight:700; color:#0369a1; background:#e0f2fe; padding:1px 6px; border-radius:4px; margin-bottom:4px; text-transform:uppercase;" title="Minimum Value over active time range">MIN</span>`;
+        badgeHtml = `<span class="badge-calc badge-calc-min" style="display:inline-flex; align-items:center; font-size:9px; font-weight:700; color:#0369a1; background:#e0f2fe; border:1px solid rgba(3,105,161,0.3); padding:1px 5px; border-radius:4px; margin-left:4px; text-transform:uppercase; letter-spacing:0.5px; line-height:1.2; vertical-align:middle;" title="Minimum Value over active time range">MIN</span>`;
     } else if (valCalc === 'summary' && (calcMin !== null || calcAvg !== null || calcMax !== null)) {
         summaryHtml = `
         <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; justify-content:center; align-items:center;">
@@ -2378,14 +2378,13 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const statusHtml = isMultiOverlay ? '' : `<div style="display:flex; align-items:center;"><span class="status-dot ${bgClass}"></span><span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span></div>`;
 
     if (p.type === 'text') {
-        contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;">${badgeHtml}<div style="display:flex; align-items:baseline; justify-content:center;"><span class="status-dot ${bgClass}"></span><span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${summaryHtml}${modNameHtml}</div>`;
+        contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;"><div style="display:flex; align-items:baseline; justify-content:center;"><span class="status-dot ${bgClass}"></span><span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${summaryHtml}${modNameHtml}</div>`;
     } 
     else if (p.type === 'single_value') {
         const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[moduleData.status] || '#95a5a6';
         contentHtml = `
         <div style="height: 100%; width: 100%; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;">
             <div style="padding: 10px 10px 0 10px; z-index: 2;">
-                ${badgeHtml}
                 <div style="font-size: ${fs}px; font-weight: ${fw}; color: ${color}; line-height: 1.1; display: flex; align-items: baseline; gap: 4px;">
                     <span>${valText}</span>
                     <span style="font-size: ${Math.round(fs * 0.45)}px; font-weight: normal; color: #64748b;">${moduleData.unit}</span>
@@ -2499,7 +2498,12 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         `;
     }
 
-    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:6px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span> ${p.title}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div></div>`;
+    let displayTitle = p.title || '';
+    if (valCalc === 'min' || valCalc === 'max' || valCalc === 'avg') {
+        displayTitle = displayTitle.replace(new RegExp(`\\s*[\\(\\[]?${valCalc}[\\)\\]]?\\s*$`, 'i'), '').trim();
+    }
+
+    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;"><h6 class="panel-title" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:4px; max-width:100%;"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:2px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span><span>${displayTitle}</span>${badgeHtml}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div></div>`;
 }
 
 function generateSummaryPanelHtml(p, modules) {
