@@ -529,13 +529,24 @@ final readonly class SensorInventoryRepository
 
         try {
             $this->pdo->exec('DROP TEMPORARY TABLE IF EXISTS `' . $table . '`');
+
+            // Detect collation of sensor_inventory to prevent 1267 Illegal mix of collations error
+            $collation = 'utf8mb4_unicode_ci';
+            try {
+                $colQuery = $this->pdo->query("SELECT TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sensor_inventory' LIMIT 1");
+                $fetched = $colQuery ? $colQuery->fetchColumn() : false;
+                if (is_string($fetched) && $fetched !== '') {
+                    $collation = (string) $fetched;
+                }
+            } catch (Throwable) {}
+
             $this->pdo->exec(
                 'CREATE TEMPORARY TABLE `' . $table . '` (
-                    sensor_class VARCHAR(64) NOT NULL,
-                    sensor_name VARCHAR(255) NOT NULL,
-                    oid VARCHAR(512) NOT NULL,
+                    sensor_class VARCHAR(64) CHARACTER SET utf8mb4 COLLATE ' . $collation . ' NOT NULL,
+                    sensor_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE ' . $collation . ' NOT NULL,
+                    oid VARCHAR(512) CHARACTER SET utf8mb4 COLLATE ' . $collation . ' NOT NULL,
                     INDEX keep_sensor_lookup (sensor_class, sensor_name(191), oid(191))
-                ) ENGINE=InnoDB'
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=' . $collation
             );
 
             $this->insertTemporaryKeepRows($table, $sensors);
@@ -544,9 +555,9 @@ final readonly class SensorInventoryRepository
                 'DELETE si
                 FROM sensor_inventory si
                 LEFT JOIN `' . $table . '` keep_rows
-                    ON keep_rows.sensor_class = si.sensor_class
-                    AND keep_rows.sensor_name = si.sensor_name
-                    AND keep_rows.oid = si.oid
+                    ON keep_rows.sensor_class COLLATE ' . $collation . ' = si.sensor_class COLLATE ' . $collation . '
+                    AND keep_rows.sensor_name COLLATE ' . $collation . ' = si.sensor_name COLLATE ' . $collation . '
+                    AND keep_rows.oid COLLATE ' . $collation . ' = si.oid COLLATE ' . $collation . '
                 WHERE si.device_id = :device_id
                     AND keep_rows.oid IS NULL'
             );
