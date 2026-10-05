@@ -799,6 +799,386 @@ if (!empty($api)) {
         exit;
     }
 
+    // API: Search OIDs across Catalog, Discovered Inventory, and Loaded MIBs
+    if ($api === 'search_oids') {
+        $q = trim((string)($_GET['q'] ?? ''));
+        $source = trim((string)($_GET['source'] ?? 'all'));
+        $limit = max(10, min(100, (int)($_GET['limit'] ?? 60)));
+
+        $catalog = [
+            // MIB-II / System
+            ['oid' => '1.3.6.1.2.1.1.1.0', 'name' => 'sysDescr', 'module' => 'SNMPv2-MIB', 'class' => 'system', 'type' => 'string', 'syntax' => 'OCTET STRING', 'unit' => '', 'desc' => 'Textual description of the entity including hardware, OS, and version.'],
+            ['oid' => '1.3.6.1.2.1.1.2.0', 'name' => 'sysObjectID', 'module' => 'SNMPv2-MIB', 'class' => 'system', 'type' => 'string', 'syntax' => 'OBJECT IDENTIFIER', 'unit' => '', 'desc' => 'Vendor authoritative enterprise OID identifying network subsystem.'],
+            ['oid' => '1.3.6.1.2.1.1.3.0', 'name' => 'sysUpTime', 'module' => 'SNMPv2-MIB', 'class' => 'system', 'type' => 'numeric', 'syntax' => 'TimeTicks', 'unit' => 'ticks', 'desc' => 'Time since the system was last booted / re-initialized.'],
+            ['oid' => '1.3.6.1.2.1.1.5.0', 'name' => 'sysName', 'module' => 'SNMPv2-MIB', 'class' => 'system', 'type' => 'string', 'syntax' => 'OCTET STRING', 'unit' => '', 'desc' => 'Administratively-assigned hostname for this node.'],
+            ['oid' => '1.3.6.1.2.1.1.6.0', 'name' => 'sysLocation', 'module' => 'SNMPv2-MIB', 'class' => 'system', 'type' => 'string', 'syntax' => 'OCTET STRING', 'unit' => '', 'desc' => 'Physical location of the device (datacenter, rack, room).'],
+
+            // IF-MIB (RFC 2863)
+            ['oid' => '1.3.6.1.2.1.2.2.1.1', 'name' => 'ifIndex', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'numeric', 'syntax' => 'INTEGER', 'unit' => '', 'desc' => 'Unique integer index identifying the interface.'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.2', 'name' => 'ifDescr', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'string', 'syntax' => 'DisplayString', 'unit' => '', 'desc' => 'Textual name or description of the interface.'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.3', 'name' => 'ifType', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'numeric', 'syntax' => 'IANAifType', 'unit' => '', 'desc' => 'Interface hardware type (ethernetCsmacd, gigabitEthernet, loopback, etc).'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.5', 'name' => 'ifSpeed', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'numeric', 'syntax' => 'Gauge32', 'unit' => 'bps', 'desc' => 'Interface theoretical bandwidth in bits per second.'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.6', 'name' => 'ifPhysAddress', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'string', 'syntax' => 'PhysAddress', 'unit' => '', 'desc' => 'Physical MAC address of the interface.'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.7', 'name' => 'ifAdminStatus', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'status', 'syntax' => 'INTEGER { up(1), down(2), testing(3) }', 'unit' => '', 'desc' => 'Configured administrative state of interface.'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.8', 'name' => 'ifOperStatus', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'status', 'syntax' => 'INTEGER { up(1), down(2), testing(3), unknown(4), dormant(5), notPresent(6), lowerLayerDown(7) }', 'unit' => '', 'desc' => 'Live operational link state of interface.'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.10', 'name' => 'ifInOctets', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'incremental', 'syntax' => 'Counter32', 'unit' => 'bytes', 'desc' => 'Total inbound octets received on interface.'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.14', 'name' => 'ifInErrors', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'incremental', 'syntax' => 'Counter32', 'unit' => 'packets', 'desc' => 'Inbound packets dropped due to errors.'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.16', 'name' => 'ifOutOctets', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'incremental', 'syntax' => 'Counter32', 'unit' => 'bytes', 'desc' => 'Total outbound octets transmitted on interface.'],
+            ['oid' => '1.3.6.1.2.1.2.2.1.20', 'name' => 'ifOutErrors', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'incremental', 'syntax' => 'Counter32', 'unit' => 'packets', 'desc' => 'Outbound packets dropped due to errors.'],
+            ['oid' => '1.3.6.1.2.1.31.1.1.1.1', 'name' => 'ifName', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'string', 'syntax' => 'DisplayString', 'unit' => '', 'desc' => 'Short textual name of interface (e.g. Gi0/0/1, Port1).'],
+            ['oid' => '1.3.6.1.2.1.31.1.1.1.6', 'name' => 'ifHCInOctets', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'incremental', 'syntax' => 'Counter64', 'unit' => 'bytes', 'desc' => '64-bit high capacity inbound octet counter (for >1Gbps interfaces).'],
+            ['oid' => '1.3.6.1.2.1.31.1.1.1.10', 'name' => 'ifHCOutOctets', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'incremental', 'syntax' => 'Counter64', 'unit' => 'bytes', 'desc' => '64-bit high capacity outbound octet counter (for >1Gbps interfaces).'],
+            ['oid' => '1.3.6.1.2.1.31.1.1.1.15', 'name' => 'ifHighSpeed', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'numeric', 'syntax' => 'Gauge32', 'unit' => 'Mbps', 'desc' => 'Interface speed in units of 1,000,000 bits per second (Mbps).'],
+            ['oid' => '1.3.6.1.2.1.31.1.1.1.18', 'name' => 'ifAlias', 'module' => 'IF-MIB', 'class' => 'interface', 'type' => 'string', 'syntax' => 'DisplayString', 'unit' => '', 'desc' => 'Interface description or alias string set by administrator.'],
+
+            // HOST-RESOURCES-MIB (RFC 2790)
+            ['oid' => '1.3.6.1.2.1.25.1.1.0', 'name' => 'hrSystemUptime', 'module' => 'HOST-RESOURCES-MIB', 'class' => 'system', 'type' => 'numeric', 'syntax' => 'TimeTicks', 'unit' => 'ticks', 'desc' => 'Host uptime since system initialization.'],
+            ['oid' => '1.3.6.1.2.1.25.2.2.0', 'name' => 'hrMemorySize', 'module' => 'HOST-RESOURCES-MIB', 'class' => 'memory', 'type' => 'numeric', 'syntax' => 'KBytes', 'unit' => 'KB', 'desc' => 'Amount of physical RAM in kilobytes.'],
+            ['oid' => '1.3.6.1.2.1.25.2.3.1.2', 'name' => 'hrStorageType', 'module' => 'HOST-RESOURCES-MIB', 'class' => 'storage', 'type' => 'string', 'syntax' => 'AutonomousType', 'unit' => '', 'desc' => 'Type of storage (FixedDisk, RamDisk, VirtualMemory, etc).'],
+            ['oid' => '1.3.6.1.2.1.25.2.3.1.3', 'name' => 'hrStorageDescr', 'module' => 'HOST-RESOURCES-MIB', 'class' => 'storage', 'type' => 'string', 'syntax' => 'DisplayString', 'unit' => '', 'desc' => 'Storage mount point or drive letter description.'],
+            ['oid' => '1.3.6.1.2.1.25.2.3.1.5', 'name' => 'hrStorageSize', 'module' => 'HOST-RESOURCES-MIB', 'class' => 'storage', 'type' => 'numeric', 'syntax' => 'INTEGER', 'unit' => 'blocks', 'desc' => 'Total capacity size in allocation units.'],
+            ['oid' => '1.3.6.1.2.1.25.2.3.1.6', 'name' => 'hrStorageUsed', 'module' => 'HOST-RESOURCES-MIB', 'class' => 'storage', 'type' => 'numeric', 'syntax' => 'INTEGER', 'unit' => 'blocks', 'desc' => 'Used capacity in allocation units.'],
+            ['oid' => '1.3.6.1.2.1.25.3.3.1.2', 'name' => 'hrProcessorLoad', 'module' => 'HOST-RESOURCES-MIB', 'class' => 'processor', 'type' => 'percentage', 'syntax' => 'INTEGER (0..100)', 'unit' => '%', 'desc' => '1-minute average CPU core utilization percentage.'],
+
+            // ENTITY-MIB & ENTITY-SENSOR-MIB (RFC 3433 / RFC 6933)
+            ['oid' => '1.3.6.1.2.1.47.1.1.1.1.2', 'name' => 'entPhysicalDescr', 'module' => 'ENTITY-MIB', 'class' => 'inventory', 'type' => 'string', 'syntax' => 'SnmpAdminString', 'unit' => '', 'desc' => 'Description of physical hardware entity (Chassis, Module, Fan, Sensor).'],
+            ['oid' => '1.3.6.1.2.1.47.1.1.1.1.7', 'name' => 'entPhysicalName', 'module' => 'ENTITY-MIB', 'class' => 'inventory', 'type' => 'string', 'syntax' => 'SnmpAdminString', 'unit' => '', 'desc' => 'Hardware entity name.'],
+            ['oid' => '1.3.6.1.2.1.99.1.1.1.1', 'name' => 'entPhySensorType', 'module' => 'ENTITY-SENSOR-MIB', 'class' => 'sensor', 'type' => 'numeric', 'syntax' => 'EntitySensorDataType', 'unit' => '', 'desc' => 'Physical sensor type (celsius, volts, amperes, watts, rpm).'],
+            ['oid' => '1.3.6.1.2.1.99.1.1.1.4', 'name' => 'entPhySensorValue', 'module' => 'ENTITY-SENSOR-MIB', 'class' => 'sensor', 'type' => 'numeric', 'syntax' => 'EntitySensorValue', 'unit' => '', 'desc' => 'Measured live reading from physical sensor.'],
+            ['oid' => '1.3.6.1.2.1.99.1.1.1.5', 'name' => 'entPhySensorOperStatus', 'module' => 'ENTITY-SENSOR-MIB', 'class' => 'sensor', 'type' => 'status', 'syntax' => 'EntitySensorStatus', 'unit' => '', 'desc' => 'Sensor health state (ok, unavailable, nonoperational).'],
+
+            // Cisco Systems
+            ['oid' => '1.3.6.1.4.1.9.9.109.1.1.1.1.8', 'name' => 'cpmCPUTotal5minRev', 'module' => 'CISCO-PROCESS-MIB', 'class' => 'processor', 'type' => 'percentage', 'syntax' => 'Gauge32 (0..100)', 'unit' => '%', 'desc' => 'Cisco IOS 5-minute CPU busy load percentage.'],
+            ['oid' => '1.3.6.1.4.1.9.9.109.1.1.1.1.7', 'name' => 'cpmCPUTotal1minRev', 'module' => 'CISCO-PROCESS-MIB', 'class' => 'processor', 'type' => 'percentage', 'syntax' => 'Gauge32 (0..100)', 'unit' => '%', 'desc' => 'Cisco IOS 1-minute CPU busy load percentage.'],
+            ['oid' => '1.3.6.1.4.1.9.9.48.1.1.1.5', 'name' => 'ciscoMemoryPoolUsed', 'module' => 'CISCO-MEMORY-POOL-MIB', 'class' => 'memory', 'type' => 'numeric', 'syntax' => 'Gauge32', 'unit' => 'bytes', 'desc' => 'Cisco memory pool bytes currently allocated.'],
+            ['oid' => '1.3.6.1.4.1.9.9.48.1.1.1.6', 'name' => 'ciscoMemoryPoolFree', 'module' => 'CISCO-MEMORY-POOL-MIB', 'class' => 'memory', 'type' => 'numeric', 'syntax' => 'Gauge32', 'unit' => 'bytes', 'desc' => 'Cisco memory pool bytes free.'],
+            ['oid' => '1.3.6.1.4.1.9.9.13.1.3.1.3', 'name' => 'ciscoEnvMonTemperatureValue', 'module' => 'CISCO-ENVMON-MIB', 'class' => 'temperature', 'type' => 'temperature', 'syntax' => 'Gauge32', 'unit' => 'C', 'desc' => 'Cisco hardware temperature sensor measurement in Celsius.'],
+            ['oid' => '1.3.6.1.4.1.9.9.13.1.4.1.3', 'name' => 'ciscoEnvMonFanStatus', 'module' => 'CISCO-ENVMON-MIB', 'class' => 'fan', 'type' => 'status', 'syntax' => 'CiscoEnvMonState', 'unit' => '', 'desc' => 'Cisco fan operational status (normal, warning, critical).'],
+            ['oid' => '1.3.6.1.4.1.9.9.13.1.5.1.3', 'name' => 'ciscoEnvMonSupplyStatus', 'module' => 'CISCO-ENVMON-MIB', 'class' => 'voltage', 'type' => 'status', 'syntax' => 'CiscoEnvMonState', 'unit' => '', 'desc' => 'Cisco power supply operational status.'],
+
+            // Huawei Technologies
+            ['oid' => '1.3.6.1.4.1.2011.5.25.31.1.1.1.1.5', 'name' => 'hwEntityCpuUsage', 'module' => 'HUAWEI-ENTITY-EXTENT-MIB', 'class' => 'processor', 'type' => 'percentage', 'syntax' => 'Integer32 (0..100)', 'unit' => '%', 'desc' => 'Huawei board CPU utilization percentage.'],
+            ['oid' => '1.3.6.1.4.1.2011.5.25.31.1.1.1.1.7', 'name' => 'hwEntityMemUsage', 'module' => 'HUAWEI-ENTITY-EXTENT-MIB', 'class' => 'memory', 'type' => 'percentage', 'syntax' => 'Integer32 (0..100)', 'unit' => '%', 'desc' => 'Huawei board memory utilization percentage.'],
+            ['oid' => '1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11', 'name' => 'hwEntityTemperature', 'module' => 'HUAWEI-ENTITY-EXTENT-MIB', 'class' => 'temperature', 'type' => 'temperature', 'syntax' => 'Integer32', 'unit' => 'C', 'desc' => 'Huawei hardware board temperature in degrees Celsius.'],
+            ['oid' => '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8', 'name' => 'hwEntityOpticalRxPower', 'module' => 'HUAWEI-ENTITY-EXTENT-MIB', 'class' => 'optical_dom', 'type' => 'optical_power', 'syntax' => 'Integer32', 'unit' => 'dBm', 'desc' => 'Huawei optical transceiver RX power.'],
+            ['oid' => '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.9', 'name' => 'hwEntityOpticalTxPower', 'module' => 'HUAWEI-ENTITY-EXTENT-MIB', 'class' => 'optical_dom', 'type' => 'optical_power', 'syntax' => 'Integer32', 'unit' => 'dBm', 'desc' => 'Huawei optical transceiver TX power.'],
+            ['oid' => '1.3.6.1.4.1.2011.6.3.4.1.4', 'name' => 'hwOpticalRxPower', 'module' => 'HUAWEI-DEVICE-EXT-MIB', 'class' => 'optical_dom', 'type' => 'optical_power', 'syntax' => 'Integer32', 'unit' => 'dBm', 'desc' => 'Huawei device optical transceiver RX power.'],
+            ['oid' => '1.3.6.1.4.1.2011.6.3.4.1.5', 'name' => 'hwOpticalTxPower', 'module' => 'HUAWEI-DEVICE-EXT-MIB', 'class' => 'optical_dom', 'type' => 'optical_power', 'syntax' => 'Integer32', 'unit' => 'dBm', 'desc' => 'Huawei device optical transceiver TX power.'],
+
+            // MikroTik RouterOS
+            ['oid' => '1.3.6.1.4.1.14988.1.1.3.10.0', 'name' => 'mtxrHlCpuTemperature', 'module' => 'MIKROTIK-MIB', 'class' => 'temperature', 'type' => 'temperature', 'syntax' => 'Integer32', 'unit' => 'C', 'desc' => 'MikroTik RouterOS CPU temperature.'],
+            ['oid' => '1.3.6.1.4.1.14988.1.1.3.11.0', 'name' => 'mtxrHlProcessorTemperature', 'module' => 'MIKROTIK-MIB', 'class' => 'temperature', 'type' => 'temperature', 'syntax' => 'Integer32', 'unit' => 'C', 'desc' => 'MikroTik main board processor temperature.'],
+            ['oid' => '1.3.6.1.4.1.14988.1.1.3.8.0', 'name' => 'mtxrHlVoltage', 'module' => 'MIKROTIK-MIB', 'class' => 'voltage', 'type' => 'voltage', 'syntax' => 'Integer32', 'unit' => 'V', 'desc' => 'MikroTik power supply voltage (in dV or V).'],
+            ['oid' => '1.3.6.1.4.1.14988.1.1.3.12.0', 'name' => 'mtxrHlPower', 'module' => 'MIKROTIK-MIB', 'class' => 'power', 'type' => 'numeric', 'syntax' => 'Integer32', 'unit' => 'W', 'desc' => 'MikroTik power consumption in Watts.'],
+            ['oid' => '1.3.6.1.4.1.14988.1.1.3.14.0', 'name' => 'mtxrHlCurrent', 'module' => 'MIKROTIK-MIB', 'class' => 'current', 'type' => 'current', 'syntax' => 'Integer32', 'unit' => 'mA', 'desc' => 'MikroTik current consumption in mA.'],
+            ['oid' => '1.3.6.1.4.1.14988.1.1.19.1.1.6', 'name' => 'mtxrOpticalRxPower', 'module' => 'MIKROTIK-MIB', 'class' => 'optical_dom', 'type' => 'optical_power', 'syntax' => 'Integer32', 'unit' => 'dBm', 'desc' => 'MikroTik SFP/SFP+ optical RX power.'],
+            ['oid' => '1.3.6.1.4.1.14988.1.1.19.1.1.7', 'name' => 'mtxrOpticalTxPower', 'module' => 'MIKROTIK-MIB', 'class' => 'optical_dom', 'type' => 'optical_power', 'syntax' => 'Integer32', 'unit' => 'dBm', 'desc' => 'MikroTik SFP/SFP+ optical TX power.'],
+
+            // Juniper Networks
+            ['oid' => '1.3.6.1.4.1.2636.3.1.13.1.8', 'name' => 'jnxOperatingCPU', 'module' => 'JUNIPER-MIB', 'class' => 'processor', 'type' => 'percentage', 'syntax' => 'Integer32 (0..100)', 'unit' => '%', 'desc' => 'Juniper JunOS operating CPU load percentage.'],
+            ['oid' => '1.3.6.1.4.1.2636.3.1.13.1.7', 'name' => 'jnxOperatingTemp', 'module' => 'JUNIPER-MIB', 'class' => 'temperature', 'type' => 'temperature', 'syntax' => 'Integer32', 'unit' => 'C', 'desc' => 'Juniper hardware component operating temperature in Celsius.'],
+            ['oid' => '1.3.6.1.4.1.2636.3.1.13.1.11', 'name' => 'jnxOperatingBuffer', 'module' => 'JUNIPER-MIB', 'class' => 'memory', 'type' => 'percentage', 'syntax' => 'Integer32 (0..100)', 'unit' => '%', 'desc' => 'Juniper memory buffer utilization percentage.'],
+
+            // Linux Net-SNMP
+            ['oid' => '1.3.6.1.4.1.2021.11.9.0', 'name' => 'ssCpuUser', 'module' => 'UCD-SNMP-MIB', 'class' => 'processor', 'type' => 'percentage', 'syntax' => 'Integer32', 'unit' => '%', 'desc' => 'Linux CPU percentage spent in user space.'],
+            ['oid' => '1.3.6.1.4.1.2021.11.10.0', 'name' => 'ssCpuSystem', 'module' => 'UCD-SNMP-MIB', 'class' => 'processor', 'type' => 'percentage', 'syntax' => 'Integer32', 'unit' => '%', 'desc' => 'Linux CPU percentage spent in kernel/system.'],
+            ['oid' => '1.3.6.1.4.1.2021.11.11.0', 'name' => 'ssCpuIdle', 'module' => 'UCD-SNMP-MIB', 'class' => 'processor', 'type' => 'percentage', 'syntax' => 'Integer32', 'unit' => '%', 'desc' => 'Linux CPU percentage idle.'],
+            ['oid' => '1.3.6.1.4.1.2021.4.5.0', 'name' => 'memTotalReal', 'module' => 'UCD-SNMP-MIB', 'class' => 'memory', 'type' => 'numeric', 'syntax' => 'Integer32', 'unit' => 'KB', 'desc' => 'Total real memory (RAM) in KB.'],
+            ['oid' => '1.3.6.1.4.1.2021.4.6.0', 'name' => 'memAvailReal', 'module' => 'UCD-SNMP-MIB', 'class' => 'memory', 'type' => 'numeric', 'syntax' => 'Integer32', 'unit' => 'KB', 'desc' => 'Total free/available memory (RAM) in KB.'],
+            ['oid' => '1.3.6.1.4.1.2021.10.1.3.1', 'name' => 'laLoad.1', 'module' => 'UCD-SNMP-MIB', 'class' => 'processor', 'type' => 'string', 'syntax' => 'DisplayString', 'unit' => '', 'desc' => '1-minute system load average on UNIX/Linux hosts.'],
+
+            // BGP4-MIB
+            ['oid' => '1.3.6.1.2.1.15.3.1.2', 'name' => 'bgpPeerState', 'module' => 'BGP4-MIB', 'class' => 'routing', 'type' => 'status', 'syntax' => 'INTEGER { idle(1), connect(2), active(3), opensent(4), openconfirm(5), established(6) }', 'unit' => '', 'desc' => 'BGP peer connection state. 6 = established.'],
+            ['oid' => '1.3.6.1.2.1.15.3.1.3', 'name' => 'bgpPeerAdminStatus', 'module' => 'BGP4-MIB', 'class' => 'routing', 'type' => 'status', 'syntax' => 'INTEGER { stop(1), start(2) }', 'unit' => '', 'desc' => 'Administrative state of BGP peer.'],
+
+            // UPS-MIB (RFC 1628)
+            ['oid' => '1.3.6.1.2.1.33.1.2.1.0', 'name' => 'upsBatteryStatus', 'module' => 'UPS-MIB', 'class' => 'power', 'type' => 'status', 'syntax' => 'INTEGER { unknown(1), normal(2), low(3), depleted(4) }', 'unit' => '', 'desc' => 'UPS battery operational status.'],
+            ['oid' => '1.3.6.1.2.1.33.1.2.3.0', 'name' => 'upsEstimatedMinutesRemaining', 'module' => 'UPS-MIB', 'class' => 'power', 'type' => 'numeric', 'syntax' => 'PositiveInteger', 'unit' => 'min', 'desc' => 'Estimated UPS runtime remaining on battery in minutes.'],
+            ['oid' => '1.3.6.1.2.1.33.1.2.4.0', 'name' => 'upsEstimatedChargeRemaining', 'module' => 'UPS-MIB', 'class' => 'power', 'type' => 'percentage', 'syntax' => 'INTEGER (0..100)', 'unit' => '%', 'desc' => 'UPS battery charge percentage remaining.'],
+            ['oid' => '1.3.6.1.2.1.33.1.2.7.0', 'name' => 'upsBatteryTemperature', 'module' => 'UPS-MIB', 'class' => 'temperature', 'type' => 'temperature', 'syntax' => 'INTEGER', 'unit' => 'C', 'desc' => 'UPS battery casing temperature.'],
+        ];
+
+        $results = [];
+        $seenOids = [];
+
+        // 1. Direct OID Translator test if query looks like an OID or starts with dot
+        $trimmedQ = ltrim($q, '.');
+        if (!empty($q) && ($oidTranslator !== null) && (str_starts_with($q, '.') || preg_match('/^\d+(\.\d+)+/', $trimmedQ) || preg_match('/^[A-Za-z0-9_-]+::/', $q))) {
+            try {
+                $trans = $oidTranslator->translate($q);
+                if (!empty($trans['numeric_oid'])) {
+                    $normOid = ltrim($trans['numeric_oid'], '.');
+                    $results[] = [
+                        'oid' => $normOid,
+                        'name' => $trans['object'] ?? $trans['display_name'] ?? $q,
+                        'module' => $trans['mib'] ?? 'Translated',
+                        'class' => $trans['suggested_class'] ?? 'misc',
+                        'type' => $trans['suggested_type'] ?? 'numeric',
+                        'syntax' => $trans['syntax'] ?? 'Unknown',
+                        'unit' => $trans['units'] ?? $trans['suggested_unit'] ?? '',
+                        'desc' => $trans['description'] ?? 'Resolved dynamically via Net-SNMP MIB engine.',
+                        'source' => 'Net-SNMP Translation',
+                        'source_type' => 'translator',
+                        'in_inventory' => false,
+                        'device_count' => 0,
+                    ];
+                    $seenOids[$normOid] = true;
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // 2. Search Discovered Sensors Inventory
+        if ($source === 'all' || $source === 'inventory') {
+            try {
+                $whereClauses = [];
+                $params = [];
+                if (!empty($q)) {
+                    $whereClauses[] = "(s.oid LIKE :q1 OR s.sensor_name LIKE :q2 OR s.sensor_class LIKE :q3 OR s.vendor LIKE :q4)";
+                    $likeQ = '%' . $q . '%';
+                    $params[':q1'] = $likeQ;
+                    $params[':q2'] = $likeQ;
+                    $params[':q3'] = $likeQ;
+                    $params[':q4'] = $likeQ;
+                }
+                $whereSql = !empty($whereClauses) ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
+                $invSql = "SELECT s.oid, s.sensor_name, s.sensor_class, s.sensor_type, s.vendor, s.unit, s.raw_value,
+                                  COUNT(DISTINCT s.device_id) as device_count,
+                                  GROUP_CONCAT(DISTINCT s.ip_address SEPARATOR ', ') as sample_ips
+                           FROM sensor_inventory s
+                           $whereSql
+                           GROUP BY s.oid, s.sensor_name, s.sensor_class, s.sensor_type, s.vendor, s.unit
+                           ORDER BY device_count DESC, s.id DESC
+                           LIMIT 40";
+                $st = $pdo->prepare($invSql);
+                $st->execute($params);
+                $invRows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($invRows as $row) {
+                    $cleanOid = ltrim($row['oid'], '.');
+                    if (isset($seenOids[$cleanOid])) {
+                        foreach ($results as &$r) {
+                            if ($r['oid'] === $cleanOid) {
+                                $r['in_inventory'] = true;
+                                $r['device_count'] = (int)$row['device_count'];
+                                $r['sample_devices'] = $row['sample_ips'];
+                                $r['last_value'] = $row['raw_value'];
+                                break;
+                            }
+                        }
+                        unset($r);
+                        continue;
+                    }
+
+                    $seenOids[$cleanOid] = true;
+                    $resolvedName = $row['sensor_name'];
+                    $resolvedMib = $row['vendor'] ?: 'Discovered';
+                    if ($oidTranslator) {
+                        try {
+                            $t = $oidTranslator->translate($cleanOid);
+                            if (!empty($t['object'])) $resolvedName = $t['object'];
+                            if (!empty($t['mib'])) $resolvedMib = $t['mib'];
+                        } catch (\Throwable $e) {}
+                    }
+
+                    $results[] = [
+                        'oid' => $cleanOid,
+                        'name' => $row['sensor_name'],
+                        'symbolic_name' => $resolvedName,
+                        'module' => $resolvedMib,
+                        'class' => $row['sensor_class'] ?: 'general',
+                        'type' => $row['sensor_type'] ?: 'numeric',
+                        'syntax' => $row['raw_value'] ? 'Observed value: ' . $row['raw_value'] : 'Discovered',
+                        'unit' => $row['unit'] ?? '',
+                        'desc' => sprintf('Discovered on %d network device(s): %s (Vendor: %s)', (int)$row['device_count'], $row['sample_ips'] ?: 'Local', $row['vendor'] ?: 'Generic'),
+                        'source' => 'Discovered Inventory',
+                        'source_type' => 'inventory',
+                        'in_inventory' => true,
+                        'device_count' => (int)$row['device_count'],
+                        'sample_devices' => $row['sample_ips'],
+                        'last_value' => $row['raw_value'],
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // 3. Search Standard Catalog
+        if ($source === 'all' || $source === 'catalog') {
+            foreach ($catalog as $cat) {
+                $cleanOid = ltrim($cat['oid'], '.');
+                $match = empty($q)
+                    || stripos($cleanOid, $q) !== false
+                    || stripos($cat['name'], $q) !== false
+                    || stripos($cat['module'], $q) !== false
+                    || stripos($cat['desc'], $q) !== false
+                    || stripos($cat['class'], $q) !== false;
+
+                if ($match) {
+                    if (isset($seenOids[$cleanOid])) {
+                        continue;
+                    }
+                    $seenOids[$cleanOid] = true;
+                    $results[] = [
+                        'oid' => $cleanOid,
+                        'name' => $cat['name'],
+                        'module' => $cat['module'],
+                        'class' => $cat['class'],
+                        'type' => $cat['type'],
+                        'syntax' => $cat['syntax'],
+                        'unit' => $cat['unit'],
+                        'desc' => $cat['desc'],
+                        'source' => 'Standard RFC / Vendor Catalog',
+                        'source_type' => 'catalog',
+                        'in_inventory' => false,
+                        'device_count' => 0,
+                    ];
+                }
+            }
+        }
+
+        // 4. Search Installed MIB Files
+        if (($source === 'all' || $source === 'mibs') && !empty($q) && strlen($q) >= 2) {
+            foreach ($mibDirs as $dir) {
+                if (!is_dir($dir)) continue;
+                $files = @scandir($dir) ?: [];
+                foreach ($files as $file) {
+                    if ($file === '.' || $file === '..' || is_dir($dir . '/' . $file)) continue;
+                    $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+                    if (!in_array($ext, ['mib', 'my', 'txt', '']) && !str_contains($file, '-MIB') && !str_contains($file, 'MIB')) continue;
+
+                    $filePath = $dir . '/' . $file;
+                    if (@filesize($filePath) > 2 * 1024 * 1024) continue;
+                    $content = @file_get_contents($filePath);
+                    if (!$content || stripos($content, $q) === false) continue;
+
+                    $modName = $file;
+                    if (preg_match('/^\s*([A-Za-z0-9_-]+)\s+DEFINITIONS/m', $content, $m)) {
+                        $modName = $m[1];
+                    }
+
+                    if (preg_match_all('/([A-Za-z0-9_-]+)\s+OBJECT-TYPE\s+SYNTAX\s+([^;]+?)\s+(?:MAX-ACCESS|ACCESS)\s+[^\n]+\s+STATUS\s+[^\n]+\s+DESCRIPTION\s+"([^"]*?)"\s*::=\s*\{\s*([A-Za-z0-9_-]+)\s+([0-9]+)\s*\}/is', $content, $matches, PREG_SET_ORDER)) {
+                        foreach ($matches as $match) {
+                            $objName = $match[1];
+                            $syntax = trim(preg_replace('/\s+/', ' ', $match[2]));
+                            $desc = trim(preg_replace('/\s+/', ' ', $match[3]));
+
+                            if (stripos($objName, $q) !== false || stripos($desc, $q) !== false || stripos($syntax, $q) !== false) {
+                                $calcOid = '';
+                                if ($oidTranslator) {
+                                    try {
+                                        $t = $oidTranslator->translate($modName . '::' . $objName);
+                                        if (!empty($t['numeric_oid'])) $calcOid = ltrim($t['numeric_oid'], '.');
+                                    } catch (\Throwable $e) {}
+                                }
+                                $key = $calcOid ?: ($modName . '::' . $objName);
+                                if (!isset($seenOids[$key])) {
+                                    $seenOids[$key] = true;
+                                    $results[] = [
+                                        'oid' => $calcOid ?: ($match[4] . '.' . $match[5]),
+                                        'name' => $objName,
+                                        'module' => $modName,
+                                        'class' => 'mib_object',
+                                        'type' => 'numeric',
+                                        'syntax' => $syntax,
+                                        'unit' => '',
+                                        'desc' => substr($desc, 0, 240),
+                                        'source' => 'MIB File (' . $file . ')',
+                                        'source_type' => 'mib_file',
+                                        'in_inventory' => false,
+                                        'device_count' => 0,
+                                    ];
+                                }
+                                if (count($results) >= $limit) break 3;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        $sliced = array_slice($results, 0, $limit);
+
+        echo json_encode([
+            'ok' => true,
+            'query' => $q,
+            'source' => $source,
+            'total' => count($sliced),
+            'results' => $sliced
+        ]);
+        exit;
+    }
+
+    // API: Live SNMP GET test on specific device IP
+    if ($api === 'test_snmp_get' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $verify_csrf();
+        $raw = file_get_contents('php://input');
+        $input = json_decode($raw, true) ?: $_POST;
+
+        $host = trim((string)($input['host'] ?? ''));
+        $oid = trim((string)($input['oid'] ?? ''));
+        $version = trim((string)($input['version'] ?? '2c'));
+        $port = (int)($input['port'] ?? 161);
+        $community = trim((string)($input['community'] ?? 'public'));
+        $v3_user = trim((string)($input['v3_user'] ?? ''));
+        $v3_sec_level = trim((string)($input['v3_sec_level'] ?? 'authPriv'));
+        $v3_auth_proto = trim((string)($input['v3_auth_proto'] ?? 'SHA'));
+        $v3_auth_pass = (string)($input['v3_auth_pass'] ?? '');
+        $v3_priv_proto = trim((string)($input['v3_priv_proto'] ?? 'AES'));
+        $v3_priv_pass = (string)($input['v3_priv_pass'] ?? '');
+        $v3_context = trim((string)($input['v3_context'] ?? ''));
+
+        if (empty($host) || empty($oid)) {
+            echo json_encode(['ok' => false, 'error' => 'Target IP/Host and SNMP OID are required.']);
+            exit;
+        }
+
+        $t0 = microtime(true);
+        try {
+            $session = new \SnmpBridge\Core\Snmp\SnmpSession(
+                host: $host,
+                community: $community,
+                version: $version,
+                port: $port,
+                timeoutUsec: 2000000,
+                retries: 1,
+                secLevel: $v3_sec_level,
+                authProtocol: $v3_auth_proto,
+                authPassphrase: $v3_auth_pass,
+                privProtocol: $v3_priv_proto,
+                privPassphrase: $v3_priv_pass,
+                contextName: $v3_context
+            );
+
+            $val = $session->get($oid);
+            $durationMs = round((microtime(true) - $t0) * 1000, 1);
+
+            $trans = null;
+            if ($oidTranslator) {
+                try {
+                    $trans = $oidTranslator->translate($oid);
+                } catch (\Throwable $e) {}
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'host' => $host,
+                'oid' => $oid,
+                'value' => $val !== null ? $val : '(Null / No response)',
+                'duration_ms' => $durationMs,
+                'translation' => $trans,
+            ]);
+        } catch (\Throwable $e) {
+            $durationMs = round((microtime(true) - $t0) * 1000, 1);
+            echo json_encode([
+                'ok' => false,
+                'host' => $host,
+                'oid' => $oid,
+                'error' => $e->getMessage(),
+                'duration_ms' => $durationMs
+            ]);
+        }
+        exit;
+    }
+
     echo json_encode(['ok' => false, 'error' => 'Unknown API action.']);
     exit;
 }
@@ -1008,6 +1388,84 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             background: var(--brand-green) !important;
             color: #ffffff !important;
             border-color: var(--brand-green) !important;
+        }
+        .subtab-btn {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 7px 14px;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #475569;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        .subtab-btn:hover {
+            border-color: var(--brand-green);
+            color: var(--brand-green);
+            background: #ffffff;
+        }
+        .subtab-btn.active {
+            background: var(--brand-green) !important;
+            color: #ffffff !important;
+            border-color: var(--brand-green) !important;
+            box-shadow: 0 2px 4px rgba(0,77,64,0.15);
+        }
+        .oid-chip {
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            border-radius: 14px;
+            padding: 3px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .oid-chip:hover {
+            background: #e2e8f0;
+            color: var(--primary-navy);
+            border-color: #94a3b8;
+        }
+        .oid-chip.active {
+            background: #e0f2fe;
+            color: #0369a1;
+            border-color: #7dd3fc;
+        }
+        .btn-icon-tiny {
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            padding: 2px 4px;
+            cursor: pointer;
+            color: #64748b;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+            line-height: 1;
+        }
+        .btn-icon-tiny:hover {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: var(--primary-navy);
+        }
+        .oid-copyable {
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+        .oid-copyable:hover {
+            background: #e2e8f0;
+            color: var(--brand-green);
         }
 
         /* Standard Cards */
@@ -1286,6 +1744,10 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             <div class="stat-badge">
                 Provisioned: <span class="num" id="stat-provisioned">0</span>
             </div>
+            <button class="btn-secondary-custom" onclick="openOidDictionarySearch('')" style="display:inline-flex; align-items:center; gap:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px;">search</span>
+                Search OID
+            </button>
             <button class="btn-secondary-custom" onclick="reloadCurrentTab()">
                 Refresh
             </button>
@@ -1305,7 +1767,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 <span class="badge-pill" id="inventory-tab-count">0</span>
             </button>
             <button class="tab-btn" data-tab="tab-mibs" onclick="switchTab('tab-mibs')">
-                MIB Uploader & Registry
+                MIBs & OID Dictionary
                 <span class="badge-pill" id="mibs-tab-count">0</span>
             </button>
             <button class="tab-btn" data-tab="tab-provision" onclick="switchTab('tab-provision')">
@@ -1464,15 +1926,36 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
 
                 <!-- Discovered Modules & Sensors Table Preview -->
                 <div style="margin-top: 22px; border-top: 1px solid var(--border-color); padding-top: 18px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <h4 style="font-size:13.5px; font-weight:700; color:var(--primary-navy);">
-                            Discovered Modules & Sensors Preview (<span id="scan-preview-count">0</span>)
-                        </h4>
-                        <div style="display:flex; gap:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h4 style="font-size:13.5px; font-weight:700; color:var(--primary-navy); margin:0;">
+                                Discovered Modules & Sensors Preview (<span id="scan-preview-count">0</span>)
+                            </h4>
+                            <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
+                                Filter by OID or metric name, copy OIDs, or test live query.
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <button class="btn-secondary-custom" onclick="openOidDictionarySearch('')" style="font-size:12px; height:32px; padding:0 12px; display:inline-flex; align-items:center; gap:5px;">
+                                <span class="material-symbols-outlined" style="font-size:15px;">menu_book</span>
+                                Search in OID Dictionary
+                            </button>
                             <button class="btn-apply" onclick="switchTab('tab-inventory')" style="font-size:12px; height:32px; padding:0 14px;">
                                 Manage & Provision in Inventory &rarr;
                             </button>
                         </div>
+                    </div>
+
+                    <!-- Instant Live Filter Bar -->
+                    <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+                        <div style="position:relative; flex:1; min-width:280px; max-width:500px;">
+                            <input type="text" id="scan-preview-search" class="form-control" placeholder="Search preview by OID or sensor name (e.g. 1.3.6.1... or ifOperStatus)..." oninput="filterScanPreview()" style="padding-left:34px; height:34px; font-size:12px;">
+                            <span class="material-symbols-outlined" style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:17px; color:#94a3b8; pointer-events:none;">search</span>
+                            <button type="button" id="btn-clear-scan-preview-search" onclick="clearScanPreviewSearch()" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:#94a3b8; cursor:pointer; display:none; padding:0;" title="Clear search">
+                                <span class="material-symbols-outlined" style="font-size:16px;">close</span>
+                            </button>
+                        </div>
+                        <span id="scan-preview-filter-badge" class="badge badge-info" style="display:none; font-size:11.5px; padding:5px 9px;"></span>
                     </div>
 
                     <div class="table-responsive" style="max-height: 480px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background:#fff;">
@@ -1485,10 +1968,11 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                                     <th>Current Value</th>
                                     <th>SNMP OID</th>
                                     <th>Status</th>
+                                    <th style="width:80px; text-align:center;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="scan-preview-tbody">
-                                <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No modules scanned yet.</td></tr>
+                                <tr><td colspan="7" style="text-align:center; padding:20px; color:#94a3b8;">No modules scanned yet.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1586,100 +2070,285 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         </div>
 
         <!-- ============================================================= -->
-        <!-- TAB 3: MIB UPLOADER & REGISTRY                                -->
+        <!-- ============================================================= -->
+        <!-- TAB 3: MIBS & OID DICTIONARY                                  -->
         <!-- ============================================================= -->
         <div id="tab-mibs" class="tab-content d-none">
-            <!-- Row 1: Upload MIB & Test Translator (2 columns) -->
-            <div style="display:grid; grid-template-columns: 1.1fr 1fr; gap:20px; margin-bottom:20px;">
-                
-                <!-- Left: MIB Importer & Uploader -->
-                <div class="dashboard-card" style="margin-bottom:0;">
+            <!-- Subtab Navigation Bar -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="subtab-btn active" id="btn-subtab-search" onclick="switchMibSubTab('search')">
+                        <span class="material-symbols-outlined" style="font-size:16px;">search</span>
+                        OID Search & Dictionary
+                    </button>
+                    <button type="button" class="subtab-btn" id="btn-subtab-upload" onclick="switchMibSubTab('upload')">
+                        <span class="material-symbols-outlined" style="font-size:16px;">upload_file</span>
+                        MIB Uploader & Importer
+                    </button>
+                    <button type="button" class="subtab-btn" id="btn-subtab-installed" onclick="switchMibSubTab('installed')">
+                        <span class="material-symbols-outlined" style="font-size:16px;">folder</span>
+                        Installed MIB Registry (<span id="installed-mibs-count">0</span>)
+                    </button>
+                    <button type="button" class="subtab-btn" id="btn-subtab-tester" onclick="switchMibSubTab('tester')">
+                        <span class="material-symbols-outlined" style="font-size:16px;">sync_alt</span>
+                        Interactive Translator
+                    </button>
+                </div>
+                <div style="font-size:11.5px; color:#64748b;">
+                    Net-SNMP MIBs: <strong id="mibs-summary-badge" style="color:var(--brand-green);">Active</strong>
+                </div>
+            </div>
+
+            <!-- SUBPANEL 1: OID Search & Dictionary -->
+            <div id="subpanel-search" class="subpanel-content">
+                <div class="dashboard-card">
                     <div class="card-header-clean">
-                        <h3>MIB Uploader & Importer</h3>
-                        <div style="display:flex; gap:6px;">
-                            <button type="button" class="btn-secondary-custom active-mode-btn" id="btn-mode-file" onclick="setMibImportMode('file')">Upload File</button>
-                            <button type="button" class="btn-secondary-custom" id="btn-mode-text" onclick="setMibImportMode('text')">Paste Content</button>
-                            <button type="button" class="btn-secondary-custom" id="btn-mode-preset" onclick="setMibImportMode('preset')">Quick Presets</button>
+                        <div>
+                            <h3 style="margin:0;">SNMP OID Search & Dictionary Engine</h3>
+                            <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
+                                Search any OID number or metric name across loaded MIBs, discovered network sensors, and standard RFC/Enterprise catalogs.
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" class="btn-secondary-custom" onclick="searchOids()" style="font-size:12px; height:32px; padding:0 12px;">
+                                Refresh Search
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Method A: File Upload -->
-                    <form id="form-upload-file" onsubmit="submitMibFileUpload(event)">
-                        <div style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 24px 20px; text-align: center; background: #f8fafc; margin-bottom: 14px; transition: 0.2s;" id="drop-area-mib">
-                            <span class="material-symbols-outlined" style="font-size: 38px; color: var(--brand-green); margin-bottom: 6px;">upload_file</span>
-                            <div style="font-weight: 700; font-size: 13px; color: var(--primary-navy); margin-bottom: 4px;">Choose MIB file or drag & drop here</div>
-                            <div style="font-size: 11px; color: #64748b; margin-bottom: 12px;">Supported file types: <code>.mib</code>, <code>.my</code>, <code>.txt</code> or ASN.1 definition</div>
-                            <input type="file" id="mib-file-input" name="mib_file" accept=".mib,.my,.txt" style="display:none;" onchange="handleMibFileSelect(this)">
-                            <button type="button" class="btn-secondary-custom" onclick="document.getElementById('mib-file-input').click()">Browse Files</button>
-                            <div id="selected-file-label" style="font-size:12px; font-weight:600; color:var(--brand-green); margin-top:10px; display:none;"></div>
+                    <!-- Search Input Box -->
+                    <div style="margin-bottom:16px;">
+                        <div style="position:relative; margin-bottom:12px;">
+                            <input type="text" id="oid-search-input" class="form-control mono" placeholder="Search by OID (e.g. 1.3.6.1.2.1.2.2.1.8 or .1.3.6.1.4.1.2011) or Metric Keyword (e.g. ifOperStatus, cpu, temp, memory, storage, optical, cisco, mikrotik)..." oninput="debounceOidSearch()" style="height:44px; font-size:13px; padding-left:42px; border-radius:8px; border:1.5px solid #cbd5e1; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                            <span class="material-symbols-outlined" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:22px; color:var(--brand-green); pointer-events:none;">search</span>
+                            <button type="button" id="btn-clear-oid-search" onclick="clearOidSearch()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:#94a3b8; cursor:pointer; display:none; padding:4px;" title="Clear search">
+                                <span class="material-symbols-outlined" style="font-size:18px;">close</span>
+                            </button>
                         </div>
-                        <button type="submit" class="btn-apply" id="btn-submit-upload" style="width:100%; justify-content:center;" disabled>
-                            Upload & Register MIB
-                        </button>
-                    </form>
 
-                    <!-- Method B: Paste Text -->
-                    <form id="form-upload-text" class="d-none" onsubmit="submitMibText(event)">
-                        <div class="form-group" style="margin-bottom: 10px;">
-                            <label class="form-label">MIB Module Name (e.g. HUAWEI-ENTITY-EXTENT-MIB)</label>
-                            <input type="text" id="mib-text-name" class="form-control mono" placeholder="e.g. HOST-RESOURCES-MIB" required>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 12px;">
-                            <label class="form-label">ASN.1 MIB Content</label>
-                            <textarea id="mib-text-content" class="form-control mono" rows="7" placeholder="-- Paste ASN.1 MIB definitions here (e.g. DEFINITIONS ::= BEGIN...)" style="font-size: 11px; resize: vertical;" required></textarea>
-                        </div>
-                        <button type="submit" class="btn-apply" style="width:100%; justify-content:center;">
-                            Save & Compile MIB
-                        </button>
-                    </form>
+                        <!-- Source Filters & Quick Category Chips -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px;">
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <span style="font-size:11.5px; font-weight:700; color:#475569; margin-right:4px;">Search Sources:</span>
+                                <label style="display:inline-flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; font-weight:600; margin-right:6px;">
+                                    <input type="radio" name="oid_search_source" value="all" checked onchange="searchOids()">
+                                    All Sources
+                                </label>
+                                <label style="display:inline-flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; font-weight:600; margin-right:6px;">
+                                    <input type="radio" name="oid_search_source" value="inventory" onchange="searchOids()">
+                                    Discovered Sensors
+                                </label>
+                                <label style="display:inline-flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; font-weight:600; margin-right:6px;">
+                                    <input type="radio" name="oid_search_source" value="catalog" onchange="searchOids()">
+                                    Standard Catalog
+                                </label>
+                                <label style="display:inline-flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; font-weight:600;">
+                                    <input type="radio" name="oid_search_source" value="mibs" onchange="searchOids()">
+                                    Loaded MIB Files
+                                </label>
+                            </div>
 
-                    <!-- Method C: Presets -->
-                    <div id="form-upload-preset" class="d-none">
-                        <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">
-                            Click to download and register standard enterprise MIB presets into your toolkit directory:
+                            <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
+                                <span style="font-size:11px; color:#94a3b8; margin-right:2px;">Quick Chips:</span>
+                                <span class="oid-chip" onclick="setOidSearchQuery('cpu')">CPU</span>
+                                <span class="oid-chip" onclick="setOidSearchQuery('interface')">Interface</span>
+                                <span class="oid-chip" onclick="setOidSearchQuery('temperature')">Temp</span>
+                                <span class="oid-chip" onclick="setOidSearchQuery('memory')">Memory</span>
+                                <span class="oid-chip" onclick="setOidSearchQuery('storage')">Disk</span>
+                                <span class="oid-chip" onclick="setOidSearchQuery('optical')">Optical DOM</span>
+                                <span class="oid-chip" onclick="setOidSearchQuery('cisco')">Cisco</span>
+                                <span class="oid-chip" onclick="setOidSearchQuery('huawei')">Huawei</span>
+                                <span class="oid-chip" onclick="setOidSearchQuery('mikrotik')">MikroTik</span>
+                            </div>
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
-                                <div>
-                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">HOST-RESOURCES-MIB</strong>
-                                    <div style="font-size: 11px; color: #64748b;">Standard Host & Server resource OIDs (Storage, CPU, RAM)</div>
-                                </div>
-                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('HOST-RESOURCES-MIB')">Install</button>
+                    </div>
+
+                    <!-- Search Results Header -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div style="font-size:12.5px; font-weight:700; color:var(--primary-navy);" id="oid-search-status">
+                            Showing standard network OIDs catalog
+                        </div>
+                        <div style="font-size:11.5px; color:#64748b;">
+                            Found <strong id="oid-search-count" style="color:var(--brand-green);">0</strong> matching entries
+                        </div>
+                    </div>
+
+                    <!-- Search Results Table -->
+                    <div class="table-responsive" style="max-height: 520px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background:#fff;">
+                        <table class="custom-table" id="oid-search-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:36px; text-align:center;">#</th>
+                                    <th>SNMP OID (Numeric)</th>
+                                    <th>Symbolic Metric Name</th>
+                                    <th>MIB Module</th>
+                                    <th>Class & Type</th>
+                                    <th>Syntax / Value</th>
+                                    <th>Source / Discovered In</th>
+                                    <th style="width:110px; text-align:center;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="oid-search-tbody">
+                                <tr><td colspan="8" style="text-align:center; padding:30px; color:#94a3b8;">Loading OID dictionary...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBPANEL 2: MIB Uploader & Importer -->
+            <div id="subpanel-upload" class="subpanel-content d-none">
+                <div style="display:grid; grid-template-columns: 1.1fr 1fr; gap:20px; margin-bottom:20px;">
+                    <!-- Left: MIB Importer & Uploader Form -->
+                    <div class="dashboard-card" style="margin-bottom:0;">
+                        <div class="card-header-clean">
+                            <h3>MIB Uploader & Importer</h3>
+                            <div style="display:flex; gap:6px;">
+                                <button type="button" class="btn-secondary-custom active-mode-btn" id="btn-mode-file" onclick="setMibImportMode('file')">Upload File</button>
+                                <button type="button" class="btn-secondary-custom" id="btn-mode-text" onclick="setMibImportMode('text')">Paste Content</button>
+                                <button type="button" class="btn-secondary-custom" id="btn-mode-preset" onclick="setMibImportMode('preset')">Quick Presets</button>
                             </div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
-                                <div>
-                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">ENTITY-MIB</strong>
-                                    <div style="font-size: 11px; color: #64748b;">Standard RFC Entity physical sensor & inventory OIDs</div>
-                                </div>
-                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('ENTITY-MIB')">Install</button>
+                        </div>
+
+                        <!-- Method A: File Upload -->
+                        <form id="form-upload-file" onsubmit="submitMibFileUpload(event)">
+                            <div style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 24px 20px; text-align: center; background: #f8fafc; margin-bottom: 14px; transition: 0.2s;" id="drop-area-mib">
+                                <span class="material-symbols-outlined" style="font-size: 38px; color: var(--brand-green); margin-bottom: 6px;">upload_file</span>
+                                <div style="font-weight: 700; font-size: 13px; color: var(--primary-navy); margin-bottom: 4px;">Choose MIB file or drag & drop here</div>
+                                <div style="font-size: 11px; color: #64748b; margin-bottom: 12px;">Supported file types: <code>.mib</code>, <code>.my</code>, <code>.txt</code> or ASN.1 definition</div>
+                                <input type="file" id="mib-file-input" name="mib_file" accept=".mib,.my,.txt" style="display:none;" onchange="handleMibFileSelect(this)">
+                                <button type="button" class="btn-secondary-custom" onclick="document.getElementById('mib-file-input').click()">Browse Files</button>
+                                <div id="selected-file-label" style="font-size:12px; font-weight:600; color:var(--brand-green); margin-top:10px; display:none;"></div>
                             </div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
-                                <div>
-                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">CISCO-PROCESS-MIB</strong>
-                                    <div style="font-size: 11px; color: #64748b;">Cisco IOS CPU utilization & processes</div>
-                                </div>
-                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('CISCO-PROCESS-MIB')">Install</button>
+                            <button type="submit" class="btn-apply" id="btn-submit-upload" style="width:100%; justify-content:center;" disabled>
+                                Upload & Register MIB
+                            </button>
+                        </form>
+
+                        <!-- Method B: Paste Text -->
+                        <form id="form-upload-text" class="d-none" onsubmit="submitMibText(event)">
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label class="form-label">MIB Module Name (e.g. HUAWEI-ENTITY-EXTENT-MIB)</label>
+                                <input type="text" id="mib-text-name" class="form-control mono" placeholder="e.g. HOST-RESOURCES-MIB" required>
                             </div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
-                                <div>
-                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">HUAWEI-ENTITY-EXTENT-MIB</strong>
-                                    <div style="font-size: 11px; color: #64748b;">Huawei switches/routers temperature, optical power, CPU</div>
-                                </div>
-                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('HUAWEI-ENTITY-EXTENT-MIB')">Install</button>
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label class="form-label">ASN.1 MIB Content</label>
+                                <textarea id="mib-text-content" class="form-control mono" rows="7" placeholder="-- Paste ASN.1 MIB definitions here (e.g. DEFINITIONS ::= BEGIN...)" style="font-size: 11px; resize: vertical;" required></textarea>
                             </div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
-                                <div>
-                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">MIKROTIK-MIB</strong>
-                                    <div style="font-size: 11px; color: #64748b;">MikroTik RouterOS health, voltage, temperature, SFP</div>
-                                </div>
-                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('MIKROTIK-MIB')">Install</button>
+                            <button type="submit" class="btn-apply" style="width:100%; justify-content:center;">
+                                Save & Compile MIB
+                            </button>
+                        </form>
+
+                        <!-- Method C: Presets -->
+                        <div id="form-upload-preset" class="d-none">
+                            <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">
+                                Click to download and register standard enterprise MIB presets into your toolkit directory:
                             </div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                    <div>
+                                        <strong style="font-size: 12.5px; color: var(--primary-navy);">HOST-RESOURCES-MIB</strong>
+                                        <div style="font-size: 11px; color: #64748b;">Standard Host & Server resource OIDs (Storage, CPU, RAM)</div>
+                                    </div>
+                                    <button type="button" class="btn-secondary-custom" onclick="installPresetMib('HOST-RESOURCES-MIB')">Install</button>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                    <div>
+                                        <strong style="font-size: 12.5px; color: var(--primary-navy);">ENTITY-MIB</strong>
+                                        <div style="font-size: 11px; color: #64748b;">Standard RFC Entity physical sensor & inventory OIDs</div>
+                                    </div>
+                                    <button type="button" class="btn-secondary-custom" onclick="installPresetMib('ENTITY-MIB')">Install</button>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                    <div>
+                                        <strong style="font-size: 12.5px; color: var(--primary-navy);">CISCO-PROCESS-MIB</strong>
+                                        <div style="font-size: 11px; color: #64748b;">Cisco IOS CPU utilization & processes</div>
+                                    </div>
+                                    <button type="button" class="btn-secondary-custom" onclick="installPresetMib('CISCO-PROCESS-MIB')">Install</button>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                    <div>
+                                        <strong style="font-size: 12.5px; color: var(--primary-navy);">HUAWEI-ENTITY-EXTENT-MIB</strong>
+                                        <div style="font-size: 11px; color: #64748b;">Huawei switches/routers temperature, optical power, CPU</div>
+                                    </div>
+                                    <button type="button" class="btn-secondary-custom" onclick="installPresetMib('HUAWEI-ENTITY-EXTENT-MIB')">Install</button>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                    <div>
+                                        <strong style="font-size: 12.5px; color: var(--primary-navy);">MIKROTIK-MIB</strong>
+                                        <div style="font-size: 11px; color: #64748b;">MikroTik RouterOS health, voltage, temperature, SFP</div>
+                                    </div>
+                                    <button type="button" class="btn-secondary-custom" onclick="installPresetMib('MIKROTIK-MIB')">Install</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Info / Guide Card -->
+                    <div class="dashboard-card" style="margin-bottom:0;">
+                        <div class="card-header-clean">
+                            <h3>About MIBs & OID Translation</h3>
+                        </div>
+                        <div style="font-size:12.5px; color:#475569; line-height:1.6;">
+                            <p style="margin-bottom:12px;">
+                                <strong>Management Information Base (MIB)</strong> files define the structure of the management data on your networking devices.
+                            </p>
+                            <p style="margin-bottom:12px;">
+                                By registering enterprise MIBs (e.g. Cisco, Huawei, Mikrotik), raw numeric OIDs (like <code>.1.3.6.1.4.1.2011...</code>) are automatically parsed into human-friendly symbolic names (like <code>hwEntityTemperature</code>).
+                            </p>
+                            <ul style="padding-left:18px; margin-bottom:12px; color:#64748b; font-size:12px;">
+                                <li>MIBs uploaded here are saved to <code>engine/mibs/</code>.</li>
+                                <li>The toolkit also checks Pandora's <code>attachment/mibs/</code> and system MIBs in <code>/usr/share/snmp/mibs</code>.</li>
+                                <li>Any uploaded MIB can immediately be translated and searched.</li>
+                            </ul>
+                            <button type="button" class="btn-secondary-custom" onclick="switchMibSubTab('search')" style="width:100%; justify-content:center;">
+                                Go to OID Search & Dictionary &rarr;
+                            </button>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Right: OID Translator Live Tester -->
-                <div class="dashboard-card" style="margin-bottom:0;">
+            <!-- SUBPANEL 3: Installed MIB Registry Table -->
+            <div id="subpanel-installed" class="subpanel-content d-none">
+                <div class="dashboard-card">
+                    <div class="card-header-clean">
+                        <div>
+                            <h3>Installed MIB Modules & Registry</h3>
+                            <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
+                                These MIB definitions are actively loaded by Net-SNMP and OidTranslator for sensor identification.
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <input type="text" id="search-mibs" class="form-control" placeholder="Search MIB module name..." style="width:240px;" onkeyup="filterMibsTable()">
+                            <button class="btn-secondary-custom" onclick="loadMibsList()">Refresh List</button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="custom-table" id="mibs-table">
+                            <thead>
+                                <tr>
+                                    <th>Module Name</th>
+                                    <th>File Name</th>
+                                    <th>File Size</th>
+                                    <th>Source Directory</th>
+                                    <th>Last Modified</th>
+                                    <th style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mibs-tbody">
+                                <tr><td colspan="6" style="text-align:center; padding:30px; color:#94a3b8;">Loading MIB registry...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBPANEL 4: Interactive OID Translator Tester -->
+            <div id="subpanel-tester" class="subpanel-content d-none">
+                <div class="dashboard-card">
                     <div class="card-header-clean">
                         <h3>Interactive OID Translator Tester</h3>
                     </div>
@@ -1701,41 +2370,91 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         <div style="color:#94a3b8; text-align:center; padding:30px 0;">Enter an OID above and click "Translate" to test resolution.</div>
                     </div>
                 </div>
-
             </div>
+        </div>
 
-            <!-- Row 2: Installed MIB Modules Table -->
-            <div class="dashboard-card">
-                <div class="card-header-clean">
-                    <div>
-                        <h3>Installed MIB Modules & Registry</h3>
-                        <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
-                            These MIB definitions are actively loaded by Net-SNMP and OidTranslator for sensor identification.
+        <!-- Modal: Live SNMP Test on Target Device -->
+        <div class="modal-overlay" id="modal-test-snmp" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:9000; align-items:center; justify-content:center; backdrop-filter:blur(2px);">
+            <div class="modal-card" style="width:580px; max-width:95vw; background:#fff; border-radius:10px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); display:flex; flex-direction:column; overflow:hidden;">
+                <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #e2e8f0;">
+                    <h3 style="margin:0; font-size:15px; font-weight:700; color:var(--primary-navy); display:flex; align-items:center; gap:8px;">
+                        <span class="material-symbols-outlined" style="font-size:18px; color:var(--brand-green);">bolt</span>
+                        <span>Live SNMP Query Test</span>
+                    </h3>
+                    <button type="button" class="btn-secondary-custom" style="padding:2px 8px; font-size:16px; line-height:1;" onclick="closeLiveTestModal()">&times;</button>
+                </div>
+                <form onsubmit="submitLiveSnmpTest(event)">
+                    <div class="modal-body" style="padding:18px 20px; overflow-y:auto; max-height:75vh;">
+                        <div class="form-group" style="margin-bottom:12px;">
+                            <label class="form-label">SNMP OID *</label>
+                            <input type="text" id="test-snmp-oid" class="form-control mono" required>
                         </div>
-                    </div>
-                    <div style="display:flex; gap:10px; align-items:center;">
-                        <input type="text" id="search-mibs" class="form-control" placeholder="Search MIB module name..." style="width:240px;" onkeyup="filterMibsTable()">
-                        <button class="btn-secondary-custom" onclick="loadMibsList()">Refresh List</button>
-                    </div>
-                </div>
+                        <div class="form-grid" style="grid-template-columns: 2fr 1fr; margin-bottom:12px;">
+                            <div class="form-group">
+                                <label class="form-label">Target Device IP / Hostname *</label>
+                                <input type="text" id="test-snmp-host" class="form-control" placeholder="e.g. 172.24.254.117" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">SNMP Port</label>
+                                <input type="number" id="test-snmp-port" class="form-control" value="161" required>
+                            </div>
+                        </div>
+                        <div class="form-grid" style="grid-template-columns: 1fr 2fr; margin-bottom:14px;">
+                            <div class="form-group">
+                                <label class="form-label">SNMP Version</label>
+                                <select id="test-snmp-version" class="form-control" onchange="toggleTestSnmpVersion()">
+                                    <option value="2c" selected>SNMP v2c</option>
+                                    <option value="1">SNMP v1</option>
+                                    <option value="3">SNMP v3</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="test-snmp-community-group">
+                                <label class="form-label">Community String</label>
+                                <input type="text" id="test-snmp-community" class="form-control" value="public">
+                            </div>
+                        </div>
 
-                <div class="table-responsive">
-                    <table class="custom-table" id="mibs-table">
-                        <thead>
-                            <tr>
-                                <th>Module Name</th>
-                                <th>File Name</th>
-                                <th>File Size</th>
-                                <th>Source Directory</th>
-                                <th>Last Modified</th>
-                                <th style="text-align:right;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="mibs-tbody">
-                            <tr><td colspan="6" style="text-align:center; padding:30px; color:#94a3b8;">Loading MIB registry...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+                        <!-- V3 Credentials sub-box -->
+                        <div id="test-snmp-v3-box" class="d-none" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px; margin-bottom:14px;">
+                            <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
+                                <div class="form-group">
+                                    <label class="form-label">Security Level</label>
+                                    <select id="test-v3-sec-level" class="form-control">
+                                        <option value="noAuthNoPriv">noAuthNoPriv</option>
+                                        <option value="authNoPriv">authNoPriv</option>
+                                        <option value="authPriv" selected>authPriv</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Username</label>
+                                    <input type="text" id="test-v3-user" class="form-control" placeholder="pandora">
+                                </div>
+                            </div>
+                            <div class="form-grid" style="grid-template-columns: 1fr 2fr; gap:10px;">
+                                <div class="form-group">
+                                    <label class="form-label">Auth Proto</label>
+                                    <select id="test-v3-auth-proto" class="form-control">
+                                        <option value="SHA" selected>SHA</option>
+                                        <option value="MD5">MD5</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Auth Passphrase</label>
+                                    <input type="password" id="test-v3-auth-pass" class="form-control">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="test-snmp-result-box" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px; margin-top:12px; font-size:12px;"></div>
+                    </div>
+                    <div style="padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                        <button type="button" class="btn-secondary-custom" onclick="closeLiveTestModal()">Cancel</button>
+                        <button type="submit" class="btn-apply" id="btn-run-live-test">
+                            <span class="material-symbols-outlined" style="font-size:16px;">play_arrow</span>
+                            Execute SNMP GET
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
 
@@ -1972,6 +2691,9 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 renderSelectedProvisionTable();
             } else if (tabId === 'tab-mibs') {
                 loadMibsList();
+                if (!window.hasLoadedOidSearch) {
+                    searchOids();
+                }
             }
         }
 
@@ -1981,6 +2703,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             loadAgentsList();
             loadInventory(currentInventoryPage);
             loadMibsList();
+            searchOids();
         }
 
         // Toggle Single vs Subnet Scan
@@ -2236,41 +2959,124 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 </div>
             `;
 
-            // Render discovered sensors preview table directly on this Scan Console tab
+            // Store scanned sensors and host for instant preview filtering and live OID queries
+            window.lastScannedSensors = data.sensors || [];
+            window.lastScannedHost = (data.device ? (data.device.ip_address || data.device.hostname) : '') 
+                || (document.getElementById('target-ip') ? document.getElementById('target-ip').value.trim() : '');
+
+            // Reset preview filter input if any
+            const prevSearchInput = document.getElementById('scan-preview-search');
+            if (prevSearchInput) prevSearchInput.value = '';
+            const prevBadge = document.getElementById('scan-preview-filter-badge');
+            if (prevBadge) prevBadge.style.display = 'none';
+            const prevClear = document.getElementById('btn-clear-scan-preview-search');
+            if (prevClear) prevClear.style.display = 'none';
+
+            renderScanPreviewRows(window.lastScannedSensors);
+        }
+
+        // Render preview rows with copy, inspect, and test actions
+        function renderScanPreviewRows(sensors, isFiltered = false) {
             const tbody = document.getElementById('scan-preview-tbody');
             const countEl = document.getElementById('scan-preview-count');
-            const sensors = data.sensors || [];
-            if (countEl) countEl.innerText = sensors.length;
+            if (countEl && !isFiltered) countEl.innerText = (sensors || []).length;
+            if (!tbody) return;
 
-            if (tbody) {
-                if (sensors.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No sensors discovered for this device.</td></tr>';
-                } else {
-                    let rowsHtml = '';
-                    sensors.forEach((s, idx) => {
-                        const val = (s.normalized_value !== null && s.normalized_value !== undefined)
-                            ? `${s.normalized_value} ${s.unit || ''}`
-                            : (s.raw_value || 'N/A');
-                        
-                        let classBadge = 'badge-neutral';
-                        const c = (s.sensor_class || '').toLowerCase();
-                        if (c.includes('interface')) classBadge = 'badge-info';
-                        else if (c.includes('optical') || c.includes('dom') || c.includes('gpon')) classBadge = 'badge-warning';
-                        else if (c.includes('env') || c.includes('temp') || c.includes('cpu') || c.includes('sys')) classBadge = 'badge-success';
+            if (!sensors || sensors.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#94a3b8;">${isFiltered ? 'No discovered sensors match your search filter.' : 'No sensors discovered for this device.'}</td></tr>`;
+                return;
+            }
 
-                        rowsHtml += `
-                            <tr>
-                                <td class="mono" style="color:#94a3b8; text-align:center;">${idx + 1}</td>
-                                <td><strong style="color:#0f172a;">${escapeHtml(s.sensor_name || 'Unnamed')}</strong></td>
-                                <td><span class="badge ${classBadge}">${escapeHtml(s.sensor_class || 'general')}</span></td>
-                                <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(val)}</td>
-                                <td class="mono text-truncate-cell" title="${escapeHtml(s.oid || '')}">${escapeHtml(s.oid || '-')}</td>
-                                <td><span class="badge badge-success">Discovered</span></td>
-                            </tr>
-                        `;
-                    });
-                    tbody.innerHTML = rowsHtml;
-                }
+            let rowsHtml = '';
+            sensors.forEach((s, idx) => {
+                const val = (s.normalized_value !== null && s.normalized_value !== undefined)
+                    ? `${s.normalized_value} ${s.unit || ''}`
+                    : (s.raw_value || 'N/A');
+                
+                let classBadge = 'badge-neutral';
+                const c = (s.sensor_class || '').toLowerCase();
+                if (c.includes('interface')) classBadge = 'badge-info';
+                else if (c.includes('optical') || c.includes('dom') || c.includes('gpon')) classBadge = 'badge-warning';
+                else if (c.includes('env') || c.includes('temp') || c.includes('cpu') || c.includes('sys') || c.includes('proc')) classBadge = 'badge-success';
+
+                const targetHost = window.lastScannedHost || s.ip_address || '';
+
+                rowsHtml += `
+                    <tr>
+                        <td class="mono" style="color:#94a3b8; text-align:center;">${idx + 1}</td>
+                        <td><strong style="color:#0f172a;">${escapeHtml(s.sensor_name || 'Unnamed')}</strong></td>
+                        <td><span class="badge ${classBadge}">${escapeHtml(s.sensor_class || 'general')}</span></td>
+                        <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(val)}</td>
+                        <td>
+                            <span class="mono oid-copyable" onclick="copyOid('${escapeHtml(s.oid || '')}')" title="Click to copy OID">
+                                ${escapeHtml(s.oid || '-')}
+                            </span>
+                        </td>
+                        <td><span class="badge badge-success">Discovered</span></td>
+                        <td style="text-align:center; white-space:nowrap;">
+                            <button type="button" class="btn-icon-tiny" onclick="copyOid('${escapeHtml(s.oid || '')}')" title="Copy OID to Clipboard">
+                                <span class="material-symbols-outlined" style="font-size:15px;">content_copy</span>
+                            </button>
+                            <button type="button" class="btn-icon-tiny" onclick="openOidDictionarySearch('${escapeHtml(s.oid || '')}')" title="Search in OID Dictionary">
+                                <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">menu_book</span>
+                            </button>
+                            <button type="button" class="btn-icon-tiny" onclick="openLiveTestModal('${escapeHtml(s.oid || '')}', '${escapeHtml(targetHost)}')" title="Live SNMP GET Test">
+                                <span class="material-symbols-outlined" style="font-size:15px; color:#004d40;">bolt</span>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = rowsHtml;
+        }
+
+        // Live filter for Scan Preview Table
+        function filterScanPreview() {
+            const q = (document.getElementById('scan-preview-search').value || '').trim().toLowerCase();
+            const clearBtn = document.getElementById('btn-clear-scan-preview-search');
+            const badge = document.getElementById('scan-preview-filter-badge');
+            if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+
+            if (!window.lastScannedSensors || !window.lastScannedSensors.length) return;
+
+            if (!q) {
+                renderScanPreviewRows(window.lastScannedSensors, false);
+                if (badge) badge.style.display = 'none';
+                return;
+            }
+
+            const filtered = window.lastScannedSensors.filter(s => {
+                const oid = (s.oid || '').toLowerCase();
+                const name = (s.sensor_name || '').toLowerCase();
+                const cls = (s.sensor_class || '').toLowerCase();
+                const val = String(s.raw_value || s.normalized_value || '').toLowerCase();
+                return oid.includes(q) || name.includes(q) || cls.includes(q) || val.includes(q);
+            });
+
+            renderScanPreviewRows(filtered, true);
+            if (badge) {
+                badge.style.display = 'inline-block';
+                badge.textContent = `Showing ${filtered.length} of ${window.lastScannedSensors.length} sensors`;
+            }
+        }
+
+        function clearScanPreviewSearch() {
+            const input = document.getElementById('scan-preview-search');
+            if (input) input.value = '';
+            filterScanPreview();
+        }
+
+        // Copy OID helper with toast
+        function copyOid(oid) {
+            if (!oid || oid === '-') return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(oid).then(() => {
+                    showToast(`Copied OID: ${oid}`, 'success');
+                }).catch(() => {
+                    prompt('Copy OID manually:', oid);
+                });
+            } else {
+                prompt('Copy OID manually:', oid);
             }
         }
 
@@ -2956,6 +3762,334 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             } catch (err) {
                 resBox.innerHTML = `<div style="color:#b91c1c; padding:20px; text-align:center;">Translation error: ${escapeHtml(err.message)}</div>`;
             }
+        }
+
+        // =============================================================
+        // OID DICTIONARY & SEARCH JAVASCRIPT LOGIC
+        // =============================================================
+        let oidSearchDebounceTimer = null;
+        window.hasLoadedOidSearch = false;
+
+        function switchMibSubTab(subTabId) {
+            const tabs = ['search', 'upload', 'installed', 'tester'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`btn-subtab-${t}`);
+                const panel = document.getElementById(`subpanel-${t}`);
+                if (btn) btn.classList.toggle('active', t === subTabId);
+                if (panel) panel.classList.toggle('d-none', t !== subTabId);
+            });
+
+            if (subTabId === 'installed') {
+                loadMibsList();
+            } else if (subTabId === 'search') {
+                if (!window.hasLoadedOidSearch) {
+                    searchOids();
+                }
+            }
+        }
+
+        function openOidDictionarySearch(query = '') {
+            switchTab('tab-mibs');
+            switchMibSubTab('search');
+            const input = document.getElementById('oid-search-input');
+            if (input) {
+                if (query) {
+                    input.value = query;
+                    const clearBtn = document.getElementById('btn-clear-oid-search');
+                    if (clearBtn) clearBtn.style.display = 'block';
+                }
+                searchOids();
+                setTimeout(() => {
+                    input.focus();
+                    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 100);
+            }
+        }
+
+        function debounceOidSearch() {
+            clearTimeout(oidSearchDebounceTimer);
+            const clearBtn = document.getElementById('btn-clear-oid-search');
+            const q = (document.getElementById('oid-search-input').value || '').trim();
+            if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+
+            oidSearchDebounceTimer = setTimeout(() => {
+                searchOids();
+            }, 300);
+        }
+
+        function setOidSearchQuery(q) {
+            const input = document.getElementById('oid-search-input');
+            if (input) {
+                input.value = q;
+                const clearBtn = document.getElementById('btn-clear-oid-search');
+                if (clearBtn) clearBtn.style.display = 'block';
+                searchOids();
+                input.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function clearOidSearch() {
+            const input = document.getElementById('oid-search-input');
+            if (input) input.value = '';
+            const clearBtn = document.getElementById('btn-clear-oid-search');
+            if (clearBtn) clearBtn.style.display = 'none';
+            searchOids();
+        }
+
+        async function searchOids() {
+            const input = document.getElementById('oid-search-input');
+            const query = input ? input.value.trim() : '';
+            const sourceRadio = document.querySelector('input[name="oid_search_source"]:checked');
+            const source = sourceRadio ? sourceRadio.value : 'all';
+
+            const tbody = document.getElementById('oid-search-tbody');
+            const countEl = document.getElementById('oid-search-count');
+            const statusEl = document.getElementById('oid-search-status');
+
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:24px; color:#64748b;">Searching OID dictionary...</td></tr>';
+            }
+
+            try {
+                const params = new URLSearchParams({
+                    api: 'search_oids',
+                    q: query,
+                    source: source,
+                    limit: 60
+                });
+
+                const res = await fetch(`?${params.toString()}`);
+                const json = await res.json();
+
+                if (json.ok) {
+                    window.hasLoadedOidSearch = true;
+                    renderOidSearchResults(json.results || [], query);
+                    if (countEl) countEl.innerText = (json.results || []).length;
+                    if (statusEl) {
+                        statusEl.innerText = query 
+                            ? `Search results for "${escapeHtml(query)}"` 
+                            : 'Standard Network OIDs & Discovered Inventory Catalog';
+                    }
+                } else {
+                    if (tbody) {
+                        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:24px; color:#b91c1c;">${escapeHtml(json.error || 'Failed to search OIDs.')}</td></tr>`;
+                    }
+                }
+            } catch (err) {
+                if (tbody) {
+                    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:24px; color:#b91c1c;">Network error: ${escapeHtml(err.message)}</td></tr>`;
+                }
+            }
+        }
+
+        function renderOidSearchResults(results, query) {
+            const tbody = document.getElementById('oid-search-tbody');
+            if (!tbody) return;
+
+            if (!results || results.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align:center; padding:32px; color:#94a3b8;">
+                            No OID or metric definition found matching "${escapeHtml(query)}".
+                            <div style="font-size:11.5px; margin-top:6px; color:#64748b;">
+                                Tip: Try uploading the vendor MIB file or search by broad keywords like <code>cpu</code>, <code>temperature</code>, <code>interface</code>, <code>storage</code>.
+                            </div>
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            let html = '';
+            results.forEach((item, idx) => {
+                let classBadge = 'badge-neutral';
+                const c = (item.class || '').toLowerCase();
+                if (c.includes('interface')) classBadge = 'badge-info';
+                else if (c.includes('optical') || c.includes('dom') || c.includes('power')) classBadge = 'badge-warning';
+                else if (c.includes('env') || c.includes('temp') || c.includes('cpu') || c.includes('proc') || c.includes('sys')) classBadge = 'badge-success';
+
+                let sourceBadge = '';
+                if (item.in_inventory) {
+                    sourceBadge = `<span class="badge badge-success" title="${escapeHtml(item.desc || '')}">Discovered (${item.device_count || 1} dev)</span>`;
+                } else if (item.source_type === 'catalog') {
+                    sourceBadge = `<span class="badge badge-info" title="Standard RFC/Vendor catalog">Catalog</span>`;
+                } else if (item.source_type === 'mib_file') {
+                    sourceBadge = `<span class="badge badge-warning" title="${escapeHtml(item.source)}">MIB File</span>`;
+                } else {
+                    sourceBadge = `<span class="badge badge-neutral">${escapeHtml(item.source || 'Known')}</span>`;
+                }
+
+                const syntaxDisplay = item.syntax ? escapeHtml(item.syntax) : (item.unit ? `Unit: ${escapeHtml(item.unit)}` : '-');
+                const targetHost = window.lastScannedHost || (item.sample_devices ? item.sample_devices.split(',')[0].trim() : '');
+
+                html += `
+                    <tr>
+                        <td class="mono" style="color:#94a3b8; text-align:center;">${idx + 1}</td>
+                        <td>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <span class="mono oid-copyable" onclick="copyOid('${escapeHtml(item.oid)}')" title="Click to copy OID">
+                                    ${escapeHtml(item.oid)}
+                                </span>
+                            </div>
+                        </td>
+                        <td>
+                            <div>
+                                <strong style="color:var(--primary-navy); font-size:12.5px;">${escapeHtml(item.name || '-')}</strong>
+                                ${item.symbolic_name && item.symbolic_name !== item.name ? `<div style="font-size:11px; color:#64748b; font-family:monospace;">${escapeHtml(item.symbolic_name)}</div>` : ''}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; font-weight:600;">
+                                ${escapeHtml(item.module || 'Unknown')}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge ${classBadge}">${escapeHtml(item.class || 'general')}</span>
+                            ${item.unit ? `<span style="font-size:11px; color:#64748b; margin-left:4px;">(${escapeHtml(item.unit)})</span>` : ''}
+                        </td>
+                        <td class="mono" style="font-size:11px; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(item.syntax || '')}">
+                            ${syntaxDisplay}
+                        </td>
+                        <td>${sourceBadge}</td>
+                        <td style="text-align:center; white-space:nowrap;">
+                            <button type="button" class="btn-icon-tiny" onclick="copyOid('${escapeHtml(item.oid)}')" title="Copy OID to Clipboard">
+                                <span class="material-symbols-outlined" style="font-size:15px;">content_copy</span>
+                            </button>
+                            <button type="button" class="btn-icon-tiny" onclick="openLiveTestModal('${escapeHtml(item.oid)}', '${escapeHtml(targetHost)}')" title="Test Live Query on Device">
+                                <span class="material-symbols-outlined" style="font-size:15px; color:#004d40;">bolt</span>
+                            </button>
+                            <button type="button" class="btn-icon-tiny" onclick="openOidInspectorModal('${escapeHtml(item.oid)}', '${escapeHtml(item.name || '')}', '${escapeHtml(item.module || '')}', '${escapeHtml(item.syntax || '')}', '${escapeHtml(item.class || '')}', '${escapeHtml(item.desc || '')}')" title="Inspect Full MIB Details">
+                                <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">info</span>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        // Live SNMP Query Modal Functions
+        function openLiveTestModal(oid, host = '') {
+            const modal = document.getElementById('modal-test-snmp');
+            const oidInput = document.getElementById('test-snmp-oid');
+            const hostInput = document.getElementById('test-snmp-host');
+            const resBox = document.getElementById('test-snmp-result-box');
+
+            if (oidInput) oidInput.value = oid || '';
+            if (hostInput) {
+                hostInput.value = host || window.lastScannedHost || (document.getElementById('target-ip') ? document.getElementById('target-ip').value.trim() : '');
+            }
+            if (resBox) {
+                resBox.style.display = 'none';
+                resBox.innerHTML = '';
+            }
+
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeLiveTestModal() {
+            const modal = document.getElementById('modal-test-snmp');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function toggleTestSnmpVersion() {
+            const ver = document.getElementById('test-snmp-version').value;
+            const commGroup = document.getElementById('test-snmp-community-group');
+            const v3Box = document.getElementById('test-snmp-v3-box');
+
+            if (commGroup) commGroup.style.display = ver === '3' ? 'none' : 'flex';
+            if (v3Box) v3Box.classList.toggle('d-none', ver !== '3');
+        }
+
+        async function submitLiveSnmpTest(e) {
+            e.preventDefault();
+            const host = document.getElementById('test-snmp-host').value.trim();
+            const oid = document.getElementById('test-snmp-oid').value.trim();
+            const ver = document.getElementById('test-snmp-version').value;
+            const port = parseInt(document.getElementById('test-snmp-port').value, 10) || 161;
+            const comm = document.getElementById('test-snmp-community').value.trim();
+            const v3User = document.getElementById('test-v3-user') ? document.getElementById('test-v3-user').value.trim() : '';
+            const v3SecLevel = document.getElementById('test-v3-sec-level') ? document.getElementById('test-v3-sec-level').value : '';
+            const v3AuthProto = document.getElementById('test-v3-auth-proto') ? document.getElementById('test-v3-auth-proto').value : '';
+            const v3AuthPass = document.getElementById('test-v3-auth-pass') ? document.getElementById('test-v3-auth-pass').value : '';
+
+            const resBox = document.getElementById('test-snmp-result-box');
+            const submitBtn = document.getElementById('btn-run-live-test');
+
+            if (resBox) {
+                resBox.style.display = 'block';
+                resBox.innerHTML = '<div style="color:#64748b; padding:10px; text-align:center;">Executing live SNMP GET query...</div>';
+            }
+            if (submitBtn) submitBtn.disabled = true;
+
+            try {
+                const res = await fetch('?api=test_snmp_get', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        host: host,
+                        oid: oid,
+                        version: ver,
+                        port: port,
+                        community: comm,
+                        v3_user: v3User,
+                        v3_sec_level: v3SecLevel,
+                        v3_auth_proto: v3AuthProto,
+                        v3_auth_pass: v3AuthPass,
+                        csrf_token: CSRF_TOKEN
+                    })
+                });
+
+                const json = await res.json();
+                if (submitBtn) submitBtn.disabled = false;
+
+                if (json.ok) {
+                    const transName = json.translation ? (json.translation.object || json.translation.display_name || '-') : '-';
+                    const transMib = json.translation ? (json.translation.mib || 'Unknown') : '-';
+
+                    resBox.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">
+                            <span style="font-weight:700; color:#047857; display:flex; align-items:center; gap:4px;">
+                                <span class="material-symbols-outlined" style="font-size:16px;">check_circle</span>
+                                Response Received (${json.duration_ms}ms)
+                            </span>
+                            <span class="mono" style="font-size:11px; color:#64748b;">${escapeHtml(json.host)}</span>
+                        </div>
+                        <div style="margin-bottom:8px;">
+                            <span style="font-size:11px; color:#64748b;">Returned Raw Value:</span>
+                            <div class="mono" style="font-size:13px; font-weight:700; color:#004d40; background:#fff; border:1px solid #cbd5e1; border-radius:4px; padding:6px 10px; word-break:break-all;">
+                                ${escapeHtml(String(json.value))}
+                            </div>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:11px;">
+                            <div><span style="color:#64748b;">Resolved MIB:</span> <strong>${escapeHtml(transMib)}</strong></div>
+                            <div><span style="color:#64748b;">Object Name:</span> <strong>${escapeHtml(transName)}</strong></div>
+                        </div>
+                    `;
+                } else {
+                    resBox.innerHTML = `
+                        <div style="color:#b91c1c; font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:4px;">
+                            <span class="material-symbols-outlined" style="font-size:16px;">error</span>
+                            SNMP Query Failed (${json.duration_ms || 0}ms)
+                        </div>
+                        <div style="color:#475569; font-size:11.5px;">${escapeHtml(json.error || 'Device timed out or OID not found.')}</div>
+                    `;
+                }
+            } catch (err) {
+                if (submitBtn) submitBtn.disabled = false;
+                if (resBox) {
+                    resBox.innerHTML = `<div style="color:#b91c1c; padding:10px;">Query error: ${escapeHtml(err.message)}</div>`;
+                }
+            }
+        }
+
+        // Inspector Modal
+        function openOidInspectorModal(oid, name, module, syntax, cls, desc) {
+            let info = `OID: ${oid}\nName: ${name}\nMIB Module: ${module}\nClass: ${cls}\nSyntax: ${syntax}\n\nDescription:\n${desc || 'No description provided in definition.'}`;
+            alert(info);
         }
     </script>
 </body>
