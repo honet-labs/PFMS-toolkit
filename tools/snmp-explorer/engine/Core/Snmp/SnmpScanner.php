@@ -37,7 +37,11 @@ final readonly class SnmpScanner
         $version = trim((string) ($request['version'] ?? $this->defaultSnmpConfig['version']));
         $port = (int) ($request['port'] ?? $this->defaultSnmpConfig['port']);
         $discoveryProfile = trim((string) ($request['discovery_profile'] ?? $this->defaultSnmpConfig['discovery_profile'] ?? ''));
-        $scanTimeoutSec = $this->scanTimeoutSeconds();
+        $scanTimeoutSec = isset($request['scan_timeout_sec']) && (int) $request['scan_timeout_sec'] > 0
+            ? max(10, (int) $request['scan_timeout_sec'])
+            : (isset($request['timeout']) && (int) $request['timeout'] > 0
+                ? max(10, (int) $request['timeout'])
+                : $this->scanTimeoutSeconds());
         $scanMaxSensors = $this->scanMaxSensors();
         $previewLimit = $this->scanResultPreviewLimit();
         $translateMaxSensors = $this->translateMaxSensors();

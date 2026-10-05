@@ -77,22 +77,40 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
             }
 
             // Check relevance: is this object relevant to the current device?
-            // 1) Object OID matches device's Enterprise PEN (e.g. 1.3.6.1.4.1.2011...)
-            // 2) MIB was uploaded to engine/mibs/ (user explicitly provided it for their network)
-            // 3) Module name or file name mentions device vendor or device description
-            $isDeviceEnterprise = ($deviceEnterprisePen !== null && str_starts_with($numericOid, '1.3.6.1.4.1.' . $deviceEnterprisePen));
-            $isLocalToolkitMib = str_contains($obj['file'], 'engine/mibs') || str_contains($obj['file'], 'engine\\mibs');
-            $isVendorMatch = ($vendorName !== '' && (stripos($obj['module'], $vendorName) !== false || stripos($obj['file'], $vendorName) !== false))
-                || ($sysDescr !== '' && stripos($sysDescr, $obj['module']) !== false);
+            // If it's an enterprise OID (1.3.6.1.4.1.<PEN>), it MUST match device PEN or vendor
+            $isEnterprise = str_starts_with($numericOid, '1.3.6.1.4.1.');
+            if ($isEnterprise) {
+                $isDeviceEnterprise = ($deviceEnterprisePen !== null && str_starts_with($numericOid, '1.3.6.1.4.1.' . $deviceEnterprisePen));
+                $isVendorMatch = ($vendorName !== '' && (stripos($obj['module'], $vendorName) !== false || stripos($obj['file'], $vendorName) !== false))
+                    || ($sysDescr !== '' && stripos($sysDescr, $obj['module']) !== false);
 
-            if (!$isDeviceEnterprise && !$isLocalToolkitMib && !$isVendorMatch) {
-                continue;
+                if (!$isDeviceEnterprise && !$isVendorMatch) {
+                    continue;
+                }
+            } else {
+                $isLocalToolkitMib = str_contains($obj['file'], 'engine/mibs') || str_contains($obj['file'], 'engine\\mibs');
+                if (!$isLocalToolkitMib) {
+                    continue;
+                }
             }
 
             try {
-                // First: Try walking as tabular/indexed metric
-                $entries = $context->walker->walkIndexed($numericOid);
+                // First: Try scalar with .0 (ultra-fast single GET PDU, ~2ms)
+                $val = $context->walker->get($numericOid . '.0');
+                if ($val !== null && $val !== '') {
+                    $fullOid = $numericOid . '.0';
+                    if (!isset($seenOids[$fullOid])) {
+                        $seenOids[$fullOid] = true;
+                        $sensor = $this->buildSensor($fullOid, $val, $obj, null, $context);
+                        if ($sensor !== null) {
+                            $sensors[] = $sensor;
+                        }
+                    }
+                    continue;
+                }
 
+                // Second: Try walking as tabular/indexed metric
+                $entries = $context->walker->walkIndexed($numericOid);
                 if (!empty($entries)) {
                     foreach ($entries as $index => $val) {
                         if ($this->deadlineReached($context) || count($sensors) >= $maxSensors) {
@@ -110,20 +128,6 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
                         $seenOids[$fullOid] = true;
 
                         $sensor = $this->buildSensor($fullOid, $val, $obj, (string) $index, $context);
-                        if ($sensor !== null) {
-                            $sensors[] = $sensor;
-                        }
-                    }
-                    continue;
-                }
-
-                // Second: Try scalar with .0
-                $val = $context->walker->get($numericOid . '.0');
-                if ($val !== null && $val !== '') {
-                    $fullOid = $numericOid . '.0';
-                    if (!isset($seenOids[$fullOid])) {
-                        $seenOids[$fullOid] = true;
-                        $sensor = $this->buildSensor($fullOid, $val, $obj, null, $context);
                         if ($sensor !== null) {
                             $sensors[] = $sensor;
                         }

@@ -124,12 +124,24 @@ final readonly class ComprehensiveOidDiscoveryModule implements DiscoveryModuleI
      * Scan common metric OIDs that are likely to exist
      *
      * @param list<array<string, mixed>> $sensors
-     */
     private function scanCommonMetricOids(DiscoveryContext $context, array &$sensors): void
     {
+        $devicePen = null;
+        $sysObj = $context->sysObjectID();
+        if ($sysObj !== '' && preg_match('/1\.3\.6\.1\.4\.1\.(\d+)/', $sysObj, $m)) {
+            $devicePen = $m[1];
+        }
+
         foreach (self::COMMON_METRIC_OIDS as $oid) {
             if ($this->limitReached($context, $sensors)) {
                 break;
+            }
+
+            // Skip private enterprise OIDs that belong to a different vendor
+            if (preg_match('/^1\.3\.6\.1\.4\.1\.(\d+)/', $oid, $mOid)) {
+                if ($devicePen === null || $mOid[1] !== $devicePen) {
+                    continue;
+                }
             }
 
             try {
@@ -224,11 +236,6 @@ final readonly class ComprehensiveOidDiscoveryModule implements DiscoveryModuleI
 
     private function fullWalkEnabled(DiscoveryContext $context): bool
     {
-        $profile = strtolower(trim((string) ($context->snmpConfig['discovery_profile'] ?? '')));
-        if ($profile === 'full' || $profile === 'all') {
-            return true;
-        }
-
         return env_bool('DISCOVERY_COMPREHENSIVE_FULL_WALK', false);
     }
 
