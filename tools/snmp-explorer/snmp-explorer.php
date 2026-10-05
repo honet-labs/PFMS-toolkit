@@ -82,6 +82,24 @@ try {
 $api = $_GET['api'] ?? '';
 
 if (!empty($api)) {
+    // Register fatal error shutdown handler to guarantee JSON error output instead of empty 500 response
+    register_shutdown_function(static function (): void {
+        $error = error_get_last();
+        if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            if (!headers_sent()) {
+                http_response_code(500);
+                header('Content-Type: application/json; charset=utf-8');
+            }
+            echo json_encode([
+                'ok' => false,
+                'error' => sprintf('Server Fatal Error: %s in %s on line %d', $error['message'], basename($error['file']), $error['line']),
+            ]);
+        }
+    });
+
     while (ob_get_level() > 0) ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
 

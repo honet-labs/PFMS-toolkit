@@ -122,23 +122,27 @@ final readonly class SensorInventoryRepository
      */
     private function executeUpsert(PDOStatement $statement, int $deviceId, array $sensor): void
     {
+        $rawVal = isset($sensor['raw_value']) ? (string) $sensor['raw_value'] : null;
+        $normVal = $sensor['normalized_value'] ?? null;
+        $normalizedDouble = ($normVal !== null && is_numeric($normVal)) ? (float) $normVal : null;
+
         $statement->execute([
             'device_id' => $deviceId,
-            'vendor' => $sensor['vendor'] ?? null,
-            'ip_address' => $sensor['ip_address'] ?? null,
-            'sensor_class' => $sensor['sensor_class'],
-            'sensor_name' => $sensor['sensor_name'],
-            'sensor_type' => $sensor['sensor_type'] ?? null,
-            'interface_index' => $sensor['interface_index'] ?? null,
-            'interface_name' => $sensor['interface_name'] ?? null,
-            'entity_index' => $sensor['entity_index'] ?? null,
-            'oid' => $sensor['oid'],
-            'raw_value' => isset($sensor['raw_value']) ? (string) $sensor['raw_value'] : null,
-            'normalized_value' => $sensor['normalized_value'] ?? null,
-            'unit' => $sensor['unit'] ?? null,
-            'scale' => isset($sensor['scale']) ? (string) $sensor['scale'] : null,
-            'precision' => $sensor['precision'] ?? null,
-            'status' => $sensor['status'] ?? 'unknown',
+            'vendor' => mb_substr((string) ($sensor['vendor'] ?? 'Generic'), 0, 80),
+            'ip_address' => mb_substr((string) ($sensor['ip_address'] ?? '0.0.0.0'), 0, 100),
+            'sensor_class' => mb_substr((string) ($sensor['sensor_class'] ?? 'unknown'), 0, 50),
+            'sensor_name' => mb_substr((string) ($sensor['sensor_name'] ?? 'Unnamed Sensor'), 0, 255),
+            'sensor_type' => isset($sensor['sensor_type']) ? mb_substr((string) $sensor['sensor_type'], 0, 80) : null,
+            'interface_index' => isset($sensor['interface_index']) && is_numeric($sensor['interface_index']) ? (int) $sensor['interface_index'] : null,
+            'interface_name' => isset($sensor['interface_name']) ? mb_substr((string) $sensor['interface_name'], 0, 255) : null,
+            'entity_index' => isset($sensor['entity_index']) && is_numeric($sensor['entity_index']) ? (int) $sensor['entity_index'] : null,
+            'oid' => mb_substr((string) $sensor['oid'], 0, 512),
+            'raw_value' => $rawVal !== null ? mb_substr($rawVal, 0, 255) : null,
+            'normalized_value' => $normalizedDouble,
+            'unit' => isset($sensor['unit']) ? mb_substr((string) $sensor['unit'], 0, 40) : null,
+            'scale' => isset($sensor['scale']) ? mb_substr((string) $sensor['scale'], 0, 40) : null,
+            'precision' => isset($sensor['precision']) && is_numeric($sensor['precision']) ? (int) $sensor['precision'] : null,
+            'status' => mb_substr((string) ($sensor['status'] ?? 'unknown'), 0, 40),
             'metadata_json' => $this->metadataJson($sensor),
         ]);
     }
@@ -198,22 +202,26 @@ final readonly class SensorInventoryRepository
             foreach ($chunk as $sensor) {
                 $placeholders[] = sprintf('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, %s)', $nowPlaceholder);
                 
+                $rawVal = isset($sensor['raw_value']) ? (string) $sensor['raw_value'] : null;
+                $normVal = $sensor['normalized_value'] ?? null;
+                $normalizedDouble = ($normVal !== null && is_numeric($normVal)) ? (float) $normVal : null;
+
                 $params[] = $deviceId;
-                $params[] = $sensor['vendor'] ?? null;
-                $params[] = $sensor['ip_address'] ?? null;
-                $params[] = (string) $sensor['sensor_class'];
-                $params[] = (string) $sensor['sensor_name'];
-                $params[] = $sensor['sensor_type'] ?? null;
-                $params[] = $sensor['interface_index'] ?? null;
-                $params[] = $sensor['interface_name'] ?? null;
-                $params[] = $sensor['entity_index'] ?? null;
-                $params[] = (string) $sensor['oid'];
-                $params[] = isset($sensor['raw_value']) ? (string) $sensor['raw_value'] : null;
-                $params[] = $sensor['normalized_value'] ?? null;
-                $params[] = $sensor['unit'] ?? null;
-                $params[] = isset($sensor['scale']) ? (string) $sensor['scale'] : null;
-                $params[] = $sensor['precision'] ?? null;
-                $params[] = (string) ($sensor['status'] ?? 'unknown');
+                $params[] = mb_substr((string) ($sensor['vendor'] ?? 'Generic'), 0, 80);
+                $params[] = mb_substr((string) ($sensor['ip_address'] ?? '0.0.0.0'), 0, 100);
+                $params[] = mb_substr((string) ($sensor['sensor_class'] ?? 'unknown'), 0, 50);
+                $params[] = mb_substr((string) ($sensor['sensor_name'] ?? 'Unnamed Sensor'), 0, 255);
+                $params[] = isset($sensor['sensor_type']) ? mb_substr((string) $sensor['sensor_type'], 0, 80) : null;
+                $params[] = isset($sensor['interface_index']) && is_numeric($sensor['interface_index']) ? (int) $sensor['interface_index'] : null;
+                $params[] = isset($sensor['interface_name']) ? mb_substr((string) $sensor['interface_name'], 0, 255) : null;
+                $params[] = isset($sensor['entity_index']) && is_numeric($sensor['entity_index']) ? (int) $sensor['entity_index'] : null;
+                $params[] = mb_substr((string) $sensor['oid'], 0, 512);
+                $params[] = $rawVal !== null ? mb_substr($rawVal, 0, 255) : null;
+                $params[] = $normalizedDouble;
+                $params[] = isset($sensor['unit']) ? mb_substr((string) $sensor['unit'], 0, 40) : null;
+                $params[] = isset($sensor['scale']) ? mb_substr((string) $sensor['scale'], 0, 40) : null;
+                $params[] = isset($sensor['precision']) && is_numeric($sensor['precision']) ? (int) $sensor['precision'] : null;
+                $params[] = mb_substr((string) ($sensor['status'] ?? 'unknown'), 0, 40);
                 $params[] = (string) $this->metadataJson($sensor);
             }
 

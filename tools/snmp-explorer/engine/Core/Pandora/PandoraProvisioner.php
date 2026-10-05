@@ -152,7 +152,7 @@ final class PandoraProvisioner
 
                 $agentData->appendChild($module);
             } catch (\InvalidArgumentException $e) {
-                error_log("Skipping sensor {$sensor['id']}: " . $e->getMessage() . PHP_EOL, 3, SNMP_BRIDGE_ROOT . '/storage/logs/app_error.log');
+                error_log(sprintf('[SNMP Explorer] Skipping sensor %s: %s', (string) ($sensor['id'] ?? 'unknown'), $e->getMessage()));
             }
         }
 

@@ -90,18 +90,7 @@ final readonly class SnmpSession
             $value = $this->session->get($oid);
         } catch (Throwable $throwable) {
             if ($this->debug) {
-                error_log(
-                    sprintf(
-                        "[%s] SNMP get failed for %s:%d oid=%s: %s\n",
-                        date('Y-m-d H:i:s'),
-                        $this->host,
-                        $this->port,
-                        $oid,
-                        $throwable->getMessage()
-                    ),
-                    3,
-                    SNMP_BRIDGE_ROOT . '/storage/logs/app_error.log'
-                );
+                error_log(sprintf('[SNMP Explorer] get failed for %s:%d oid=%s: %s', $this->host, $this->port, $oid, $throwable->getMessage()));
             }
             return null;
         }
@@ -122,18 +111,7 @@ final readonly class SnmpSession
             $values = $this->session->walk($oid);
         } catch (Throwable $throwable) {
             if ($this->debug) {
-                error_log(
-                    sprintf(
-                        "[%s] SNMP walk failed for %s:%d oid=%s: %s\n",
-                        date('Y-m-d H:i:s'),
-                        $this->host,
-                        $this->port,
-                        $oid,
-                        $throwable->getMessage()
-                    ),
-                    3,
-                    SNMP_BRIDGE_ROOT . '/storage/logs/app_error.log'
-                );
+                error_log(sprintf('[SNMP Explorer] walk failed for %s:%d oid=%s: %s', $this->host, $this->port, $oid, $throwable->getMessage()));
             }
             return [];
         }

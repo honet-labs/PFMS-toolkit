@@ -255,11 +255,7 @@ final readonly class SnmpScanner
                 ),
             ];
         } catch (Throwable $throwable) {
-            error_log(
-                sprintf("[%s] SNMP scan error for %s: %s\n", date('Y-m-d H:i:s'), $host, $throwable->getMessage()),
-                3,
-                SNMP_BRIDGE_ROOT . '/storage/logs/app_error.log'
-            );
+            error_log(sprintf('[SNMP Explorer] Scan error for %s: %s', $host, $throwable->getMessage()));
 
             return $this->failureResult(
                 $host,
