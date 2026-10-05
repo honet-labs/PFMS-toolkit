@@ -85,7 +85,7 @@ final readonly class F5InterfaceDiscoveryModule implements DiscoveryModuleInterf
         try {
             $ifCount = $context->snmp()->get('1.3.6.1.2.1.2.1');
             return !in_array($ifCount, [null, '', '0'], true) && (int) $ifCount > 0;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -240,12 +240,12 @@ final readonly class F5InterfaceDiscoveryModule implements DiscoveryModuleInterf
                             $sensors[] = $normalizedOutErrors;
                         }
                     }
-                } catch (\Exception) {
+                } catch (\Exception $e) {
                     // Skip this interface on error, continue with next
                     continue;
                 }
             }
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             // Return empty array on SNMP error
             return [];
         }
@@ -261,7 +261,7 @@ final readonly class F5InterfaceDiscoveryModule implements DiscoveryModuleInterf
         try {
             $sysObjectID = $context->snmp()->get('1.3.6.1.2.1.1.2.0');
             return !in_array($sysObjectID, [null, '', '0'], true) && str_contains($sysObjectID, '3375');
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -284,7 +284,7 @@ final readonly class F5InterfaceDiscoveryModule implements DiscoveryModuleInterf
             if ($speed) {
                 return (int) $speed;
             }
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
 

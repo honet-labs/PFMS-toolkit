@@ -93,7 +93,7 @@ final readonly class F5VirtualServerDiscoveryModule implements DiscoveryModuleIn
         try {
             $vsTable = $context->snmp()->walk(self::VS_INDEX);
             return $vsTable !== [];
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -257,12 +257,12 @@ final readonly class F5VirtualServerDiscoveryModule implements DiscoveryModuleIn
                             $sensors[] = $normalizedPacketsOut;
                         }
                     }
-                } catch (\Exception) {
+                } catch (\Exception $e) {
                     // Skip this VS on error, continue with next
                     continue;
                 }
             }
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             // Return empty array on SNMP error
             return [];
         }
@@ -278,7 +278,7 @@ final readonly class F5VirtualServerDiscoveryModule implements DiscoveryModuleIn
         try {
             $sysObjectID = $context->snmp()->get('1.3.6.1.2.1.1.2.0');
             return !in_array($sysObjectID, [null, '', '0'], true) && str_contains($sysObjectID, '3375');
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -292,7 +292,7 @@ final readonly class F5VirtualServerDiscoveryModule implements DiscoveryModuleIn
             $oid = self::VS_STATUS . ".{$vsName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }
@@ -306,7 +306,7 @@ final readonly class F5VirtualServerDiscoveryModule implements DiscoveryModuleIn
             $oid = self::VS_ENABLED_STATUS . ".{$vsName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }
@@ -320,7 +320,7 @@ final readonly class F5VirtualServerDiscoveryModule implements DiscoveryModuleIn
             $oid = "{$statOid}.{$vsName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }

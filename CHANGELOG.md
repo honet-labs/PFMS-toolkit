@@ -22,6 +22,13 @@ Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
   - `PandoraModuleBuilder.php`: Membangun modul SNMP v3 (`snmp_version = 3`, `snmp3_sec_level`, `snmp3_auth_user`, `snmp3_auth_method`, `snmp3_auth_pass`, `snmp3_priv_method`, `snmp3_priv_pass`, `plugin_user`).
   - `PandoraRepository.php`: Deteksi kolom dinamis pada `tagente_modulo` agar kompatibel dengan berbagai versi Pandora FMS tanpa error SQL.
 
+### Fixed
+- **Perbaikan Fatal Error HTTP 500 pada menu SNMP Explorer:**
+  - Menghapus modifier `readonly` pada class `PandoraRepository` karena PHP 8.2+ melarang deklarasi static property (`$tagenteModuloColumns`) di dalam `readonly class` (*Fatal error: Cannot declare static property in readonly class*).
+  - Menambahkan pembungkus `try...catch (\Throwable $e)` saat inisialisasi bootstrap engine di `snmp-explorer.php` agar menampilkan kartu diagnostik yang ramah pengguna apabila terjadi kegagalan konfigurasi.
+  - Memperbaiki seluruh blok `catch` tanpa variabel di discovery modules dan repositories menjadi `catch (\Throwable $e)` dan `catch (\Exception $e)` untuk kepatuhan sintaks PHP.
+  - Mengoptimalkan proses auto-migration di `bootstrap.php` dengan memeriksa keberadaan kolom di tabel `devices` terlebih dahulu sebelum menjalankan query `ALTER TABLE`.
+
 ## [2.8] - 2026-10-02 (SNMP Explorer - Device Discovery, Sensor Normalization & Pandora Provisioning)
 ### Added
 - **Brand New Module: `SNMP Explorer` (`tools/snmp-explorer/`):**

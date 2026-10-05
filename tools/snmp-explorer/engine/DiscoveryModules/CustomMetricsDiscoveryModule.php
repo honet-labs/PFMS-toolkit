@@ -40,7 +40,7 @@ final readonly class CustomMetricsDiscoveryModule implements DiscoveryModuleInte
         try {
             $result = $context->walker->get(self::CUSTOM_METRICS_BASE . '.0');
             return $result !== null && $result !== '';
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
             return false;
         }
     }
@@ -96,7 +96,7 @@ final readonly class CustomMetricsDiscoveryModule implements DiscoveryModuleInte
                 }
             }
 
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
             // Silently fail if metrics not available
             // Other discovery modules will continue
         }

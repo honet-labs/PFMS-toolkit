@@ -15,11 +15,11 @@ use PDO;
  * - Agent validation
  * - Transactions
  */
-final readonly class PandoraRepository
+final class PandoraRepository
 {
     private const int MODULE_STATUS_NO_DATA = 4;
 
-    public function __construct(private PDO $pdo)
+    public function __construct(private readonly PDO $pdo)
     {
     }
 
@@ -148,8 +148,8 @@ final readonly class PandoraRepository
         if (self::$tagenteModuloColumns === null) {
             try {
                 $statement = $this->pdo->query('SHOW COLUMNS FROM tagente_modulo');
-                self::$tagenteModuloColumns = $statement->fetchAll(PDO::FETCH_COLUMN) ?: [];
-            } catch (\Throwable) {
+                self::$tagenteModuloColumns = $statement ? ($statement->fetchAll(PDO::FETCH_COLUMN) ?: []) : [];
+            } catch (\Throwable $e) {
                 self::$tagenteModuloColumns = [];
             }
         }

@@ -143,11 +143,22 @@ SQL;
             'snmp_priv_passphrase' => "VARCHAR(255) NULL AFTER `snmp_priv_protocol`",
             'snmp_context_name' => "VARCHAR(128) NULL AFTER `snmp_priv_passphrase`",
         ];
+
+        $existingCols = [];
+        try {
+            $colStmt = $pdo->query("SHOW COLUMNS FROM `devices`");
+            $existingCols = $colStmt ? ($colStmt->fetchAll(\PDO::FETCH_COLUMN) ?: []) : [];
+        } catch (\Throwable $e) {
+            $existingCols = [];
+        }
+
         foreach ($v3Cols as $col => $def) {
-            try {
-                $pdo->exec("ALTER TABLE `devices` ADD COLUMN `$col` $def");
-            } catch (\Throwable) {
-                // Column already exists
+            if (!in_array($col, $existingCols, true)) {
+                try {
+                    $pdo->exec("ALTER TABLE `devices` ADD COLUMN `$col` $def");
+                } catch (\Throwable $e) {
+                    // Column already exists or concurrent migration
+                }
             }
         }
 

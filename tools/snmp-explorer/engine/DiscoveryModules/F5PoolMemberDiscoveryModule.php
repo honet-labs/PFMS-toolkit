@@ -97,7 +97,7 @@ final readonly class F5PoolMemberDiscoveryModule implements DiscoveryModuleInter
         try {
             $memberTable = $context->snmp()->walk(self::MEMBER_INDEX);
             return $memberTable !== [];
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -272,12 +272,12 @@ final readonly class F5PoolMemberDiscoveryModule implements DiscoveryModuleInter
                             $sensors[] = $normalizedPacketsOut;
                         }
                     }
-                } catch (\Exception) {
+                } catch (\Exception $e) {
                     // Skip this member on error, continue with next
                     continue;
                 }
             }
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             // Return empty array on SNMP error
             return [];
         }
@@ -293,7 +293,7 @@ final readonly class F5PoolMemberDiscoveryModule implements DiscoveryModuleInter
         try {
             $sysObjectID = $context->snmp()->get('1.3.6.1.2.1.1.2.0');
             return !in_array($sysObjectID, [null, '', '0'], true) && str_contains($sysObjectID, '3375');
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -342,7 +342,7 @@ final readonly class F5PoolMemberDiscoveryModule implements DiscoveryModuleInter
             $oid = self::MEMBER_STATUS . ".{$memberName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }
@@ -356,7 +356,7 @@ final readonly class F5PoolMemberDiscoveryModule implements DiscoveryModuleInter
             $oid = self::MEMBER_ENABLED . ".{$memberName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }
@@ -370,7 +370,7 @@ final readonly class F5PoolMemberDiscoveryModule implements DiscoveryModuleInter
             $oid = self::MEMBER_CONN_LIMIT . ".{$memberName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }
@@ -384,7 +384,7 @@ final readonly class F5PoolMemberDiscoveryModule implements DiscoveryModuleInter
             $oid = "{$statOid}.{$memberName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }

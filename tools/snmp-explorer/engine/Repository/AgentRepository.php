@@ -67,7 +67,7 @@ final readonly class AgentRepository
         try {
             $statement = $this->pdo->query('SELECT id_field, name FROM tagent_custom_fields ORDER BY name ASC');
             return $statement->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
             return [];
         }
     }
@@ -194,7 +194,7 @@ final readonly class AgentRepository
                         'id_agente_modulo' => $modId,
                     ]);
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
                 // Ignore if tagente_modulo has constraint differences in custom setups
             }
         }
@@ -214,7 +214,7 @@ final readonly class AgentRepository
                         ]);
                     }
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
                 // Ignore if tagent_custom_data insert fails
             }
         }
@@ -251,7 +251,7 @@ final readonly class AgentRepository
                         'description' => $fieldVal,
                     ]);
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
                 // Ignore if custom field handling fails
             }
         }

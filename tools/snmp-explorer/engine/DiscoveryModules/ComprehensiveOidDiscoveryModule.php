@@ -146,7 +146,7 @@ final readonly class ComprehensiveOidDiscoveryModule implements DiscoveryModuleI
                         }
                     }
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
                 // Skip OIDs that don't exist or timeout
                 continue;
             }
@@ -202,7 +202,7 @@ final readonly class ComprehensiveOidDiscoveryModule implements DiscoveryModuleI
                 }
 
                 $scannedCount++;
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
                 // Skip MIB roots that timeout or don't exist
                 continue;
             }

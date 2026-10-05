@@ -93,7 +93,7 @@ final readonly class F5PoolDiscoveryModule implements DiscoveryModuleInterface
         try {
             $poolTable = $context->snmp()->walk(self::POOL_INDEX);
             return $poolTable !== [];
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -273,12 +273,12 @@ final readonly class F5PoolDiscoveryModule implements DiscoveryModuleInterface
                             $sensors[] = $normalizedPacketsOut;
                         }
                     }
-                } catch (\Exception) {
+                } catch (\Exception $e) {
                     // Skip this pool on error, continue with next
                     continue;
                 }
             }
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             // Return empty array on SNMP error
             return [];
         }
@@ -294,7 +294,7 @@ final readonly class F5PoolDiscoveryModule implements DiscoveryModuleInterface
         try {
             $sysObjectID = $context->snmp()->get('1.3.6.1.2.1.1.2.0');
             return !in_array($sysObjectID, [null, '', '0'], true) && str_contains($sysObjectID, '3375');
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -308,7 +308,7 @@ final readonly class F5PoolDiscoveryModule implements DiscoveryModuleInterface
             $oid = self::POOL_STATUS . ".{$poolName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }
@@ -322,7 +322,7 @@ final readonly class F5PoolDiscoveryModule implements DiscoveryModuleInterface
             $oid = self::POOL_ENABLED . ".{$poolName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }
@@ -336,7 +336,7 @@ final readonly class F5PoolDiscoveryModule implements DiscoveryModuleInterface
             $oid = "{$statOid}.{$poolName}";
             $value = $context->snmp()->get($oid);
             return $value !== null ? (int) $value : null;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             return null;
         }
     }

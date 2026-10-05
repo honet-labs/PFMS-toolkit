@@ -40,17 +40,17 @@ final class F5DiscoveryModule implements DiscoveryModuleInterface
 
         try {
             $sensors = array_merge($sensors, $this->discoverVirtualServers($context));
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
         }
 
         try {
             $sensors = array_merge($sensors, $this->discoverPoolMembers($context));
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
         }
 
         try {
             $sensors = array_merge($sensors, $this->discoverSystemMetrics($context));
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
         }
 
         return $sensors;
@@ -117,7 +117,7 @@ final class F5DiscoveryModule implements DiscoveryModuleInterface
                     'description' => 'Bytes sent by virtual server',
                 ];
             }
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
         }
 
         return $sensors;
@@ -174,7 +174,7 @@ final class F5DiscoveryModule implements DiscoveryModuleInterface
                     'description' => 'Packets per second to pool member',
                 ];
             }
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
         }
 
         return $sensors;
@@ -228,7 +228,7 @@ final class F5DiscoveryModule implements DiscoveryModuleInterface
                 'entity_index' => 0,
                 'description' => 'System uptime in 100ths of seconds',
             ];
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
         }
         return $sensors;
     }

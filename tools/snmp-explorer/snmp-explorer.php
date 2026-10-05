@@ -48,17 +48,31 @@ if (empty($csrf_token)) {
 $is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pandora_administrator($pdo, $user_id);
 
 // 3. BOOTSTRAP SNMP EXPLORER ENGINE
-require_once __DIR__ . '/engine/bootstrap.php';
-$engine = snmp_explorer_bootstrap($pdo);
+try {
+    require_once __DIR__ . '/engine/bootstrap.php';
+    $engine = snmp_explorer_bootstrap($pdo);
 
-$scanner = $engine['scanner'];
-$subnetScanner = $engine['subnetScanner'];
-$provisioner = $engine['provisioner'];
-$deviceRepo = $engine['deviceRepo'];
-$sensorRepo = $engine['sensorRepo'];
-$agentRepo = $engine['agentRepo'];
-$pandoraRepo = $engine['pandoraRepo'];
-$engineConfig = $engine['config'];
+    $scanner = $engine['scanner'];
+    $subnetScanner = $engine['subnetScanner'];
+    $provisioner = $engine['provisioner'];
+    $deviceRepo = $engine['deviceRepo'];
+    $sensorRepo = $engine['sensorRepo'];
+    $agentRepo = $engine['agentRepo'];
+    $pandoraRepo = $engine['pandoraRepo'];
+    $engineConfig = $engine['config'];
+} catch (\Throwable $e) {
+    if (isset($_GET['api'])) {
+        while (ob_get_level() > 0) ob_end_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'error' => 'SNMP Explorer Engine Init Error: ' . $e->getMessage()]);
+        exit;
+    }
+    die('<div style="padding:24px; font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; margin:24px;">
+        <h3 style="margin-top:0; font-size:16px; font-weight:700;">SNMP Explorer Initialization Error</h3>
+        <p style="font-size:14px; margin-bottom:12px;">' . htmlspecialchars($e->getMessage()) . '</p>
+        <pre style="background:#fff; border:1px solid #fee2e2; padding:12px; border-radius:6px; font-size:12px; overflow:auto; max-height:300px; color:#475569;">' . htmlspecialchars($e->getTraceAsString()) . '</pre>
+    </div>');
+}
 
 // =====================================================================
 // 4. AJAX API ENDPOINTS
