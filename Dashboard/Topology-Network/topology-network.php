@@ -68,17 +68,7 @@ $is_admin = !empty($user_id) && isset($pdo) && ($pdo instanceof PDO) && is_pando
 $is_view_only = $is_embed || !$is_admin;
 
 $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
-if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = rtrim($matches[1], '/');
-    $vendor_url = $PANDORA_BASE_URL . '/' . $matches[2] . '/panel/vendor';
-} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = '';
-    $vendor_url = '/' . $matches[1] . '/panel/vendor';
-} else {
-    $PANDORA_BASE_URL = "/pandora_console"; 
-    $vendor_url = "/pandora_console/custom/panel/vendor";
-}
-$pandora_base = $PANDORA_BASE_URL;
+$pandora_base = $PANDORA_BASE_URL ?? "/pandora_console";
 
 $is_standalone = isset($_GET['standalone']) || isset($_GET['embed']) || (isset($_GET['s']) && $_GET['s'] == '1');
 if (empty($user_id) && !$is_standalone) {

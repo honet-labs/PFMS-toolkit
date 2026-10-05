@@ -14,7 +14,7 @@ header('Content-Type: text/html; charset=utf-8');
 // 1. DYNAMIC BREADCRUMB LOGIC
 // =====================================================================
 $raw_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$relative_path = str_replace('/pandora_console/custom/panel/', '', $raw_path);
+$relative_path = preg_replace('#^.*?/(custom|customize)/[^/]+/#', '', $raw_path);
 $dir_only = dirname($relative_path);
 if ($dir_only === '.') $dir_only = '';
 $path_array = array_filter(explode('/', $dir_only));

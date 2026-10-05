@@ -17,17 +17,6 @@
 require_once __DIR__ . '/../../includes/db-connection.php';
 
 $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
-if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = rtrim($matches[1], '/');
-    $PANEL_DIR_NAME = $matches[2];
-} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = '';
-    $PANEL_DIR_NAME = $matches[1];
-} else {
-    $PANDORA_BASE_URL = "/pandora_console";
-    $PANEL_DIR_NAME = "custom";
-}
-$vendor_url = ($PANDORA_BASE_URL ? $PANDORA_BASE_URL : '') . '/' . $PANEL_DIR_NAME . '/panel/vendor';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

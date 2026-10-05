@@ -17,24 +17,8 @@ if (empty($user_id)) {
     exit;
 }
 
-// Detect Pandora base and panel dir variables
 $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
-if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = rtrim($matches[1], '/');
-    $vendor_url = $PANDORA_BASE_URL . '/' . $matches[2] . '/panel/vendor';
-} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = '';
-    $vendor_url = '/' . $matches[1] . '/panel/vendor';
-} else {
-    $PANDORA_BASE_URL = "/pandora_console";
-    $vendor_url = "/pandora_console/custom/panel/vendor";
-}
-$panelDirName = 'custom';
-if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
-    $panelDirName = $matches[2];
-} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
-    $panelDirName = $matches[1];
-}
+$panelDirName = $PANEL_DIR_NAME ?? 'custom';
 $DASHBOARD_FILE = __DIR__ . '/visual-charts-reports.json';
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
 
@@ -222,13 +206,10 @@ if ($api === 'chart_data' && $db_status) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visual Chart Reports - Pandora FMS</title>
     <!-- Core fonts and style dependencies -->
-    <link href="../vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($panelDirName ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($panelDirName ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
     <!-- ECharts JS Library -->
-    <script src="../vendor/echarts/echarts.min.js"></script>
-    <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($panelDirName ?? "custom") ?>/panel/vendor/echarts/echarts.min.js"></script>
+    <script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/echarts/echarts.min.js"></script>
     
     <style>
         * { box-sizing: border-box; }

@@ -10,31 +10,15 @@ $DEFAULT_TZ = "Asia/Jakarta";
 date_default_timezone_set($DEFAULT_TZ);
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 
-// 1. DYNAMIC BREADCRUMB
-$dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
-
-// 2. CONFIG LOADING
-$script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
-if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = rtrim($matches[1], '/');
-    $vendor_url = $PANDORA_BASE_URL . '/' . $matches[2] . '/panel/vendor';
-} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = '';
-    $vendor_url = '/' . $matches[1] . '/panel/vendor';
-} else {
-    $PANDORA_BASE_URL = "/pandora_console";
-    $vendor_url = "/pandora_console/custom/panel/vendor";
-}
-$panelDirName = 'custom';
-if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
-    $panelDirName = $matches[2];
-} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
-    $panelDirName = $matches[1];
-}
-$directScriptUrl = $PANDORA_BASE_URL . '/' . $panelDirName . '/panel/Dashboard/Metrics-Dashboard/metrics-dashboard.php';
-$CONFIG_FILE = __DIR__ . '/metrics_config.json';
-
+// 1. CENTRALIZED DB & CONFIG LOADING
 require_once __DIR__ . '/../../includes/db-connection.php';
+
+// 2. DYNAMIC PATH RESOLUTION
+$panelDirName = $PANEL_DIR_NAME ?? 'custom';
+$directScriptUrl = !empty($_SERVER['SCRIPT_NAME'])
+    ? str_replace('\\', '/', $_SERVER['SCRIPT_NAME'])
+    : (($TOOLKIT_BASE_PATH ?? ($PANDORA_BASE_URL . '/custom/pfms-toolkit')) . '/Dashboard/Metrics-Dashboard/metrics-dashboard.php');
+$CONFIG_FILE = __DIR__ . '/metrics_config.json';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
@@ -1639,6 +1623,7 @@ const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
 const IS_MODAL_ONLY = <?= $isModalOnly ? 'true' : 'false' ?>;
 const DIRECT_SCRIPT_URL = '<?= $directScriptUrl ?>';
 const PRIMARY_UUID = '<?= get_node_uuid('primary') ?>';
+const baseBreadcrumb = "<?= h($dynamic_breadcrumb) ?>";
 
 let nativeModuleChartInstance = null;
 let currentDetailModuleId = null;
@@ -2290,7 +2275,7 @@ function renderDashboardList() {
     if(pageTitle) pageTitle.innerText = "Metrics Dashboard";
 
     const mainBreadcrumb = document.getElementById('mainBreadcrumb');
-    if (mainBreadcrumb) mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
+    if (mainBreadcrumb) mainBreadcrumb.innerText = baseBreadcrumb;
 
     const tbody = document.querySelector('#dashListTable tbody');
     if(!tbody) return;
@@ -2385,7 +2370,7 @@ function openDashboard(id) {
     if(pageTitle) pageTitle.innerText = d.title;
 
     const mainBreadcrumb = document.getElementById('mainBreadcrumb');
-    if (mainBreadcrumb) mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / " + d.title.toUpperCase();
+    if (mainBreadcrumb) mainBreadcrumb.innerText = baseBreadcrumb + " / " + d.title.toUpperCase();
     
     renderGrid();
     
@@ -3795,7 +3780,10 @@ function copyStandaloneUrl(card) {
 function updateShareUrls() {
     if (!currentShareCard || !currentDashId) return;
     const hideHeader = document.getElementById('shareHideHeaderChk').checked;
-    const u = new URL(window.location.origin + DIRECT_SCRIPT_URL);
+    const scriptPath = (DIRECT_SCRIPT_URL && DIRECT_SCRIPT_URL.indexOf('.php') !== -1)
+        ? DIRECT_SCRIPT_URL
+        : window.location.pathname;
+    const u = new URL(window.location.origin + scriptPath);
     u.searchParams.set('s', '1');
     u.searchParams.set('d', currentDashId);
     u.searchParams.set('card_id', currentShareCard.id);

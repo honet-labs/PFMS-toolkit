@@ -41,33 +41,18 @@ header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 header("Expires: Thu, 01 Jan 1970 00:00:00 GMT");
 
-// 1. DYNAMIC BREADCRUMB
+// 1. DYNAMIC CONFIG & DB LOADING
 set_time_limit(120); 
-$dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
-
-// 2. CONFIG LOADING
-$script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
-if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = rtrim($matches[1], '/');
-    $vendor_url = $PANDORA_BASE_URL . '/' . $matches[2] . '/panel/vendor';
-} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
-    $PANDORA_BASE_URL = '';
-    $vendor_url = '/' . $matches[1] . '/panel/vendor';
-} else {
-    $PANDORA_BASE_URL = "/pandora_console"; 
-    $vendor_url = "/pandora_console/custom/panel/vendor";
-}
-$panelDirName = 'custom';
-if (preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $matches)) {
-    $panelDirName = $matches[2];
-} else if (preg_match('#^/(custom|customize)/panel#', $script_dir, $matches)) {
-    $panelDirName = $matches[1];
-}
-$directScriptUrl = $PANDORA_BASE_URL . '/' . $panelDirName . '/panel/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php';
-$CONFIG_FILE = __DIR__ . '/dynamic-dashboards-master.json';
 
 // Use centralized db-connection.php - Load this BEFORE session_start to respect Pandora session settings
 require_once __DIR__ . '/../../includes/db-connection.php';
+
+// 2. DYNAMIC PATH RESOLUTION
+$panelDirName = $PANEL_DIR_NAME ?? 'custom';
+$directScriptUrl = !empty($_SERVER['SCRIPT_NAME'])
+    ? str_replace('\\', '/', $_SERVER['SCRIPT_NAME'])
+    : (($TOOLKIT_BASE_PATH ?? ($PANDORA_BASE_URL . '/custom/pfms-toolkit')) . '/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php');
+$CONFIG_FILE = __DIR__ . '/dynamic-dashboards-master.json';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $csrf_token = $_SESSION['pfms_csrf_token'] ?? '';
@@ -1603,7 +1588,10 @@ function copyDashboardShareLink(dashId = null) {
     const idToShare = dashId || currentDashId;
     if (!idToShare) return;
     const card = masterDashboards.find(x => x.id === idToShare);
-    const u = new URL(window.location.origin + DIRECT_SCRIPT_URL);
+    const scriptPath = (DIRECT_SCRIPT_URL && DIRECT_SCRIPT_URL.indexOf('.php') !== -1)
+        ? DIRECT_SCRIPT_URL
+        : window.location.pathname;
+    const u = new URL(window.location.origin + scriptPath);
     u.searchParams.set('s', '1');
     u.searchParams.set('d', idToShare);
     
@@ -1611,38 +1599,44 @@ function copyDashboardShareLink(dashId = null) {
     const curAgent = document.getElementById('top_agent') ? document.getElementById('top_agent').value : null;
     
     if (curGroup && curGroup != 0) u.searchParams.set('g', curGroup);
-    else if (card.default_group) u.searchParams.set('g', card.default_group);
+    else if (card && card.default_group) u.searchParams.set('g', card.default_group);
     
     if (curAgent && curAgent != 0) u.searchParams.set('a', curAgent);
-    else if (card.default_agent) u.searchParams.set('a', card.default_agent);
+    else if (card && card.default_agent) u.searchParams.set('a', card.default_agent);
     
+    const dashTitle = card ? card.title : 'Dashboard';
+    const linkStr = u.toString();
     if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(u.toString()).then(() => {
-            alert('Standalone Link for Dashboard "' + card.title + '" copied successfully!');
+        navigator.clipboard.writeText(linkStr).then(() => {
+            alert('Standalone Link for Dashboard "' + dashTitle + '" copied successfully:\n' + linkStr);
         });
     } else {
-        const textArea = document.createElement("textarea"); textArea.value = u.toString(); document.body.appendChild(textArea); textArea.select();
-        try { document.execCommand('copy'); alert('Standalone Link for Dashboard "' + card.title + '" copied successfully!'); } catch (err) {}
+        const textArea = document.createElement("textarea"); textArea.value = linkStr; document.body.appendChild(textArea); textArea.select();
+        try { document.execCommand('copy'); alert('Standalone Link for Dashboard "' + dashTitle + '" copied successfully:\n' + linkStr); } catch (err) {}
         document.body.removeChild(textArea);
     }
 }
 
 function copyPanelShareLink(panelId) {
     if (!currentDashId) return;
-    const u = new URL(window.location.origin + DIRECT_SCRIPT_URL);
+    const scriptPath = (DIRECT_SCRIPT_URL && DIRECT_SCRIPT_URL.indexOf('.php') !== -1)
+        ? DIRECT_SCRIPT_URL
+        : window.location.pathname;
+    const u = new URL(window.location.origin + scriptPath);
     u.searchParams.set('s', '1');
     u.searchParams.set('d', currentDashId);
     u.searchParams.set('g', document.getElementById('top_group').value);
     u.searchParams.set('a', document.getElementById('top_agent').value);
     u.searchParams.set('p', panelId);
 
+    const linkStr = u.toString();
     if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(u.toString()).then(() => {
-            alert('Standalone Link for this widget copied to clipboard!');
+        navigator.clipboard.writeText(linkStr).then(() => {
+            alert('Standalone Link for this widget copied to clipboard:\n' + linkStr);
         });
     } else {
-        const textArea = document.createElement("textarea"); textArea.value = u.toString(); document.body.appendChild(textArea); textArea.select();
-        try { document.execCommand('copy'); alert('Standalone Link for this widget copied to clipboard!'); } catch (err) {}
+        const textArea = document.createElement("textarea"); textArea.value = linkStr; document.body.appendChild(textArea); textArea.select();
+        try { document.execCommand('copy'); alert('Standalone Link for this widget copied to clipboard:\n' + linkStr); } catch (err) {}
         document.body.removeChild(textArea);
     }
 }

@@ -19,16 +19,7 @@ if (!function_exists('pretty_text')) {
 }
 
 // 2. BREADCRUMB LOGIC (Standardized Style)
-$raw_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$relative_path = str_replace('/pandora_console/custom/panel/', '', $raw_path);
-$dir_only = dirname($relative_path);
-if ($dir_only === '.') $dir_only = '';
-$path_array = array_filter(explode('/', $dir_only));
-$breadcrumb_parts = ['PANDORA CONSOLE', 'CUSTOM', 'PANEL'];
-foreach ($path_array as $p) {
-    $breadcrumb_parts[] = strtoupper(str_replace(['_', '-'], ' ', $p));
-}
-$full_breadcrumb = implode(' / ', $breadcrumb_parts);
+$full_breadcrumb = strtoupper($dynamic_breadcrumb ?? 'PANDORA CONSOLE / CUSTOM / PFMS-TOOLKIT / INVENTORY');
 
 // 3. READ FILTERS FROM GET
 $agentId      = isset($_GET['agent_id'])      ? trim($_GET['agent_id'])      : '';
@@ -110,13 +101,11 @@ foreach ($target_nodes as $node => $active_pdo) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PandoraFMS - Module Inventory</title>
     <link rel="icon" href="/pandora_console/images/pandora.ico" type="image/x-icon">
-    <link href="../vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fontawesome/all.min.css">
-    <link href="../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/datatables/dataTables.bootstrap5.min.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/datatables/buttons.bootstrap5.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/fonts/fonts.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/fontawesome/all.min.css">
+    <link href="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/datatables/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/datatables/buttons.bootstrap5.min.css" rel="stylesheet">
     <style>
         * { box-sizing: border-box; }
         body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
@@ -186,16 +175,16 @@ if ($parsed['node'] === 'primary'): ?>
     <span class="agent-link-text" style="font-weight:600; color:#334155;"><?= h($alias) ?></span>
 <?php endif; ?><br><span class="text-soft" style="font-size:10px;"><?= h($row['agent_name']) ?></span></td><td><span style="font-weight: 500; color: #1e293b;"><?= h($mname) ?></span></td><td><span class="text-soft"><?= h(pretty_text($row['module_group'] ?: 'General')) ?></span></td><td class="text-center"><span class="status-pill <?= $stClass ?>"><?= $row['status_text'] ?></span></td><td><span style="font-weight: 500; color: #0b1a26;"><?= h($ldata) ?></span> <span class="text-soft"><?= h($row['module_unit']) ?></span></td><td class="text-soft"><?= h($row['thresholds']) ?></td><td class="text-soft"><?= h($row['last_execution']) ?></td><td class="text-soft" style="font-size: 12px;"><?= h(pretty_text($row['agent_group'])) ?></td></tr><?php endforeach; ?></tbody></table></div>
 </div>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/jquery/jquery-3.7.0.min.js"></script>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/datatables/jquery.dataTables.min.js"></script>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/datatables/dataTables.bootstrap5.min.js"></script>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/datatables/dataTables.buttons.min.js"></script>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/datatables/buttons.bootstrap5.min.js"></script>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/jszip/jszip.min.js"></script>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/pdfmake/pdfmake.min.js"></script>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/pdfmake/vfs_fonts.js"></script>
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/datatables/buttons.html5.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/jquery/jquery-3.7.0.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/datatables/jquery.dataTables.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/datatables/dataTables.bootstrap5.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/datatables/dataTables.buttons.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/datatables/buttons.bootstrap5.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/jszip/jszip.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/pdfmake/pdfmake.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/pdfmake/vfs_fonts.js"></script>
+<script src="<?= htmlspecialchars($vendor_url ?? '../vendor') ?>/datatables/buttons.html5.min.js"></script>
 <script>
 $(document).ready(function() {
     $('#moduleTable').DataTable({

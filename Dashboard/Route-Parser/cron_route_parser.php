@@ -6,7 +6,7 @@ declare(strict_types=1);
  * 
  * Usage:
  *   CLI / Manual: php cron_route_parser.php
- *   Crontab:      * / 5 * * * * php /var/www/html/pandora_console/custom/panel/Dashboard/Route-Parser/cron_route_parser.php > /dev/null 2>&1
+ *   Crontab:      * / 5 * * * * php /var/www/html/pandora_console/custom/pfms-toolkit/Dashboard/Route-Parser/cron_route_parser.php > /dev/null 2>&1
  */
 
 ini_set('display_errors', '1');

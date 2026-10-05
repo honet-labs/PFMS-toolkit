@@ -53,14 +53,10 @@ $is_demo_param = isset($_GET['demo']) || isset($_GET['debug']);
 $is_realtime_api = (isset($_GET['api']) && $_GET['api'] === 'get_realtime_data');
 
 if (empty($user_id) && !$is_standalone && !$is_demo_param && !$is_realtime_api) {
-    $script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
-    $pandora_base = preg_match('#^(/.*?)/(custom|customize)/panel#', $script_dir, $m) ? rtrim($m[1], '/') : '/pandora_console';
+    $pandora_base = !empty($PANDORA_BASE_URL) ? $PANDORA_BASE_URL : '/pandora_console';
     header("Location: " . $pandora_base . "/index.php");
     exit;
 }
-
-// Dynamic Breadcrumb
-$dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD";
 
 // File Storage for Dashboards
 $CONFIG_FILE = __DIR__ . '/route_dashboards.json';
