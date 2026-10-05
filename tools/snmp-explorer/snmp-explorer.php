@@ -667,7 +667,9 @@ if (!empty($api)) {
                 'ENTITY-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/ENTITY-MIB',
                 'CISCO-PROCESS-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/cisco/CISCO-PROCESS-MIB',
                 'MIKROTIK-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/mikrotik/MIKROTIK-MIB',
-                'HUAWEI-ENTITY-EXTENT-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/huawei/HUAWEI-ENTITY-EXTENT-MIB'
+                'HUAWEI-ENTITY-EXTENT-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/huawei/HUAWEI-ENTITY-EXTENT-MIB',
+                'FORTINET-CORE-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/fortinet/FORTINET-CORE-MIB',
+                'FORTINET-FORTIGATE-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/fortinet/FORTINET-FORTIGATE-MIB'
             ];
             if (!isset($presets[$presetKey])) {
                 echo json_encode(['ok' => false, 'error' => 'Unknown preset key.']);
@@ -2280,6 +2282,20 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                                         <div style="font-size: 11px; color: #64748b;">MikroTik RouterOS health, voltage, temperature, SFP</div>
                                     </div>
                                     <button type="button" class="btn-secondary-custom" onclick="installPresetMib('MIKROTIK-MIB')">Install</button>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                    <div>
+                                        <strong style="font-size: 12.5px; color: var(--primary-navy);">FORTINET-CORE-MIB</strong>
+                                        <div style="font-size: 11px; color: #64748b;">Fortinet Core SMI enterprise root (.1.3.6.1.4.1.12356)</div>
+                                    </div>
+                                    <button type="button" class="btn-secondary-custom" onclick="installPresetMib('FORTINET-CORE-MIB')">Install</button>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                    <div>
+                                        <strong style="font-size: 12.5px; color: var(--primary-navy);">FORTINET-FORTIGATE-MIB</strong>
+                                        <div style="font-size: 11px; color: #64748b;">FortiGate VPN tunnels, sessions, HA, cluster, sensors (.12356.101)</div>
+                                    </div>
+                                    <button type="button" class="btn-secondary-custom" onclick="installPresetMib('FORTINET-FORTIGATE-MIB')">Install</button>
                                 </div>
                             </div>
                         </div>

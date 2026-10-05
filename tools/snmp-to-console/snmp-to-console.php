@@ -31,6 +31,8 @@ if (isset($_POST['api']) && $_POST['api'] === 'walk') {
     $oid_input = trim($_POST['oid'] ?? '');
     $oid = escapeshellarg(empty($oid_input) ? '.1' : $oid_input);
     $mib_mode = $_POST['mib_mode'] ?? 'default';
+    $oid_format = trim($_POST['oid_format'] ?? 'symbolic');
+    $fmt_flag = ($oid_format === 'numeric') ? '-O n ' : '';
 
     if ($version === '3') {
         $sec_level = trim($_POST['v3_sec_level'] ?? 'authPriv');
@@ -46,7 +48,7 @@ if (isset($_POST['api']) && $_POST['api'] === 'walk') {
         $priv_pass = escapeshellarg($_POST['v3_priv_pass'] ?? '');
         $context = trim($_POST['v3_context'] ?? '');
 
-        $cmd = "snmpwalk -t 3 -r 1 -O n -v 3 -u $user -l " . escapeshellarg($sec_level) . " ";
+        $cmd = "snmpwalk -t 3 -r 1 {$fmt_flag}-v 3 -u $user -l " . escapeshellarg($sec_level) . " ";
         if ($sec_level === 'authNoPriv' || $sec_level === 'authPriv') {
             $cmd .= "-a $auth_proto -A $auth_pass ";
         }
@@ -59,10 +61,11 @@ if (isset($_POST['api']) && $_POST['api'] === 'walk') {
     } else {
         $community = escapeshellarg(trim($_POST['community'] ?? 'public'));
         $s_ver = escapeshellarg($version);
-        $cmd = "snmpwalk -t 2 -r 1 -O n -v $s_ver -c $community ";
+        $cmd = "snmpwalk -t 2 -r 1 {$fmt_flag}-v $s_ver -c $community ";
     }
     
-    // Dynamic MIB Path
+    // Dynamic MIB Path & Load All MIBs
+    $cmd .= "-m +ALL ";
     if ($mib_mode === 'pandora') {
         $mib_dir = realpath(__DIR__ . '/../../../../attachment/mibs');
         if ($mib_dir) {
@@ -413,12 +416,19 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
             <label class="form-label">Start OID</label>
             <input type="text" id="oid" class="form-control" value=".1">
         </div>
+        <div class="mb-3">
+            <label class="form-label">OID Output Format</label>
+            <select id="oidFormat" class="form-select">
+                <option value="symbolic" selected>Symbolic / Translated (e.g. fgVpnSslStatsActiveTunnels)</option>
+                <option value="numeric">Numeric OID (e.g. .1.3.6.1.4.1.12356...)</option>
+            </select>
+        </div>
         <div class="mb-4">
             <label class="form-label">MIB Resolution Mode</label>
             <select id="mibMode" class="form-select">
                 <option value="default">System Default</option>
                 <option value="pandora">Pandora Attachment (/attachment/mibs)</option>
-                <option value="toolkit">Toolkit MIBs (/snmp-explorer/engine/mibs)</option>
+                <option value="toolkit" selected>Toolkit MIBs (/snmp-explorer/engine/mibs)</option>
                 <option value="all">All Available MIBs (Combined)</option>
             </select>
         </div>
@@ -610,6 +620,7 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
         fd.append('community', $('#community').val());
         fd.append('version', version);
         fd.append('oid', $('#oid').val());
+        fd.append('oid_format', $('#oidFormat').val());
         fd.append('mib_mode', $('#mibMode').val());
 
         if (version === '3') {
