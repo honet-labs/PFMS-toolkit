@@ -113,6 +113,13 @@ if (!empty($api)) {
         $version = trim((string)($input['version'] ?? '2c'));
         $port = (int)($input['port'] ?? 161);
         $profile = trim((string)($input['profile'] ?? 'provisioning'));
+        $v3_user = trim((string)($input['v3_user'] ?? ''));
+        $v3_sec_level = trim((string)($input['v3_sec_level'] ?? 'authPriv'));
+        $v3_auth_proto = trim((string)($input['v3_auth_proto'] ?? 'SHA'));
+        $v3_auth_pass = (string)($input['v3_auth_pass'] ?? '');
+        $v3_priv_proto = trim((string)($input['v3_priv_proto'] ?? 'AES'));
+        $v3_priv_pass = (string)($input['v3_priv_pass'] ?? '');
+        $v3_context = trim((string)($input['v3_context'] ?? ''));
 
         if (empty($host)) {
             echo json_encode(['ok' => false, 'error' => 'Target IP or Hostname is required.']);
@@ -126,6 +133,13 @@ if (!empty($api)) {
                 'version' => $version,
                 'port' => $port,
                 'discovery_profile' => $profile,
+                'v3_user' => $v3_user,
+                'v3_sec_level' => $v3_sec_level,
+                'v3_auth_proto' => $v3_auth_proto,
+                'v3_auth_pass' => $v3_auth_pass,
+                'v3_priv_proto' => $v3_priv_proto,
+                'v3_priv_pass' => $v3_priv_pass,
+                'v3_context' => $v3_context,
             ]);
 
             echo json_encode([
@@ -155,6 +169,13 @@ if (!empty($api)) {
         $version = trim((string)($input['version'] ?? '2c'));
         $port = (int)($input['port'] ?? 161);
         $profile = trim((string)($input['profile'] ?? 'provisioning'));
+        $v3_user = trim((string)($input['v3_user'] ?? ''));
+        $v3_sec_level = trim((string)($input['v3_sec_level'] ?? 'authPriv'));
+        $v3_auth_proto = trim((string)($input['v3_auth_proto'] ?? 'SHA'));
+        $v3_auth_pass = (string)($input['v3_auth_pass'] ?? '');
+        $v3_priv_proto = trim((string)($input['v3_priv_proto'] ?? 'AES'));
+        $v3_priv_pass = (string)($input['v3_priv_pass'] ?? '');
+        $v3_context = trim((string)($input['v3_context'] ?? ''));
 
         if (empty($cidr)) {
             echo json_encode(['ok' => false, 'error' => 'Subnet CIDR (e.g. 192.168.1.0/24) is required.']);
@@ -181,6 +202,13 @@ if (!empty($api)) {
                         'version' => $version,
                         'port' => $port,
                         'discovery_profile' => $profile,
+                        'v3_user' => $v3_user,
+                        'v3_sec_level' => $v3_sec_level,
+                        'v3_auth_proto' => $v3_auth_proto,
+                        'v3_auth_pass' => $v3_auth_pass,
+                        'v3_priv_proto' => $v3_priv_proto,
+                        'v3_priv_pass' => $v3_priv_pass,
+                        'v3_context' => $v3_context,
                     ]);
                     $scanned[] = [
                         'ip' => $ip,
@@ -982,15 +1010,16 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                             <label class="form-label">Subnet CIDR Range *</label>
                             <input type="text" id="scan-cidr" class="form-control mono" placeholder="e.g. 192.168.1.0/24 (Max 64 hosts)">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" id="group-community">
                             <label class="form-label">SNMP Community *</label>
                             <input type="text" id="scan-community" class="form-control mono" value="public" required>
                         </div>
                         <div class="form-group">
                             <label class="form-label">SNMP Version</label>
-                            <select id="scan-version" class="form-control">
+                            <select id="scan-version" class="form-control" onchange="toggleScanVersion()">
                                 <option value="2c" selected>SNMP v2c (Recommended)</option>
                                 <option value="1">SNMP v1</option>
+                                <option value="3">SNMP v3</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -1006,6 +1035,65 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                        </div>
+                    </div>
+
+                    <!-- SNMP v3 Security Parameters (Visible only when SNMP v3 is selected) -->
+                    <div id="snmpv3-credentials-box" class="d-none" style="background:#f8fafc; border:1px solid #cbd5e1; border-left:4px solid var(--brand-green); border-radius:6px; padding:14px 16px; margin-bottom:16px;">
+                        <div style="font-weight:700; color:var(--primary-navy); margin-bottom:12px; font-size:13px; display:flex; align-items:center; gap:8px;">
+                            <span class="material-symbols-outlined" style="font-size:18px; color:var(--brand-green);">lock</span>
+                            <span>SNMP v3 Security Credentials (USM)</span>
+                            <span style="font-weight:normal; font-size:11px; color:#64748b;">User-based Security Model with Cryptographic Authentication & Encryption</span>
+                        </div>
+                        <div class="form-grid" style="margin-bottom:0;">
+                            <div class="form-group">
+                                <label class="form-label">Security Level *</label>
+                                <select id="scan-v3-sec-level" class="form-control" onchange="toggleV3SecurityLevel()">
+                                    <option value="authPriv" selected>authPriv (Auth & Privacy / Encryption - Recommended)</option>
+                                    <option value="authNoPriv">authNoPriv (Authentication only, No Encryption)</option>
+                                    <option value="noAuthNoPriv">noAuthNoPriv (No Auth, No Encryption)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Security Name / Username *</label>
+                                <input type="text" id="scan-v3-user" class="form-control mono" placeholder="e.g. snmpuser">
+                            </div>
+                            <div class="form-group" id="group-v3-auth-proto">
+                                <label class="form-label">Auth Protocol</label>
+                                <select id="scan-v3-auth-proto" class="form-control">
+                                    <option value="SHA" selected>SHA (SHA-1)</option>
+                                    <option value="SHA-256">SHA-256</option>
+                                    <option value="MD5">MD5</option>
+                                    <option value="SHA-512">SHA-512</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="group-v3-auth-pass">
+                                <label class="form-label">Auth Passphrase *</label>
+                                <div style="position:relative; display:flex; align-items:center;">
+                                    <input type="password" id="scan-v3-auth-pass" class="form-control mono" style="padding-right:48px;" placeholder="Min 8 characters">
+                                    <button type="button" onclick="togglePassVisibility('scan-v3-auth-pass', this)" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; color:#64748b; font-size:11px; font-weight:600;">Show</button>
+                                </div>
+                            </div>
+                            <div class="form-group" id="group-v3-priv-proto">
+                                <label class="form-label">Privacy (Encryption) Protocol</label>
+                                <select id="scan-v3-priv-proto" class="form-control">
+                                    <option value="AES" selected>AES (AES-128 - Recommended)</option>
+                                    <option value="AES-256">AES-256</option>
+                                    <option value="DES">DES</option>
+                                    <option value="3DES">3DES</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="group-v3-priv-pass">
+                                <label class="form-label">Privacy Passphrase *</label>
+                                <div style="position:relative; display:flex; align-items:center;">
+                                    <input type="password" id="scan-v3-priv-pass" class="form-control mono" style="padding-right:48px;" placeholder="Min 8 characters">
+                                    <button type="button" onclick="togglePassVisibility('scan-v3-priv-pass', this)" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; color:#64748b; font-size:11px; font-weight:600;">Show</button>
+                                </div>
+                            </div>
+                            <div class="form-group" id="group-v3-context">
+                                <label class="form-label">Context Name (Optional)</label>
+                                <input type="text" id="scan-v3-context" class="form-control mono" placeholder="Default: empty">
+                            </div>
                         </div>
                     </div>
 
@@ -1381,6 +1469,78 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             document.getElementById('scan-cidr').required = isSubnet;
         }
 
+        // Toggle SNMP Version (v1/v2c vs v3)
+        function toggleScanVersion() {
+            const ver = document.getElementById('scan-version').value;
+            const isV3 = ver === '3';
+            const communityGroup = document.getElementById('group-community');
+            const communityInput = document.getElementById('scan-community');
+            const v3Box = document.getElementById('snmpv3-credentials-box');
+            const v3UserInput = document.getElementById('scan-v3-user');
+
+            if (isV3) {
+                communityGroup.classList.add('d-none');
+                communityInput.required = false;
+                v3Box.classList.remove('d-none');
+                v3UserInput.required = true;
+                toggleV3SecurityLevel();
+            } else {
+                communityGroup.classList.remove('d-none');
+                communityInput.required = true;
+                v3Box.classList.add('d-none');
+                v3UserInput.required = false;
+                document.getElementById('scan-v3-auth-pass').required = false;
+                document.getElementById('scan-v3-priv-pass').required = false;
+            }
+        }
+
+        // Toggle SNMP v3 Security Level fields
+        function toggleV3SecurityLevel() {
+            const level = document.getElementById('scan-v3-sec-level').value;
+            const authProtoGrp = document.getElementById('group-v3-auth-proto');
+            const authPassGrp = document.getElementById('group-v3-auth-pass');
+            const authPassInput = document.getElementById('scan-v3-auth-pass');
+            const privProtoGrp = document.getElementById('group-v3-priv-proto');
+            const privPassGrp = document.getElementById('group-v3-priv-pass');
+            const privPassInput = document.getElementById('scan-v3-priv-pass');
+
+            if (level === 'noAuthNoPriv') {
+                authProtoGrp.classList.add('d-none');
+                authPassGrp.classList.add('d-none');
+                authPassInput.required = false;
+                privProtoGrp.classList.add('d-none');
+                privPassGrp.classList.add('d-none');
+                privPassInput.required = false;
+            } else if (level === 'authNoPriv') {
+                authProtoGrp.classList.remove('d-none');
+                authPassGrp.classList.remove('d-none');
+                authPassInput.required = true;
+                privProtoGrp.classList.add('d-none');
+                privPassGrp.classList.add('d-none');
+                privPassInput.required = false;
+            } else { // authPriv
+                authProtoGrp.classList.remove('d-none');
+                authPassGrp.classList.remove('d-none');
+                authPassInput.required = true;
+                privProtoGrp.classList.remove('d-none');
+                privPassGrp.classList.remove('d-none');
+                privPassInput.required = true;
+            }
+        }
+
+        // Toggle Password visibility for passphrases
+        function togglePassVisibility(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.innerText = 'Hide';
+            } else {
+                input.type = 'password';
+                btn.innerText = 'Show';
+            }
+        }
+
         function updateProfileInfo() {
             const val = document.getElementById('scan-profile').value;
             const desc = PROFILE_DESCRIPTIONS[val] || 'Discovery scan profile.';
@@ -1414,7 +1574,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         res.devices.forEach(d => {
                             const opt = document.createElement('option');
                             opt.value = d.id;
-                            opt.innerText = (d.hostname ? d.hostname + ' (' + d.ip_address + ')' : d.ip_address);
+                            const vLabel = d.snmp_version ? (d.snmp_version === '3' ? 'v3' : 'v' + d.snmp_version) : '';
+                            opt.innerText = (d.hostname ? d.hostname + ' (' + d.ip_address + ')' : d.ip_address) + (vLabel ? ' [' + vLabel + ']' : '');
                             sel.appendChild(opt);
                         });
                     }
@@ -1454,17 +1615,31 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
 
             const isSubnet = document.querySelector('input[name="scan_mode"]:checked').value === 'subnet';
             const endpoint = isSubnet ? '?api=scan_subnet' : '?api=scan_device';
+            const version = document.getElementById('scan-version').value;
+            const isV3 = version === '3';
 
             const payload = {
                 host: document.getElementById('scan-target').value,
                 cidr: document.getElementById('scan-cidr').value,
                 community: document.getElementById('scan-community').value,
-                version: document.getElementById('scan-version').value,
+                version: version,
                 port: document.getElementById('scan-port').value,
                 profile: document.getElementById('scan-profile').value,
+                v3_sec_level: isV3 ? document.getElementById('scan-v3-sec-level').value : '',
+                v3_user: isV3 ? document.getElementById('scan-v3-user').value : '',
+                v3_auth_proto: isV3 ? document.getElementById('scan-v3-auth-proto').value : '',
+                v3_auth_pass: isV3 ? document.getElementById('scan-v3-auth-pass').value : '',
+                v3_priv_proto: isV3 ? document.getElementById('scan-v3-priv-proto').value : '',
+                v3_priv_pass: isV3 ? document.getElementById('scan-v3-priv-pass').value : '',
+                v3_context: isV3 ? document.getElementById('scan-v3-context').value : '',
             };
 
             term.innerText += `[INFO] Target: ${isSubnet ? payload.cidr : payload.host} | Port: ${payload.port} | Profile: ${payload.profile}\n`;
+            if (isV3) {
+                term.innerText += `[INFO] Protocol: SNMP v3 | Security Level: ${payload.v3_sec_level} | User: ${payload.v3_user}\n`;
+            } else {
+                term.innerText += `[INFO] Protocol: SNMP v${payload.version} | Community: ${payload.community}\n`;
+            }
             term.innerText += `[INFO] Querying system OIDs & matching vendor profile...\n`;
 
             fetch(endpoint, {

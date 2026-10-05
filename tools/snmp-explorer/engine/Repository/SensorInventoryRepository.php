@@ -383,7 +383,20 @@ final readonly class SensorInventoryRepository
 
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $statement = $this->pdo->prepare(
-            'SELECT si.*, d.snmp_community FROM sensor_inventory si INNER JOIN devices d ON d.id = si.device_id WHERE si.id IN (' . $placeholders . ')'
+            'SELECT si.*,
+                    d.snmp_community,
+                    d.snmp_version,
+                    d.snmp_port,
+                    d.snmp_security_level,
+                    d.snmp_security_name,
+                    d.snmp_auth_protocol,
+                    d.snmp_auth_passphrase,
+                    d.snmp_priv_protocol,
+                    d.snmp_priv_passphrase,
+                    d.snmp_context_name
+             FROM sensor_inventory si
+             INNER JOIN devices d ON d.id = si.device_id
+             WHERE si.id IN (' . $placeholders . ')'
         );
         $statement->execute($ids);
 

@@ -48,21 +48,51 @@ final readonly class SnmpScanner
             throw new DiscoveryException('Use a valid IPv4, IPv6, or DNS hostname for the SNMP target.');
         }
 
-        if (!in_array(strtolower($version), ['1', 'v1', '2', '2c', 'v2c'], true)) {
-            throw new DiscoveryException('Only SNMP v1 and v2c are supported.');
+        $normalizedVersion = strtolower($version);
+        if (!in_array($normalizedVersion, ['1', 'v1', '2', '2c', 'v2c', '3', 'v3'], true)) {
+            throw new DiscoveryException('Only SNMP v1, v2c, and v3 are supported.');
         }
 
         if ($port < 1 || $port > 65535) {
             throw new DiscoveryException('SNMP port must be between 1 and 65535.');
         }
 
-        if ($community === '' || strlen($community) > 128 || preg_match('/[\x00-\x1F\x7F]/', $community) === 1) {
-            throw new DiscoveryException('SNMP community is required and must not contain control characters.');
+        $isV3 = in_array($normalizedVersion, ['3', 'v3'], true);
+
+        // SNMP v3 parameters
+        $secName = trim((string) ($request['v3_user'] ?? $request['sec_name'] ?? $request['username'] ?? ''));
+        $secLevel = trim((string) ($request['v3_sec_level'] ?? $request['sec_level'] ?? $this->defaultSnmpConfig['v3_sec_level'] ?? 'authPriv'));
+        $authProto = trim((string) ($request['v3_auth_proto'] ?? $request['auth_protocol'] ?? $this->defaultSnmpConfig['v3_auth_proto'] ?? 'SHA'));
+        $authPass = (string) ($request['v3_auth_pass'] ?? $request['auth_pass'] ?? $this->defaultSnmpConfig['v3_auth_pass'] ?? '');
+        $privProto = trim((string) ($request['v3_priv_proto'] ?? $request['priv_protocol'] ?? $this->defaultSnmpConfig['v3_priv_proto'] ?? 'AES'));
+        $privPass = (string) ($request['v3_priv_pass'] ?? $request['priv_pass'] ?? $this->defaultSnmpConfig['v3_priv_pass'] ?? '');
+        $contextName = trim((string) ($request['v3_context'] ?? $request['context_name'] ?? $this->defaultSnmpConfig['v3_context'] ?? ''));
+
+        if ($isV3) {
+            if ($secName === '' && $community !== '') {
+                $secName = $community;
+            }
+            if ($secName === '' || strlen($secName) > 128 || preg_match('/[\x00-\x1F\x7F]/', $secName) === 1) {
+                throw new DiscoveryException('SNMP v3 Security Name (Username) is required and must not contain control characters.');
+            }
+            if (!in_array($secLevel, ['noAuthNoPriv', 'authNoPriv', 'authPriv'], true)) {
+                $secLevel = 'authPriv';
+            }
+            if (($secLevel === 'authNoPriv' || $secLevel === 'authPriv') && $authPass === '') {
+                throw new DiscoveryException('SNMP v3 Auth Passphrase is required for ' . $secLevel . '.');
+            }
+            if ($secLevel === 'authPriv' && $privPass === '') {
+                throw new DiscoveryException('SNMP v3 Privacy Passphrase is required for authPriv.');
+            }
+        } else {
+            if ($community === '' || strlen($community) > 128 || preg_match('/[\x00-\x1F\x7F]/', $community) === 1) {
+                throw new DiscoveryException('SNMP community is required and must not contain control characters.');
+            }
         }
 
         $this->applyRuntimeTimeout($scanTimeoutSec);
 
-        $cacheKey = md5($host . ':' . $port);
+        $cacheKey = md5($host . ':' . $port . ':' . ($isV3 ? $secName . ':' . $secLevel : $community));
         $cacheFile = SNMP_BRIDGE_ROOT . '/storage/cache/identity_' . $cacheKey . '.json';
         $cacheTtl = (int) ($this->defaultSnmpConfig['identity_cache_ttl'] ?? 120);
         $cachedIdentity = null;
@@ -84,7 +114,7 @@ final readonly class SnmpScanner
 
         $session = new SnmpSession(
             $host,
-            $community,
+            $isV3 ? $secName : $community,
             $version,
             $port,
             $sessionTimeoutUsec,
@@ -92,6 +122,12 @@ final readonly class SnmpScanner
             (int) $this->defaultSnmpConfig['max_oids'],
             (bool) $this->defaultSnmpConfig['quick_print'],
             (bool) ($this->defaultSnmpConfig['debug'] ?? false),
+            $secLevel,
+            $authProto,
+            $authPass,
+            $privProto,
+            $privPass,
+            $contextName,
         );
 
         try {
@@ -128,9 +164,9 @@ final readonly class SnmpScanner
                             $host,
                             $version,
                             $port,
-                            $community,
+                            $isV3 ? '' : $community,
                             'not_found',
-                            'Device did not return sysDescr/sysObjectID, and fallback probes failed. Check IP, UDP/161, SNMP version, and community.',
+                            'Device did not return sysDescr/sysObjectID, and fallback probes failed. Check IP, UDP/161, SNMP version, and credentials.',
                             $this->scanMetadata(
                                 $scanStartedAt,
                                 $scanTimeoutSec,
@@ -139,6 +175,10 @@ final readonly class SnmpScanner
                                 1,
                                 microtime(true) >= $scanDeadline,
                             ),
+                            $isV3 ? [
+                                'snmp_security_level' => $secLevel,
+                                'snmp_security_name' => $secName,
+                            ] : [],
                         );
                     }
                 }
@@ -163,7 +203,14 @@ final readonly class SnmpScanner
                 'sys_descr' => $sysDescr,
                 'snmp_version' => $version,
                 'snmp_port' => $port,
-                'snmp_community' => $community,
+                'snmp_community' => $isV3 ? '' : $community,
+                'snmp_security_level' => $isV3 ? $secLevel : null,
+                'snmp_security_name' => $isV3 ? $secName : null,
+                'snmp_auth_protocol' => ($isV3 && $secLevel !== 'noAuthNoPriv') ? $authProto : null,
+                'snmp_auth_passphrase' => ($isV3 && $secLevel !== 'noAuthNoPriv') ? $authPass : null,
+                'snmp_priv_protocol' => ($isV3 && $secLevel === 'authPriv') ? $privProto : null,
+                'snmp_priv_passphrase' => ($isV3 && $secLevel === 'authPriv') ? $privPass : null,
+                'snmp_context_name' => $isV3 ? $contextName : null,
             ];
 
             $deviceId = $this->deviceRepository->upsert($device);
@@ -176,7 +223,7 @@ final readonly class SnmpScanner
                 $device,
                 [
                     'version' => $version,
-                    'community' => $community,
+                    'community' => $isV3 ? '' : $community,
                     'port' => $port,
                     'discovery_profile' => $discoveryProfile,
                     'scan_started_at' => $scanStartedAt,
@@ -185,6 +232,8 @@ final readonly class SnmpScanner
                     'scan_max_sensors' => $scanMaxSensors,
                     'scan_result_preview_limit' => $previewLimit,
                     'translate_max_sensors' => $translateMaxSensors,
+                    'v3_user' => $isV3 ? $secName : null,
+                    'v3_sec_level' => $isV3 ? $secLevel : null,
                 ],
             );
 
@@ -216,7 +265,7 @@ final readonly class SnmpScanner
                 $host,
                 $version,
                 $port,
-                $community,
+                $isV3 ? '' : $community,
                 'error',
                 $throwable->getMessage(),
                 $this->scanMetadata(
@@ -227,6 +276,10 @@ final readonly class SnmpScanner
                     1,
                     microtime(true) >= $scanDeadline,
                 ),
+                $isV3 ? [
+                    'snmp_security_level' => $secLevel,
+                    'snmp_security_name' => $secName,
+                ] : [],
             );
         } finally {
             $session->close();
@@ -235,6 +288,7 @@ final readonly class SnmpScanner
 
     /**
      * @param array<string, mixed>|null $scan
+     * @param array<string, mixed> $extra
      * @return array{device:array<string, mixed>, vendor:string, sensors:list<array<string, mixed>>, scan:array<string, mixed>}
      */
     private function failureResult(
@@ -245,9 +299,10 @@ final readonly class SnmpScanner
         string $status,
         string $message,
         ?array $scan = null,
+        array $extra = [],
     ): array {
         return [
-            'device' => [
+            'device' => array_merge([
                 'ip_address' => $host,
                 'hostname' => $host,
                 'vendor' => 'unknown',
@@ -257,7 +312,7 @@ final readonly class SnmpScanner
                 'snmp_port' => $port,
                 'snmp_community' => $community,
                 'status' => $status,
-            ],
+            ], $extra),
             'vendor' => 'unknown',
             'sensors' => [
                 [

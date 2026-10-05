@@ -2,6 +2,26 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.9] - 2026-10-05 (SNMP Explorer - Full SNMP v3 Support with USM Security)
+### Added
+- **Fitur SNMP v3 pada SNMP Explorer (`tools/snmp-explorer/`):**
+  - Menambahkan opsi **SNMP v3** pada dropdown versi SNMP di konsol pemindaian perangkat tunggal (*Single IP*) dan Subnet (*CIDR Range*).
+  - Formulir kredensial keamanan SNMP v3 interaktif (*User-based Security Model - USM*):
+    - **Security Level**: `authPriv` (Autentikasi & Enkripsi), `authNoPriv` (Autentikasi tanpa Enkripsi), dan `noAuthNoPriv`.
+    - **Security Name (Username)**.
+    - **Auth Protocol & Passphrase**: Mendukung `SHA` (SHA-1), `SHA-256`, `MD5`, dan `SHA-512` dengan tombol toggle Show/Hide password.
+    - **Privacy (Encryption) Protocol & Passphrase**: Mendukung `AES` (AES-128), `AES-256`, `DES`, dan `3DES` dengan tombol toggle Show/Hide password.
+    - **Context Name** (opsional).
+  - Tampilan form dinamis: saat SNMP v3 dipilih, input Community disembunyikan/opsional dan form USM ditampilkan; saat level `noAuthNoPriv` atau `authNoPriv` dipilih, field yang tidak relevan otomatis disembunyikan.
+- **SNMP Engine & Session Core:**
+  - `SnmpSession.php`: Menginisialisasi session `SNMP::VERSION_3` native PHP dengan konfigurasi `$session->setSecurity(...)` lengkap.
+  - `SnmpScanner.php`: Validasi kredensial v3, pemindaian OID vendor, pembuatan identitas cache yang terisolasi per kredensial v3.
+  - `DeviceRepository.php` & `bootstrap.php`: Auto-migration kolom kredensial SNMP v3 pada tabel `devices` (`snmp_security_level`, `snmp_security_name`, `snmp_auth_protocol`, `snmp_auth_passphrase`, `snmp_priv_protocol`, `snmp_priv_passphrase`, `snmp_context_name`).
+- **Pandora FMS Module Provisioning:**
+  - `SensorInventoryRepository.php`: Mengambil kredensial v3 dari perangkat terkait saat proses provisioning.
+  - `PandoraModuleBuilder.php`: Membangun modul SNMP v3 (`snmp_version = 3`, `snmp3_sec_level`, `snmp3_auth_user`, `snmp3_auth_method`, `snmp3_auth_pass`, `snmp3_priv_method`, `snmp3_priv_pass`, `plugin_user`).
+  - `PandoraRepository.php`: Deteksi kolom dinamis pada `tagente_modulo` agar kompatibel dengan berbagai versi Pandora FMS tanpa error SQL.
+
 ## [2.8] - 2026-10-02 (SNMP Explorer - Device Discovery, Sensor Normalization & Pandora Provisioning)
 ### Added
 - **Brand New Module: `SNMP Explorer` (`tools/snmp-explorer/`):**

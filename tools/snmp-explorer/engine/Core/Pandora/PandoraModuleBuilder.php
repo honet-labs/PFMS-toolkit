@@ -57,6 +57,9 @@ final class PandoraModuleBuilder
         $extendedInfo = $wizardMode ? '' : $this->buildExtendedInfo($sensor);
         $extraData = $wizardMode ? '' : $this->buildExtraData($sensor);
 
+        $snmpVersion = (string) ($sensor['snmp_version'] ?? '2c');
+        $isV3 = in_array(strtolower($snmpVersion), ['3', 'v3'], true);
+
         return [
             'id_agente' => $agentId,
             'id_tipo_modulo' => $idTipoModulo,
@@ -64,7 +67,7 @@ final class PandoraModuleBuilder
             'id_module_group' => (int) ($this->config['default_module_group_id'] ?? 1),
             'nombre' => $moduleName,
             'descripcion' => $this->buildDescription($sensor),
-            'tcp_port' => 161,
+            'tcp_port' => (int) ($sensor['snmp_port'] ?? 161),
             'snmp_oid' => (string) $sensor['oid'],
             'snmp_community' => (string) ($sensor['snmp_community'] ?? 'public'),
             'ip_target' => (string) $sensor['ip_address'],
@@ -79,6 +82,16 @@ final class PandoraModuleBuilder
             'custom_id' => $wizardMode ? '' : $customId,
             'extended_info' => $extendedInfo,
             'extra_data' => $extraData,
+            'snmp_version' => $isV3 ? 3 : (in_array(strtolower($snmpVersion), ['1', 'v1'], true) ? 1 : 2),
+            'snmp3_sec_level' => $sensor['snmp_security_level'] ?? null,
+            'snmp3_auth_user' => $sensor['snmp_security_name'] ?? null,
+            'snmp3_auth_method' => $sensor['snmp_auth_protocol'] ?? null,
+            'snmp3_auth_pass' => $sensor['snmp_auth_passphrase'] ?? null,
+            'snmp3_priv_method' => $sensor['snmp_priv_protocol'] ?? null,
+            'snmp3_priv_pass' => $sensor['snmp_priv_passphrase'] ?? null,
+            'plugin_user' => $isV3 ? ($sensor['snmp_security_name'] ?? null) : null,
+            'plugin_pass' => $isV3 ? ($sensor['snmp_auth_passphrase'] ?? null) : null,
+            'plugin_parameter' => $isV3 ? ($sensor['snmp_priv_passphrase'] ?? null) : null,
         ];
     }
 

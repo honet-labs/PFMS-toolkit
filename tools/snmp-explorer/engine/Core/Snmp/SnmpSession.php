@@ -22,18 +22,46 @@ final readonly class SnmpSession
         private int $maxOids = 10,
         private bool $quickPrint = true,
         private bool $debug = false,
+        private string $secLevel = 'authPriv',
+        private string $authProtocol = 'SHA',
+        private string $authPassphrase = '',
+        private string $privProtocol = 'AES',
+        private string $privPassphrase = '',
+        private string $contextName = '',
+        private string $contextEngineId = '',
     ) {
         if (!extension_loaded('snmp')) {
             throw new RuntimeException('The php-snmp extension is required.');
         }
 
         $peer = sprintf('%s:%d', $this->host, $this->port);
-        $this->session = new SNMP($this->versionConstant(), $peer, $this->community, $this->timeoutUsec, $this->retries);
+        $versionConst = $this->versionConstant();
+
+        // In SNMP v3, the 3rd argument to the SNMP constructor represents securityName
+        $secName = $this->community;
+        $this->session = new SNMP($versionConst, $peer, $secName, $this->timeoutUsec, $this->retries);
         $this->session->exceptions_enabled = SNMP::ERRNO_ANY;
         $this->session->valueretrieval = SNMP_VALUE_PLAIN;
         $this->session->oid_output_format = SNMP_OID_OUTPUT_NUMERIC;
         $this->session->quick_print = $this->quickPrint;
         $this->session->max_oids = $this->maxOids;
+
+        if ($versionConst === SNMP::VERSION_3) {
+            $authProto = ($this->secLevel === 'noAuthNoPriv') ? '' : $this->authProtocol;
+            $authPass = ($this->secLevel === 'noAuthNoPriv') ? '' : $this->authPassphrase;
+            $privProto = ($this->secLevel === 'authPriv') ? $this->privProtocol : '';
+            $privPass = ($this->secLevel === 'authPriv') ? $this->privPassphrase : '';
+
+            $this->session->setSecurity(
+                $this->secLevel,
+                $authProto,
+                $authPass,
+                $privProto,
+                $privPass,
+                $this->contextName,
+                $this->contextEngineId
+            );
+        }
     }
 
     public function getHost(): string
@@ -127,12 +155,43 @@ final readonly class SnmpSession
         $this->session->close();
     }
 
+    public function getSecLevel(): string
+    {
+        return $this->secLevel;
+    }
+
+    public function getAuthProtocol(): string
+    {
+        return $this->authProtocol;
+    }
+
+    public function getAuthPassphrase(): string
+    {
+        return $this->authPassphrase;
+    }
+
+    public function getPrivProtocol(): string
+    {
+        return $this->privProtocol;
+    }
+
+    public function getPrivPassphrase(): string
+    {
+        return $this->privPassphrase;
+    }
+
+    public function getContextName(): string
+    {
+        return $this->contextName;
+    }
+
     private function versionConstant(): int
     {
         return match (strtolower($this->version)) {
             '1', 'v1' => SNMP::VERSION_1,
             '2', '2c', 'v2c' => SNMP::VERSION_2C,
-            default => throw new RuntimeException('Only SNMP v1 and v2c are supported by this provisioning bridge session.'),
+            '3', 'v3' => SNMP::VERSION_3,
+            default => throw new RuntimeException('Only SNMP v1, v2c, and v3 are supported by this provisioning bridge session.'),
         };
     }
 

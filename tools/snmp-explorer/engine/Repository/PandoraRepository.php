@@ -137,83 +137,91 @@ final readonly class PandoraRepository
         return $moduleId;
     }
 
+    /** @var list<string>|null */
+    private static ?array $tagenteModuloColumns = null;
+
+    /**
+     * @return list<string>
+     */
+    private function getTagenteModuloColumns(): array
+    {
+        if (self::$tagenteModuloColumns === null) {
+            try {
+                $statement = $this->pdo->query('SHOW COLUMNS FROM tagente_modulo');
+                self::$tagenteModuloColumns = $statement->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            } catch (\Throwable) {
+                self::$tagenteModuloColumns = [];
+            }
+        }
+
+        return self::$tagenteModuloColumns;
+    }
+
     /**
      * Insert module definition into tagente_modulo table
      */
     private function insertModuleDefinition(array $module): int
     {
-        $sql = <<<'SQL'
-            INSERT INTO tagente_modulo (
-                id_agente,
-                id_tipo_modulo,
-                descripcion,
-                extended_info,
-                nombre,
-                unit,
-                module_interval,
-                snmp_community,
-                snmp_oid,
-                ip_target,
-                tcp_port,
-                id_module_group,
-                id_modulo,
-                disabled,
-                max_timeout,
-                max_retries,
-                custom_id,
-                history_data,
-                wizard_level,
-                quiet,
-                extra_data
-            ) VALUES (
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?
-            )
-            SQL;
+        $existingCols = $this->getTagenteModuloColumns();
 
+        $fields = [
+            'id_agente' => $module['id_agente'] ?? 0,
+            'id_tipo_modulo' => $module['id_tipo_modulo'] ?? 0,
+            'descripcion' => $module['descripcion'] ?? null,
+            'extended_info' => $module['extended_info'] ?? null,
+            'nombre' => $module['nombre'] ?? null,
+            'unit' => $module['unit'] ?? null,
+            'module_interval' => $module['module_interval'] ?? 0,
+            'snmp_community' => $module['snmp_community'] ?? 'public',
+            'snmp_oid' => $module['snmp_oid'] ?? null,
+            'ip_target' => $module['ip_target'] ?? null,
+            'tcp_port' => $module['tcp_port'] ?? 161,
+            'id_module_group' => $module['id_module_group'] ?? 0,
+            'id_modulo' => $module['id_modulo'] ?? 0,
+            'disabled' => $module['disabled'] ?? 0,
+            'max_timeout' => $module['max_timeout'] ?? 0,
+            'max_retries' => $module['max_retries'] ?? 0,
+            'custom_id' => $module['custom_id'] ?? null,
+            'history_data' => $module['history_data'] ?? 1,
+            'wizard_level' => $module['wizard_level'] ?? 'nowizard',
+            'quiet' => $module['quiet'] ?? 0,
+            'extra_data' => $module['extra_data'] ?? null,
+        ];
+
+        // Optional SNMP v3 parameters based on table schema availability
+        $v3Candidates = [
+            'snmp_version' => $module['snmp_version'] ?? null,
+            'snmp3_sec_level' => $module['snmp3_sec_level'] ?? null,
+            'snmp3_auth_user' => $module['snmp3_auth_user'] ?? null,
+            'snmp3_auth_method' => $module['snmp3_auth_method'] ?? null,
+            'snmp3_auth_pass' => $module['snmp3_auth_pass'] ?? null,
+            'snmp3_priv_method' => $module['snmp3_priv_method'] ?? null,
+            'snmp3_priv_pass' => $module['snmp3_priv_pass'] ?? null,
+            'plugin_user' => $module['plugin_user'] ?? null,
+            'plugin_pass' => $module['plugin_pass'] ?? null,
+            'plugin_parameter' => $module['plugin_parameter'] ?? null,
+        ];
+
+        foreach ($v3Candidates as $col => $val) {
+            if ($val !== null && (empty($existingCols) || in_array($col, $existingCols, true))) {
+                $fields[$col] = $val;
+            }
+        }
+
+        if (!empty($existingCols)) {
+            $fields = array_filter(
+                $fields,
+                static fn ($val, $col) => in_array($col, $existingCols, true),
+                ARRAY_FILTER_USE_BOTH
+            );
+        }
+
+        $colNames = implode(', ', array_keys($fields));
+        $placeholders = implode(', ', array_fill(0, count($fields), '?'));
+
+        $sql = "INSERT INTO tagente_modulo ($colNames) VALUES ($placeholders)";
         $statement = $this->pdo->prepare($sql);
-        $statement->execute([
-            $module['id_agente'] ?? 0,
-            $module['id_tipo_modulo'] ?? 0,
-            $module['descripcion'] ?? null,
-            $module['extended_info'] ?? null,
-            $module['nombre'] ?? null,
-            $module['unit'] ?? null,
-            $module['module_interval'] ?? 0,
-            $module['snmp_community'] ?? 'public',
-            $module['snmp_oid'] ?? null,
-            $module['ip_target'] ?? null,
-            $module['tcp_port'] ?? 161,
-            $module['id_module_group'] ?? 0,
-            $module['id_modulo'] ?? 0,
-            $module['disabled'] ?? 0,
-            $module['max_timeout'] ?? 0,
-            $module['max_retries'] ?? 0,
-            $module['custom_id'] ?? null,
-            $module['history_data'] ?? 1,
-            $module['wizard_level'] ?? 'nowizard',
-            $module['quiet'] ?? 0,
-            $module['extra_data'] ?? null,
-        ]);
+        $statement->execute(array_values($fields));
 
         return (int) $this->pdo->lastInsertId();
     }

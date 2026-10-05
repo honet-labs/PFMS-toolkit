@@ -81,6 +81,13 @@ CREATE TABLE IF NOT EXISTS `devices` (
     `snmp_version` VARCHAR(20) NOT NULL DEFAULT '2c',
     `snmp_port` INT UNSIGNED NOT NULL DEFAULT 161,
     `snmp_community` VARCHAR(255) NOT NULL DEFAULT '',
+    `snmp_security_level` VARCHAR(32) NULL,
+    `snmp_security_name` VARCHAR(128) NULL,
+    `snmp_auth_protocol` VARCHAR(32) NULL,
+    `snmp_auth_passphrase` VARCHAR(255) NULL,
+    `snmp_priv_protocol` VARCHAR(32) NULL,
+    `snmp_priv_passphrase` VARCHAR(255) NULL,
+    `snmp_context_name` VARCHAR(128) NULL,
     `last_scanned_at` DATETIME NULL,
     `created_at` DATETIME NOT NULL,
     `updated_at` DATETIME NOT NULL,
@@ -125,6 +132,25 @@ SQL;
 
     try {
         $pdo->exec($schema);
+
+        // Safe auto-migration for existing installations
+        $v3Cols = [
+            'snmp_security_level' => "VARCHAR(32) NULL AFTER `snmp_community`",
+            'snmp_security_name' => "VARCHAR(128) NULL AFTER `snmp_security_level`",
+            'snmp_auth_protocol' => "VARCHAR(32) NULL AFTER `snmp_security_name`",
+            'snmp_auth_passphrase' => "VARCHAR(255) NULL AFTER `snmp_auth_protocol`",
+            'snmp_priv_protocol' => "VARCHAR(32) NULL AFTER `snmp_auth_passphrase`",
+            'snmp_priv_passphrase' => "VARCHAR(255) NULL AFTER `snmp_priv_protocol`",
+            'snmp_context_name' => "VARCHAR(128) NULL AFTER `snmp_priv_passphrase`",
+        ];
+        foreach ($v3Cols as $col => $def) {
+            try {
+                $pdo->exec("ALTER TABLE `devices` ADD COLUMN `$col` $def");
+            } catch (\Throwable) {
+                // Column already exists
+            }
+        }
+
         $initialized = true;
     } catch (\Throwable $e) {
         error_log("SNMP Explorer table init error: " . $e->getMessage());
