@@ -532,66 +532,56 @@ if (!empty($api)) {
 
         $mibsList = [];
         
-        // Scan local toolkit MIBs
-        if (is_dir($localMibDir)) {
-            $files = @scandir($localMibDir) ?: [];
-            foreach ($files as $file) {
-                if ($file === '.' || $file === '..' || $file === '.gitkeep' || str_starts_with($file, '.')) {
+        $scanMibDir = function(string $baseDir, string $currentDir, string $sourceLabel, bool $canDelete) use (&$mibsList, &$scanMibDir) {
+            if (!is_dir($currentDir)) return;
+            $items = @scandir($currentDir) ?: [];
+            foreach ($items as $item) {
+                if ($item === '.' || $item === '..' || $item === '.gitkeep' || str_starts_with($item, '.')) {
                     continue;
                 }
-                $filePath = $localMibDir . '/' . $file;
-                if (!is_file($filePath)) continue;
+                $fullPath = $currentDir . '/' . $item;
+                if (is_dir($fullPath)) {
+                    $subLabel = $sourceLabel . '/' . $item;
+                    $scanMibDir($baseDir, $fullPath, $subLabel, $canDelete);
+                    continue;
+                }
+                if (!is_file($fullPath)) continue;
 
-                $size = filesize($filePath);
-                $mtime = filemtime($filePath);
+                $size = filesize($fullPath);
+                $mtime = filemtime($fullPath);
+
+                $normBase = rtrim(str_replace('\\', '/', $baseDir), '/');
+                $normFull = str_replace('\\', '/', $fullPath);
+                $relPath = ltrim(str_replace($normBase, '', $normFull), '/');
 
                 // Quick parse module name from ASN.1 DEFINITIONS
-                $moduleName = $file;
-                $sample = @file_get_contents($filePath, false, null, 0, 32768);
+                $moduleName = $item;
+                $sample = @file_get_contents($fullPath, false, null, 0, 32768);
                 if ($sample && preg_match('/^\s*([A-Za-z0-9_-]+)\s+DEFINITIONS\s*::=\s*BEGIN/mi', $sample, $m)) {
                     $moduleName = trim($m[1]);
                 }
 
                 $mibsList[] = [
-                    'filename' => $file,
+                    'filename' => $relPath,
                     'module_name' => $moduleName,
                     'size_bytes' => $size,
                     'size_formatted' => $size > 1048576 ? round($size / 1048576, 2) . ' MB' : round($size / 1024, 1) . ' KB',
                     'modified_at' => date('Y-m-d H:i:s', $mtime),
-                    'source' => 'Toolkit (engine/mibs)',
-                    'can_delete' => ($file !== 'IF-MIB' && $file !== 'IF-MIB.mib')
+                    'source' => $sourceLabel,
+                    'can_delete' => $canDelete && ($item !== 'IF-MIB' && $item !== 'IF-MIB.mib')
                 ];
             }
+        };
+
+        // Scan local toolkit MIBs (including any vendor subfolders)
+        if (is_dir($localMibDir)) {
+            $scanMibDir($localMibDir, $localMibDir, 'Toolkit (engine/mibs)', true);
         }
 
         // Also detect Pandora FMS attachment mibs folder
         $pandoraMibDir = realpath(__DIR__ . '/../../../../attachment/mibs') ?: realpath(__DIR__ . '/../../../../../attachment/mibs');
         if ($pandoraMibDir && is_dir($pandoraMibDir)) {
-            $pFiles = @scandir($pandoraMibDir) ?: [];
-            foreach ($pFiles as $pFile) {
-                if ($pFile === '.' || $pFile === '..' || str_starts_with($pFile, '.')) continue;
-                $pPath = $pandoraMibDir . '/' . $pFile;
-                if (!is_file($pPath)) continue;
-
-                $size = filesize($pPath);
-                $mtime = filemtime($pPath);
-
-                $moduleName = $pFile;
-                $sample = @file_get_contents($pPath, false, null, 0, 32768);
-                if ($sample && preg_match('/^\s*([A-Za-z0-9_-]+)\s+DEFINITIONS\s*::=\s*BEGIN/mi', $sample, $m)) {
-                    $moduleName = trim($m[1]);
-                }
-
-                $mibsList[] = [
-                    'filename' => $pFile,
-                    'module_name' => $moduleName,
-                    'size_bytes' => $size,
-                    'size_formatted' => $size > 1048576 ? round($size / 1048576, 2) . ' MB' : round($size / 1024, 1) . ' KB',
-                    'modified_at' => date('Y-m-d H:i:s', $mtime),
-                    'source' => 'Pandora Console (attachment/mibs)',
-                    'can_delete' => false
-                ];
-            }
+            $scanMibDir($pandoraMibDir, $pandoraMibDir, 'Pandora Console (attachment/mibs)', false);
         }
 
         echo json_encode([
@@ -759,58 +749,85 @@ if (!empty($api)) {
         $raw = file_get_contents('php://input');
         $input = json_decode($raw, true) ?: $_POST;
 
-        $filename = basename(trim((string)($input['filename'] ?? '')));
-        if (empty($filename)) {
-            echo json_encode(['ok' => false, 'error' => 'Filename is required.']);
+        $rawFilename = trim((string)($input['filename'] ?? ''));
+        $rawFilename = str_replace('\\', '/', $rawFilename);
+
+        // Disallow path traversal or absolute paths
+        if (empty($rawFilename) || str_contains($rawFilename, '..') || str_starts_with($rawFilename, '/') || preg_match('/^[a-zA-Z]:/', $rawFilename)) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid filename path.']);
             exit;
         }
 
-        if ($filename === 'IF-MIB' || $filename === 'IF-MIB.mib') {
+        $baseName = basename($rawFilename);
+        if ($baseName === 'IF-MIB' || $baseName === 'IF-MIB.mib') {
             echo json_encode(['ok' => false, 'error' => 'Protected System Base MIB (IF-MIB) cannot be deleted.']);
             exit;
         }
 
-        $targetPath = __DIR__ . '/engine/mibs/' . $filename;
-        if (!file_exists($targetPath)) {
+        $localMibDir = realpath(__DIR__ . '/engine/mibs');
+        $targetPath = __DIR__ . '/engine/mibs/' . $rawFilename;
+        $realTarget = realpath($targetPath);
+
+        if (!$localMibDir || !$realTarget || !file_exists($realTarget) || !str_starts_with(str_replace('\\', '/', $realTarget), str_replace('\\', '/', $localMibDir))) {
             echo json_encode(['ok' => false, 'error' => 'MIB file not found in local toolkit directory. (Pandora console MIBs cannot be deleted from here)']);
             exit;
         }
 
-        if (@unlink($targetPath)) {
-            echo json_encode(['ok' => true, 'message' => "MIB file '{$filename}' deleted successfully."]);
+        if (@unlink($realTarget)) {
+            // Invalidate disk cache for candidate objects
+            $cacheDir = __DIR__ . '/engine/storage/cache';
+            if (is_dir($cacheDir)) {
+                foreach (glob($cacheDir . '/mibs_manifest_*.json') ?: [] as $cf) {
+                    @unlink($cf);
+                }
+            }
+            echo json_encode(['ok' => true, 'message' => "MIB file '{$rawFilename}' deleted successfully."]);
         } else {
-            echo json_encode(['ok' => false, 'error' => "Failed to delete '{$filename}'. Check file permissions."]);
+            echo json_encode(['ok' => false, 'error' => "Failed to delete '{$rawFilename}'. Check file permissions."]);
         }
         exit;
     }
 
     // API: View MIB Content
     if ($api === 'view_mib') {
-        $filename = basename(trim((string)($_GET['filename'] ?? '')));
-        if (empty($filename)) {
-            echo json_encode(['ok' => false, 'error' => 'Filename is required.']);
+        $rawFilename = trim((string)($_GET['filename'] ?? ''));
+        $rawFilename = str_replace('\\', '/', $rawFilename);
+
+        if (empty($rawFilename) || str_contains($rawFilename, '..') || str_starts_with($rawFilename, '/') || preg_match('/^[a-zA-Z]:/', $rawFilename)) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid filename path.']);
             exit;
         }
 
-        $targetPath = __DIR__ . '/engine/mibs/' . $filename;
-        if (!file_exists($targetPath)) {
+        $localMibDir = realpath(__DIR__ . '/engine/mibs');
+        $targetPath = __DIR__ . '/engine/mibs/' . $rawFilename;
+        $realTarget = realpath($targetPath);
+
+        if (!$realTarget || !file_exists($realTarget) || !$localMibDir || !str_starts_with(str_replace('\\', '/', $realTarget), str_replace('\\', '/', $localMibDir))) {
             $pandoraMibDir = realpath(__DIR__ . '/../../../../attachment/mibs') ?: realpath(__DIR__ . '/../../../../../attachment/mibs');
-            if ($pandoraMibDir && file_exists($pandoraMibDir . '/' . $filename)) {
-                $targetPath = $pandoraMibDir . '/' . $filename;
+            if ($pandoraMibDir) {
+                $pPath = $pandoraMibDir . '/' . $rawFilename;
+                $pReal = realpath($pPath);
+                if ($pReal && file_exists($pReal) && str_starts_with(str_replace('\\', '/', $pReal), str_replace('\\', '/', $pandoraMibDir))) {
+                    $realTarget = $pReal;
+                } else {
+                    $realTarget = false;
+                }
+            } else {
+                $realTarget = false;
             }
         }
 
-        if (!file_exists($targetPath)) {
+        if (!$realTarget || !file_exists($realTarget)) {
             echo json_encode(['ok' => false, 'error' => 'File not found.']);
             exit;
         }
 
-        $content = @file_get_contents($targetPath, false, null, 0, 524288); // Limit to 512KB for UI performance
+        $content = @file_get_contents($realTarget, false, null, 0, 524288); // Limit to 512KB for UI performance
         echo json_encode([
             'ok' => true,
-            'filename' => $filename,
-            'size' => filesize($targetPath),
-            'content' => $content
+            'filename' => $rawFilename,
+            'size' => filesize($realTarget),
+            'content' => $content !== false ? $content : 'Unable to read file content.'
         ]);
         exit;
     }

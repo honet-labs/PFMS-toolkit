@@ -220,26 +220,42 @@ function snmp_explorer_bootstrap(\PDO $pdo): array {
     $speedDetector = new \SnmpBridge\Core\Normalize\SpeedDetector();
     $thresholdDetector = new \SnmpBridge\Core\Normalize\OpticalPowerThresholdDetector();
     $localMibDir = __DIR__ . '/mibs';
-    $resolvedMibDirs = [$localMibDir];
+    $baseMibDirs = [$localMibDir];
     $possiblePandoraDirs = [
         realpath(__DIR__ . '/../../../../attachment/mibs'),
         realpath(__DIR__ . '/../../../../../attachment/mibs'),
         '/var/www/html/pandora_console/attachment/mibs',
     ];
     foreach ($possiblePandoraDirs as $pDir) {
-        if ($pDir && is_dir($pDir) && !in_array($pDir, $resolvedMibDirs, true)) {
-            $resolvedMibDirs[] = $pDir;
+        if ($pDir && is_dir($pDir)) {
+            $baseMibDirs[] = $pDir;
             break;
         }
     }
-    if (is_dir('/usr/share/snmp/mibs') && !in_array('/usr/share/snmp/mibs', $resolvedMibDirs, true)) {
-        $resolvedMibDirs[] = '/usr/share/snmp/mibs';
+    if (is_dir('/usr/share/snmp/mibs')) {
+        $baseMibDirs[] = '/usr/share/snmp/mibs';
     }
     if (!empty($config['snmp']['mibdirs']) && is_array($config['snmp']['mibdirs'])) {
         foreach ($config['snmp']['mibdirs'] as $extraDir) {
-            if (is_dir($extraDir) && !in_array($extraDir, $resolvedMibDirs, true)) {
-                $resolvedMibDirs[] = $extraDir;
+            if (is_dir($extraDir)) {
+                $baseMibDirs[] = $extraDir;
             }
+        }
+    }
+
+    // Automatically resolve base MIB dirs and all vendor subdirectories (e.g. cisco/, huawei/, mikrotik/)
+    // This allows bulk dropping Observium / LibreNMS MIB collections directly into engine/mibs/
+    $resolvedMibDirs = [];
+    foreach ($baseMibDirs as $bDir) {
+        if (!is_dir($bDir) || in_array($bDir, $resolvedMibDirs, true)) continue;
+        $resolvedMibDirs[] = $bDir;
+
+        // Auto-discover vendor subfolders up to 1 level (standard in LibreNMS / Observium)
+        $subDirs = @glob(rtrim($bDir, '/\\') . '/*', GLOB_ONLYDIR) ?: [];
+        foreach ($subDirs as $sDir) {
+            $baseName = basename($sDir);
+            if (str_starts_with($baseName, '.') || in_array($sDir, $resolvedMibDirs, true)) continue;
+            $resolvedMibDirs[] = $sDir;
         }
     }
 

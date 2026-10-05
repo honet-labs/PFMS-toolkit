@@ -15,6 +15,9 @@ final class OidTranslator
     /** @var array<string, bool> */
     private array $enterpriseRootCache = [];
 
+    /** @var array<string, string|null> */
+    private array $numericCache = [];
+
     /**
      * @param list<string> $mibDirs
      */
@@ -28,17 +31,72 @@ final class OidTranslator
     }
 
     /**
+     * Resolve symbolic OID (e.g. IF-MIB::ifDescr, cpmCPUTotal5minRev) to numeric OID (.1.3.6.1.2.1.2.2.1.2)
+     */
+    public function toNumeric(string $symbolic): ?string
+    {
+        $symbolic = trim($symbolic);
+        if ($symbolic === '') {
+            return null;
+        }
+
+        // Already numeric format (e.g. .1.3.6.1.2.1...)
+        if (preg_match('/^\.?[0-9]+(?:\.[0-9]+)*$/', $symbolic)) {
+            return SnmpHelper::normalizeOid($symbolic);
+        }
+
+        if (array_key_exists($symbolic, $this->numericCache)) {
+            return $this->numericCache[$symbolic];
+        }
+
+        if (!$this->enabled || !is_executable($this->binary)) {
+            return $this->numericCache[$symbolic] = null;
+        }
+
+        // First attempt: snmptranslate -On <symbolic>
+        $output = $this->run(['-On', $symbolic]);
+        $output = $output !== null ? trim($output) : '';
+
+        // Second attempt with random access lookup: snmptranslate -On -IR <symbolic>
+        if ($output === '' || !preg_match('/^\.?[0-9]+(?:\.[0-9]+)+$/', $output)) {
+            $output = $this->run(['-On', '-IR', $symbolic]);
+            $output = $output !== null ? trim($output) : '';
+        }
+
+        if ($output !== '' && preg_match('/^\.?[0-9]+(?:\.[0-9]+)+$/', $output)) {
+            $numOid = '.' . ltrim($output, '.');
+            return $this->numericCache[$symbolic] = $numOid;
+        }
+
+        return $this->numericCache[$symbolic] = null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function translate(string $oid): array
     {
-        $numericOid = SnmpHelper::normalizeOid($oid);
+        $trimmed = trim($oid);
+        $symbolicProvided = null;
+
+        // If input contains alphabetic characters (e.g. IF-MIB::ifDescr, hrStorageSize), resolve to numeric first
+        if (preg_match('/[a-zA-Z]/', $trimmed)) {
+            $resolvedNum = $this->toNumeric($trimmed);
+            if ($resolvedNum !== null) {
+                $numericOid = $resolvedNum;
+                $symbolicProvided = $trimmed;
+            } else {
+                $numericOid = SnmpHelper::normalizeOid($trimmed);
+            }
+        } else {
+            $numericOid = SnmpHelper::normalizeOid($trimmed);
+        }
 
         if (isset($this->cache[$numericOid])) {
             return $this->cache[$numericOid];
         }
 
-        $symbolicOid = $this->enabled ? $this->symbolicOid($numericOid) : null;
+        $symbolicOid = $this->enabled ? ($this->symbolicOid($numericOid) ?: $symbolicProvided) : $symbolicProvided;
         $parts = $this->parseSymbolicOid($symbolicOid, $numericOid);
         $details = $this->enabled && $symbolicOid !== null && $parts['object'] !== null
             ? $this->details($symbolicOid)

@@ -63,8 +63,8 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
         $vendorName = strtolower($context->vendor->name());
         $sysDescr = strtolower($context->device['sys_descr'] ?? '');
 
-        // Resolve candidate MIB files across configured MIB directories
-        $candidateObjects = $this->getCandidateObjects();
+        // Resolve candidate MIB files across configured MIB directories (filtered by vendor context)
+        $candidateObjects = $this->getCandidateObjects($context);
 
         foreach ($candidateObjects as $obj) {
             if ($this->deadlineReached($context) || count($sensors) >= $maxSensors) {
@@ -157,15 +157,49 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
     }
 
     /**
-     * Parse MIB files and extract OBJECT-TYPE candidate definitions
+     * Parse MIB files and extract OBJECT-TYPE candidate definitions.
+     * Supports persistent disk caching and vendor directory filtering.
      * 
      * @return list<array{name: string, module: string, oid: string, syntax: string, desc: string, file: string}>
      */
-    private function getCandidateObjects(): array
+    private function getCandidateObjects(?DiscoveryContext $context = null): array
     {
         $dirs = !empty($this->mibDirs) ? $this->mibDirs : [__DIR__ . '/../mibs'];
-        $cacheKey = implode('|', $dirs);
 
+        // Determine target device vendor and enterprise PEN for directory pruning
+        $deviceVendor = $context ? strtolower($context->vendor->name()) : '';
+        $devicePen = null;
+        $deviceDescr = $context ? strtolower($context->device['sys_descr'] ?? '') : '';
+        if ($context) {
+            $sysObj = $context->sysObjectID();
+            if ($sysObj !== '' && preg_match('/1\.3\.6\.1\.4\.1\.(\d+)/', $sysObj, $m)) {
+                $devicePen = $m[1];
+            }
+        }
+
+        // Known vendor directories mapping to PENs or keywords
+        $vendorPenMap = [
+            'cisco' => '9',
+            'huawei' => '2011',
+            'mikrotik' => '14988',
+            'juniper' => '2636',
+            'fortinet' => '12356',
+            'arista' => '30065',
+            'zte' => '3902',
+            'h3c' => '25506',
+            'hp' => '11',
+            'dell' => '674',
+            'f5' => '3375',
+            'checkpoint' => '2620',
+            'paloalto' => '25461',
+        ];
+
+        $cacheDir = dirname(__DIR__) . '/storage/cache';
+        if (!is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0755, true);
+        }
+
+        $cacheKey = implode('|', $dirs) . ':' . $deviceVendor . ':' . ($devicePen ?? '');
         if (isset(self::$parsedMibCache[$cacheKey])) {
             return self::$parsedMibCache[$cacheKey];
         }
@@ -178,6 +212,46 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
                 continue;
             }
 
+            $dirName = strtolower(basename($dir));
+
+            // If this is a vendor-specific subfolder, verify if it is relevant to the target device
+            if (isset($vendorPenMap[$dirName])) {
+                $expectedPen = $vendorPenMap[$dirName];
+                $penMatches = ($devicePen !== null && $devicePen === $expectedPen);
+                $vendorMatches = ($deviceVendor !== '' && str_contains($deviceVendor, $dirName));
+                $descrMatches = ($deviceDescr !== '' && str_contains($deviceDescr, $dirName));
+
+                // If none match, skip this entire vendor directory (saves huge CPU time on 10,000+ MIBs)
+                if (!$penMatches && !$vendorMatches && !$descrMatches) {
+                    continue;
+                }
+            }
+
+            // Check persistent disk cache for this directory
+            $dirMtime = @filemtime($dir) ?: 0;
+            $manifestPath = $cacheDir . '/mibs_manifest_' . md5($dir) . '.json';
+            $cachedObjects = null;
+
+            if (file_exists($manifestPath)) {
+                $manifestData = @json_decode(@file_get_contents($manifestPath), true);
+                if (is_array($manifestData) && isset($manifestData['mtime']) && $manifestData['mtime'] >= $dirMtime && isset($manifestData['objects'])) {
+                    $cachedObjects = $manifestData['objects'];
+                }
+            }
+
+            if ($cachedObjects !== null) {
+                foreach ($cachedObjects as $obj) {
+                    $dedupKey = $obj['oid'] . ':' . $obj['name'];
+                    if (!isset($seen[$dedupKey])) {
+                        $seen[$dedupKey] = true;
+                        $objects[] = $obj;
+                    }
+                }
+                continue;
+            }
+
+            // Parse directory files
+            $dirObjects = [];
             $files = @scandir($dir) ?: [];
             foreach ($files as $file) {
                 if ($file === '.' || $file === '..' || is_dir($dir . '/' . $file)) {
@@ -207,30 +281,23 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
                     $modName = $m[1];
                 }
 
-                // Extract all leaf OBJECT-TYPE definitions
-                if (preg_match_all('/([A-Za-z0-9_-]+)\s+OBJECT-TYPE\s+SYNTAX\s+([^;]+?)\s+(?:MAX-ACCESS|ACCESS)\s+[^\n]+\s+STATUS\s+[^\n]+\s+DESCRIPTION\s+"([^"]*?)"\s*::=\s*\{\s*([A-Za-z0-9_-]+)\s+([0-9]+)\s*\}/is', $content, $matches, PREG_SET_ORDER)) {
+                // Extract leaf OBJECT-TYPE definitions (flexible to optional DESCRIPTION, INDEX, DEFVAL)
+                $pattern = '/([A-Za-z0-9_-]+)\s+OBJECT-TYPE\s+SYNTAX\s+([^;]+?)\s+(?:MAX-ACCESS|ACCESS)\s+[^\n]+\s+STATUS\s+[^\n]+(?:\s+DESCRIPTION\s+"([^"]*?)")?.*?::=\s*\{\s*([A-Za-z0-9_-]+)\s+([0-9]+)\s*\}/is';
+                if (preg_match_all($pattern, $content, $matches, PREG_SET_ORDER)) {
                     foreach ($matches as $match) {
                         $objName = $match[1];
                         $syntax = trim(preg_replace('/\s+/', ' ', $match[2]));
-                        $desc = trim(preg_replace('/\s+/', ' ', $match[3]));
+                        $desc = isset($match[3]) ? trim(preg_replace('/\s+/', ' ', $match[3])) : '';
 
                         // Resolve numeric OID using OidTranslator
                         $calcOid = '';
                         if ($this->oidTranslator !== null) {
-                            try {
-                                $t = $this->oidTranslator->translate($modName . '::' . $objName);
-                                if (!empty($t['numeric_oid'])) {
-                                    $calcOid = ltrim($t['numeric_oid'], '.');
-                                }
-                            } catch (\Throwable $e) {}
-
-                            if ($calcOid === '') {
-                                try {
-                                    $t2 = $this->oidTranslator->translate($objName);
-                                    if (!empty($t2['numeric_oid'])) {
-                                        $calcOid = ltrim($t2['numeric_oid'], '.');
-                                    }
-                                } catch (\Throwable $e) {}
+                            $resolved = $this->oidTranslator->toNumeric($modName . '::' . $objName);
+                            if ($resolved === null) {
+                                $resolved = $this->oidTranslator->toNumeric($objName);
+                            }
+                            if ($resolved !== null) {
+                                $calcOid = ltrim($resolved, '.');
                             }
                         }
 
@@ -238,13 +305,7 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
                             continue;
                         }
 
-                        $dedupKey = $calcOid . ':' . $objName;
-                        if (isset($seen[$dedupKey])) {
-                            continue;
-                        }
-                        $seen[$dedupKey] = true;
-
-                        $objects[] = [
+                        $dirObjects[] = [
                             'name' => $objName,
                             'module' => $modName,
                             'oid' => $calcOid,
@@ -253,6 +314,26 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
                             'file' => $filePath,
                         ];
                     }
+                }
+            }
+
+            // Save directory manifest cache to disk
+            if (is_dir($cacheDir) && is_writable($cacheDir)) {
+                $manifestPayload = [
+                    'dir' => $dir,
+                    'mtime' => $dirMtime,
+                    'count' => count($dirObjects),
+                    'generated_at' => date('Y-m-d H:i:s'),
+                    'objects' => $dirObjects,
+                ];
+                @file_put_contents($manifestPath, json_encode($manifestPayload, JSON_UNESCAPED_SLASHES));
+            }
+
+            foreach ($dirObjects as $obj) {
+                $dedupKey = $obj['oid'] . ':' . $obj['name'];
+                if (!isset($seen[$dedupKey])) {
+                    $seen[$dedupKey] = true;
+                    $objects[] = $obj;
                 }
             }
         }
