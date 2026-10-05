@@ -41,8 +41,10 @@ final class AutonomousEnterpriseDiscoveryModule implements DiscoveryModuleInterf
             return false;
         }
 
-        // Bounded autonomous enterprise walk is disabled by default to prevent timing out on massive enterprise roots
-        if (!env_bool('DISCOVERY_AUTONOMOUS_ENTERPRISE_WALK', false)) {
+        // Enable autonomous enterprise walk for comprehensive profiles or when explicitly enabled
+        $profile = strtolower((string) ($context->snmpConfig['discovery_profile'] ?? ''));
+        $isComprehensiveProfile = in_array($profile, ['full', 'all', 'router_switch', 'network'], true);
+        if (!$isComprehensiveProfile && !env_bool('DISCOVERY_AUTONOMOUS_ENTERPRISE_WALK', false)) {
             return false;
         }
 

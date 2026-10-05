@@ -42,6 +42,9 @@ final readonly class SnmpScanner
             : (isset($request['timeout']) && (int) $request['timeout'] > 0
                 ? max(10, (int) $request['timeout'])
                 : $this->scanTimeoutSeconds());
+        if (in_array(strtolower($discoveryProfile), ['full', 'all', 'deep'], true)) {
+            $scanTimeoutSec = max(180, $scanTimeoutSec);
+        }
         $scanMaxSensors = $this->scanMaxSensors();
         $previewLimit = $this->scanResultPreviewLimit();
         $translateMaxSensors = $this->translateMaxSensors();
@@ -344,7 +347,7 @@ final readonly class SnmpScanner
 
     private function scanTimeoutSeconds(): int
     {
-        return max(10, (int) ($this->defaultSnmpConfig['scan_timeout_sec'] ?? 45));
+        return max(10, (int) ($this->defaultSnmpConfig['scan_timeout_sec'] ?? 180));
     }
 
     private function scanMaxSensors(): int

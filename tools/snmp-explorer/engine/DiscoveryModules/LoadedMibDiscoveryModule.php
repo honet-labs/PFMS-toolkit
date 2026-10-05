@@ -60,7 +60,30 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
             $deviceEnterprisePen = $m[1];
         }
 
-        $vendorName = strtolower($context->vendor->name());
+        $vendorRaw = strtolower($context->vendor->name());
+        $vendorTokens = array_values(array_filter(preg_split('/[^a-z0-9]+/i', $vendorRaw) ?: []));
+        $relatedPens = [];
+        if ($deviceEnterprisePen !== null) {
+            $relatedPens[] = $deviceEnterprisePen;
+        }
+
+        $hasH3c = in_array('h3c', $vendorTokens, true) || in_array('hh3c', $vendorTokens, true);
+        $hasHpe = in_array('hpe', $vendorTokens, true) || in_array('hp', $vendorTokens, true);
+        $hasHuawei = in_array('huawei', $vendorTokens, true);
+
+        if ($hasH3c || $hasHpe || $hasHuawei || ($deviceEnterprisePen !== null && in_array($deviceEnterprisePen, ['25506', '2011', '11'], true))) {
+            foreach (['h3c', 'hh3c', 'huawei', 'hpe', 'hp', 'comware'] as $alias) {
+                if (!in_array($alias, $vendorTokens, true)) {
+                    $vendorTokens[] = $alias;
+                }
+            }
+            foreach (['25506', '2011', '11'] as $pen) {
+                if (!in_array($pen, $relatedPens, true)) {
+                    $relatedPens[] = $pen;
+                }
+            }
+        }
+
         $sysDescr = strtolower($context->device['sys_descr'] ?? '');
 
         // Resolve candidate MIB files across configured MIB directories (filtered by vendor context)
@@ -80,9 +103,24 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
             // If it's an enterprise OID (1.3.6.1.4.1.<PEN>), it MUST match device PEN or vendor
             $isEnterprise = str_starts_with($numericOid, '1.3.6.1.4.1.');
             if ($isEnterprise) {
-                $isDeviceEnterprise = ($deviceEnterprisePen !== null && str_starts_with($numericOid, '1.3.6.1.4.1.' . $deviceEnterprisePen));
-                $isVendorMatch = ($vendorName !== '' && (stripos($obj['module'], $vendorName) !== false || stripos($obj['file'], $vendorName) !== false))
-                    || ($sysDescr !== '' && stripos($sysDescr, $obj['module']) !== false);
+                $isDeviceEnterprise = false;
+                foreach ($relatedPens as $rPen) {
+                    if (str_starts_with($numericOid, '1.3.6.1.4.1.' . $rPen)) {
+                        $isDeviceEnterprise = true;
+                        break;
+                    }
+                }
+
+                $isVendorMatch = false;
+                foreach ($vendorTokens as $tok) {
+                    if (strlen($tok) >= 2 && (stripos($obj['module'], $tok) !== false || stripos($obj['file'], $tok) !== false)) {
+                        $isVendorMatch = true;
+                        break;
+                    }
+                }
+                if (!$isVendorMatch && $sysDescr !== '') {
+                    $isVendorMatch = stripos($sysDescr, $obj['module']) !== false;
+                }
 
                 if (!$isDeviceEnterprise && !$isVendorMatch) {
                     continue;
@@ -207,6 +245,27 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
         $objects = [];
         $seen = [];
 
+        $deviceVendorTokens = array_values(array_filter(preg_split('/[^a-z0-9]+/i', $deviceVendor) ?: []));
+        $deviceRelatedPens = [];
+        if ($devicePen !== null) {
+            $deviceRelatedPens[] = $devicePen;
+        }
+        $hasH3c = in_array('h3c', $deviceVendorTokens, true) || in_array('hh3c', $deviceVendorTokens, true);
+        $hasHpe = in_array('hpe', $deviceVendorTokens, true) || in_array('hp', $deviceVendorTokens, true);
+        $hasHuawei = in_array('huawei', $deviceVendorTokens, true);
+        if ($hasH3c || $hasHpe || $hasHuawei || ($devicePen !== null && in_array($devicePen, ['25506', '2011', '11'], true))) {
+            foreach (['h3c', 'hh3c', 'huawei', 'hpe', 'hp', 'comware'] as $alias) {
+                if (!in_array($alias, $deviceVendorTokens, true)) {
+                    $deviceVendorTokens[] = $alias;
+                }
+            }
+            foreach (['25506', '2011', '11'] as $pen) {
+                if (!in_array($pen, $deviceRelatedPens, true)) {
+                    $deviceRelatedPens[] = $pen;
+                }
+            }
+        }
+
         foreach ($dirs as $dir) {
             if (!is_dir($dir)) {
                 continue;
@@ -217,8 +276,14 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
             // If this is a vendor-specific subfolder, verify if it is relevant to the target device
             if (isset($vendorPenMap[$dirName])) {
                 $expectedPen = $vendorPenMap[$dirName];
-                $penMatches = ($devicePen !== null && $devicePen === $expectedPen);
-                $vendorMatches = ($deviceVendor !== '' && str_contains($deviceVendor, $dirName));
+                $penMatches = in_array($expectedPen, $deviceRelatedPens, true);
+                $vendorMatches = false;
+                foreach ($deviceVendorTokens as $tok) {
+                    if ($tok !== '' && (str_contains($dirName, $tok) || str_contains($tok, $dirName))) {
+                        $vendorMatches = true;
+                        break;
+                    }
+                }
                 $descrMatches = ($deviceDescr !== '' && str_contains($deviceDescr, $dirName));
 
                 // If none match, skip this entire vendor directory (saves huge CPU time on 10,000+ MIBs)

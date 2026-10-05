@@ -78,9 +78,17 @@ final readonly class RectifierDiscoveryModule implements DiscoveryModuleInterfac
 
     public function supports(DiscoveryContext $context): bool
     {
-        $sysDescr = strtolower((string) ($context->device['sysDescr'] ?? ''));
-        if (str_contains($sysDescr, 'rectifier') || str_contains($sysDescr, 'power') || str_contains($sysDescr, 'netsure') || str_contains($sysDescr, 'eltek') || str_contains($sysDescr, 'vertiv')) {
+        $sysDescr = strtolower((string) ($context->device['sys_descr'] ?? $context->device['sysDescr'] ?? ''));
+        $vendorName = strtolower($context->vendor->name());
+
+        if (str_contains($sysDescr, 'rectifier') || str_contains($sysDescr, 'power plant') || str_contains($sysDescr, 'netsure') || str_contains($sysDescr, 'eltek') || str_contains($sysDescr, 'vertiv')) {
             return true;
+        }
+
+        // Fast bail: do not probe power rectifier OIDs on switches, routers, firewalls, or standard servers
+        if (str_contains($sysDescr, 'switch') || str_contains($sysDescr, 'router') || str_contains($sysDescr, 'firewall') || str_contains($sysDescr, 'software')
+            || in_array($vendorName, ['cisco', 'huawei', 'h3c', 'h3c / hpe', 'mikrotik', 'juniper', 'fortinet', 'arista', 'hp', 'dell', 'linux', 'windows'], true)) {
+            return false;
         }
 
         foreach (self::RECTIFIER_OIDS as $oidList) {

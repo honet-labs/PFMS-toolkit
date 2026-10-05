@@ -108,9 +108,12 @@ final readonly class UniversalSystemDiscoveryModule implements DiscoveryModuleIn
      */
     private function discoverStorage(DiscoveryContext $context): array
     {
-        $sensors = [];
-
         $indices = $context->walker->walkIndexed(self::HR_STORAGE_INDEX);
+        if ($indices === []) {
+            return [];
+        }
+
+        $sensors = [];
         $types = $context->walker->walkIndexed(self::HR_STORAGE_TYPE);
         $descriptions = $context->walker->walkIndexed(self::HR_STORAGE_DESCR);
         $allocUnits = $context->walker->walkIndexed(self::HR_STORAGE_ALLOC_UNITS);

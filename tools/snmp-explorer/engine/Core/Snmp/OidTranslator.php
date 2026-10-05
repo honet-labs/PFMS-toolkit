@@ -45,6 +45,44 @@ final class OidTranslator
             return SnmpHelper::normalizeOid($symbolic);
         }
 
+        // Fast-path resolution for common standard MIB symbols
+        $cleanSymbolic = strtolower(str_contains($symbolic, '::') ? substr($symbolic, strrpos($symbolic, '::') + 2) : $symbolic);
+        static $symbolicToNumeric = [
+            'sysdescr' => '.1.3.6.1.2.1.1.1.0',
+            'sysuptime' => '.1.3.6.1.2.1.1.3.0',
+            'sysname' => '.1.3.6.1.2.1.1.5.0',
+            'ifindex' => '.1.3.6.1.2.1.2.2.1.1',
+            'ifdescr' => '.1.3.6.1.2.1.2.2.1.2',
+            'iftype' => '.1.3.6.1.2.1.2.2.1.3',
+            'ifmtu' => '.1.3.6.1.2.1.2.2.1.4',
+            'ifspeed' => '.1.3.6.1.2.1.2.2.1.5',
+            'ifphysaddress' => '.1.3.6.1.2.1.2.2.1.6',
+            'ifadminstatus' => '.1.3.6.1.2.1.2.2.1.7',
+            'ifoperstatus' => '.1.3.6.1.2.1.2.2.1.8',
+            'ifinoctets' => '.1.3.6.1.2.1.2.2.1.10',
+            'ifinucastpkts' => '.1.3.6.1.2.1.2.2.1.11',
+            'ifinerrors' => '.1.3.6.1.2.1.2.2.1.14',
+            'ifoutoctets' => '.1.3.6.1.2.1.2.2.1.16',
+            'ifoutucastpkts' => '.1.3.6.1.2.1.2.2.1.17',
+            'ifouterrors' => '.1.3.6.1.2.1.2.2.1.20',
+            'ifname' => '.1.3.6.1.2.1.31.1.1.1.1',
+            'ifhcinoctets' => '.1.3.6.1.2.1.31.1.1.1.6',
+            'ifhcinucastpkts' => '.1.3.6.1.2.1.31.1.1.1.7',
+            'ifhcoutoctets' => '.1.3.6.1.2.1.31.1.1.1.10',
+            'ifhcoutucastpkts' => '.1.3.6.1.2.1.31.1.1.1.11',
+            'ifhighspeed' => '.1.3.6.1.2.1.31.1.1.1.15',
+            'ifalias' => '.1.3.6.1.2.1.31.1.1.1.18',
+            'hrprocessorload' => '.1.3.6.1.2.1.25.3.3.1.2',
+            'hrstoragetype' => '.1.3.6.1.2.1.25.2.3.1.2',
+            'hrstoragedescr' => '.1.3.6.1.2.1.25.2.3.1.3',
+            'hrstorageallocationunits' => '.1.3.6.1.2.1.25.2.3.1.4',
+            'hrstoragesize' => '.1.3.6.1.2.1.25.2.3.1.5',
+            'hrstorageused' => '.1.3.6.1.2.1.25.2.3.1.6',
+        ];
+        if (isset($symbolicToNumeric[$cleanSymbolic])) {
+            return $this->numericCache[$symbolic] = $symbolicToNumeric[$cleanSymbolic];
+        }
+
         if (array_key_exists($symbolic, $this->numericCache)) {
             return $this->numericCache[$symbolic];
         }
@@ -94,6 +132,12 @@ final class OidTranslator
 
         if (isset($this->cache[$numericOid])) {
             return $this->cache[$numericOid];
+        }
+
+        // In-memory fast path for standard ubiquitous OIDs
+        $fast = $this->fastTranslate($numericOid);
+        if ($fast !== null) {
+            return $this->cache[$numericOid] = $fast;
         }
 
         $symbolicOid = $this->enabled ? ($this->symbolicOid($numericOid) ?: $symbolicProvided) : $symbolicProvided;
@@ -478,5 +522,95 @@ final class OidTranslator
         }
 
         return trim($stdout);
+    }
+
+    /**
+     * In-memory fast-path for ubiquitous standard MIB objects (IF-MIB, RFC1213, HOST-RESOURCES)
+     * Avoids running CLI snmptranslate subprocess hundreds of times during interface discovery.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function fastTranslate(string $numericOid): ?array
+    {
+        static $map = [
+            '.1.3.6.1.2.1.1.1.0' => ['SNMPv2-MIB', 'sysDescr', 'System Description', 'A textual description of the entity.', 'DisplayString', '', 'system', 'string', ''],
+            '.1.3.6.1.2.1.1.3.0' => ['SNMPv2-MIB', 'sysUpTime', 'System Uptime', 'The time since the network management portion of the system was re-initialized.', 'TimeTicks', 'timeticks', 'uptime', 'numeric', 'timeticks'],
+            '.1.3.6.1.2.1.1.5.0' => ['SNMPv2-MIB', 'sysName', 'System Name', 'An administratively-assigned name for this managed node.', 'DisplayString', '', 'system', 'string', ''],
+            '.1.3.6.1.2.1.2.2.1.1' => ['IF-MIB', 'ifIndex', 'Interface Index', 'A unique value, greater than zero, for each interface.', 'InterfaceIndex', '', 'interface', 'numeric', ''],
+            '.1.3.6.1.2.1.2.2.1.2' => ['IF-MIB', 'ifDescr', 'Interface Description', 'A textual string containing information about the interface.', 'DisplayString', '', 'interface', 'string', ''],
+            '.1.3.6.1.2.1.2.2.1.3' => ['IF-MIB', 'ifType', 'Interface Type', 'The type of interface.', 'IANAifType', '', 'interface', 'numeric', ''],
+            '.1.3.6.1.2.1.2.2.1.4' => ['IF-MIB', 'ifMtu', 'Interface MTU', 'The size of the largest packet which can be sent/received on the interface.', 'Integer32', 'bytes', 'interface', 'numeric', 'bytes'],
+            '.1.3.6.1.2.1.2.2.1.5' => ['IF-MIB', 'ifSpeed', 'Interface Speed', 'An estimate of the interface bandwidth in bits per second.', 'Gauge32', 'bps', 'interface', 'numeric', 'bps'],
+            '.1.3.6.1.2.1.2.2.1.6' => ['IF-MIB', 'ifPhysAddress', 'Interface Physical Address', 'The interface address at the protocol sublayer.', 'PhysAddress', '', 'interface', 'string', ''],
+            '.1.3.6.1.2.1.2.2.1.7' => ['IF-MIB', 'ifAdminStatus', 'Interface Admin Status', 'The desired state of the interface.', 'INTEGER', 'status', 'interface', 'numeric', 'status'],
+            '.1.3.6.1.2.1.2.2.1.8' => ['IF-MIB', 'ifOperStatus', 'Interface Operational Status', 'The current operational state of the interface.', 'INTEGER', 'status', 'interface', 'numeric', 'status'],
+            '.1.3.6.1.2.1.2.2.1.10' => ['IF-MIB', 'ifInOctets', 'Interface In Octets', 'The total number of octets received on the interface.', 'Counter32', 'bytes', 'traffic', 'counter', 'bytes'],
+            '.1.3.6.1.2.1.2.2.1.11' => ['IF-MIB', 'ifInUcastPkts', 'Interface In Packets', 'The number of packets delivered to a higher-layer protocol.', 'Counter32', 'pkts', 'interface', 'counter', 'pkts'],
+            '.1.3.6.1.2.1.2.2.1.14' => ['IF-MIB', 'ifInErrors', 'Interface In Errors', 'The number of inbound packets that contained errors.', 'Counter32', 'errors', 'interface', 'counter', 'errors'],
+            '.1.3.6.1.2.1.2.2.1.16' => ['IF-MIB', 'ifOutOctets', 'Interface Out Octets', 'The total number of octets transmitted out of the interface.', 'Counter32', 'bytes', 'traffic', 'counter', 'bytes'],
+            '.1.3.6.1.2.1.2.2.1.17' => ['IF-MIB', 'ifOutUcastPkts', 'Interface Out Packets', 'The total number of packets that higher-level protocols requested be transmitted.', 'Counter32', 'pkts', 'interface', 'counter', 'pkts'],
+            '.1.3.6.1.2.1.2.2.1.20' => ['IF-MIB', 'ifOutErrors', 'Interface Out Errors', 'The number of outbound packets that could not be transmitted because of errors.', 'Counter32', 'errors', 'interface', 'counter', 'errors'],
+            '.1.3.6.1.2.1.31.1.1.1.1' => ['IF-MIB', 'ifName', 'Interface Name', 'The textual name of the interface.', 'DisplayString', '', 'interface', 'string', ''],
+            '.1.3.6.1.2.1.31.1.1.1.6' => ['IF-MIB', 'ifHCInOctets', 'Interface 64-bit In Octets', 'The total number of octets received on the interface (64-bit).', 'Counter64', 'bytes', 'traffic', 'counter', 'bytes'],
+            '.1.3.6.1.2.1.31.1.1.1.7' => ['IF-MIB', 'ifHCInUcastPkts', 'Interface 64-bit In Packets', 'The number of packets delivered to a higher-layer protocol (64-bit).', 'Counter64', 'pkts', 'interface', 'counter', 'pkts'],
+            '.1.3.6.1.2.1.31.1.1.1.10' => ['IF-MIB', 'ifHCOutOctets', 'Interface 64-bit Out Octets', 'The total number of octets transmitted out of the interface (64-bit).', 'Counter64', 'bytes', 'traffic', 'counter', 'bytes'],
+            '.1.3.6.1.2.1.31.1.1.1.11' => ['IF-MIB', 'ifHCOutUcastPkts', 'Interface 64-bit Out Packets', 'The total number of packets requested transmitted (64-bit).', 'Counter64', 'pkts', 'interface', 'counter', 'pkts'],
+            '.1.3.6.1.2.1.31.1.1.1.15' => ['IF-MIB', 'ifHighSpeed', 'Interface High Speed', 'An estimate of the interface bandwidth in megabits per second.', 'Gauge32', 'Mbps', 'interface', 'numeric', 'Mbps'],
+            '.1.3.6.1.2.1.31.1.1.1.18' => ['IF-MIB', 'ifAlias', 'Interface Alias', 'The description string for this interface assigned by the administrator.', 'DisplayString', '', 'interface', 'string', ''],
+            '.1.3.6.1.2.1.25.3.3.1.2' => ['HOST-RESOURCES-MIB', 'hrProcessorLoad', 'Processor Load', 'The average percentage of time that this processor was not idle.', 'Integer32', '%', 'processor', 'numeric', '%'],
+            '.1.3.6.1.2.1.25.2.3.1.2' => ['HOST-RESOURCES-MIB', 'hrStorageType', 'Storage Type', 'The type of storage.', 'AutonomousType', '', 'storage', 'string', ''],
+            '.1.3.6.1.2.1.25.2.3.1.3' => ['HOST-RESOURCES-MIB', 'hrStorageDescr', 'Storage Description', 'A description of the type and instance of storage.', 'DisplayString', '', 'storage', 'string', ''],
+            '.1.3.6.1.2.1.25.2.3.1.4' => ['HOST-RESOURCES-MIB', 'hrStorageAllocationUnits', 'Storage Allocation Units', 'The size of allocation units in bytes.', 'Integer32', 'bytes', 'storage', 'numeric', 'bytes'],
+            '.1.3.6.1.2.1.25.2.3.1.5' => ['HOST-RESOURCES-MIB', 'hrStorageSize', 'Storage Size', 'The size of the storage represented by this entry.', 'Integer32', '', 'storage', 'numeric', ''],
+            '.1.3.6.1.2.1.25.2.3.1.6' => ['HOST-RESOURCES-MIB', 'hrStorageUsed', 'Storage Used', 'The amount of storage represented by this entry that is allocated.', 'Integer32', '', 'storage', 'numeric', ''],
+        ];
+
+        // Exact match
+        if (isset($map[$numericOid])) {
+            $def = $map[$numericOid];
+            return [
+                'numeric_oid' => $numericOid,
+                'symbolic_oid' => $def[0] . '::' . $def[1] . '.0',
+                'mib' => $def[0],
+                'object' => $def[1],
+                'index' => '0',
+                'display_name' => $def[2],
+                'description' => $def[3],
+                'syntax' => $def[4],
+                'units' => $def[5],
+                'suggested_class' => $def[6],
+                'suggested_type' => $def[7],
+                'suggested_unit' => $def[8],
+                'translated' => true,
+            ];
+        }
+
+        // Tabular match: <prefix>.<index>
+        $lastDot = strrpos($numericOid, '.');
+        if ($lastDot !== false) {
+            $prefix = substr($numericOid, 0, $lastDot);
+            $index = substr($numericOid, $lastDot + 1);
+
+            if (isset($map[$prefix])) {
+                $def = $map[$prefix];
+                return [
+                    'numeric_oid' => $numericOid,
+                    'symbolic_oid' => $def[0] . '::' . $def[1] . '.' . $index,
+                    'mib' => $def[0],
+                    'object' => $def[1],
+                    'index' => $index,
+                    'display_name' => $def[2] . ' #' . $index,
+                    'description' => $def[3],
+                    'syntax' => $def[4],
+                    'units' => $def[5],
+                    'suggested_class' => $def[6],
+                    'suggested_type' => $def[7],
+                    'suggested_unit' => $def[8],
+                    'translated' => true,
+                ];
+            }
+        }
+
+        return null;
     }
 }

@@ -55,6 +55,7 @@ final readonly class CpuDiscoveryModule implements DiscoveryModuleInterface
             $sensors = match ($context->vendor->name()) {
                 'Cisco' => $this->discoverCiscocpu($context),
                 'Huawei' => $this->discoverHuaweiCpu($context),
+                'H3C', 'H3C / HPE', 'HP' => $this->discoverH3cCpu($context),
                 default => $this->discoverGenericCpu($context),
             };
         } catch (Throwable $e) {
@@ -170,6 +171,81 @@ final readonly class CpuDiscoveryModule implements DiscoveryModuleInterface
         }
 
         return $sensors;
+    }
+
+    private function discoverH3cCpu(DiscoveryContext $context): array
+    {
+        $sensors = [];
+
+        // 1. Try H3C Entity Ext CPU Usage (table)
+        $values = $context->walker->walkIndexed('1.3.6.1.4.1.25506.2.6.1.1.1.1.6');
+        if (!empty($values)) {
+            foreach ($values as $index => $value) {
+                $cpuUsage = SnmpValueHelper::validatePercentage($value);
+                if ($cpuUsage === null) continue;
+
+                $sensor = [
+                    'sensor_class' => 'processor',
+                    'sensor_name' => $this->formatter->cpu("Slot {$index}"),
+                    'sensor_type' => 'percentage',
+                    'interface_index' => null,
+                    'interface_name' => null,
+                    'entity_index' => (int) $index,
+                    'oid' => '1.3.6.1.4.1.25506.2.6.1.1.1.1.6.' . $index,
+                    'raw_value' => (string) $cpuUsage,
+                    'unit' => '%',
+                    'scale' => 'units',
+                    'precision' => 0,
+                    'status' => 'ok',
+                    'metadata' => [
+                        'discovery_module' => 'CpuDiscoveryModule',
+                        'source' => 'H3C hh3cEntityExtCpuUsage',
+                        'vendor' => 'H3C',
+                    ],
+                ];
+                $normalized = $this->normalizer->normalize($sensor);
+                if ($normalized !== null) {
+                    $sensors[] = $normalized;
+                }
+            }
+            if (!empty($sensors)) return $sensors;
+        }
+
+        // 2. Try Huawei/H3C Comware dev duty
+        $hwDevDuty = $context->walker->walkIndexed('1.3.6.1.4.1.2011.6.3.4.1.2');
+        if (!empty($hwDevDuty)) {
+            foreach ($hwDevDuty as $index => $value) {
+                $cpuUsage = SnmpValueHelper::validatePercentage($value);
+                if ($cpuUsage === null) continue;
+
+                $sensor = [
+                    'sensor_class' => 'processor',
+                    'sensor_name' => $this->formatter->cpu("Dev {$index}"),
+                    'sensor_type' => 'percentage',
+                    'interface_index' => null,
+                    'interface_name' => null,
+                    'entity_index' => (int) $index,
+                    'oid' => '1.3.6.1.4.1.2011.6.3.4.1.2.' . $index,
+                    'raw_value' => (string) $cpuUsage,
+                    'unit' => '%',
+                    'scale' => 'units',
+                    'precision' => 0,
+                    'status' => 'ok',
+                    'metadata' => [
+                        'discovery_module' => 'CpuDiscoveryModule',
+                        'source' => 'Huawei/H3C hwCpuDevDuty',
+                        'vendor' => 'H3C',
+                    ],
+                ];
+                $normalized = $this->normalizer->normalize($sensor);
+                if ($normalized !== null) {
+                    $sensors[] = $normalized;
+                }
+            }
+            if (!empty($sensors)) return $sensors;
+        }
+
+        return $this->discoverGenericCpu($context);
     }
 
     private function discoverGenericCpu(DiscoveryContext $context): array

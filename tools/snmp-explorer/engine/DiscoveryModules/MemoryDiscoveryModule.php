@@ -57,6 +57,7 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
             $sensors = match ($context->vendor->name()) {
                 'Cisco' => $this->discoverCiscoMemory($context),
                 'Huawei' => $this->discoverHuaweiMemory($context),
+                'H3C', 'H3C / HPE', 'HP' => $this->discoverH3cMemory($context),
                 default => $this->discoverGenericMemory($context),
             };
         } catch (\Throwable $e) {
@@ -180,6 +181,81 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
         }
 
         return $sensors;
+    }
+
+    private function discoverH3cMemory(DiscoveryContext $context): array
+    {
+        $sensors = [];
+
+        // 1. Try H3C Entity Ext Memory Usage (table)
+        $values = $context->walker->walkIndexed('1.3.6.1.4.1.25506.2.6.1.1.1.1.8');
+        if (!empty($values)) {
+            foreach ($values as $index => $value) {
+                $memUsage = \SnmpBridge\Helpers\SnmpValueHelper::validatePercentage($value);
+                if ($memUsage === null) continue;
+
+                $sensor = [
+                    'sensor_class' => 'memory',
+                    'sensor_name' => $this->formatter->memory("Slot {$index}"),
+                    'sensor_type' => 'memory_usage_percent',
+                    'interface_index' => null,
+                    'interface_name' => null,
+                    'entity_index' => (int) $index,
+                    'oid' => '1.3.6.1.4.1.25506.2.6.1.1.1.1.8.' . $index,
+                    'raw_value' => (string) $memUsage,
+                    'unit' => '%',
+                    'scale' => 'units',
+                    'precision' => 0,
+                    'status' => 'ok',
+                    'metadata' => [
+                        'discovery_module' => 'MemoryDiscoveryModule',
+                        'source' => 'H3C hh3cEntityExtMemUsage',
+                        'vendor' => 'H3C',
+                    ],
+                ];
+                $normalized = $this->normalizer->normalize($sensor);
+                if ($normalized !== null) {
+                    $sensors[] = $normalized;
+                }
+            }
+            if (!empty($sensors)) return $sensors;
+        }
+
+        // 2. Try Huawei/H3C Comware mem dev duty
+        $hwDevDuty = $context->walker->walkIndexed('1.3.6.1.4.1.2011.6.3.4.1.3');
+        if (!empty($hwDevDuty)) {
+            foreach ($hwDevDuty as $index => $value) {
+                $memUsage = \SnmpBridge\Helpers\SnmpValueHelper::validatePercentage($value);
+                if ($memUsage === null) continue;
+
+                $sensor = [
+                    'sensor_class' => 'memory',
+                    'sensor_name' => $this->formatter->memory("Dev {$index}"),
+                    'sensor_type' => 'memory_usage_percent',
+                    'interface_index' => null,
+                    'interface_name' => null,
+                    'entity_index' => (int) $index,
+                    'oid' => '1.3.6.1.4.1.2011.6.3.4.1.3.' . $index,
+                    'raw_value' => (string) $memUsage,
+                    'unit' => '%',
+                    'scale' => 'units',
+                    'precision' => 0,
+                    'status' => 'ok',
+                    'metadata' => [
+                        'discovery_module' => 'MemoryDiscoveryModule',
+                        'source' => 'Huawei/H3C hwMemDevDuty',
+                        'vendor' => 'H3C',
+                    ],
+                ];
+                $normalized = $this->normalizer->normalize($sensor);
+                if ($normalized !== null) {
+                    $sensors[] = $normalized;
+                }
+            }
+            if (!empty($sensors)) return $sensors;
+        }
+
+        return $this->discoverGenericMemory($context);
     }
 
     private function discoverGenericMemory(DiscoveryContext $context): array

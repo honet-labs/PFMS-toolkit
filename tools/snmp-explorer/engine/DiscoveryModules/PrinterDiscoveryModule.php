@@ -81,10 +81,28 @@ final readonly class PrinterDiscoveryModule implements DiscoveryModuleInterface
     public function supports(DiscoveryContext $context): bool
     {
         // Epson printers are always supported – they expose supply OIDs directly.
-        if ($context->vendor->name() === 'Epson') {
+        $vendorName = strtolower($context->vendor->name());
+        if ($vendorName === 'epson') {
             return true;
         }
-        // Original detection logic for other devices.
+
+        $sysDescr = strtolower((string) ($context->device['sys_descr'] ?? ''));
+
+        // Fast bail: switches, routers, firewalls are never printers
+        if (str_contains($sysDescr, 'switch') || str_contains($sysDescr, 'router') || str_contains($sysDescr, 'firewall') || str_contains($sysDescr, 'comware')
+            || in_array($vendorName, ['cisco', 'huawei', 'h3c', 'h3c / hpe', 'mikrotik', 'juniper', 'fortinet', 'arista'], true)) {
+            return false;
+        }
+
+        // Only probe if vendor or sysDescr indicates a printer device
+        $isPrinterVendor = in_array($vendorName, ['xerox', 'canon', 'ricoh', 'lexmark', 'kyocera', 'brother', 'konica', 'sharp', 'toshiba', 'fuji'], true);
+        $hasPrinterKeyword = str_contains($sysDescr, 'printer') || str_contains($sysDescr, 'print') || str_contains($sysDescr, 'laserjet') || str_contains($sysDescr, 'pagepro');
+
+        if (!$isPrinterVendor && !$hasPrinterKeyword) {
+            return false;
+        }
+
+        // Original detection logic for actual printer devices.
         if ($context->walker->get(self::HR_PRINTER_STATUS . '.1') !== null) {
             return true;
         }

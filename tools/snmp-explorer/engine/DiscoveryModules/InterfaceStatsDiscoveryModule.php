@@ -128,7 +128,61 @@ final readonly class InterfaceStatsDiscoveryModule implements DiscoveryModuleInt
                 $metadata + ['direction' => 'out', 'metric_type' => 'octets'],
             );
 
+            // In / Out Packets
+            $this->appendBestCounter(
+                $sensors,
+                $index,
+                $interfaceName,
+                'ifHCInUcastPkts',
+                'interface_in_packets',
+                'packets',
+                [
+                    [self::IF_HC_IN_UCAST_PKTS, $tables['ifHCInUcastPkts'], 'IF-MIB::ifHCInUcastPkts'],
+                    [self::IF_IN_UCAST_PKTS, $tables['ifInUcastPkts'], 'IF-MIB::ifInUcastPkts'],
+                ],
+                $metadata + ['direction' => 'in', 'metric_type' => 'packets'],
+            );
 
+            $this->appendBestCounter(
+                $sensors,
+                $index,
+                $interfaceName,
+                'ifHCOutUcastPkts',
+                'interface_out_packets',
+                'packets',
+                [
+                    [self::IF_HC_OUT_UCAST_PKTS, $tables['ifHCOutUcastPkts'], 'IF-MIB::ifHCOutUcastPkts'],
+                    [self::IF_OUT_UCAST_PKTS, $tables['ifOutUcastPkts'], 'IF-MIB::ifOutUcastPkts'],
+                ],
+                $metadata + ['direction' => 'out', 'metric_type' => 'packets'],
+            );
+
+            // In / Out Errors
+            $this->appendBestCounter(
+                $sensors,
+                $index,
+                $interfaceName,
+                'ifInErrors',
+                'interface_in_errors',
+                'errors',
+                [
+                    [self::IF_IN_ERRORS, $tables['ifInErrors'], 'IF-MIB::ifInErrors'],
+                ],
+                $metadata + ['direction' => 'in', 'metric_type' => 'errors'],
+            );
+
+            $this->appendBestCounter(
+                $sensors,
+                $index,
+                $interfaceName,
+                'ifOutErrors',
+                'interface_out_errors',
+                'errors',
+                [
+                    [self::IF_OUT_ERRORS, $tables['ifOutErrors'], 'IF-MIB::ifOutErrors'],
+                ],
+                $metadata + ['direction' => 'out', 'metric_type' => 'errors'],
+            );
         }
 
         return $sensors;

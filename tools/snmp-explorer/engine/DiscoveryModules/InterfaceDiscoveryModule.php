@@ -41,6 +41,12 @@ final readonly class InterfaceDiscoveryModule implements DiscoveryModuleInterfac
         166 => 'mplsTunnel',
     ];
 
+    private const array ADMIN_STATUS = [
+        1 => 'up',
+        2 => 'down',
+        3 => 'testing',
+    ];
+
     private const array OPER_STATUS = [
         1 => 'up',
         2 => 'down',
@@ -86,12 +92,11 @@ final readonly class InterfaceDiscoveryModule implements DiscoveryModuleInterfac
 
         $ifAliases = $context->walker->walkIndexed(self::IF_ALIAS);
         $ifTypes = $context->walker->walkIndexed(self::IF_TYPE);
-        $context->walker->walkIndexed(self::IF_MTU);
-        $context->walker->walkIndexed(self::IF_PHYS_ADDRESS);
-        $context->walker->walkIndexed(self::IF_ADMIN_STATUS);
+        $ifMtus = $context->walker->walkIndexed(self::IF_MTU);
+        $ifAdminStatuses = $context->walker->walkIndexed(self::IF_ADMIN_STATUS);
         $ifOperStatuses = $context->walker->walkIndexed(self::IF_OPER_STATUS);
-        $context->walker->walkIndexed(self::IF_HIGH_SPEED);
-        $context->walker->walkIndexed(self::IF_SPEED);
+        $ifHighSpeeds = $context->walker->walkIndexed(self::IF_HIGH_SPEED);
+        $ifSpeeds = $context->walker->walkIndexed(self::IF_SPEED);
         $sensors = [];
 
         foreach ($this->interfaceIndexes($ifDescriptions, $ifNames, $ifTypes) as $index) {
@@ -111,25 +116,93 @@ final readonly class InterfaceDiscoveryModule implements DiscoveryModuleInterfac
                 'if_alias' => $this->cleanText($ifAliases[$index] ?? ''),
             ];
 
-
+            // 1. Operational Status
             $operStatus = SnmpValueHelper::integer($ifOperStatuses[$index] ?? null);
-            $this->appendNumericSensor(
-                $sensors,
-                $index,
-                $interfaceName,
-                'ifOperStatus',
-                'oper_status',
-                self::IF_OPER_STATUS . '.' . $index,
-                $operStatus,
-                'status',
-                $metadata + [
-                    'source' => 'IF-MIB::ifOperStatus',
-                    'status_label' => self::OPER_STATUS[$operStatus] ?? 'unknown',
-                ],
-                $operStatus === 1 ? 'ok' : 'nonoperational',
-            );
+            if ($operStatus !== null) {
+                $this->appendNumericSensor(
+                    $sensors,
+                    $index,
+                    $interfaceName,
+                    'ifOperStatus',
+                    'oper_status',
+                    self::IF_OPER_STATUS . '.' . $index,
+                    $operStatus,
+                    'status',
+                    $metadata + [
+                        'source' => 'IF-MIB::ifOperStatus',
+                        'status_label' => self::OPER_STATUS[$operStatus] ?? 'unknown',
+                    ],
+                    $operStatus === 1 ? 'ok' : 'nonoperational',
+                );
+            }
 
+            // 2. Admin Status
+            $adminStatus = SnmpValueHelper::integer($ifAdminStatuses[$index] ?? null);
+            if ($adminStatus !== null) {
+                $this->appendNumericSensor(
+                    $sensors,
+                    $index,
+                    $interfaceName,
+                    'ifAdminStatus',
+                    'admin_status',
+                    self::IF_ADMIN_STATUS . '.' . $index,
+                    $adminStatus,
+                    'status',
+                    $metadata + [
+                        'source' => 'IF-MIB::ifAdminStatus',
+                        'status_label' => self::ADMIN_STATUS[$adminStatus] ?? 'unknown',
+                    ],
+                    $adminStatus === 1 ? 'ok' : 'disabled',
+                );
+            }
 
+            // 3. Speed / Bandwidth
+            $highSpeed = SnmpValueHelper::integer($ifHighSpeeds[$index] ?? null);
+            $speed = SnmpValueHelper::integer($ifSpeeds[$index] ?? null);
+            if ($highSpeed !== null && $highSpeed > 0) {
+                $this->appendNumericSensor(
+                    $sensors,
+                    $index,
+                    $interfaceName,
+                    'ifHighSpeed',
+                    'bandwidth',
+                    self::IF_HIGH_SPEED . '.' . $index,
+                    $highSpeed,
+                    'Mbps',
+                    $metadata + ['source' => 'IF-MIB::ifHighSpeed'],
+                    'ok',
+                );
+            } elseif ($speed !== null && $speed > 0) {
+                $this->appendNumericSensor(
+                    $sensors,
+                    $index,
+                    $interfaceName,
+                    'ifSpeed',
+                    'bandwidth',
+                    self::IF_SPEED . '.' . $index,
+                    $speed,
+                    'bps',
+                    $metadata + ['source' => 'IF-MIB::ifSpeed'],
+                    'ok',
+                );
+            }
+
+            // 4. MTU
+            $mtu = SnmpValueHelper::integer($ifMtus[$index] ?? null);
+            if ($mtu !== null && $mtu > 0) {
+                $this->appendNumericSensor(
+                    $sensors,
+                    $index,
+                    $interfaceName,
+                    'ifMtu',
+                    'mtu',
+                    self::IF_MTU . '.' . $index,
+                    $mtu,
+                    'bytes',
+                    $metadata + ['source' => 'IF-MIB::ifMtu'],
+                    'ok',
+                );
+            }
         }
 
         return $sensors;
