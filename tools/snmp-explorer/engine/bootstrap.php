@@ -281,6 +281,7 @@ function snmp_explorer_bootstrap(\PDO $pdo): array {
             new \SnmpBridge\DiscoveryModules\CpuDiscoveryModule($normalizer),
             new \SnmpBridge\DiscoveryModules\MemoryDiscoveryModule($normalizer),
             new \SnmpBridge\DiscoveryModules\CustomMetricsDiscoveryModule(),
+            new \SnmpBridge\DiscoveryModules\AutonomousEnterpriseDiscoveryModule($normalizer, $oidTranslator),
             new \SnmpBridge\DiscoveryModules\ComprehensiveOidDiscoveryModule($normalizer, $oidTranslator),
             new \SnmpBridge\DiscoveryModules\HuaweiOpticalDiscoveryModule($normalizer),
             new \SnmpBridge\DiscoveryModules\OpticalDomDiscoveryModule($normalizer),
@@ -294,7 +295,7 @@ function snmp_explorer_bootstrap(\PDO $pdo): array {
     );
 
     $scanner = new \SnmpBridge\Core\Snmp\SnmpScanner(
-        new \SnmpBridge\Core\Vendor\ProfileMatcher($vendorRegistry),
+        new \SnmpBridge\Core\Vendor\ProfileMatcher($vendorRegistry, $oidTranslator),
         $pipeline,
         $deviceRepository,
         $sensorRepository,
