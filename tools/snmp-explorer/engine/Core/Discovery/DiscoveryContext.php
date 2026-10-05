@@ -45,11 +45,6 @@ final readonly class DiscoveryContext
         return (string) ($this->device['sys_object_id'] ?? '');
     }
 
-    public function sysObjectId(): string
-    {
-        return $this->sysObjectID();
-    }
-
     public function sysDescr(): string
     {
         return (string) ($this->device['sys_descr'] ?? '');
