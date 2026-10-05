@@ -107,7 +107,7 @@ final readonly class ComprehensiveOidDiscoveryModule implements DiscoveryModuleI
             $this->scanCommonMetricOids($context, $sensors);
 
             // Scan broader MIB roots if enabled (slower, comprehensive)
-            if ($this->fullWalkEnabled() && !$this->limitReached($context, $sensors)) {
+            if ($this->fullWalkEnabled($context) && !$this->limitReached($context, $sensors)) {
                 $this->scanMibRoots($context, $sensors);
             }
         } catch (\Throwable $e) {
@@ -222,8 +222,13 @@ final readonly class ComprehensiveOidDiscoveryModule implements DiscoveryModuleI
         }
     }
 
-    private function fullWalkEnabled(): bool
+    private function fullWalkEnabled(DiscoveryContext $context): bool
     {
+        $profile = strtolower(trim((string) ($context->snmpConfig['discovery_profile'] ?? '')));
+        if ($profile === 'full' || $profile === 'all') {
+            return true;
+        }
+
         return env_bool('DISCOVERY_COMPREHENSIVE_FULL_WALK', false);
     }
 

@@ -30,19 +30,13 @@ final class AutonomousEnterpriseDiscoveryModule implements DiscoveryModuleInterf
 
     public function supports(DiscoveryContext $context): bool
     {
-        $vendorName = strtolower($context->vendor->name());
-        // Skip vendors that already have dedicated discovery modules
-        if (in_array($vendorName, ['fortinet', 'mikrotik', 'cisco', 'huawei', 'dahua', 'zte', 'alcatel', 'raisecom', 'epson', 'f5'], true)) {
-            return false;
-        }
-
-        // Bounded autonomous enterprise walk is disabled by default to prevent timing out on massive enterprise roots
-        if (!env_bool('DISCOVERY_AUTONOMOUS_ENTERPRISE_WALK', false)) {
+        // Allow disabling via environment variable if desired
+        if (env_bool('DISCOVERY_DISABLE_AUTONOMOUS_ENTERPRISE', false)) {
             return false;
         }
 
         $enterpriseOid = trim($context->vendor->enterpriseOid(), '. ');
-        if ($enterpriseOid !== '') {
+        if ($enterpriseOid !== '' && $enterpriseOid !== '1.3.6.1.4.1') {
             return true;
         }
 

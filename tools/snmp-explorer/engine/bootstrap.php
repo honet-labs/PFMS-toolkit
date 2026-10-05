@@ -282,6 +282,7 @@ function snmp_explorer_bootstrap(\PDO $pdo): array {
             new \SnmpBridge\DiscoveryModules\MemoryDiscoveryModule($normalizer),
             new \SnmpBridge\DiscoveryModules\CustomMetricsDiscoveryModule(),
             new \SnmpBridge\DiscoveryModules\AutonomousEnterpriseDiscoveryModule($normalizer, $oidTranslator),
+            new \SnmpBridge\DiscoveryModules\LoadedMibDiscoveryModule($normalizer, $oidTranslator, $resolvedMibDirs),
             new \SnmpBridge\DiscoveryModules\ComprehensiveOidDiscoveryModule($normalizer, $oidTranslator),
             new \SnmpBridge\DiscoveryModules\HuaweiOpticalDiscoveryModule($normalizer),
             new \SnmpBridge\DiscoveryModules\OpticalDomDiscoveryModule($normalizer),
