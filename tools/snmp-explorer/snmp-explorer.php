@@ -2631,7 +2631,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     </div>
                     <div class="form-group">
                         <label class="form-label">Scan Timeout (Seconds)</label>
-                        <input type="number" id="conf-timeout" class="form-control mono" value="<?= (int)($engineConfig['snmp']['scan_timeout_sec'] ?? 180) ?>">
+                        <input type="number" id="conf-timeout" class="form-control mono" value="<?= (int)($engineConfig['snmp']['scan_timeout_sec'] ?? 45) ?>">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Max Discovered Sensors Cap</label>
@@ -3490,7 +3490,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             const payload = {
                 snmp: {
                     community: document.getElementById('conf-community').value,
-                    scan_timeout_sec: parseInt(document.getElementById('conf-timeout').value) || 180,
+                    scan_timeout_sec: parseInt(document.getElementById('conf-timeout').value) || 45,
                     scan_max_sensors: parseInt(document.getElementById('conf-max-sensors').value) || 10000,
                     translate_oids: document.getElementById('conf-translate').value === '1',
                 }

@@ -66,27 +66,31 @@ final readonly class InterfaceStatsDiscoveryModule implements DiscoveryModuleInt
             return [];
         }
 
+        // Fast, targeted walks: prefer 64-bit counters, fallback to 32-bit only if empty
+        $ifHCInOctets = $context->walker->walkIndexed(self::IF_HC_IN_OCTETS);
+        $ifHCOutOctets = $context->walker->walkIndexed(self::IF_HC_OUT_OCTETS);
+        $ifInOctets = !empty($ifHCInOctets) ? [] : $context->walker->walkIndexed(self::IF_IN_OCTETS);
+        $ifOutOctets = !empty($ifHCOutOctets) ? [] : $context->walker->walkIndexed(self::IF_OUT_OCTETS);
+
+        $ifHCInUcastPkts = $context->walker->walkIndexed(self::IF_HC_IN_UCAST_PKTS);
+        $ifHCOutUcastPkts = $context->walker->walkIndexed(self::IF_HC_OUT_UCAST_PKTS);
+        $ifInUcastPkts = !empty($ifHCInUcastPkts) ? [] : $context->walker->walkIndexed(self::IF_IN_UCAST_PKTS);
+        $ifOutUcastPkts = !empty($ifHCOutUcastPkts) ? [] : $context->walker->walkIndexed(self::IF_OUT_UCAST_PKTS);
+
+        $ifInErrors = $context->walker->walkIndexed(self::IF_IN_ERRORS);
+        $ifOutErrors = $context->walker->walkIndexed(self::IF_OUT_ERRORS);
+
         $tables = [
-            'ifHCInOctets' => $context->walker->walkIndexed(self::IF_HC_IN_OCTETS),
-            'ifHCOutOctets' => $context->walker->walkIndexed(self::IF_HC_OUT_OCTETS),
-            'ifInOctets' => $context->walker->walkIndexed(self::IF_IN_OCTETS),
-            'ifOutOctets' => $context->walker->walkIndexed(self::IF_OUT_OCTETS),
-            'ifHCInUcastPkts' => $context->walker->walkIndexed(self::IF_HC_IN_UCAST_PKTS),
-            'ifHCOutUcastPkts' => $context->walker->walkIndexed(self::IF_HC_OUT_UCAST_PKTS),
-            'ifInUcastPkts' => $context->walker->walkIndexed(self::IF_IN_UCAST_PKTS),
-            'ifOutUcastPkts' => $context->walker->walkIndexed(self::IF_OUT_UCAST_PKTS),
-            'ifHCInMulticastPkts' => $context->walker->walkIndexed(self::IF_HC_IN_MULTICAST_PKTS),
-            'ifHCOutMulticastPkts' => $context->walker->walkIndexed(self::IF_HC_OUT_MULTICAST_PKTS),
-            'ifHCInBroadcastPkts' => $context->walker->walkIndexed(self::IF_HC_IN_BROADCAST_PKTS),
-            'ifHCOutBroadcastPkts' => $context->walker->walkIndexed(self::IF_HC_OUT_BROADCAST_PKTS),
-            'ifInNUcastPkts' => $context->walker->walkIndexed(self::IF_IN_NUCAST_PKTS),
-            'ifOutNUcastPkts' => $context->walker->walkIndexed(self::IF_OUT_NUCAST_PKTS),
-            'ifInDiscards' => $context->walker->walkIndexed(self::IF_IN_DISCARDS),
-            'ifOutDiscards' => $context->walker->walkIndexed(self::IF_OUT_DISCARDS),
-            'ifInErrors' => $context->walker->walkIndexed(self::IF_IN_ERRORS),
-            'ifOutErrors' => $context->walker->walkIndexed(self::IF_OUT_ERRORS),
-            'ifInUnknownProtos' => $context->walker->walkIndexed(self::IF_IN_UNKNOWN_PROTOS),
-            'ifOutQLen' => $context->walker->walkIndexed(self::IF_OUT_QLEN),
+            'ifHCInOctets' => $ifHCInOctets,
+            'ifHCOutOctets' => $ifHCOutOctets,
+            'ifInOctets' => $ifInOctets,
+            'ifOutOctets' => $ifOutOctets,
+            'ifHCInUcastPkts' => $ifHCInUcastPkts,
+            'ifHCOutUcastPkts' => $ifHCOutUcastPkts,
+            'ifInUcastPkts' => $ifInUcastPkts,
+            'ifOutUcastPkts' => $ifOutUcastPkts,
+            'ifInErrors' => $ifInErrors,
+            'ifOutErrors' => $ifOutErrors,
         ];
 
         $sensors = [];

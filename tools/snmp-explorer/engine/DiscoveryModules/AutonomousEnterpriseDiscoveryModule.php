@@ -36,15 +36,14 @@ final class AutonomousEnterpriseDiscoveryModule implements DiscoveryModuleInterf
         }
 
         $vendorName = strtolower($context->vendor->name());
-        // Skip vendors that already have dedicated discovery modules (they use LoadedMibDiscoveryModule for extra MIBs)
-        if (in_array($vendorName, ['fortinet', 'mikrotik', 'cisco', 'huawei', 'dahua', 'zte', 'alcatel', 'raisecom', 'epson', 'f5'], true)) {
+        // Skip vendors that already have dedicated discovery modules or loaded MIBs
+        if (str_contains($vendorName, 'h3c') || str_contains($vendorName, 'hpe') || str_contains($vendorName, 'hp')
+            || in_array($vendorName, ['fortinet', 'mikrotik', 'cisco', 'huawei', 'dahua', 'zte', 'alcatel', 'raisecom', 'epson', 'f5', 'juniper', 'arista', 'dell'], true)) {
             return false;
         }
 
-        // Enable autonomous enterprise walk for comprehensive profiles or when explicitly enabled
-        $profile = strtolower((string) ($context->snmpConfig['discovery_profile'] ?? ''));
-        $isComprehensiveProfile = in_array($profile, ['full', 'all', 'router_switch', 'network'], true);
-        if (!$isComprehensiveProfile && !env_bool('DISCOVERY_AUTONOMOUS_ENTERPRISE_WALK', false)) {
+        // Only run autonomous enterprise root walk when explicitly enabled via env
+        if (!env_bool('DISCOVERY_AUTONOMOUS_ENTERPRISE_WALK', false)) {
             return false;
         }
 
@@ -70,15 +69,14 @@ final class AutonomousEnterpriseDiscoveryModule implements DiscoveryModuleInterf
             return [];
         }
 
-        $maxItems = max(1, env_int('DISCOVERY_AUTONOMOUS_MAX_SENSORS', 150));
+        $maxItems = max(1, min(100, env_int('DISCOVERY_AUTONOMOUS_MAX_SENSORS', 50)));
         $seenOids = [];
 
         try {
-            // Perform bounded walk on the device's private enterprise tree
-            $entries = $context->walker->walkIndexedUncached($enterpriseRoot);
+            // Use streaming generator walk to avoid blocking on massive subtrees
             $scannedCount = 0;
 
-            foreach ($entries as $index => $value) {
+            foreach ($context->walker->walkIndexedGenerator($enterpriseRoot) as $index => $value) {
                 if ($scannedCount >= $maxItems || $this->deadlineReached($context)) {
                     break;
                 }

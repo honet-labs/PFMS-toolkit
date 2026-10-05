@@ -37,19 +37,19 @@ final readonly class SnmpScanner
         $version = trim((string) ($request['version'] ?? $this->defaultSnmpConfig['version']));
         $port = (int) ($request['port'] ?? $this->defaultSnmpConfig['port']);
         $discoveryProfile = trim((string) ($request['discovery_profile'] ?? $this->defaultSnmpConfig['discovery_profile'] ?? ''));
-        $scanTimeoutSec = isset($request['scan_timeout_sec']) && (int) $request['scan_timeout_sec'] > 0
-            ? max(10, (int) $request['scan_timeout_sec'])
+        $requestedTimeout = isset($request['scan_timeout_sec']) && (int) $request['scan_timeout_sec'] > 0
+            ? (int) $request['scan_timeout_sec']
             : (isset($request['timeout']) && (int) $request['timeout'] > 0
-                ? max(10, (int) $request['timeout'])
+                ? (int) $request['timeout']
                 : $this->scanTimeoutSeconds());
-        if (in_array(strtolower($discoveryProfile), ['full', 'all', 'deep'], true)) {
-            $scanTimeoutSec = max(180, $scanTimeoutSec);
-        }
+        $isCli = (PHP_SAPI === 'cli');
+        $maxSafeHttpTimeout = 50;
+        $scanTimeoutSec = $isCli ? max(10, $requestedTimeout) : max(10, min($maxSafeHttpTimeout, $requestedTimeout));
         $scanMaxSensors = $this->scanMaxSensors();
         $previewLimit = $this->scanResultPreviewLimit();
         $translateMaxSensors = $this->translateMaxSensors();
         $scanStartedAt = microtime(true);
-        $scanDeadline = $scanStartedAt + max(5, $scanTimeoutSec - 5);
+        $scanDeadline = $scanStartedAt + max(5, $scanTimeoutSec - 3);
 
         if (!$this->isValidHost($host)) {
             throw new DiscoveryException('Use a valid IPv4, IPv6, or DNS hostname for the SNMP target.');
@@ -347,7 +347,7 @@ final readonly class SnmpScanner
 
     private function scanTimeoutSeconds(): int
     {
-        return max(10, (int) ($this->defaultSnmpConfig['scan_timeout_sec'] ?? 180));
+        return max(10, (int) ($this->defaultSnmpConfig['scan_timeout_sec'] ?? 45));
     }
 
     private function scanMaxSensors(): int

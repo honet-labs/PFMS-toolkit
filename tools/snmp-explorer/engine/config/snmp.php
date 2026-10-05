@@ -13,7 +13,7 @@ return [
     'timeout_usec' => env_int('SNMP_TIMEOUT_USEC', 1000000),
     'retries' => env_int('SNMP_RETRIES', 1),
     'max_oids' => env_int('SNMP_MAX_OIDS', 25),
-    'scan_timeout_sec' => env_int('SNMP_SCAN_TIMEOUT_SEC', 180),
+    'scan_timeout_sec' => env_int('SNMP_SCAN_TIMEOUT_SEC', 45),
     'scan_hard_timeout' => env_bool('SNMP_SCAN_HARD_TIMEOUT', true),
     'scan_max_sensors' => env_int('SNMP_SCAN_MAX_SENSORS', 10000),
     'scan_result_preview_limit' => env_int('SNMP_SCAN_RESULT_PREVIEW_LIMIT', 500),

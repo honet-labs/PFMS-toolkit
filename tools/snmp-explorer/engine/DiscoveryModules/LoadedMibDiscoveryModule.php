@@ -88,6 +88,9 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
 
         // Resolve candidate MIB files across configured MIB directories (filtered by vendor context)
         $candidateObjects = $this->getCandidateObjects($context);
+        if (count($candidateObjects) > 100) {
+            $candidateObjects = array_slice($candidateObjects, 0, 100);
+        }
 
         foreach ($candidateObjects as $obj) {
             if ($this->deadlineReached($context) || count($sensors) >= $maxSensors) {
@@ -166,20 +169,6 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
                         $seenOids[$fullOid] = true;
 
                         $sensor = $this->buildSensor($fullOid, $val, $obj, (string) $index, $context);
-                        if ($sensor !== null) {
-                            $sensors[] = $sensor;
-                        }
-                    }
-                    continue;
-                }
-
-                // Third: Try direct OID (without .0)
-                $val = $context->walker->get($numericOid);
-                if ($val !== null && $val !== '') {
-                    $fullOid = $numericOid;
-                    if (!isset($seenOids[$fullOid])) {
-                        $seenOids[$fullOid] = true;
-                        $sensor = $this->buildSensor($fullOid, $val, $obj, null, $context);
                         if ($sensor !== null) {
                             $sensors[] = $sensor;
                         }

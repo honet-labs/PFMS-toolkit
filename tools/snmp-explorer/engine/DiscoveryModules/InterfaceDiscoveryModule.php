@@ -96,7 +96,7 @@ final readonly class InterfaceDiscoveryModule implements DiscoveryModuleInterfac
         $ifAdminStatuses = $context->walker->walkIndexed(self::IF_ADMIN_STATUS);
         $ifOperStatuses = $context->walker->walkIndexed(self::IF_OPER_STATUS);
         $ifHighSpeeds = $context->walker->walkIndexed(self::IF_HIGH_SPEED);
-        $ifSpeeds = $context->walker->walkIndexed(self::IF_SPEED);
+        $ifSpeeds = !empty($ifHighSpeeds) ? [] : $context->walker->walkIndexed(self::IF_SPEED);
         $sensors = [];
 
         foreach ($this->interfaceIndexes($ifDescriptions, $ifNames, $ifTypes) as $index) {
