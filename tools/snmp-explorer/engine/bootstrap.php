@@ -302,7 +302,11 @@ function snmp_explorer_bootstrap(\PDO $pdo): array {
             new \SnmpBridge\DiscoveryModules\OpticalPowerWithThresholdsModule($thresholdDetector),
             new \SnmpBridge\DiscoveryModules\EnvironmentalDiscoveryModule($normalizer),
             new \SnmpBridge\DiscoveryModules\GponDiscoveryModule($normalizer),
-            new \SnmpBridge\DiscoveryModules\LoadedMibDiscoveryModule($normalizer, $oidTranslator, $resolvedMibDirs),
+            new \SnmpBridge\DiscoveryModules\LoadedMibDiscoveryModule(
+                $normalizer,
+                $oidTranslator,
+                array_values(array_filter($resolvedMibDirs, static fn(string $d): bool => !str_contains($d, '/usr/share/snmp/mibs') && !str_contains($d, '\\usr\\share\\snmp\\mibs')))
+            ),
             new \SnmpBridge\DiscoveryModules\ComprehensiveOidDiscoveryModule($normalizer, $oidTranslator),
             new \SnmpBridge\DiscoveryModules\AutonomousEnterpriseDiscoveryModule($normalizer, $oidTranslator),
             new \SnmpBridge\DiscoveryModules\CustomMetricsDiscoveryModule(),

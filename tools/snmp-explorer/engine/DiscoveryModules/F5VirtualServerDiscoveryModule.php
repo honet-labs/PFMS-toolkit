@@ -275,12 +275,8 @@ final readonly class F5VirtualServerDiscoveryModule implements DiscoveryModuleIn
      */
     private function isF5Device(DiscoveryContext $context): bool
     {
-        try {
-            $sysObjectID = $context->snmp()->get('1.3.6.1.2.1.1.2.0');
-            return !in_array($sysObjectID, [null, '', '0'], true) && str_contains($sysObjectID, '3375');
-        } catch (\Exception $e) {
-            return false;
-        }
+        $sysObjectID = $context->sysObjectID();
+        return $sysObjectID !== '' && str_contains($sysObjectID, '3375');
     }
 
     /**

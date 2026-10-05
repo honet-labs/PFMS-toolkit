@@ -484,7 +484,7 @@ final class OidTranslator
         fclose($pipes[0]);
         stream_set_blocking($pipes[1], false);
         $stdout = '';
-        $deadline = microtime(true) + max(0.1, $this->timeoutSeconds);
+        $deadline = microtime(true) + min(0.3, max(0.05, $this->timeoutSeconds));
 
         do {
             $stdout .= (string) stream_get_contents($pipes[1]);
@@ -563,6 +563,24 @@ final class OidTranslator
             '.1.3.6.1.2.1.25.2.3.1.4' => ['HOST-RESOURCES-MIB', 'hrStorageAllocationUnits', 'Storage Allocation Units', 'The size of allocation units in bytes.', 'Integer32', 'bytes', 'storage', 'numeric', 'bytes'],
             '.1.3.6.1.2.1.25.2.3.1.5' => ['HOST-RESOURCES-MIB', 'hrStorageSize', 'Storage Size', 'The size of the storage represented by this entry.', 'Integer32', '', 'storage', 'numeric', ''],
             '.1.3.6.1.2.1.25.2.3.1.6' => ['HOST-RESOURCES-MIB', 'hrStorageUsed', 'Storage Used', 'The amount of storage represented by this entry that is allocated.', 'Integer32', '', 'storage', 'numeric', ''],
+            // H3C Comware Entity MIB
+            '.1.3.6.1.4.1.25506.2.6.1.1.1.1.6' => ['HH3C-ENTITY-EXT-MIB', 'hh3cEntityExtCpuUsage', 'CPU Usage', 'The CPU usage ratio of the entity.', 'Integer32', '%', 'processor', 'numeric', '%'],
+            '.1.3.6.1.4.1.25506.2.6.1.1.1.1.8' => ['HH3C-ENTITY-EXT-MIB', 'hh3cEntityExtMemUsage', 'Memory Usage', 'The memory usage ratio of the entity.', 'Integer32', '%', 'memory', 'numeric', '%'],
+            '.1.3.6.1.4.1.25506.2.6.1.1.1.1.7' => ['HH3C-ENTITY-EXT-MIB', 'hh3cEntityExtTemperature', 'Temperature', 'The temperature of the entity.', 'Integer32', 'Celsius', 'temperature', 'numeric', 'Celsius'],
+            // Huawei Entity MIB
+            '.1.3.6.1.4.1.2011.6.3.4.1.2' => ['HUAWEI-DEVICE-MIB', 'hwDevCpuDuty', 'CPU Usage', 'The CPU duty ratio.', 'Integer32', '%', 'processor', 'numeric', '%'],
+            '.1.3.6.1.4.1.2011.6.3.4.1.3' => ['HUAWEI-DEVICE-MIB', 'hwDevMemDuty', 'Memory Usage', 'The memory duty ratio.', 'Integer32', '%', 'memory', 'numeric', '%'],
+            '.1.3.6.1.4.1.2011.6.3.4.1.4' => ['HUAWEI-DEVICE-MIB', 'hwDevTemperature', 'Temperature', 'The temperature of the device.', 'Integer32', 'Celsius', 'temperature', 'numeric', 'Celsius'],
+            // Cisco Process & Memory MIB
+            '.1.3.6.1.4.1.9.9.109.1.1.1.1.3' => ['CISCO-PROCESS-MIB', 'cpmCPUTotal5minRev', 'CPU Total 5min', 'Overall CPU busy percentage in the last 5 minute period.', 'Gauge32', '%', 'processor', 'numeric', '%'],
+            '.1.3.6.1.4.1.9.9.48.1.1.1.5' => ['CISCO-MEMORY-POOL-MIB', 'ciscoMemoryPoolUsed', 'Memory Pool Used', 'Indicates the number of bytes from the memory pool that are currently in use.', 'Gauge32', 'bytes', 'memory', 'numeric', 'bytes'],
+            '.1.3.6.1.4.1.9.9.48.1.1.1.6' => ['CISCO-MEMORY-POOL-MIB', 'ciscoMemoryPoolFree', 'Memory Pool Free', 'Indicates the number of bytes from the memory pool that are currently free.', 'Gauge32', 'bytes', 'memory', 'numeric', 'bytes'],
+            // Fortinet FortiGate MIB
+            '.1.3.6.1.4.1.12356.101.4.1.1.0' => ['FORTINET-FORTIGATE-MIB', 'fgSysCpuUsage', 'FortiGate CPU Usage', 'Current CPU usage percentage.', 'Gauge32', '%', 'processor', 'numeric', '%'],
+            '.1.3.6.1.4.1.12356.101.4.1.2.0' => ['FORTINET-FORTIGATE-MIB', 'fgSysMemUsage', 'FortiGate Memory Usage', 'Current memory usage percentage.', 'Gauge32', '%', 'memory', 'numeric', '%'],
+            // MikroTik MIB
+            '.1.3.6.1.4.1.14988.1.1.1.2.1.3' => ['MIKROTIK-MIB', 'mtxrProcessorLoad', 'Processor Load', 'The average percentage of time that this processor was not idle.', 'Integer32', '%', 'processor', 'numeric', '%'],
+            '.1.3.6.1.4.1.14988.1.1.1.1.1.0' => ['MIKROTIK-MIB', 'mtxrCpuFrequency', 'CPU Frequency', 'CPU frequency in MHz.', 'Integer32', 'MHz', 'processor', 'numeric', 'MHz'],
         ];
 
         // Exact match

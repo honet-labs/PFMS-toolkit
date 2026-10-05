@@ -222,8 +222,14 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
         ];
 
         $cacheDir = dirname(__DIR__) . '/storage/cache';
-        if (!is_dir($cacheDir)) {
-            @mkdir($cacheDir, 0755, true);
+        if (!is_dir($cacheDir) || !is_writable($cacheDir)) {
+            $sysTmp = sys_get_temp_dir() . '/pfms_snmp_cache';
+            if (!is_dir($sysTmp)) {
+                @mkdir($sysTmp, 0777, true);
+            }
+            if (is_dir($sysTmp) && is_writable($sysTmp)) {
+                $cacheDir = $sysTmp;
+            }
         }
 
         $cacheKey = implode('|', $dirs) . ':' . $deviceVendor . ':' . ($devicePen ?? '');
@@ -320,6 +326,21 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
                     continue;
                 }
 
+                // If device vendor is known, skip files that don't relate to the device vendor
+                if (!empty($deviceVendorTokens)) {
+                    $fileLower = strtolower($file);
+                    $fileMatchesVendor = false;
+                    foreach ($deviceVendorTokens as $tok) {
+                        if ($tok !== '' && (str_contains($fileLower, $tok) || str_contains($dirName, $tok))) {
+                            $fileMatchesVendor = true;
+                            break;
+                        }
+                    }
+                    if (!$fileMatchesVendor) {
+                        continue;
+                    }
+                }
+
                 // Skip extremely large archive files (> 3MB) to maintain fast scan performance
                 if (@filesize($filePath) > 3 * 1024 * 1024) {
                     continue;
@@ -339,9 +360,21 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
                 $pattern = '/([A-Za-z0-9_-]+)\s+OBJECT-TYPE\s+SYNTAX\s+([^;]+?)\s+(?:MAX-ACCESS|ACCESS)\s+[^\n]+\s+STATUS\s+[^\n]+(?:\s+DESCRIPTION\s+"([^"]*?)")?.*?::=\s*\{\s*([A-Za-z0-9_-]+)\s+([0-9]+)\s*\}/is';
                 if (preg_match_all($pattern, $content, $matches, PREG_SET_ORDER)) {
                     foreach ($matches as $match) {
+                        if (count($dirObjects) >= 25) {
+                            break;
+                        }
+
                         $objName = $match[1];
                         $syntax = trim(preg_replace('/\s+/', ' ', $match[2]));
                         $desc = isset($match[3]) ? trim(preg_replace('/\s+/', ' ', $match[3])) : '';
+
+                        // Skip non-metric structural types
+                        if (preg_match('/(?:SEQUENCE|RowStatus|TruthValue|StorageType|TestAndIncr)/i', $syntax) === 1) {
+                            continue;
+                        }
+                        if (preg_match('/(?:Table|Entry|Index|Group|Capabilities|Compliance)$/i', $objName) === 1) {
+                            continue;
+                        }
 
                         // Resolve numeric OID using OidTranslator
                         $calcOid = '';
