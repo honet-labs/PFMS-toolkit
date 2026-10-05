@@ -36,8 +36,8 @@ final class AutonomousEnterpriseDiscoveryModule implements DiscoveryModuleInterf
             return true;
         }
 
-        $sysObj = $context->device->sysObjectId();
-        if ($sysObj !== null && str_contains($sysObj, '1.3.6.1.4.1.')) {
+        $sysObj = $context->sysObjectID();
+        if ($sysObj !== '' && str_contains($sysObj, '1.3.6.1.4.1.')) {
             return true;
         }
 
@@ -108,8 +108,8 @@ final class AutonomousEnterpriseDiscoveryModule implements DiscoveryModuleInterf
             return $enterpriseOid;
         }
 
-        $sysObj = $context->device->sysObjectId();
-        if ($sysObj !== null && preg_match('/1\.3\.6\.1\.4\.1\.(\d+)/', $sysObj, $matches) === 1) {
+        $sysObj = $context->sysObjectID();
+        if ($sysObj !== '' && preg_match('/1\.3\.6\.1\.4\.1\.(\d+)/', $sysObj, $matches) === 1) {
             return '1.3.6.1.4.1.' . $matches[1];
         }
 

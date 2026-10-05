@@ -61,13 +61,13 @@ final class FortinetDiscoveryModule implements DiscoveryModuleInterface
             return true;
         }
 
-        $sysObj = $context->device->sysObjectId();
-        if ($sysObj !== null && str_contains($sysObj, '12356')) {
+        $sysObj = $context->sysObjectID();
+        if ($sysObj !== '' && str_contains($sysObj, '12356')) {
             return true;
         }
 
-        $sysDescr = $context->device->sysDescr();
-        if ($sysDescr !== null && preg_match('/Fortinet|FortiGate|FortiOS/i', $sysDescr) === 1) {
+        $sysDescr = $context->sysDescr();
+        if ($sysDescr !== '' && preg_match('/Fortinet|FortiGate|FortiOS/i', $sysDescr) === 1) {
             return true;
         }
 

@@ -38,13 +38,13 @@ final class MikrotikDiscoveryModule implements DiscoveryModuleInterface
             return true;
         }
 
-        $sysObj = $context->device->sysObjectId();
-        if ($sysObj !== null && str_contains($sysObj, '14988')) {
+        $sysObj = $context->sysObjectID();
+        if ($sysObj !== '' && str_contains($sysObj, '14988')) {
             return true;
         }
 
-        $sysDescr = $context->device->sysDescr();
-        if ($sysDescr !== null && preg_match('/MikroTik|RouterOS/i', $sysDescr) === 1) {
+        $sysDescr = $context->sysDescr();
+        if ($sysDescr !== '' && preg_match('/MikroTik|RouterOS/i', $sysDescr) === 1) {
             return true;
         }
 
