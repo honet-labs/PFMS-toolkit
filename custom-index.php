@@ -1247,7 +1247,7 @@ if (!empty($current_page)) {
         .nav-link.open .arrow { transform: rotate(180deg); }
 
         /* MAIN CONTENT */
-        .main-content { flex-grow: 1; background-color: #f4f6f8; display: flex; flex-direction: column; position: relative; }
+        .main-content { flex-grow: 1; min-height: 0; overflow: hidden; background-color: #f4f6f8; display: flex; flex-direction: column; position: relative; }
         #contentFrame { width: 100%; height: 100%; border: none; flex-grow: 1; background: #f4f6f8; }
         .welcome-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #7f8c8d; text-align: center; }
         .welcome-screen .material-symbols-outlined { font-size: 64px !important; color: #dce1e5 !important; margin-bottom: 15px; }

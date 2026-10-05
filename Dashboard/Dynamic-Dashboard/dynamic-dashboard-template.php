@@ -521,7 +521,7 @@ if ($api === 'bulk_panel_data') {
             $moduleResults = [];
             foreach($modulesFound as $mod) {
                 $mod_id = $mod['id_agente_modulo'];
-                if (in_array($pType, ['line', 'area', 'bar', 'heatmap', 'history_table', 'single_value'])) {
+                if (in_array($pType, ['line', 'area', 'bar', 'heatmap', 'history_table', 'single_value', 'text', 'gauge'])) {
                     $raw_hist = get_module_history_data($active_pdo, $active_history_pdo, $mod_id, $start, $end, 2000, 'DESC');
                     $history = [];
                     foreach ($raw_hist as $row) {
@@ -689,6 +689,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             row-gap: 15px; 
             column-gap: 15px; 
             align-items: start; 
+            align-content: start;
             width: 100%;
         } 
         
@@ -1208,7 +1209,19 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 </div>
             </div>
 
-            <div style="display:flex; gap:10px; margin-top:5px; padding:10px; background:#fff; border:1px solid #dce1e5; border-radius:6px; margin-bottom:10px;">
+            <div class="form-group" id="wrap_value_calc" style="margin-top:5px; margin-bottom:10px;">
+                <label style="color:#004d40; font-size:11px; font-weight:600!important; display:block; margin-bottom:4px;">Value Calculation (Avg / Max / Min)</label>
+                <select id="p_value_calc" class="form-control-fix" style="margin-bottom:0;">
+                    <option value="current" selected>Current / Latest Value (Default)</option>
+                    <option value="avg">Average (Avg / Rata-rata)</option>
+                    <option value="max">Maximum (Max / Nilai Tertinggi)</option>
+                    <option value="min">Minimum (Min / Nilai Terendah)</option>
+                    <option value="summary">Current with Min / Avg / Max Badges</option>
+                </select>
+                <small style="color:#7f8c8d; font-size:10px; display:block; margin-top:3px;">* Calculates aggregate from history data over the active time range (1h, 24h, etc.).</small>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top:5px; padding:10px; background:#fff; border:1px solid #dce1e5; border-radius:6px; margin-bottom:10px;" id="wrap_font_options">
                 <div class="form-group" style="flex:1; margin-bottom:0;">
                     <label style="color:#004d40; font-size:10px; font-weight:600!important;">Value Font Size (px)</label>
                     <input type="number" id="p_font_size" class="form-control-fix" placeholder="32" value="32" min="8" max="120" style="margin-bottom:0;">
@@ -1312,8 +1325,6 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             <button class="btn-apply" onclick="applyPanel()">Apply Panel</button>
         </div>
     </div>
-</div>
-
 </div>
 
 <div class="modal-overlay" id="statusDetailModal">
@@ -2322,10 +2333,46 @@ function formatSmartValue(val, useRaw) {
 function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModulesInGroup) {
     const cMap = {0:'bg-green', 1:'bg-red', 2:'bg-yellow', 4:'bg-blue'};
     const bgClass = cMap[moduleData.status] || 'bg-gray';
-    let valText = formatSmartValue(moduleData.current, p.use_raw);
-    
-    if (p.lbl_1 && (moduleData.current == 1 || moduleData.current === '1')) valText = p.lbl_1;
-    else if (p.lbl_0 && (moduleData.current == 0 || moduleData.current === '0')) valText = p.lbl_0;
+
+    // Aggregation calculation (avg, max, min, summary)
+    const valCalc = p.value_calc || 'current';
+    let calcMin = null, calcMax = null, calcAvg = null;
+    if (moduleData.history && Array.isArray(moduleData.history) && moduleData.history.length > 0) {
+        const histNums = moduleData.history
+            .map(h => (h && h.val !== undefined && h.val !== null) ? parseFloat(String(h.val).replace(',', '.')) : NaN)
+            .filter(v => !isNaN(v));
+        if (histNums.length > 0) {
+            calcMin = Math.min(...histNums);
+            calcMax = Math.max(...histNums);
+            calcAvg = histNums.reduce((a, b) => a + b, 0) / histNums.length;
+        }
+    }
+
+    let rawDisplay = moduleData.current;
+    let badgeHtml = '';
+    let summaryHtml = '';
+
+    if (valCalc === 'avg') {
+        if (calcAvg !== null) rawDisplay = (calcAvg % 1 === 0) ? calcAvg.toString() : Number(calcAvg.toFixed(2)).toString();
+        badgeHtml = `<span style="display:inline-block; font-size:10px; font-weight:700; color:#0d9488; background:#ccfbf1; padding:1px 6px; border-radius:4px; margin-bottom:4px; text-transform:uppercase;" title="Average Value over active time range">AVG</span>`;
+    } else if (valCalc === 'max') {
+        if (calcMax !== null) rawDisplay = (calcMax % 1 === 0) ? calcMax.toString() : Number(calcMax.toFixed(2)).toString();
+        badgeHtml = `<span style="display:inline-block; font-size:10px; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 6px; border-radius:4px; margin-bottom:4px; text-transform:uppercase;" title="Maximum Value over active time range">MAX</span>`;
+    } else if (valCalc === 'min') {
+        if (calcMin !== null) rawDisplay = (calcMin % 1 === 0) ? calcMin.toString() : Number(calcMin.toFixed(2)).toString();
+        badgeHtml = `<span style="display:inline-block; font-size:10px; font-weight:700; color:#0369a1; background:#e0f2fe; padding:1px 6px; border-radius:4px; margin-bottom:4px; text-transform:uppercase;" title="Minimum Value over active time range">MIN</span>`;
+    } else if (valCalc === 'summary' && (calcMin !== null || calcAvg !== null || calcMax !== null)) {
+        summaryHtml = `
+        <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; justify-content:center; align-items:center;">
+            <span style="font-size:10px; font-weight:600; color:#0369a1; background:#e0f2fe; padding:2px 6px; border-radius:4px;" title="Minimum in active range">MIN: ${formatSmartValue(calcMin, p.use_raw)}</span>
+            <span style="font-size:10px; font-weight:600; color:#0d9488; background:#ccfbf1; padding:2px 6px; border-radius:4px;" title="Average in active range">AVG: ${formatSmartValue(calcAvg, p.use_raw)}</span>
+            <span style="font-size:10px; font-weight:600; color:#b91c1c; background:#fee2e2; padding:2px 6px; border-radius:4px;" title="Maximum in active range">MAX: ${formatSmartValue(calcMax, p.use_raw)}</span>
+        </div>`;
+    }
+
+    let valText = formatSmartValue(rawDisplay, p.use_raw);
+    if (p.lbl_1 && (rawDisplay == 1 || rawDisplay === '1')) valText = p.lbl_1;
+    else if (p.lbl_0 && (rawDisplay == 0 || rawDisplay === '0')) valText = p.lbl_0;
 
     let contentHtml = '';
     const fs = p.font_size || 32;
@@ -2337,17 +2384,19 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const statusHtml = isMultiOverlay ? '' : `<div style="display:flex; align-items:center;"><span class="status-dot ${bgClass}"></span><span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span></div>`;
 
     if (p.type === 'text') {
-        contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;"><div style="display:flex; align-items:baseline; justify-content:center;"><span class="status-dot ${bgClass}"></span><span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${modNameHtml}</div>`;
+        contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;">${badgeHtml}<div style="display:flex; align-items:baseline; justify-content:center;"><span class="status-dot ${bgClass}"></span><span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${summaryHtml}${modNameHtml}</div>`;
     } 
     else if (p.type === 'single_value') {
         const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[moduleData.status] || '#95a5a6';
         contentHtml = `
         <div style="height: 100%; width: 100%; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;">
-            <div style="padding: 10px 10px 0 10px; z-index: 2; pointer-events: none;">
+            <div style="padding: 10px 10px 0 10px; z-index: 2;">
+                ${badgeHtml}
                 <div style="font-size: ${fs}px; font-weight: ${fw}; color: ${color}; line-height: 1.1; display: flex; align-items: baseline; gap: 4px;">
                     <span>${valText}</span>
                     <span style="font-size: ${Math.round(fs * 0.45)}px; font-weight: normal; color: #64748b;">${moduleData.unit}</span>
                 </div>
+                ${summaryHtml}
             </div>
             <!-- Relative positioned ECharts Sparkline container -->
             <div id="chart_${uniqueId}" style="flex: 1; min-height: 60px; width: 100%; cursor: pointer;" onclick="openNativeModuleDetailModal('${moduleData.id}', '${(moduleData.agent_name + ' - ' + moduleData.module_name).replace(/'/g, "\\'")}')"></div>
@@ -3318,6 +3367,12 @@ function toggleTypeFields() {
         wrapLimit.style.opacity = isTable ? '1' : '0.3';
         document.getElementById('p_row_limit').disabled = !isTable;
     }
+
+    const isValueType = (type === 'text' || type === 'single_value');
+    const wrapValueCalc = document.getElementById('wrap_value_calc');
+    if (wrapValueCalc) {
+        wrapValueCalc.style.display = isValueType ? 'block' : 'none';
+    }
 }
 
 function showExactDropdown() { document.getElementById('exact_dropdown').style.display = 'flex'; renderExactModuleList(1); }
@@ -3396,6 +3451,7 @@ function openPanelBuilder() {
     document.getElementById('p_chart_font_size').value = '10';
     document.getElementById('p_lbl_1').value = '';
     document.getElementById('p_lbl_0').value = '';
+    if (document.getElementById('p_value_calc')) document.getElementById('p_value_calc').value = 'current';
     document.getElementById('p_stat_bg_color').value = '#ffffff';
     document.getElementById('p_stat_bg_color_hex').value = '';
     document.getElementById('p_stat_font_color').value = '#334155';
@@ -3426,6 +3482,7 @@ function openPanelEdit(id) {
     document.getElementById('p_chart_font_size').value = p.chart_font_size || 10;
     document.getElementById('p_font_size').value = p.font_size || 32;
     document.getElementById('p_font_weight').value = p.font_weight || 700;
+    if (document.getElementById('p_value_calc')) document.getElementById('p_value_calc').value = p.value_calc || 'current';
     document.getElementById('p_stat_bg_color').value = p.stat_bg_color || '#ffffff';
     document.getElementById('p_stat_bg_color_hex').value = p.stat_bg_color || '';
     document.getElementById('p_stat_font_color').value = p.stat_font_color || '#334155';
@@ -3482,6 +3539,7 @@ function applyPanel() {
         chart_font_size: parseInt(document.getElementById('p_chart_font_size').value) || 10,
         font_size: parseInt(document.getElementById('p_font_size').value) || 32,
         font_weight: document.getElementById('p_font_weight').value || 700,
+        value_calc: document.getElementById('p_value_calc') ? document.getElementById('p_value_calc').value : 'current',
         stat_bg_color: document.getElementById('p_stat_bg_color_hex').value.trim(),
         stat_font_color: document.getElementById('p_stat_font_color_hex').value.trim(),
         show_module: document.getElementById('p_show_module').checked,
@@ -4019,15 +4077,18 @@ function resizeGridItem(item) {
     if (!grid) return;
     const rowHeight = parseInt(window.getComputedStyle(grid).getPropertyValue('grid-auto-rows')) || 5;
     const rowGap = parseInt(window.getComputedStyle(grid).getPropertyValue('row-gap')) || 15;
-    const content = item.querySelector('.panel-card');
-    if (!content) return;
+    
+    const cards = item.querySelectorAll('.panel-card');
+    if (!cards || cards.length === 0) return;
 
-    content.style.height = 'auto';
-    const contentHeight = content.getBoundingClientRect().height;
+    // Reset styles temporarily to measure true unconstrained content height
+    item.style.gridRowEnd = 'auto';
+    cards.forEach(c => { c.style.height = 'auto'; c.style.flex = 'none'; });
 
+    const contentHeight = item.scrollHeight;
     const rowSpan = Math.ceil((contentHeight + rowGap) / (rowHeight + rowGap));
-    item.style.gridRowEnd = "span " + rowSpan;
-    content.style.height = '100%'; 
+    item.style.gridRowEnd = "span " + Math.max(1, rowSpan);
+    cards.forEach(c => { c.style.height = '100%'; c.style.flex = '1'; });
 }
 
 function resizeAllGridItems() {
@@ -4037,13 +4098,19 @@ function resizeAllGridItems() {
     }
 }
 
-window.addEventListener("resize", resizeAllGridItems);
-const masonryObserver = new MutationObserver(resizeAllGridItems);
+let resizeDebounce = null;
+window.addEventListener("resize", () => {
+    if (resizeDebounce) clearTimeout(resizeDebounce);
+    resizeDebounce = setTimeout(resizeAllGridItems, 100);
+});
 
 const gridObserver = new ResizeObserver(entries => {
-    for (let entry of entries) {
-        resizeGridItem(entry.target);
-    }
+    if (resizeDebounce) clearTimeout(resizeDebounce);
+    resizeDebounce = setTimeout(() => {
+        for (let entry of entries) {
+            resizeGridItem(entry.target);
+        }
+    }, 60);
 });
 
 function attachResizeObserver(pId) {

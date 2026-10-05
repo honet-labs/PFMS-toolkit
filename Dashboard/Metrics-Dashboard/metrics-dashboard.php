@@ -1037,11 +1037,11 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
 
         .main-content { padding: 0 30px 30px 30px; }
         
-        .grid-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 700px), 1fr)); gap: 20px; align-items: start; }
+        .grid-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 700px), 1fr)); gap: 20px; align-items: start; align-content: start; }
         .grid-layout.single-item { grid-template-columns: 1fr; }
         @media (max-width: 1200px) { .grid-layout { grid-template-columns: 1fr; } }
 
-        .dashboard-card { background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: inline-block; width:100%; margin-bottom:20px; break-inside: avoid; vertical-align: top; overflow: hidden; border: 1px solid #f0f3f5; cursor: default; transition: transform 0.2s, box-shadow 0.2s; }
+        .dashboard-card { background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: inline-block; width:100%; margin-bottom:0; break-inside: avoid; vertical-align: top; overflow: hidden; border: 1px solid #f0f3f5; cursor: default; transition: transform 0.2s, box-shadow 0.2s; }
         .dashboard-card.dragging { opacity: 0.5; transform: scale(0.98); box-shadow: 0 10px 20px rgba(0,0,0,0.1); cursor: grabbing; }
         .dashboard-card.drag-over { border: 2px dashed #004d40; border-radius: 8px; }
 
@@ -1340,6 +1340,17 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         </div>
 
         <div class="form-group" id="wrap_single_value_options" style="display:none;">
+            <div style="margin-bottom:12px;">
+                <label style="color:#004d40; font-weight:600; display:block; margin-bottom:4px;">Value Calculation (Avg / Max / Min)</label>
+                <select id="b_value_calc" class="form-control-fix">
+                    <option value="current" selected>Current / Latest Value (Default)</option>
+                    <option value="avg">Average (Avg / Rata-rata)</option>
+                    <option value="max">Maximum (Max / Nilai Tertinggi)</option>
+                    <option value="min">Minimum (Min / Nilai Terendah)</option>
+                    <option value="summary">Current with Min / Avg / Max Badges</option>
+                </select>
+                <small style="color:#7f8c8d; font-size:10px; display:block; margin-top:3px;">* Calculates aggregate from history data over the active time range (1h, 24h, etc.).</small>
+            </div>
             <label>Show Module & Agent Name</label>
             <select id="b_show_module_name" class="form-control-fix">
                 <option value="1">Show</option>
@@ -3562,6 +3573,7 @@ async function openBuilder() {
     document.getElementById('b_stat_font_color_hex').value = '';
     if (document.getElementById('b_auto_convert_traffic')) document.getElementById('b_auto_convert_traffic').checked = true;
     if (document.getElementById('b_show_module_name')) document.getElementById('b_show_module_name').value = '1';
+    if (document.getElementById('b_value_calc')) document.getElementById('b_value_calc').value = 'current';
     if (document.getElementById('b_history_sort')) document.getElementById('b_history_sort').value = 'time_desc';
     toggleViewTypeOptions();
     document.getElementById('inner_search').value = '';
@@ -3623,6 +3635,9 @@ async function openEdit(id) {
     document.getElementById('b_chart_font_size').value = c.chart_font_size || '11';
     if (document.getElementById('b_show_module_name')) {
         document.getElementById('b_show_module_name').value = (c.show_module_name !== undefined) ? String(c.show_module_name) : '1';
+    }
+    if (document.getElementById('b_value_calc')) {
+        document.getElementById('b_value_calc').value = c.value_calc || 'current';
     }
     if (document.getElementById('b_history_sort')) {
         document.getElementById('b_history_sort').value = c.history_sort || 'time_desc';
@@ -3694,6 +3709,7 @@ function saveWidget() {
         show_stats: parseInt(document.getElementById('b_show_stats').value),
         visible_stats: visStats,
         show_module_name: document.getElementById('b_show_module_name') ? parseInt(document.getElementById('b_show_module_name').value) : 1,
+        value_calc: document.getElementById('b_value_calc') ? document.getElementById('b_value_calc').value : 'current',
         visible_columns: Array.from(document.querySelectorAll('.col-visibility-chk:checked')).map(el => el.value),
         history_sort: document.getElementById('b_history_sort') ? document.getElementById('b_history_sort').value : 'time_desc',
         manual_ids: selectedIds.join(',')
@@ -4153,16 +4169,56 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
 
     if (viewType === 'single_value') {
         const m = data[0] || {};
-        const valDisplay = formatHumanMetric(m.current_value, m.unit, autoConvert);
+        const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
+        
+        // Aggregate calculations (avg, max, min, summary)
+        const valCalc = card.value_calc || 'current';
+        let calcMin = null, calcMax = null, calcAvg = null;
+        if (modHist && modHist.length > 0) {
+            const histNums = modHist
+                .map(h => (h && h.val !== undefined && h.val !== null) ? parseFloat(String(h.val).replace(',', '.')) : NaN)
+                .filter(v => !isNaN(v));
+            if (histNums.length > 0) {
+                calcMin = Math.min(...histNums);
+                calcMax = Math.max(...histNums);
+                calcAvg = histNums.reduce((a, b) => a + b, 0) / histNums.length;
+            }
+        }
+
+        let rawDisplay = m.current_value;
+        let badgeHtml = '';
+        let summaryHtml = '';
+
+        if (valCalc === 'avg') {
+            if (calcAvg !== null) rawDisplay = (calcAvg % 1 === 0) ? calcAvg.toString() : Number(calcAvg.toFixed(2)).toString();
+            badgeHtml = `<span style="display:inline-block; font-size:10px; font-weight:700; color:#0d9488; background:#ccfbf1; padding:1px 6px; border-radius:4px; margin-bottom:4px; text-transform:uppercase;" title="Average Value over active time range">AVG</span>`;
+        } else if (valCalc === 'max') {
+            if (calcMax !== null) rawDisplay = (calcMax % 1 === 0) ? calcMax.toString() : Number(calcMax.toFixed(2)).toString();
+            badgeHtml = `<span style="display:inline-block; font-size:10px; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 6px; border-radius:4px; margin-bottom:4px; text-transform:uppercase;" title="Maximum Value over active time range">MAX</span>`;
+        } else if (valCalc === 'min') {
+            if (calcMin !== null) rawDisplay = (calcMin % 1 === 0) ? calcMin.toString() : Number(calcMin.toFixed(2)).toString();
+            badgeHtml = `<span style="display:inline-block; font-size:10px; font-weight:700; color:#0369a1; background:#e0f2fe; padding:1px 6px; border-radius:4px; margin-bottom:4px; text-transform:uppercase;" title="Minimum Value over active time range">MIN</span>`;
+        } else if (valCalc === 'summary' && (calcMin !== null || calcAvg !== null || calcMax !== null)) {
+            summaryHtml = `
+            <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center;">
+                <span style="font-size:10px; font-weight:600; color:#0369a1; background:#e0f2fe; padding:2px 6px; border-radius:4px;" title="Minimum in active range">MIN: ${formatHumanMetric(calcMin, m.unit, autoConvert)}</span>
+                <span style="font-size:10px; font-weight:600; color:#0d9488; background:#ccfbf1; padding:2px 6px; border-radius:4px;" title="Average in active range">AVG: ${formatHumanMetric(calcAvg, m.unit, autoConvert)}</span>
+                <span style="font-size:10px; font-weight:600; color:#b91c1c; background:#fee2e2; padding:2px 6px; border-radius:4px;" title="Maximum in active range">MAX: ${formatHumanMetric(calcMax, m.unit, autoConvert)}</span>
+            </div>`;
+        }
+
+        const valDisplay = formatHumanMetric(rawDisplay, m.unit, autoConvert);
         const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[m.estado] || '#95a5a6';
         const showText = card.show_module_name !== 0;
         
         container.innerHTML = `
         <div style="height: 260px; width: 100%; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; background: #fff; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div style="padding: 15px 15px 0 15px;">
+            <div style="padding: 15px 15px 0 15px; z-index: 2;">
+                ${badgeHtml}
                 <div style="font-size: 30px; font-weight: 700; color: ${color}; line-height: 1.1; display: flex; align-items: baseline; gap: 4px;">
                     <span>${valDisplay}</span>
                 </div>
+                ${summaryHtml}
             </div>
             <!-- Relative positioned ECharts Sparkline container -->
             <div id="chart_canvas_${cardId}" style="flex: 1; min-height: 80px; width: 100%; cursor: pointer;" onclick="openNativeModuleDetailModal('${m.id_agente_modulo}', '${(m.agent_alias + ' - ' + m.module_name).replace(/'/g, "\\'")}')"></div>
@@ -4180,7 +4236,6 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             delete activeCharts[cardId];
         }
 
-        const modHist = history.filter(h => String(h.id_mod) === String(m.id_agente_modulo));
         if (modHist && modHist.length > 0) {
             activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
             activeCharts[cardId].setOption({
