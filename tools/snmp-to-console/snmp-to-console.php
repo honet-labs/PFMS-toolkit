@@ -21,20 +21,66 @@ if (isset($_POST['api']) && $_POST['api'] === 'walk') {
     $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if ($client_token !== $csrf_token) { echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token']); exit; }
 
-    $target = escapeshellarg(trim($_POST['target'] ?? ''));
-    $community = escapeshellarg(trim($_POST['community'] ?? 'public'));
-    $version = escapeshellarg($_POST['version'] ?? '2c');
+    $target_val = trim($_POST['target'] ?? '');
+    if (empty($target_val)) {
+        echo json_encode(['ok' => false, 'error' => 'Target IP or Hostname is required.']);
+        exit;
+    }
+    $target = escapeshellarg($target_val);
+    $version = trim($_POST['version'] ?? '2c');
     $oid_input = trim($_POST['oid'] ?? '');
     $oid = escapeshellarg(empty($oid_input) ? '.1' : $oid_input);
     $mib_mode = $_POST['mib_mode'] ?? 'default';
 
-    $cmd = "snmpwalk -t 2 -r 1 -O n -v $version -c $community ";
+    if ($version === '3') {
+        $sec_level = trim($_POST['v3_sec_level'] ?? 'authPriv');
+        $user_val = trim($_POST['v3_user'] ?? '');
+        if (empty($user_val)) {
+            echo json_encode(['ok' => false, 'error' => 'SNMP v3 Username / Security Name is required.']);
+            exit;
+        }
+        $user = escapeshellarg($user_val);
+        $auth_proto = escapeshellarg(trim($_POST['v3_auth_proto'] ?? 'SHA'));
+        $auth_pass = escapeshellarg($_POST['v3_auth_pass'] ?? '');
+        $priv_proto = escapeshellarg(trim($_POST['v3_priv_proto'] ?? 'AES'));
+        $priv_pass = escapeshellarg($_POST['v3_priv_pass'] ?? '');
+        $context = trim($_POST['v3_context'] ?? '');
+
+        $cmd = "snmpwalk -t 3 -r 1 -O n -v 3 -u $user -l " . escapeshellarg($sec_level) . " ";
+        if ($sec_level === 'authNoPriv' || $sec_level === 'authPriv') {
+            $cmd .= "-a $auth_proto -A $auth_pass ";
+        }
+        if ($sec_level === 'authPriv') {
+            $cmd .= "-x $priv_proto -X $priv_pass ";
+        }
+        if (!empty($context)) {
+            $cmd .= "-n " . escapeshellarg($context) . " ";
+        }
+    } else {
+        $community = escapeshellarg(trim($_POST['community'] ?? 'public'));
+        $s_ver = escapeshellarg($version);
+        $cmd = "snmpwalk -t 2 -r 1 -O n -v $s_ver -c $community ";
+    }
     
     // Dynamic MIB Path
     if ($mib_mode === 'pandora') {
         $mib_dir = realpath(__DIR__ . '/../../../../attachment/mibs');
         if ($mib_dir) {
             $cmd .= "-M " . escapeshellarg("+" . $mib_dir) . " ";
+        }
+    } elseif ($mib_mode === 'toolkit') {
+        $mib_dir = realpath(__DIR__ . '/../snmp-explorer/engine/mibs');
+        if ($mib_dir) {
+            $cmd .= "-M " . escapeshellarg("+" . $mib_dir) . " ";
+        }
+    } elseif ($mib_mode === 'all') {
+        $dirs = [];
+        $d1 = realpath(__DIR__ . '/../snmp-explorer/engine/mibs');
+        if ($d1) $dirs[] = $d1;
+        $d2 = realpath(__DIR__ . '/../../../../attachment/mibs');
+        if ($d2) $dirs[] = $d2;
+        if (!empty($dirs)) {
+            $cmd .= "-M " . escapeshellarg("+" . implode(':', $dirs)) . " ";
         }
     }
     
@@ -52,7 +98,22 @@ if (isset($_POST['api']) && $_POST['api'] === 'walk') {
     $output = implode("\n", array_slice($lines, 0, 500));
     if (count($lines) > 500) $output .= "\n... (Output truncated to 500 lines)";
     
-    echo json_encode(['ok' => true, 'command' => $cmd, 'output' => $output]);
+    // Obfuscate secret credentials before echoing command to UI
+    $safe_cmd = $cmd;
+    if ($version === '3') {
+        if (!empty($_POST['v3_auth_pass'])) {
+            $safe_cmd = str_replace(escapeshellarg($_POST['v3_auth_pass']), "'******'", $safe_cmd);
+        }
+        if (!empty($_POST['v3_priv_pass'])) {
+            $safe_cmd = str_replace(escapeshellarg($_POST['v3_priv_pass']), "'******'", $safe_cmd);
+        }
+    } else {
+        if (!empty($_POST['community']) && $_POST['community'] !== 'public') {
+            $safe_cmd = str_replace(escapeshellarg($_POST['community']), "'******'", $safe_cmd);
+        }
+    }
+
+    echo json_encode(['ok' => true, 'command' => $safe_cmd, 'output' => $output]);
     exit;
 }
 
@@ -112,6 +173,13 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
         $community = trim($_POST['community'] ?? 'public');
         $version = $_POST['version'] ?? '2c';
         $fallback_value = trim($_POST['fallback_value'] ?? '');
+        $v3_sec_level = trim($_POST['v3_sec_level'] ?? 'authPriv');
+        $v3_user = trim($_POST['v3_user'] ?? '');
+        $v3_auth_proto = trim($_POST['v3_auth_proto'] ?? 'SHA');
+        $v3_auth_pass = $_POST['v3_auth_pass'] ?? '';
+        $v3_priv_proto = trim($_POST['v3_priv_proto'] ?? 'AES');
+        $v3_priv_pass = $_POST['v3_priv_pass'] ?? '';
+        $v3_context = trim($_POST['v3_context'] ?? '');
 
         if (empty($agent_ids)) throw new Exception("Select at least one agent.");
         
@@ -149,8 +217,29 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
 
             $final_value = $fallback_value;
             if (!empty($target_ip) && !empty($oid)) {
-                $s_ip = escapeshellarg($target_ip); $s_com = escapeshellarg($community); $s_ver = escapeshellarg($version); $s_oid = escapeshellarg($oid);
-                $get_cmd = "snmpget -t 1 -r 0 -v $s_ver -c $s_com $s_ip $s_oid 2>&1";
+                $s_ip = escapeshellarg($target_ip);
+                $s_oid = escapeshellarg($oid);
+
+                if ($version === '3') {
+                    $u = escapeshellarg($v3_user);
+                    $l = escapeshellarg($v3_sec_level);
+                    $get_cmd = "snmpget -t 2 -r 0 -v 3 -u $u -l $l ";
+                    if ($v3_sec_level === 'authNoPriv' || $v3_sec_level === 'authPriv') {
+                        $get_cmd .= "-a " . escapeshellarg($v3_auth_proto) . " -A " . escapeshellarg($v3_auth_pass) . " ";
+                    }
+                    if ($v3_sec_level === 'authPriv') {
+                        $get_cmd .= "-x " . escapeshellarg($v3_priv_proto) . " -X " . escapeshellarg($v3_priv_pass) . " ";
+                    }
+                    if (!empty($v3_context)) {
+                        $get_cmd .= "-n " . escapeshellarg($v3_context) . " ";
+                    }
+                    $get_cmd .= "$s_ip $s_oid 2>&1";
+                } else {
+                    $s_com = escapeshellarg($community);
+                    $s_ver = escapeshellarg($version);
+                    $get_cmd = "snmpget -t 1 -r 0 -v $s_ver -c $s_com $s_ip $s_oid 2>&1";
+                }
+
                 $raw_val = shell_exec($get_cmd);
                 if ($raw_val && strpos($raw_val, ' = ') !== false) {
                     $val_part = explode(' = ', $raw_val)[1];
@@ -195,8 +284,8 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
         .page-title { font-size: 20px; font-weight: 600; color: #0b1a26; margin: 0; }
         
         .main-container { padding: 25px 30px; display: flex; gap: 25px; }
-        .form-card { width: 320px; background: #fff; border-radius: 8px; border: 1px solid #f0f3f5; box-shadow: 0 2px 8px rgba(0,0,0,0.04); padding: 20px; }
-        .result-card { flex: 1; background: #fff; border-radius: 8px; border: 1px solid #f0f3f5; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; flex-direction: column; overflow: hidden; min-height: 500px; }
+        .form-card { width: 360px; flex-shrink: 0; background: #fff; border-radius: 8px; border: 1px solid #f0f3f5; box-shadow: 0 2px 8px rgba(0,0,0,0.04); padding: 20px; }
+        .result-card { flex: 1; min-width: 0; background: #fff; border-radius: 8px; border: 1px solid #f0f3f5; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; flex-direction: column; overflow: hidden; min-height: 500px; }
         
         .form-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 5px; display: block; }
         .form-control, .form-select { font-size: 13px; border-color: #dce1e5; padding: 7px 10px; }
@@ -246,16 +335,92 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
             <input type="text" id="target" class="form-control" placeholder="e.g. 192.168.1.1">
         </div>
         <div class="row g-2 mb-3">
-            <div class="col-4"><label class="form-label">Version</label><select id="version" class="form-select"><option value="1">v1</option><option value="2c" selected>v2c</option></select></div>
-            <div class="col-8"><label class="form-label">Community</label><input type="text" id="community" class="form-control" value="public"></div>
+            <div class="col-4" id="colVersion">
+                <label class="form-label">Version</label>
+                <select id="version" class="form-select" onchange="toggleSnmpVersion()">
+                    <option value="2c" selected>v2c</option>
+                    <option value="1">v1</option>
+                    <option value="3">v3</option>
+                </select>
+            </div>
+            <div class="col-8" id="groupCommunity">
+                <label class="form-label">Community</label>
+                <input type="text" id="community" class="form-control" value="public">
+            </div>
         </div>
+
+        <!-- SNMP v3 Credentials Box -->
+        <div id="snmpv3Box" style="display: none; background: #f8fafc; border: 1px solid #cbd5e1; border-left: 3px solid #004d40; border-radius: 6px; padding: 12px; margin-bottom: 14px;">
+            <div style="font-weight: 700; font-size: 11px; color: #0b1a26; margin-bottom: 10px; display: flex; align-items: center; gap: 5px;">
+                <span class="material-symbols-outlined" style="font-size: 16px; color: #004d40;">lock</span>
+                <span>SNMP v3 Credentials (USM)</span>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Security Level</label>
+                <select id="v3SecLevel" class="form-select form-select-sm" onchange="toggleV3SecLevel()">
+                    <option value="authPriv" selected>authPriv (Auth & Privacy)</option>
+                    <option value="authNoPriv">authNoPriv (Auth, No Privacy)</option>
+                    <option value="noAuthNoPriv">noAuthNoPriv (No Auth, No Priv)</option>
+                </select>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Username / Security Name *</label>
+                <input type="text" id="v3User" class="form-control form-control-sm font-monospace" placeholder="e.g. snmpuser">
+            </div>
+            <div id="groupV3Auth" class="row g-2 mb-2">
+                <div class="col-5">
+                    <label class="form-label">Auth Proto</label>
+                    <select id="v3AuthProto" class="form-select form-select-sm">
+                        <option value="SHA" selected>SHA (SHA-1)</option>
+                        <option value="SHA-256">SHA-256</option>
+                        <option value="MD5">MD5</option>
+                        <option value="SHA-512">SHA-512</option>
+                    </select>
+                </div>
+                <div class="col-7">
+                    <label class="form-label">Auth Passphrase *</label>
+                    <div style="position:relative; display:flex; align-items:center;">
+                        <input type="password" id="v3AuthPass" class="form-control form-control-sm font-monospace" style="padding-right:45px;" placeholder="Password">
+                        <button type="button" onclick="togglePassVisibility('v3AuthPass', this)" style="position:absolute; right:6px; background:none; border:none; cursor:pointer; color:#64748b; font-size:10px; font-weight:600;">Show</button>
+                    </div>
+                </div>
+            </div>
+            <div id="groupV3Priv" class="row g-2 mb-2">
+                <div class="col-5">
+                    <label class="form-label">Priv Proto</label>
+                    <select id="v3PrivProto" class="form-select form-select-sm">
+                        <option value="AES" selected>AES (128)</option>
+                        <option value="AES-256">AES-256</option>
+                        <option value="DES">DES</option>
+                        <option value="3DES">3DES</option>
+                    </select>
+                </div>
+                <div class="col-7">
+                    <label class="form-label">Priv Passphrase *</label>
+                    <div style="position:relative; display:flex; align-items:center;">
+                        <input type="password" id="v3PrivPass" class="form-control form-control-sm font-monospace" style="padding-right:45px;" placeholder="Privacy Pass">
+                        <button type="button" onclick="togglePassVisibility('v3PrivPass', this)" style="position:absolute; right:6px; background:none; border:none; cursor:pointer; color:#64748b; font-size:10px; font-weight:600;">Show</button>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <label class="form-label">Context Name (Optional)</label>
+                <input type="text" id="v3Context" class="form-control form-control-sm font-monospace" placeholder="Default: empty">
+            </div>
+        </div>
+
         <div class="mb-3">
             <label class="form-label">Start OID</label>
             <input type="text" id="oid" class="form-control" value=".1">
         </div>
         <div class="mb-4">
-            <label class="form-label">MIB Mode</label>
-            <select id="mibMode" class="form-select"><option value="default">System Default</option><option value="pandora">Pandora Attachment</option></select>
+            <label class="form-label">MIB Resolution Mode</label>
+            <select id="mibMode" class="form-select">
+                <option value="default">System Default</option>
+                <option value="pandora">Pandora Attachment (/attachment/mibs)</option>
+                <option value="toolkit">Toolkit MIBs (/snmp-explorer/engine/mibs)</option>
+                <option value="all">All Available MIBs (Combined)</option>
+            </select>
         </div>
         <button id="runBtn" class="btn-premium" onclick="runWalk()">
             <span class="material-symbols-outlined">rocket_launch</span> Run SNMP Walk
@@ -382,12 +547,80 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
         $('#pushModal').css('display', 'flex').hide().fadeIn(200);
     }
 
+    function toggleSnmpVersion() {
+        const v = $('#version').val();
+        if (v === '3') {
+            $('#groupCommunity').hide();
+            $('#colVersion').removeClass('col-4').addClass('col-12');
+            $('#snmpv3Box').slideDown(150);
+        } else {
+            $('#snmpv3Box').slideUp(150, function() {
+                $('#colVersion').removeClass('col-12').addClass('col-4');
+                $('#groupCommunity').fadeIn(150);
+            });
+        }
+    }
+
+    function toggleV3SecLevel() {
+        const lvl = $('#v3SecLevel').val();
+        if (lvl === 'noAuthNoPriv') {
+            $('#groupV3Auth, #groupV3Priv').slideUp(150);
+        } else if (lvl === 'authNoPriv') {
+            $('#groupV3Auth').slideDown(150);
+            $('#groupV3Priv').slideUp(150);
+        } else {
+            $('#groupV3Auth, #groupV3Priv').slideDown(150);
+        }
+    }
+
+    function togglePassVisibility(inputId, btn) {
+        const el = document.getElementById(inputId);
+        if (!el) return;
+        if (el.type === 'password') {
+            el.type = 'text';
+            btn.textContent = 'Hide';
+        } else {
+            el.type = 'password';
+            btn.textContent = 'Show';
+        }
+    }
+
     async function runWalk() {
+        const target = $('#target').val().trim();
+        if (!target) {
+            alert('Please enter Target IP / Hostname.');
+            $('#target').focus();
+            return;
+        }
+
+        const version = $('#version').val();
+        if (version === '3') {
+            const user = $('#v3User').val().trim();
+            if (!user) {
+                alert('SNMP v3 Username / Security Name is required.');
+                $('#v3User').focus();
+                return;
+            }
+        }
+
         const btn = $('#runBtn'); btn.prop('disabled', true); $('#loader').show();
         const fd = new FormData();
-        fd.append('api', 'walk'); fd.append('target', $('#target').val());
-        fd.append('community', $('#community').val()); fd.append('version', $('#version').val());
-        fd.append('oid', $('#oid').val()); fd.append('mib_mode', $('#mibMode').val());
+        fd.append('api', 'walk');
+        fd.append('target', target);
+        fd.append('community', $('#community').val());
+        fd.append('version', version);
+        fd.append('oid', $('#oid').val());
+        fd.append('mib_mode', $('#mibMode').val());
+
+        if (version === '3') {
+            fd.append('v3_sec_level', $('#v3SecLevel').val());
+            fd.append('v3_user', $('#v3User').val().trim());
+            fd.append('v3_auth_proto', $('#v3AuthProto').val());
+            fd.append('v3_auth_pass', $('#v3AuthPass').val());
+            fd.append('v3_priv_proto', $('#v3PrivProto').val());
+            fd.append('v3_priv_pass', $('#v3PrivPass').val());
+            fd.append('v3_context', $('#v3Context').val().trim());
+        }
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
@@ -424,6 +657,16 @@ if (isset($_POST['api']) && $_POST['api'] === 'push_custom_data') {
         fd.append('community', $('#community').val());
         fd.append('version', $('#version').val());
         fd.append('fallback_value', window.currentVal);
+
+        if ($('#version').val() === '3') {
+            fd.append('v3_sec_level', $('#v3SecLevel').val());
+            fd.append('v3_user', $('#v3User').val().trim());
+            fd.append('v3_auth_proto', $('#v3AuthProto').val());
+            fd.append('v3_auth_pass', $('#v3AuthPass').val());
+            fd.append('v3_priv_proto', $('#v3PrivProto').val());
+            fd.append('v3_priv_pass', $('#v3PrivPass').val());
+            fd.append('v3_context', $('#v3Context').val().trim());
+        }
 
         try {
             const r = await fetch('', { method: 'POST', headers: { 'X-CSRF-TOKEN': '<?= $csrf_token ?>' }, body: fd });
