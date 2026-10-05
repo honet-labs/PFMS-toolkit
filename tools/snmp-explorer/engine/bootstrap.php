@@ -216,10 +216,34 @@ function snmp_explorer_bootstrap(\PDO $pdo): array {
 
     $speedDetector = new \SnmpBridge\Core\Normalize\SpeedDetector();
     $thresholdDetector = new \SnmpBridge\Core\Normalize\OpticalPowerThresholdDetector();
+    $localMibDir = __DIR__ . '/mibs';
+    $resolvedMibDirs = [$localMibDir];
+    $possiblePandoraDirs = [
+        realpath(__DIR__ . '/../../../../attachment/mibs'),
+        realpath(__DIR__ . '/../../../../../attachment/mibs'),
+        '/var/www/html/pandora_console/attachment/mibs',
+    ];
+    foreach ($possiblePandoraDirs as $pDir) {
+        if ($pDir && is_dir($pDir) && !in_array($pDir, $resolvedMibDirs, true)) {
+            $resolvedMibDirs[] = $pDir;
+            break;
+        }
+    }
+    if (is_dir('/usr/share/snmp/mibs') && !in_array('/usr/share/snmp/mibs', $resolvedMibDirs, true)) {
+        $resolvedMibDirs[] = '/usr/share/snmp/mibs';
+    }
+    if (!empty($config['snmp']['mibdirs']) && is_array($config['snmp']['mibdirs'])) {
+        foreach ($config['snmp']['mibdirs'] as $extraDir) {
+            if (is_dir($extraDir) && !in_array($extraDir, $resolvedMibDirs, true)) {
+                $resolvedMibDirs[] = $extraDir;
+            }
+        }
+    }
+
     $oidTranslator = new \SnmpBridge\Core\Snmp\OidTranslator(
         (bool) ($config['snmp']['translate_oids'] ?? true),
         (string) ($config['snmp']['snmptranslate_binary'] ?? '/usr/bin/snmptranslate'),
-        (array) ($config['snmp']['mibdirs'] ?? [__DIR__ . '/mibs']),
+        $resolvedMibDirs,
         (string) ($config['snmp']['mibs'] ?? '+ALL'),
         (float) ($config['snmp']['snmptranslate_timeout_sec'] ?? 2.0),
     );
@@ -296,5 +320,7 @@ function snmp_explorer_bootstrap(\PDO $pdo): array {
         'sensorRepo' => $sensorRepository,
         'agentRepo' => $agentRepository,
         'pandoraRepo' => $pandoraRepository,
+        'oidTranslator' => $oidTranslator,
+        'mibDirs' => $resolvedMibDirs,
     ];
 }

@@ -60,6 +60,8 @@ try {
     $agentRepo = $engine['agentRepo'];
     $pandoraRepo = $engine['pandoraRepo'];
     $engineConfig = $engine['config'];
+    $oidTranslator = $engine['oidTranslator'] ?? null;
+    $engineMibDirs = $engine['mibDirs'] ?? [__DIR__ . '/engine/mibs'];
 } catch (\Throwable $e) {
     if (isset($_GET['api'])) {
         while (ob_get_level() > 0) ob_end_clean();
@@ -486,6 +488,317 @@ if (!empty($api)) {
         exit;
     }
 
+    // API: List Installed MIBs
+    if ($api === 'list_mibs') {
+        $localMibDir = __DIR__ . '/engine/mibs';
+        if (!is_dir($localMibDir)) {
+            @mkdir($localMibDir, 0755, true);
+        }
+
+        $mibsList = [];
+        
+        // Scan local toolkit MIBs
+        if (is_dir($localMibDir)) {
+            $files = @scandir($localMibDir) ?: [];
+            foreach ($files as $file) {
+                if ($file === '.' || $file === '..' || $file === '.gitkeep' || str_starts_with($file, '.')) {
+                    continue;
+                }
+                $filePath = $localMibDir . '/' . $file;
+                if (!is_file($filePath)) continue;
+
+                $size = filesize($filePath);
+                $mtime = filemtime($filePath);
+
+                // Quick parse module name from ASN.1 DEFINITIONS
+                $moduleName = $file;
+                $sample = @file_get_contents($filePath, false, null, 0, 32768);
+                if ($sample && preg_match('/^\s*([A-Za-z0-9_-]+)\s+DEFINITIONS\s*::=\s*BEGIN/mi', $sample, $m)) {
+                    $moduleName = trim($m[1]);
+                }
+
+                $mibsList[] = [
+                    'filename' => $file,
+                    'module_name' => $moduleName,
+                    'size_bytes' => $size,
+                    'size_formatted' => $size > 1048576 ? round($size / 1048576, 2) . ' MB' : round($size / 1024, 1) . ' KB',
+                    'modified_at' => date('Y-m-d H:i:s', $mtime),
+                    'source' => 'Toolkit (engine/mibs)',
+                    'can_delete' => ($file !== 'IF-MIB' && $file !== 'IF-MIB.mib')
+                ];
+            }
+        }
+
+        // Also detect Pandora FMS attachment mibs folder
+        $pandoraMibDir = realpath(__DIR__ . '/../../../../attachment/mibs') ?: realpath(__DIR__ . '/../../../../../attachment/mibs');
+        if ($pandoraMibDir && is_dir($pandoraMibDir)) {
+            $pFiles = @scandir($pandoraMibDir) ?: [];
+            foreach ($pFiles as $pFile) {
+                if ($pFile === '.' || $pFile === '..' || str_starts_with($pFile, '.')) continue;
+                $pPath = $pandoraMibDir . '/' . $pFile;
+                if (!is_file($pPath)) continue;
+
+                $size = filesize($pPath);
+                $mtime = filemtime($pPath);
+
+                $moduleName = $pFile;
+                $sample = @file_get_contents($pPath, false, null, 0, 32768);
+                if ($sample && preg_match('/^\s*([A-Za-z0-9_-]+)\s+DEFINITIONS\s*::=\s*BEGIN/mi', $sample, $m)) {
+                    $moduleName = trim($m[1]);
+                }
+
+                $mibsList[] = [
+                    'filename' => $pFile,
+                    'module_name' => $moduleName,
+                    'size_bytes' => $size,
+                    'size_formatted' => $size > 1048576 ? round($size / 1048576, 2) . ' MB' : round($size / 1024, 1) . ' KB',
+                    'modified_at' => date('Y-m-d H:i:s', $mtime),
+                    'source' => 'Pandora Console (attachment/mibs)',
+                    'can_delete' => false
+                ];
+            }
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'total' => count($mibsList),
+            'local_dir' => $localMibDir,
+            'mibs' => $mibsList
+        ]);
+        exit;
+    }
+
+    // API: Upload MIB File
+    if ($api === 'upload_mib' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $verify_csrf();
+
+        $localMibDir = __DIR__ . '/engine/mibs';
+        if (!is_dir($localMibDir)) {
+            @mkdir($localMibDir, 0755, true);
+        }
+
+        if (empty($_FILES['mib_file']) || $_FILES['mib_file']['error'] !== UPLOAD_ERR_OK) {
+            $errorCode = $_FILES['mib_file']['error'] ?? -1;
+            echo json_encode(['ok' => false, 'error' => 'File upload failed with error code: ' . $errorCode]);
+            exit;
+        }
+
+        $origName = $_FILES['mib_file']['name'];
+        $cleanName = preg_replace('/[^A-Za-z0-9_.-]/', '', basename($origName));
+        if (empty($cleanName)) {
+            $cleanName = 'CUSTOM-MIB-' . time() . '.mib';
+        }
+
+        $tmpFile = $_FILES['mib_file']['tmp_name'];
+        $sample = @file_get_contents($tmpFile, false, null, 0, 8192);
+
+        // Basic check for text/ASCII and ASN.1
+        if ($sample === false || strpos($sample, "\0") !== false) {
+            echo json_encode(['ok' => false, 'error' => 'Uploaded file is not a valid text-based MIB definition file.']);
+            exit;
+        }
+
+        $targetPath = $localMibDir . '/' . $cleanName;
+        if (!move_uploaded_file($tmpFile, $targetPath)) {
+            echo json_encode(['ok' => false, 'error' => 'Failed to move uploaded file to engine/mibs/. Check directory permissions.']);
+            exit;
+        }
+
+        // Parse module name
+        $moduleName = $cleanName;
+        $content = @file_get_contents($targetPath, false, null, 0, 32768);
+        if ($content && preg_match('/^\s*([A-Za-z0-9_-]+)\s+DEFINITIONS\s*::=\s*BEGIN/mi', $content, $m)) {
+            $moduleName = trim($m[1]);
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'message' => "MIB module '{$moduleName}' ({$cleanName}) uploaded and registered successfully.",
+            'filename' => $cleanName,
+            'module_name' => $moduleName
+        ]);
+        exit;
+    }
+
+    // API: Import MIB via Text / URL / Preset
+    if ($api === 'import_mib_text' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $verify_csrf();
+        $raw = file_get_contents('php://input');
+        $input = json_decode($raw, true) ?: $_POST;
+
+        $localMibDir = __DIR__ . '/engine/mibs';
+        if (!is_dir($localMibDir)) {
+            @mkdir($localMibDir, 0755, true);
+        }
+
+        $method = trim((string)($input['method'] ?? 'text'));
+        $content = '';
+        $mibName = trim((string)($input['mib_name'] ?? ''));
+
+        if ($method === 'text') {
+            $content = (string)($input['content'] ?? '');
+            if (empty(trim($content))) {
+                echo json_encode(['ok' => false, 'error' => 'MIB content cannot be empty.']);
+                exit;
+            }
+        } elseif ($method === 'url') {
+            $url = trim((string)($input['url'] ?? ''));
+            if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+                echo json_encode(['ok' => false, 'error' => 'Invalid source URL specified.']);
+                exit;
+            }
+            $ctx = stream_context_create([
+                'http' => ['timeout' => 10, 'follow_location' => 1, 'user_agent' => 'PFMS-Toolkit-MIB-Importer']
+            ]);
+            $fetched = @file_get_contents($url, false, $ctx);
+            if ($fetched === false || empty($fetched)) {
+                echo json_encode(['ok' => false, 'error' => 'Failed to download MIB from URL. Ensure the URL is accessible.']);
+                exit;
+            }
+            $content = $fetched;
+            if (empty($mibName)) {
+                $urlPath = parse_url($url, PHP_URL_PATH);
+                $mibName = basename((string)$urlPath);
+            }
+        } elseif ($method === 'preset') {
+            $presetKey = trim((string)($input['preset'] ?? ''));
+            $presets = [
+                'HOST-RESOURCES-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/HOST-RESOURCES-MIB',
+                'ENTITY-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/ENTITY-MIB',
+                'CISCO-PROCESS-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/cisco/CISCO-PROCESS-MIB',
+                'MIKROTIK-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/mikrotik/MIKROTIK-MIB',
+                'HUAWEI-ENTITY-EXTENT-MIB' => 'https://raw.githubusercontent.com/librenms/librenms/master/mibs/huawei/HUAWEI-ENTITY-EXTENT-MIB'
+            ];
+            if (!isset($presets[$presetKey])) {
+                echo json_encode(['ok' => false, 'error' => 'Unknown preset key.']);
+                exit;
+            }
+            $mibName = $presetKey;
+            $ctx = stream_context_create([
+                'http' => ['timeout' => 10, 'follow_location' => 1, 'user_agent' => 'PFMS-Toolkit-MIB-Importer']
+            ]);
+            $fetched = @file_get_contents($presets[$presetKey], false, $ctx);
+            if ($fetched === false || empty($fetched)) {
+                echo json_encode(['ok' => false, 'error' => "Failed to download preset MIB '{$presetKey}'. Check internet connection."]);
+                exit;
+            }
+            $content = $fetched;
+        }
+
+        // Try to parse module name from content if empty
+        if (preg_match('/^\s*([A-Za-z0-9_-]+)\s+DEFINITIONS\s*::=\s*BEGIN/mi', $content, $m)) {
+            $parsedName = trim($m[1]);
+            if (empty($mibName) || $mibName === 'CUSTOM') {
+                $mibName = $parsedName;
+            }
+        }
+
+        $cleanName = preg_replace('/[^A-Za-z0-9_.-]/', '', $mibName);
+        if (empty($cleanName)) {
+            $cleanName = 'CUSTOM-MIB-' . time();
+        }
+        if (!str_ends_with(strtolower($cleanName), '.mib') && !str_ends_with(strtolower($cleanName), '.txt')) {
+            $cleanName .= '.mib';
+        }
+
+        $targetPath = $localMibDir . '/' . $cleanName;
+        $bytes = @file_put_contents($targetPath, $content);
+        if ($bytes === false) {
+            echo json_encode(['ok' => false, 'error' => 'Failed to save MIB content to engine/mibs/. Check directory permissions.']);
+            exit;
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'message' => "MIB module '{$cleanName}' imported successfully (" . round($bytes / 1024, 1) . " KB).",
+            'filename' => $cleanName
+        ]);
+        exit;
+    }
+
+    // API: Delete MIB File
+    if ($api === 'delete_mib' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $verify_csrf();
+        $raw = file_get_contents('php://input');
+        $input = json_decode($raw, true) ?: $_POST;
+
+        $filename = basename(trim((string)($input['filename'] ?? '')));
+        if (empty($filename)) {
+            echo json_encode(['ok' => false, 'error' => 'Filename is required.']);
+            exit;
+        }
+
+        if ($filename === 'IF-MIB' || $filename === 'IF-MIB.mib') {
+            echo json_encode(['ok' => false, 'error' => 'Protected System Base MIB (IF-MIB) cannot be deleted.']);
+            exit;
+        }
+
+        $targetPath = __DIR__ . '/engine/mibs/' . $filename;
+        if (!file_exists($targetPath)) {
+            echo json_encode(['ok' => false, 'error' => 'MIB file not found in local toolkit directory. (Pandora console MIBs cannot be deleted from here)']);
+            exit;
+        }
+
+        if (@unlink($targetPath)) {
+            echo json_encode(['ok' => true, 'message' => "MIB file '{$filename}' deleted successfully."]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => "Failed to delete '{$filename}'. Check file permissions."]);
+        }
+        exit;
+    }
+
+    // API: View MIB Content
+    if ($api === 'view_mib') {
+        $filename = basename(trim((string)($_GET['filename'] ?? '')));
+        if (empty($filename)) {
+            echo json_encode(['ok' => false, 'error' => 'Filename is required.']);
+            exit;
+        }
+
+        $targetPath = __DIR__ . '/engine/mibs/' . $filename;
+        if (!file_exists($targetPath)) {
+            $pandoraMibDir = realpath(__DIR__ . '/../../../../attachment/mibs') ?: realpath(__DIR__ . '/../../../../../attachment/mibs');
+            if ($pandoraMibDir && file_exists($pandoraMibDir . '/' . $filename)) {
+                $targetPath = $pandoraMibDir . '/' . $filename;
+            }
+        }
+
+        if (!file_exists($targetPath)) {
+            echo json_encode(['ok' => false, 'error' => 'File not found.']);
+            exit;
+        }
+
+        $content = @file_get_contents($targetPath, false, null, 0, 524288); // Limit to 512KB for UI performance
+        echo json_encode([
+            'ok' => true,
+            'filename' => $filename,
+            'size' => filesize($targetPath),
+            'content' => $content
+        ]);
+        exit;
+    }
+
+    // API: Interactive OID Translation Tester
+    if ($api === 'translate_oid') {
+        $rawOid = trim((string)($_GET['oid'] ?? $_POST['oid'] ?? ''));
+        if (empty($rawOid)) {
+            echo json_encode(['ok' => false, 'error' => 'OID parameter is required.']);
+            exit;
+        }
+
+        if ($oidTranslator) {
+            try {
+                $result = $oidTranslator->translate($rawOid);
+                echo json_encode(['ok' => true, 'data' => $result]);
+            } catch (\Throwable $e) {
+                echo json_encode(['ok' => false, 'error' => 'Translation error: ' . $e->getMessage()]);
+            }
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'OidTranslator engine is not initialized.']);
+        }
+        exit;
+    }
+
     echo json_encode(['ok' => false, 'error' => 'Unknown API action.']);
     exit;
 }
@@ -690,6 +1003,11 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             padding: 2px 7px;
             border-radius: 10px;
             font-weight: 700;
+        }
+        .active-mode-btn {
+            background: var(--brand-green) !important;
+            color: #ffffff !important;
+            border-color: var(--brand-green) !important;
         }
 
         /* Standard Cards */
@@ -986,6 +1304,10 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 Sensor Inventory
                 <span class="badge-pill" id="inventory-tab-count">0</span>
             </button>
+            <button class="tab-btn" data-tab="tab-mibs" onclick="switchTab('tab-mibs')">
+                MIB Uploader & Registry
+                <span class="badge-pill" id="mibs-tab-count">0</span>
+            </button>
             <button class="tab-btn" data-tab="tab-provision" onclick="switchTab('tab-provision')">
                 Pandora Provisioning
                 <span class="badge-pill" id="selected-provision-count" style="background:#004d40; color:#fff;">0</span>
@@ -1264,7 +1586,180 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         </div>
 
         <!-- ============================================================= -->
-        <!-- TAB 3: PANDORA PROVISIONING                                   -->
+        <!-- TAB 3: MIB UPLOADER & REGISTRY                                -->
+        <!-- ============================================================= -->
+        <div id="tab-mibs" class="tab-content d-none">
+            <!-- Row 1: Upload MIB & Test Translator (2 columns) -->
+            <div style="display:grid; grid-template-columns: 1.1fr 1fr; gap:20px; margin-bottom:20px;">
+                
+                <!-- Left: MIB Importer & Uploader -->
+                <div class="dashboard-card" style="margin-bottom:0;">
+                    <div class="card-header-clean">
+                        <h3>MIB Uploader & Importer</h3>
+                        <div style="display:flex; gap:6px;">
+                            <button type="button" class="btn-secondary-custom active-mode-btn" id="btn-mode-file" onclick="setMibImportMode('file')">Upload File</button>
+                            <button type="button" class="btn-secondary-custom" id="btn-mode-text" onclick="setMibImportMode('text')">Paste Content</button>
+                            <button type="button" class="btn-secondary-custom" id="btn-mode-preset" onclick="setMibImportMode('preset')">Quick Presets</button>
+                        </div>
+                    </div>
+
+                    <!-- Method A: File Upload -->
+                    <form id="form-upload-file" onsubmit="submitMibFileUpload(event)">
+                        <div style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 24px 20px; text-align: center; background: #f8fafc; margin-bottom: 14px; transition: 0.2s;" id="drop-area-mib">
+                            <span class="material-symbols-outlined" style="font-size: 38px; color: var(--brand-green); margin-bottom: 6px;">upload_file</span>
+                            <div style="font-weight: 700; font-size: 13px; color: var(--primary-navy); margin-bottom: 4px;">Choose MIB file or drag & drop here</div>
+                            <div style="font-size: 11px; color: #64748b; margin-bottom: 12px;">Supported file types: <code>.mib</code>, <code>.my</code>, <code>.txt</code> or ASN.1 definition</div>
+                            <input type="file" id="mib-file-input" name="mib_file" accept=".mib,.my,.txt" style="display:none;" onchange="handleMibFileSelect(this)">
+                            <button type="button" class="btn-secondary-custom" onclick="document.getElementById('mib-file-input').click()">Browse Files</button>
+                            <div id="selected-file-label" style="font-size:12px; font-weight:600; color:var(--brand-green); margin-top:10px; display:none;"></div>
+                        </div>
+                        <button type="submit" class="btn-apply" id="btn-submit-upload" style="width:100%; justify-content:center;" disabled>
+                            Upload & Register MIB
+                        </button>
+                    </form>
+
+                    <!-- Method B: Paste Text -->
+                    <form id="form-upload-text" class="d-none" onsubmit="submitMibText(event)">
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label class="form-label">MIB Module Name (e.g. HUAWEI-ENTITY-EXTENT-MIB)</label>
+                            <input type="text" id="mib-text-name" class="form-control mono" placeholder="e.g. HOST-RESOURCES-MIB" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">ASN.1 MIB Content</label>
+                            <textarea id="mib-text-content" class="form-control mono" rows="7" placeholder="-- Paste ASN.1 MIB definitions here (e.g. DEFINITIONS ::= BEGIN...)" style="font-size: 11px; resize: vertical;" required></textarea>
+                        </div>
+                        <button type="submit" class="btn-apply" style="width:100%; justify-content:center;">
+                            Save & Compile MIB
+                        </button>
+                    </form>
+
+                    <!-- Method C: Presets -->
+                    <div id="form-upload-preset" class="d-none">
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">
+                            Click to download and register standard enterprise MIB presets into your toolkit directory:
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                <div>
+                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">HOST-RESOURCES-MIB</strong>
+                                    <div style="font-size: 11px; color: #64748b;">Standard Host & Server resource OIDs (Storage, CPU, RAM)</div>
+                                </div>
+                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('HOST-RESOURCES-MIB')">Install</button>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                <div>
+                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">ENTITY-MIB</strong>
+                                    <div style="font-size: 11px; color: #64748b;">Standard RFC Entity physical sensor & inventory OIDs</div>
+                                </div>
+                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('ENTITY-MIB')">Install</button>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                <div>
+                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">CISCO-PROCESS-MIB</strong>
+                                    <div style="font-size: 11px; color: #64748b;">Cisco IOS CPU utilization & processes</div>
+                                </div>
+                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('CISCO-PROCESS-MIB')">Install</button>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                <div>
+                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">HUAWEI-ENTITY-EXTENT-MIB</strong>
+                                    <div style="font-size: 11px; color: #64748b;">Huawei switches/routers temperature, optical power, CPU</div>
+                                </div>
+                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('HUAWEI-ENTITY-EXTENT-MIB')">Install</button>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+                                <div>
+                                    <strong style="font-size: 12.5px; color: var(--primary-navy);">MIKROTIK-MIB</strong>
+                                    <div style="font-size: 11px; color: #64748b;">MikroTik RouterOS health, voltage, temperature, SFP</div>
+                                </div>
+                                <button type="button" class="btn-secondary-custom" onclick="installPresetMib('MIKROTIK-MIB')">Install</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: OID Translator Live Tester -->
+                <div class="dashboard-card" style="margin-bottom:0;">
+                    <div class="card-header-clean">
+                        <h3>Interactive OID Translator Tester</h3>
+                    </div>
+                    <div style="font-size:12px; color:#64748b; margin-bottom:12px;">
+                        Verify whether installed MIBs can successfully translate specific SNMP OIDs to symbolic names:
+                    </div>
+                    <form onsubmit="testTranslateOid(event)">
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">Numeric or Symbolic OID *</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="test-oid-input" class="form-control mono" placeholder="e.g. .1.3.6.1.2.1.1.1.0 or .1.3.6.1.2.1.2.2.1.10.1" value=".1.3.6.1.2.1.1.1.0" required>
+                                <button type="submit" class="btn-apply" style="white-space:nowrap;">Translate</button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Translation Result Box -->
+                    <div id="test-translate-result" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; min-height:160px; font-size:12px;">
+                        <div style="color:#94a3b8; text-align:center; padding:30px 0;">Enter an OID above and click "Translate" to test resolution.</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Row 2: Installed MIB Modules Table -->
+            <div class="dashboard-card">
+                <div class="card-header-clean">
+                    <div>
+                        <h3>Installed MIB Modules & Registry</h3>
+                        <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
+                            These MIB definitions are actively loaded by Net-SNMP and OidTranslator for sensor identification.
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="text" id="search-mibs" class="form-control" placeholder="Search MIB module name..." style="width:240px;" onkeyup="filterMibsTable()">
+                        <button class="btn-secondary-custom" onclick="loadMibsList()">Refresh List</button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="custom-table" id="mibs-table">
+                        <thead>
+                            <tr>
+                                <th>Module Name</th>
+                                <th>File Name</th>
+                                <th>File Size</th>
+                                <th>Source Directory</th>
+                                <th>Last Modified</th>
+                                <th style="text-align:right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mibs-tbody">
+                            <tr><td colspan="6" style="text-align:center; padding:30px; color:#94a3b8;">Loading MIB registry...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: View MIB Content -->
+        <div class="modal-overlay" id="modal-view-mib" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:9000; align-items:center; justify-content:center; backdrop-filter:blur(2px);">
+            <div class="modal-card" style="width:850px; max-width:95vw; max-height:90vh; background:#fff; border-radius:10px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); display:flex; flex-direction:column; overflow:hidden;">
+                <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #e2e8f0;">
+                    <h3 style="margin:0; font-size:15px; font-weight:700; color:var(--primary-navy); display:flex; align-items:center; gap:8px;">
+                        <span>MIB Viewer:</span>
+                        <code id="view-mib-title" style="color:var(--brand-green); font-size:13px;">-</code>
+                    </h3>
+                    <button type="button" class="btn-secondary-custom" style="padding:2px 8px; font-size:16px; line-height:1;" onclick="closeViewMibModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="padding:16px 20px; overflow-y:auto; flex:1; background:#f8fafc;">
+                    <pre id="view-mib-code" style="margin:0; font-family:'Courier New',Courier,monospace; font-size:11.5px; line-height:1.5; color:#334155; white-space:pre-wrap; word-break:break-all;"></pre>
+                </div>
+                <div style="padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
+                    <button type="button" class="btn-secondary-custom" onclick="closeViewMibModal()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================= -->
+        <!-- TAB 4: PANDORA PROVISIONING                                   -->
         <!-- ============================================================= -->
         <div id="tab-provision" class="tab-content d-none">
             <div class="dashboard-card">
@@ -1364,6 +1859,16 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     </div>
                 </div>
 
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:14px 18px; margin: 18px 0; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <strong style="color:#166534; font-size:13.5px; display:block; margin-bottom:2px;">Enterprise MIB Files & Registry</strong>
+                        <div style="font-size:12px; color:#15803d;">Upload custom enterprise MIB definitions (Cisco, Huawei, MikroTik, ZTE, etc.) to translate vendor-specific OIDs into readable metrics.</div>
+                    </div>
+                    <button type="button" class="btn-primary" style="white-space:nowrap;" onclick="switchTab('tab-mibs')">
+                        Open MIB Uploader
+                    </button>
+                </div>
+
                 <h4 style="font-size:14px; font-weight:700; color:var(--primary-navy); margin: 20px 0 10px 0;">
                     Available Discovery Profiles Breakdown
                 </h4>
@@ -1449,6 +1954,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             loadDevicesList();
             loadAgentsList();
             loadInventory(1);
+            loadMibsList();
         });
 
         // Tab Switching
@@ -1464,6 +1970,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 loadInventory(currentInventoryPage);
             } else if (tabId === 'tab-provision') {
                 renderSelectedProvisionTable();
+            } else if (tabId === 'tab-mibs') {
+                loadMibsList();
             }
         }
 
@@ -1472,6 +1980,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             loadDevicesList();
             loadAgentsList();
             loadInventory(currentInventoryPage);
+            loadMibsList();
         }
 
         // Toggle Single vs Subnet Scan
@@ -2108,6 +2617,345 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     alert('Error: ' + res.error);
                 }
             });
+        }
+
+        // =============================================================
+        // 9. MIB UPLOADER & REGISTRY CONTROLLER
+        // =============================================================
+        let allMibsData = [];
+
+        function showToast(msg, type = 'success') {
+            let toast = document.getElementById('snmp-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'snmp-toast';
+                toast.style.position = 'fixed';
+                toast.style.bottom = '24px';
+                toast.style.right = '24px';
+                toast.style.padding = '12px 20px';
+                toast.style.borderRadius = '8px';
+                toast.style.color = '#fff';
+                toast.style.fontSize = '13px';
+                toast.style.fontWeight = '600';
+                toast.style.boxShadow = '0 10px 25px rgba(0,0,0,0.18)';
+                toast.style.zIndex = '99999';
+                toast.style.transition = 'all 0.3s ease';
+                toast.style.display = 'flex';
+                toast.style.alignItems = 'center';
+                toast.style.gap = '8px';
+                document.body.appendChild(toast);
+            }
+            toast.style.background = type === 'error' ? '#991b1b' : '#065f46';
+            toast.style.borderLeft = type === 'error' ? '4px solid #f87171' : '4px solid #34d399';
+            toast.textContent = msg;
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+            }, 4000);
+        }
+
+        function setMibImportMode(mode) {
+            ['file', 'text', 'preset'].forEach(m => {
+                const el = document.getElementById(`form-upload-${m}`);
+                const btn = document.getElementById(`btn-mode-${m}`);
+                if (el) el.classList.toggle('d-none', m !== mode);
+                if (btn) btn.classList.toggle('active-mode-btn', m === mode);
+            });
+        }
+
+        function handleMibFileSelect(input) {
+            const file = input.files[0];
+            const btn = document.getElementById('btn-submit-upload');
+            const lbl = document.getElementById('selected-file-label');
+            if (file) {
+                lbl.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                lbl.style.display = 'block';
+                btn.disabled = false;
+            } else {
+                lbl.style.display = 'none';
+                btn.disabled = true;
+            }
+        }
+
+        // Drag & Drop Listener
+        document.addEventListener('DOMContentLoaded', () => {
+            const dropArea = document.getElementById('drop-area-mib');
+            if (dropArea) {
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    dropArea.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        dropArea.style.borderColor = 'var(--brand-green)';
+                        dropArea.style.background = '#f0fdf4';
+                    }, false);
+                });
+                ['dragleave', 'drop'].forEach(eventName => {
+                    dropArea.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        dropArea.style.borderColor = '#cbd5e1';
+                        dropArea.style.background = '#f8fafc';
+                    }, false);
+                });
+                dropArea.addEventListener('drop', (e) => {
+                    const dt = e.dataTransfer;
+                    const files = dt.files;
+                    if (files.length > 0) {
+                        const fileInput = document.getElementById('mib-file-input');
+                        fileInput.files = files;
+                        handleMibFileSelect(fileInput);
+                    }
+                }, false);
+            }
+        });
+
+        async function submitMibFileUpload(e) {
+            e.preventDefault();
+            const fileInput = document.getElementById('mib-file-input');
+            if (!fileInput.files.length) return;
+
+            const btn = document.getElementById('btn-submit-upload');
+            const origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = 'Uploading & Registering...';
+
+            const formData = new FormData();
+            formData.append('mib_file', fileInput.files[0]);
+            formData.append('csrf_token', CSRF_TOKEN);
+
+            try {
+                const res = await fetch('?api=upload_mib', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': CSRF_TOKEN },
+                    body: formData
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    showToast(json.message || 'MIB uploaded successfully!', 'success');
+                    fileInput.value = '';
+                    handleMibFileSelect(fileInput);
+                    loadMibsList();
+                } else {
+                    showToast(json.error || 'Failed to upload MIB.', 'error');
+                }
+            } catch (err) {
+                showToast('Network error during upload: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+        }
+
+        async function submitMibText(e) {
+            e.preventDefault();
+            const mibName = document.getElementById('mib-text-name').value.trim();
+            const content = document.getElementById('mib-text-content').value.trim();
+            if (!content) return;
+
+            try {
+                const res = await fetch('?api=import_mib_text', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        method: 'text',
+                        mib_name: mibName,
+                        content: content,
+                        csrf_token: CSRF_TOKEN
+                    })
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    showToast(json.message || 'MIB imported successfully!', 'success');
+                    document.getElementById('mib-text-name').value = '';
+                    document.getElementById('mib-text-content').value = '';
+                    loadMibsList();
+                } else {
+                    showToast(json.error || 'Failed to import MIB.', 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        }
+
+        async function installPresetMib(presetKey) {
+            if (!confirm(`Download and install preset MIB '${presetKey}'?`)) return;
+            try {
+                showToast(`Downloading preset ${presetKey}...`, 'success');
+                const res = await fetch('?api=import_mib_text', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        method: 'preset',
+                        preset: presetKey,
+                        csrf_token: CSRF_TOKEN
+                    })
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    showToast(json.message || 'Preset MIB installed!', 'success');
+                    loadMibsList();
+                } else {
+                    showToast(json.error || 'Failed to install preset.', 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        }
+
+        async function loadMibsList() {
+            try {
+                const res = await fetch('?api=list_mibs');
+                const json = await res.json();
+                if (json.ok) {
+                    allMibsData = json.mibs || [];
+                    const badge = document.getElementById('mibs-tab-count');
+                    if (badge) badge.textContent = allMibsData.length;
+                    renderMibsTable(allMibsData);
+                }
+            } catch (e) {
+                console.error('Failed to load MIBs list:', e);
+            }
+        }
+
+        function renderMibsTable(mibs) {
+            const tbody = document.getElementById('mibs-tbody');
+            if (!tbody) return;
+            if (!mibs || !mibs.length) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px; color:#94a3b8;">No MIB modules found. Upload or install presets above.</td></tr>';
+                return;
+            }
+            let html = '';
+            mibs.forEach(mib => {
+                const isLocal = mib.source.indexOf('Toolkit') !== -1;
+                const sourceBadge = isLocal 
+                    ? `<span style="background:#e0f2fe; color:#0369a1; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600;">Toolkit Local</span>`
+                    : `<span style="background:#fef3c7; color:#92400e; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600;">Pandora Console</span>`;
+                
+                const deleteBtn = mib.can_delete 
+                    ? `<button type="button" class="btn-secondary-custom" style="padding:4px 8px; font-size:11px; color:#b91c1c;" onclick="deleteMib('${encodeURIComponent(mib.filename)}')">Delete</button>`
+                    : `<span style="font-size:11px; color:#94a3b8;">Protected</span>`;
+
+                html += `<tr>
+                    <td><strong style="color:var(--primary-navy);">${escapeHtml(mib.module_name)}</strong></td>
+                    <td><code style="color:var(--brand-green); font-size:11.5px;">${escapeHtml(mib.filename)}</code></td>
+                    <td>${escapeHtml(mib.size_formatted)}</td>
+                    <td>${sourceBadge}</td>
+                    <td style="font-size:11.5px; color:#64748b;">${escapeHtml(mib.modified_at)}</td>
+                    <td style="text-align:right;">
+                        <button type="button" class="btn-secondary-custom" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="viewMibContent('${encodeURIComponent(mib.filename)}')">View</button>
+                        ${deleteBtn}
+                    </td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function filterMibsTable() {
+            const q = (document.getElementById('search-mibs').value || '').toLowerCase().trim();
+            if (!q) {
+                renderMibsTable(allMibsData);
+                return;
+            }
+            const filtered = allMibsData.filter(m => 
+                (m.module_name && m.module_name.toLowerCase().includes(q)) ||
+                (m.filename && m.filename.toLowerCase().includes(q))
+            );
+            renderMibsTable(filtered);
+        }
+
+        async function viewMibContent(encodedFilename) {
+            const filename = decodeURIComponent(encodedFilename);
+            try {
+                const res = await fetch(`?api=view_mib&filename=${encodeURIComponent(filename)}`);
+                const json = await res.json();
+                if (json.ok) {
+                    document.getElementById('view-mib-title').textContent = json.filename;
+                    document.getElementById('view-mib-code').textContent = json.content;
+                    document.getElementById('modal-view-mib').style.display = 'flex';
+                } else {
+                    showToast(json.error || 'Failed to read MIB file.', 'error');
+                }
+            } catch (e) {
+                showToast('Error reading MIB: ' + e.message, 'error');
+            }
+        }
+
+        function closeViewMibModal() {
+            document.getElementById('modal-view-mib').style.display = 'none';
+        }
+
+        async function deleteMib(encodedFilename) {
+            const filename = decodeURIComponent(encodedFilename);
+            if (!confirm(`Are you sure you want to delete MIB file '${filename}'?`)) return;
+
+            try {
+                const res = await fetch('?api=delete_mib', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({ filename: filename, csrf_token: CSRF_TOKEN })
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    showToast(json.message || 'MIB deleted.', 'success');
+                    loadMibsList();
+                } else {
+                    showToast(json.error || 'Failed to delete MIB.', 'error');
+                }
+            } catch (e) {
+                showToast('Error deleting MIB: ' + e.message, 'error');
+            }
+        }
+
+        async function testTranslateOid(e) {
+            e.preventDefault();
+            const oid = document.getElementById('test-oid-input').value.trim();
+            if (!oid) return;
+
+            const resBox = document.getElementById('test-translate-result');
+            resBox.innerHTML = '<div style="color:#64748b; padding:20px; text-align:center;">Translating OID with Net-SNMP...</div>';
+
+            try {
+                const res = await fetch(`?api=translate_oid&oid=${encodeURIComponent(oid)}`);
+                const json = await res.json();
+                if (json.ok && json.data) {
+                    const d = json.data;
+                    const translatedBadge = d.translated 
+                        ? `<span style="background:#ecfdf5; color:#047857; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:700;">TRANSLATED OK</span>`
+                        : `<span style="background:#fef2f2; color:#b91c1c; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:700;">RAW / UNTRANSLATED</span>`;
+
+                    resBox.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #e2e8f0;">
+                            <div>
+                                <span style="font-size:11px; color:#64748b;">Symbolic OID:</span>
+                                <div style="font-size:13.5px; font-weight:700; color:var(--primary-navy); font-family:monospace;">${escapeHtml(d.symbolic_oid || 'None')}</div>
+                            </div>
+                            <div>${translatedBadge}</div>
+                        </div>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-bottom:10px;">
+                            <div><span style="color:#64748b; font-size:11px;">Source MIB:</span> <strong style="color:var(--brand-green);">${escapeHtml(d.mib || 'Unknown')}</strong></div>
+                            <div><span style="color:#64748b; font-size:11px;">Object Name:</span> <strong style="color:var(--primary-navy);">${escapeHtml(d.object || '-')}</strong></div>
+                            <div><span style="color:#64748b; font-size:11px;">Display Name:</span> <strong>${escapeHtml(d.display_name || '-')}</strong></div>
+                            <div><span style="color:#64748b; font-size:11px;">Syntax:</span> <code style="font-size:11px;">${escapeHtml(d.syntax || '-')}</code></div>
+                            <div><span style="color:#64748b; font-size:11px;">Suggested Class:</span> <span class="badge badge-neutral">${escapeHtml(d.suggested_class || '-')}</span></div>
+                            <div><span style="color:#64748b; font-size:11px;">Units:</span> <strong>${escapeHtml(d.units || d.suggested_unit || '-')}</strong></div>
+                        </div>
+                        ${d.description ? `<div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px; font-size:11px; color:#475569; max-height:80px; overflow-y:auto;"><strong>Description:</strong> ${escapeHtml(d.description)}</div>` : ''}
+                    `;
+                } else {
+                    resBox.innerHTML = `<div style="color:#b91c1c; padding:20px; text-align:center;">${escapeHtml(json.error || 'Failed to translate OID.')}</div>`;
+                }
+            } catch (err) {
+                resBox.innerHTML = `<div style="color:#b91c1c; padding:20px; text-align:center;">Translation error: ${escapeHtml(err.message)}</div>`;
+            }
         }
     </script>
 </body>
