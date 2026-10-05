@@ -770,12 +770,15 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             padding: 8px 10px; 
             border-bottom: 1px solid #e2e8f0; 
             white-space: normal; 
+            font-size: inherit;
         }
         .table-pfms td { 
             padding: 8px 10px; 
             border-bottom: 1px solid #f1f5f9; 
             vertical-align: middle; 
             overflow-wrap: break-word; 
+            font-size: inherit;
+            font-weight: inherit;
         }
         .table-pfms tr:hover td { background: #f8fafc; }
 
@@ -1208,11 +1211,11 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
 
             <div style="display:flex; gap:10px; margin-top:5px; padding:10px; background:#fff; border:1px solid #dce1e5; border-radius:6px; margin-bottom:10px;" id="wrap_font_options">
                 <div class="form-group" style="flex:1; margin-bottom:0;">
-                    <label style="color:#004d40; font-size:10px; font-weight:600!important;">Value Font Size (px)</label>
+                    <label id="lbl_font_size" style="color:#004d40; font-size:10px; font-weight:600!important;">Value Font Size (px)</label>
                     <input type="number" id="p_font_size" class="form-control-fix" placeholder="32" value="32" min="8" max="120" style="margin-bottom:0;">
                 </div>
                 <div class="form-group" style="flex:1; margin-bottom:0;">
-                    <label style="color:#004d40; font-size:10px; font-weight:600!important;">Value Font Weight</label>
+                    <label id="lbl_font_weight" style="color:#004d40; font-size:10px; font-weight:600!important;">Value Font Weight</label>
                     <select id="p_font_weight" class="form-control-fix" style="margin-bottom:0;">
                         <option value="400">Normal</option>
                         <option value="600">Semi-Bold</option>
@@ -2406,6 +2409,8 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         contentHtml = `<div class="chart-wrapper"><div id="chart_${uniqueId}" style="width:100%; height:100%; min-height:100px;"></div><div class="gauge-text"><div><span class="gauge-val" style="font-size:${Math.round(fs*0.75)}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${modNameHtml}</div></div>`;
     }
     else if (p.type === 'table_viewer') {
+        const tableFs = parseInt(p.font_size) || 11;
+        const tableFw = p.font_weight || '400';
         contentHtml = `
             <div class="table-viewer-card-wrap" style="height:100%; display:flex; flex-direction:column; gap:10px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:4px;">
@@ -2416,11 +2421,11 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                     </div>
                 </div>
                 <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex-grow:1; max-height:${chartH}px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff;">
-                    <table class="table-pfms" id="table_${uniqueId}" style="margin:0; font-size:11px; width:100%;">
+                    <table class="table-pfms" id="table_${uniqueId}" style="margin:0; font-size:${tableFs}px; font-weight:${tableFw}; width:100%;">
                         <thead id="thead_${uniqueId}"></thead>
                         <tbody id="tbody_${uniqueId}"></tbody>
                     </table>
-                    <div id="raw_${uniqueId}" class="d-none" style="padding:10px; background:#1e293b; color:#e2e8f0; font-family:monospace; font-size:10px; white-space:pre-wrap;"></div>
+                    <div id="raw_${uniqueId}" class="d-none" style="padding:10px; background:#1e293b; color:#e2e8f0; font-family:monospace; font-size:${tableFs}px; font-weight:${tableFw}; white-space:pre-wrap;"></div>
                 </div>
             </div>
         `;
@@ -3207,7 +3212,7 @@ function refreshCurrentNodeData() {
                     const uniqueId = `${p.id}_${m.id}`;
                     if (p.type === 'table_viewer') {
                         const agentLabel = `${m.agent_name || ''}/${m.agent_db_name || ''}`;
-                        renderSingleModuleTableViewer(uniqueId, m.current || '', agentLabel);
+                        renderSingleModuleTableViewer(uniqueId, m.current || '', agentLabel, p.row_limit);
                         return;
                     }
                     if (p.type === 'history_table') {
@@ -3358,10 +3363,15 @@ function toggleTypeFields() {
     
     const isChart = ['line','area','bar'].includes(type);
     document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
+    const wrapChartFont = document.getElementById('wrap_chart_font');
+    if (wrapChartFont) {
+        wrapChartFont.style.opacity = isChart ? '1' : '0.3';
+        document.getElementById('p_chart_font_size').disabled = !isChart;
+    }
 
-    const isTable = (type === 'status_table' || type === 'history_table');
+    const isTable = (type === 'status_table' || type === 'history_table' || type === 'table_viewer');
     const wrapLimit = document.getElementById('wrap_row_limit');
-    if(wrapLimit) {
+    if (wrapLimit) {
         wrapLimit.style.opacity = isTable ? '1' : '0.3';
         document.getElementById('p_row_limit').disabled = !isTable;
     }
@@ -3370,6 +3380,30 @@ function toggleTypeFields() {
     const wrapValueCalc = document.getElementById('wrap_value_calc');
     if (wrapValueCalc) {
         wrapValueCalc.style.display = isValueType ? 'block' : 'none';
+    }
+
+    const lblFontSize = document.getElementById('lbl_font_size');
+    const lblFontWeight = document.getElementById('lbl_font_weight');
+    const wrapFontOptions = document.getElementById('wrap_font_options');
+    if (lblFontSize && lblFontWeight && wrapFontOptions) {
+        if (type === 'table_viewer') {
+            wrapFontOptions.style.display = 'flex';
+            lblFontSize.innerText = 'Table Font Size (px)';
+            lblFontWeight.innerText = 'Table Font Weight';
+            document.getElementById('p_font_size').placeholder = '11';
+        } else if (type === 'text' || type === 'single_value' || type === 'gauge') {
+            wrapFontOptions.style.display = 'flex';
+            lblFontSize.innerText = 'Value Font Size (px)';
+            lblFontWeight.innerText = 'Value Font Weight';
+            document.getElementById('p_font_size').placeholder = '32';
+        } else if (type === 'status_stats') {
+            wrapFontOptions.style.display = 'flex';
+            lblFontSize.innerText = 'Stat Value Font Size (px)';
+            lblFontWeight.innerText = 'Stat Value Font Weight';
+            document.getElementById('p_font_size').placeholder = '24';
+        } else {
+            wrapFontOptions.style.display = isChart ? 'none' : 'flex';
+        }
     }
 }
 
@@ -3478,8 +3512,8 @@ function openPanelEdit(id) {
     document.getElementById('p_box_size').value = p.box_size || 'medium';
     document.getElementById('p_row_limit').value = p.row_limit || 200;
     document.getElementById('p_chart_font_size').value = p.chart_font_size || 10;
-    document.getElementById('p_font_size').value = p.font_size || 32;
-    document.getElementById('p_font_weight').value = p.font_weight || 700;
+    document.getElementById('p_font_size').value = p.font_size || (p.type === 'table_viewer' ? 11 : 32);
+    document.getElementById('p_font_weight').value = p.font_weight || (p.type === 'table_viewer' ? '400' : '700');
     if (document.getElementById('p_value_calc')) document.getElementById('p_value_calc').value = p.value_calc || 'current';
     document.getElementById('p_stat_bg_color').value = p.stat_bg_color || '#ffffff';
     document.getElementById('p_stat_bg_color_hex').value = p.stat_bg_color || '';
@@ -4317,7 +4351,7 @@ function showLongValuePopup(moduleName, agentName, fullValue) {
 
 window.tableViewerData = window.tableViewerData || {};
 
-function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel) {
+function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel, rowLimit = 200) {
     const lines = rawText.split(/\r?\n/).filter(l => l.trim() !== '');
     const thead = document.getElementById(`thead_${uniqueId}`);
     const tbody = document.getElementById(`tbody_${uniqueId}`);
@@ -4376,6 +4410,8 @@ function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel) {
                 if (cells.length > numCols) cells = cells.slice(0, numCols);
                 dataRows.push(cells);
             });
+            const limit = parseInt(rowLimit) || 200;
+            if (dataRows.length > limit) dataRows = dataRows.slice(0, limit);
 
             window.tableViewerData[uniqueId] = dataRows;
             thead.innerHTML = '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
@@ -4442,6 +4478,8 @@ function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel) {
         if (cells.length > numCols) cells = cells.slice(0, numCols);
         dataRows.push(cells);
     });
+    const limit = parseInt(rowLimit) || 200;
+    if (dataRows.length > limit) dataRows = dataRows.slice(0, limit);
 
     window.tableViewerData[uniqueId] = dataRows;
     thead.innerHTML = '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
