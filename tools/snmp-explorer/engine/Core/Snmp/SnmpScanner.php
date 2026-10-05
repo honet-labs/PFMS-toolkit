@@ -347,7 +347,7 @@ final readonly class SnmpScanner
 
     private function scanTimeoutSeconds(): int
     {
-        return max(10, (int) ($this->defaultSnmpConfig['scan_timeout_sec'] ?? 45));
+        return min(25, max(5, (int) ($this->defaultSnmpConfig['scan_timeout_sec'] ?? 15)));
     }
 
     private function scanMaxSensors(): int

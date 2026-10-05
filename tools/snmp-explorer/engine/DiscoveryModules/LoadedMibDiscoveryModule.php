@@ -52,6 +52,7 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
         $sensors = [];
         $maxSensors = max(1, (int) ($context->snmpConfig['scan_max_sensors'] ?? 1000));
         $seenOids = [];
+        $startModuleTime = microtime(true);
 
         // Identify target device's enterprise number if present
         $sysObj = $context->sysObjectID();
@@ -69,15 +70,14 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
 
         $hasH3c = in_array('h3c', $vendorTokens, true) || in_array('hh3c', $vendorTokens, true);
         $hasHpe = in_array('hpe', $vendorTokens, true) || in_array('hp', $vendorTokens, true);
-        $hasHuawei = in_array('huawei', $vendorTokens, true);
 
-        if ($hasH3c || $hasHpe || $hasHuawei || ($deviceEnterprisePen !== null && in_array($deviceEnterprisePen, ['25506', '2011', '11'], true))) {
-            foreach (['h3c', 'hh3c', 'huawei', 'hpe', 'hp', 'comware'] as $alias) {
+        if ($hasH3c || $hasHpe || ($deviceEnterprisePen !== null && in_array($deviceEnterprisePen, ['25506', '11'], true))) {
+            foreach (['h3c', 'hh3c', 'hpe', 'hp', 'comware'] as $alias) {
                 if (!in_array($alias, $vendorTokens, true)) {
                     $vendorTokens[] = $alias;
                 }
             }
-            foreach (['25506', '2011', '11'] as $pen) {
+            foreach (['25506', '11'] as $pen) {
                 if (!in_array($pen, $relatedPens, true)) {
                     $relatedPens[] = $pen;
                 }
@@ -88,12 +88,12 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
 
         // Resolve candidate MIB files across configured MIB directories (filtered by vendor context)
         $candidateObjects = $this->getCandidateObjects($context);
-        if (count($candidateObjects) > 100) {
-            $candidateObjects = array_slice($candidateObjects, 0, 100);
+        if (count($candidateObjects) > 15) {
+            $candidateObjects = array_slice($candidateObjects, 0, 15);
         }
 
         foreach ($candidateObjects as $obj) {
-            if ($this->deadlineReached($context) || count($sensors) >= $maxSensors) {
+            if ($this->deadlineReached($context) || count($sensors) >= $maxSensors || (microtime(true) - $startModuleTime) > 2.5) {
                 break;
             }
 
@@ -136,7 +136,7 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
             }
 
             try {
-                // First: Try scalar with .0 (ultra-fast single GET PDU, ~2ms)
+                // Try scalar with .0 (ultra-fast single GET PDU, ~2ms)
                 $val = $context->walker->get($numericOid . '.0');
                 if ($val !== null && $val !== '') {
                     $fullOid = $numericOid . '.0';
@@ -150,27 +150,30 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
                     continue;
                 }
 
-                // Second: Try walking as tabular/indexed metric
-                $entries = $context->walker->walkIndexed($numericOid);
-                if (!empty($entries)) {
-                    foreach ($entries as $index => $val) {
-                        if ($this->deadlineReached($context) || count($sensors) >= $maxSensors) {
-                            break 2;
-                        }
+                // Only walk if this object is explicitly a table or entry definition (never blind-walk scalars)
+                $isTableObj = preg_match('/(?:Table|Entry)$/i', (string) ($obj['name'] ?? '')) === 1;
+                if ($isTableObj) {
+                    $entries = $context->walker->walkIndexed($numericOid);
+                    if (!empty($entries)) {
+                        foreach ($entries as $index => $val) {
+                            if ($this->deadlineReached($context) || count($sensors) >= $maxSensors || (microtime(true) - $startModuleTime) > 2.5) {
+                                break 2;
+                            }
 
-                        if ($val === null || $val === '') {
-                            continue;
-                        }
+                            if ($val === null || $val === '') {
+                                continue;
+                            }
 
-                        $fullOid = $numericOid . '.' . ltrim((string) $index, '.');
-                        if (isset($seenOids[$fullOid])) {
-                            continue;
-                        }
-                        $seenOids[$fullOid] = true;
+                            $fullOid = $numericOid . '.' . ltrim((string) $index, '.');
+                            if (isset($seenOids[$fullOid])) {
+                                continue;
+                            }
+                            $seenOids[$fullOid] = true;
 
-                        $sensor = $this->buildSensor($fullOid, $val, $obj, (string) $index, $context);
-                        if ($sensor !== null) {
-                            $sensors[] = $sensor;
+                            $sensor = $this->buildSensor($fullOid, $val, $obj, (string) $index, $context);
+                            if ($sensor !== null) {
+                                $sensors[] = $sensor;
+                            }
                         }
                     }
                 }
@@ -247,14 +250,13 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
         }
         $hasH3c = in_array('h3c', $deviceVendorTokens, true) || in_array('hh3c', $deviceVendorTokens, true);
         $hasHpe = in_array('hpe', $deviceVendorTokens, true) || in_array('hp', $deviceVendorTokens, true);
-        $hasHuawei = in_array('huawei', $deviceVendorTokens, true);
-        if ($hasH3c || $hasHpe || $hasHuawei || ($devicePen !== null && in_array($devicePen, ['25506', '2011', '11'], true))) {
-            foreach (['h3c', 'hh3c', 'huawei', 'hpe', 'hp', 'comware'] as $alias) {
+        if ($hasH3c || $hasHpe || ($devicePen !== null && in_array($devicePen, ['25506', '11'], true))) {
+            foreach (['h3c', 'hh3c', 'hpe', 'hp', 'comware'] as $alias) {
                 if (!in_array($alias, $deviceVendorTokens, true)) {
                     $deviceVendorTokens[] = $alias;
                 }
             }
-            foreach (['25506', '2011', '11'] as $pen) {
+            foreach (['25506', '11'] as $pen) {
                 if (!in_array($pen, $deviceRelatedPens, true)) {
                     $deviceRelatedPens[] = $pen;
                 }

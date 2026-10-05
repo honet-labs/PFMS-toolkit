@@ -446,6 +446,9 @@ final class OidTranslator
             && !str_starts_with($output, '.');
     }
 
+    private static int $procRunCount = 0;
+    private const int MAX_CLI_RUNS_PER_REQUEST = 10;
+
     /**
      * @param list<string> $arguments
      */
@@ -454,6 +457,11 @@ final class OidTranslator
         if (!$this->enabled || !is_executable($this->binary)) {
             return null;
         }
+
+        if (self::$procRunCount >= self::MAX_CLI_RUNS_PER_REQUEST) {
+            return null;
+        }
+        self::$procRunCount++;
 
         $command = escapeshellcmd($this->binary) . ' ' . implode(
             ' ',
