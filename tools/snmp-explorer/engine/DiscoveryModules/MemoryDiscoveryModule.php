@@ -7,6 +7,7 @@ namespace SnmpBridge\DiscoveryModules;
 use SnmpBridge\Contracts\DiscoveryModuleInterface;
 use SnmpBridge\Contracts\NormalizerInterface;
 use SnmpBridge\Core\Discovery\DiscoveryContext;
+use SnmpBridge\Core\Snmp\SnmpHelper;
 use SnmpBridge\Helpers\SensorNameFormatter;
 use SnmpBridge\Helpers\SnmpValueHelper;
 use Throwable;
@@ -190,19 +191,66 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
         // 1. Try H3C Entity Ext Memory Usage (table)
         $values = $context->walker->walkIndexed('1.3.6.1.4.1.25506.2.6.1.1.1.1.8');
         if (!empty($values)) {
+            // Walk ENTITY-MIB physical classes and names to filter real memory/chassis entities
+            $classes = [];
+            $names = [];
+            try { $classes = $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_CLASS); } catch (\Throwable) {}
+            try { $names = $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_NAME); } catch (\Throwable) {}
+            if (empty($names)) {
+                try { $names = $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_DESCR); } catch (\Throwable) {}
+            }
+            if (empty($names)) {
+                try { $names = $context->walker->walkIndexed('1.3.6.1.4.1.25506.2.6.1.1.1.1.4'); } catch (\Throwable) {}
+            }
+
+            $candidates = [];
             foreach ($values as $index => $value) {
-                $memUsage = \SnmpBridge\Helpers\SnmpValueHelper::validatePercentage($value);
+                $memUsage = SnmpValueHelper::validatePercentage($value);
                 if ($memUsage === null) continue;
 
+                $class = isset($classes[$index]) ? (int) $classes[$index] : null;
+                // entPhysicalClass: 3=chassis, 9=module, 11=stack, 12=cpu
+                // Ports(10), Fans(7), Power(6), Sensors(8), Backplane(4) must be excluded
+                if ($class !== null && !in_array($class, [3, 9, 11, 12], true)) {
+                    continue;
+                }
+
+                $rawName = isset($names[$index]) ? trim((string)$names[$index], " \t\n\r\0\x0B\"") : '';
+                // Skip if name clearly indicates a port, interface, fan, or power supply
+                if ($rawName !== '' && preg_match('/(?:GigabitEthernet|Ten-Gigabit|FortyG|HundredG|Eth|Port|Fan|Power|Pwr|PSU|Sensor|Vlan|Loopback|NULL|SFP)/i', $rawName) === 1) {
+                    continue;
+                }
+
+                $candidates[$index] = [
+                    'usage' => $memUsage,
+                    'name' => $rawName,
+                    'class' => $class,
+                ];
+            }
+
+            // If too many entries (e.g. dummy slot entries with 0%), keep active memory (> 0%) or real slots
+            if (count($candidates) > 4) {
+                $active = array_filter($candidates, static fn(array $c): bool => $c['usage'] > 0);
+                if (!empty($active)) {
+                    $candidates = $active;
+                } else {
+                    $named = array_filter($candidates, static fn(array $c): bool => preg_match('/(?:Memory|RAM|Slot|Unit|MPU|LPU|Board|Chassis)/i', $c['name']) === 1);
+                    $candidates = !empty($named) ? array_slice($named, 0, 4, true) : array_slice($candidates, 0, 2, true);
+                }
+            }
+
+            $slotNum = 1;
+            foreach ($candidates as $index => $item) {
+                $displayName = $item['name'] !== '' ? $item['name'] : "Slot {$slotNum}";
                 $sensor = [
                     'sensor_class' => 'memory',
-                    'sensor_name' => $this->formatter->memory("Slot {$index}"),
+                    'sensor_name' => $this->formatter->memory($displayName),
                     'sensor_type' => 'memory_usage_percent',
                     'interface_index' => null,
                     'interface_name' => null,
                     'entity_index' => (int) $index,
                     'oid' => '1.3.6.1.4.1.25506.2.6.1.1.1.1.8.' . $index,
-                    'raw_value' => (string) $memUsage,
+                    'raw_value' => (string) $item['usage'],
                     'unit' => '%',
                     'scale' => 'units',
                     'precision' => 0,
@@ -211,13 +259,17 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
                         'discovery_module' => 'MemoryDiscoveryModule',
                         'source' => 'H3C hh3cEntityExtMemUsage',
                         'vendor' => 'H3C',
+                        'entity_index' => $index,
+                        'entity_name' => $item['name'],
                     ],
                 ];
                 $normalized = $this->normalizer->normalize($sensor);
                 if ($normalized !== null) {
                     $sensors[] = $normalized;
                 }
+                $slotNum++;
             }
+
             if (!empty($sensors)) return $sensors;
         }
 
