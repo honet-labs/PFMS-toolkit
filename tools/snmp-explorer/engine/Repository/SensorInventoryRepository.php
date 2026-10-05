@@ -333,7 +333,7 @@ final readonly class SensorInventoryRepository
             'SELECT
                 COUNT(*) AS total,
                 COALESCE(SUM(CASE WHEN si.provisioned = 1 THEN 1 ELSE 0 END), 0) AS provisioned,
-                COALESCE(SUM(CASE WHEN si.normalized_value IS NOT NULL OR (si.raw_value IS NOT NULL AND TRIM(si.raw_value) != '') THEN 1 ELSE 0 END), 0) AS provisionable,
+                COALESCE(SUM(CASE WHEN si.normalized_value IS NOT NULL OR (si.raw_value IS NOT NULL AND CHAR_LENGTH(TRIM(si.raw_value)) > 0) THEN 1 ELSE 0 END), 0) AS provisionable,
                 COUNT(DISTINCT si.vendor) AS vendors
             FROM sensor_inventory si
             INNER JOIN devices d ON d.id = si.device_id'
@@ -394,8 +394,8 @@ final readonly class SensorInventoryRepository
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $statement = $this->pdo->prepare(
             'SELECT si.*,
-                    COALESCE(NULLIF(d.snmp_community, ""), d2.snmp_community, "") AS snmp_community,
-                    COALESCE(NULLIF(d.snmp_version, ""), d2.snmp_version, "2c") AS snmp_version,
+                    COALESCE(NULLIF(d.snmp_community, \'\'), d2.snmp_community, \'\') AS snmp_community,
+                    COALESCE(NULLIF(d.snmp_version, \'\'), d2.snmp_version, \'2c\') AS snmp_version,
                     COALESCE(NULLIF(d.snmp_port, 0), d2.snmp_port, 161) AS snmp_port,
                     COALESCE(d.snmp_security_level, d2.snmp_security_level) AS snmp_security_level,
                     COALESCE(d.snmp_security_name, d2.snmp_security_name) AS snmp_security_name,
