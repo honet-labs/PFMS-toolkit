@@ -344,9 +344,7 @@ final class FortinetDiscoveryModule implements DiscoveryModuleInterface
             ], $metadata),
         ];
 
-        $normalized = $this->normalizer->normalize($sensor);
-        if ($normalized !== null) {
-            $sensors[] = $normalized;
-        }
+        $sensor['normalized_value'] = $textValue;
+        $sensors[] = $sensor;
     }
 }

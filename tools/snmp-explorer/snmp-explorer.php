@@ -138,6 +138,8 @@ if (!empty($api)) {
         $v3_context = trim((string)($input['v3_context'] ?? ''));
 
         if (empty($host)) {
+            while (ob_get_level() > 0) { ob_end_clean(); }
+            header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => false, 'error' => 'Target IP or Hostname is required.']);
             exit;
         }
@@ -158,7 +160,10 @@ if (!empty($api)) {
                 'v3_context' => $v3_context,
             ]);
 
-            echo json_encode([
+            while (ob_get_level() > 0) { ob_end_clean(); }
+            header('Content-Type: application/json; charset=utf-8');
+
+            $json = json_encode([
                 'ok' => true,
                 'data' => $result,
                 'message' => sprintf(
@@ -167,8 +172,19 @@ if (!empty($api)) {
                     count($result['sensors'] ?? []),
                     $result['scan']['duration_sec'] ?? 0
                 )
-            ]);
+            ], JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+
+            if ($json === false) {
+                echo json_encode([
+                    'ok' => false,
+                    'error' => 'JSON encoding failed: ' . json_last_error_msg()
+                ]);
+            } else {
+                echo $json;
+            }
         } catch (\Throwable $e) {
+            while (ob_get_level() > 0) { ob_end_clean(); }
+            header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
         }
         exit;
@@ -2912,7 +2928,14 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 },
                 body: JSON.stringify(payload)
             })
-            .then(r => r.json())
+            .then(async r => {
+                const text = await r.text();
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    throw new Error(`Server returned invalid response (${r.status}): ${text.substring(0, 300) || '(empty response)'}`);
+                }
+            })
             .then(res => {
                 btn.disabled = false;
                 btn.innerText = 'Start SNMP Discovery';

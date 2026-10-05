@@ -30,7 +30,17 @@ final class AutonomousEnterpriseDiscoveryModule implements DiscoveryModuleInterf
 
     public function supports(DiscoveryContext $context): bool
     {
-        // Supported for any device having an enterprise OID (1.3.6.1.4.1.<PEN>)
+        $vendorName = strtolower($context->vendor->name());
+        // Skip vendors that already have dedicated discovery modules
+        if (in_array($vendorName, ['fortinet', 'mikrotik', 'cisco', 'huawei', 'dahua', 'zte', 'alcatel', 'raisecom', 'epson', 'f5'], true)) {
+            return false;
+        }
+
+        // Bounded autonomous enterprise walk is disabled by default to prevent timing out on massive enterprise roots
+        if (!env_bool('DISCOVERY_AUTONOMOUS_ENTERPRISE_WALK', false)) {
+            return false;
+        }
+
         $enterpriseOid = trim($context->vendor->enterpriseOid(), '. ');
         if ($enterpriseOid !== '') {
             return true;
@@ -88,14 +98,11 @@ final class AutonomousEnterpriseDiscoveryModule implements DiscoveryModuleInterf
                 }
             }
         } catch (\Throwable $e) {
-            trigger_error(
-                sprintf('Autonomous enterprise discovery error for %s (%s): %s', 
-                    $context->vendor->name(), 
-                    $enterpriseRoot, 
-                    $e->getMessage()
-                ),
-                E_USER_WARNING
-            );
+            error_log(sprintf('Autonomous enterprise discovery error for %s (%s): %s', 
+                $context->vendor->name(), 
+                $enterpriseRoot, 
+                $e->getMessage()
+            ));
         }
 
         return $sensors;
