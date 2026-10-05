@@ -609,11 +609,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
 
     $is_git = is_dir($base_dir . '/.git');
     $git_available = false;
+    $git_error = '';
+    $git_cmd = 'git -c safe.directory=* -C ' . escapeshellarg($base_dir) . ' ';
+
     if ($is_git) {
         @exec('git --version', $out, $status);
         if ($status === 0) {
             $git_available = true;
-            $git_sha = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-parse HEAD 2>&1'));
+            $git_sha = trim((string) @shell_exec($git_cmd . 'rev-parse HEAD 2>&1'));
             if (!empty($git_sha) && strlen($git_sha) === 40) {
                 $local_sha = $git_sha;
             }
@@ -621,26 +624,26 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
     }
 
     if ($git_available) {
-        $remote_url = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' remote get-url origin 2>&1'));
+        $remote_url = trim((string) @shell_exec($git_cmd . 'remote get-url origin 2>&1'));
         if (stripos($remote_url, 'aannddrrii294/PFMS-Toolkit') !== false) {
-            @exec('git -C ' . escapeshellarg($base_dir) . ' remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
+            @exec($git_cmd . 'remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
         }
 
         $fetch_output = [];
         $fetch_status = -1;
-        @exec('git -C ' . escapeshellarg($base_dir) . ' fetch origin main 2>&1', $fetch_output, $fetch_status);
+        @exec($git_cmd . 'fetch origin main 2>&1', $fetch_output, $fetch_status);
 
         if ($fetch_status === 0) {
-            $git_head = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-parse HEAD 2>&1'));
-            $remote_sha = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-parse origin/main 2>&1'));
+            $git_head = trim((string) @shell_exec($git_cmd . 'rev-parse HEAD 2>&1'));
+            $remote_sha = trim((string) @shell_exec($git_cmd . 'rev-parse origin/main 2>&1'));
 
             if (!empty($remote_sha)) {
                 $local_short = !empty($git_head) ? substr($git_head, 0, 7) : (!empty($local_sha) ? substr($local_sha, 0, 7) : $local_version);
                 $remote_short = substr($remote_sha, 0, 7);
 
                 if (empty($git_head) || $git_head !== $remote_sha) {
-                    $count = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-list --count HEAD..origin/main 2>&1'));
-                    $commits_log = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' log HEAD..origin/main --oneline -n 3 2>&1'));
+                    $count = trim((string) @shell_exec($git_cmd . 'rev-list --count HEAD..origin/main 2>&1'));
+                    $commits_log = trim((string) @shell_exec($git_cmd . 'log HEAD..origin/main --oneline -n 3 2>&1'));
 
                     $response['update_available'] = true;
                     $response['remote_version'] = $remote_short;
@@ -651,11 +654,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
                     $response['update_available'] = false;
                     $response['remote_version'] = $remote_short;
                     $response['local_version'] = $local_short;
-                    $response['commit_message'] = 'Your system is up to date.';
+                    $response['commit_message'] = "Your system is up to date.\nCommit: " . $remote_short;
                     $response['method'] = 'git';
                 }
             }
         } else {
+            $git_error = implode("\n", $fetch_output);
             $git_available = false;
         }
     }
@@ -695,7 +699,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
             }
         } else {
             $response['ok'] = false;
-            $response['error'] = 'Web server cannot connect to api.github.com. Error: ' . ($res['error'] ?? 'Unknown network failure.');
+            $errMsg = 'Web server cannot connect to api.github.com. ' . ($res['error'] ?? 'Unknown network failure.');
+            if (!empty($git_error)) {
+                $errMsg .= ' | Git notice: ' . substr($git_error, 0, 200);
+            }
+            $response['error'] = $errMsg;
         }
     }
 
@@ -820,17 +828,19 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
             exit;
         }
 
+        $git_cmd = 'git -c safe.directory=* -C ' . escapeshellarg($base_dir) . ' ';
+
         // Auto-fix origin remote URL if still pointing to old repo
-        $remote_url = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' remote get-url origin 2>&1'));
+        $remote_url = trim((string) @shell_exec($git_cmd . 'remote get-url origin 2>&1'));
         if (stripos($remote_url, 'aannddrrii294/PFMS-Toolkit') !== false) {
             $logs[] = "Migrating git origin to https://github.com/honet-labs/PFMS-toolkit.git";
-            @exec('git -C ' . escapeshellarg($base_dir) . ' remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
+            @exec($git_cmd . 'remote set-url origin https://github.com/honet-labs/PFMS-toolkit.git');
         }
 
         $fetch_out = [];
         $fetch_status = -1;
         $logs[] = "Executing: git fetch origin main";
-        @exec('git -C ' . escapeshellarg($base_dir) . ' fetch origin main 2>&1', $fetch_out, $fetch_status);
+        @exec($git_cmd . 'fetch origin main 2>&1', $fetch_out, $fetch_status);
         $logs = array_merge($logs, $fetch_out);
 
         if ($fetch_status !== 0) {
@@ -842,14 +852,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'execute_update') {
         $reset_out = [];
         $reset_status = -1;
         $logs[] = "Executing: git reset --hard origin/main";
-        @exec('git -C ' . escapeshellarg($base_dir) . ' reset --hard origin/main 2>&1', $reset_out, $reset_status);
+        @exec($git_cmd . 'reset --hard origin/main 2>&1', $reset_out, $reset_status);
         $logs = array_merge($logs, $reset_out);
 
         if ($reset_status === 0) {
             $success = true;
             $logs[] = "Git reset completed successfully.";
 
-            $new_sha = trim(@shell_exec('git -C ' . escapeshellarg($base_dir) . ' rev-parse HEAD 2>&1'));
+            $new_sha = trim((string) @shell_exec($git_cmd . 'rev-parse HEAD 2>&1'));
             $v_data = [
                 'version' => PORTAL_VERSION,
                 'commit_sha' => !empty($new_sha) ? substr($new_sha, 0, 7) : '2.8',
