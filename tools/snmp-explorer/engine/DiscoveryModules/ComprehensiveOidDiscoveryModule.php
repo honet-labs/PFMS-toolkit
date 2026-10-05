@@ -37,6 +37,8 @@ final readonly class ComprehensiveOidDiscoveryModule implements DiscoveryModuleI
         '1.3.6.1.4.1.2578',      // Compaq
         '1.3.6.1.4.1.9',         // Cisco
         '1.3.6.1.4.1.2011',      // Huawei
+        '1.3.6.1.4.1.12356',     // Fortinet
+        '1.3.6.1.4.1.14988',     // MikroTik
         '1.3.6.1.4.1.3375',      // F5 Networks
         '1.3.6.1.4.1.232',       // HP
         '1.3.6.1.4.1.25623',     // Greenbone/Openvas
@@ -53,14 +55,25 @@ final readonly class ComprehensiveOidDiscoveryModule implements DiscoveryModuleI
         '1.3.6.1.2.1.99.1.1',
         '1.3.6.1.4.1.9.9.13.1.3',      // Cisco temperature
         '1.3.6.1.4.1.2011.2.23.1.9.1', // Huawei temperature
+        '1.3.6.1.4.1.14988.1.1.3.10',  // MikroTik temperature
         // Fan status
         '1.3.6.1.2.1.99.1.2',
         '1.3.6.1.4.1.9.9.13.1.4',      // Cisco fan
-        // Power supply
+        // Power supply / Voltage
         '1.3.6.1.4.1.9.9.13.1.5',      // Cisco power supply
-        // Voltage
         '1.3.6.1.2.1.99.1.1.1',
         '1.3.6.1.4.1.232.1.3.1',       // HP voltage
+        '1.3.6.1.4.1.14988.1.1.3.8',   // MikroTik voltage
+        // Fortinet FortiGate Key Metrics & VPN
+        '1.3.6.1.4.1.12356.101.4.1.3',     // FortiGate CPU Usage
+        '1.3.6.1.4.1.12356.101.4.1.4',     // FortiGate Memory Usage
+        '1.3.6.1.4.1.12356.101.4.1.8',     // FortiGate Active Sessions
+        '1.3.6.1.4.1.12356.101.12.1.1',    // FortiGate IPsec VPN Up Count
+        '1.3.6.1.4.1.12356.101.12.2.3.1.6',// FortiGate SSL-VPN Active Tunnels
+        '1.3.6.1.4.1.12356.101.12.2.3.1.2',// FortiGate SSL-VPN Logged in Users
+        '1.3.6.1.4.1.12356.101.12.2.4.1.5',// FortiGate SSL-VPN Tunnel IP
+        '1.3.6.1.4.1.12356.101.12.2.4.1.6',// FortiGate SSL-VPN Tunnel Bytes In
+        '1.3.6.1.4.1.12356.101.12.2.4.1.7',// FortiGate SSL-VPN Tunnel Bytes Out
     ];
 
     public function __construct(

@@ -198,6 +198,9 @@ function snmp_explorer_bootstrap(\PDO $pdo): array {
     }
 
     $vendorRegistry = new \SnmpBridge\Core\Vendor\VendorRegistry([
+        new \SnmpBridge\VendorAdapter\Fortinet\FortinetAdapter(),
+        new \SnmpBridge\VendorAdapter\Mikrotik\MikrotikAdapter(),
+        new \SnmpBridge\VendorAdapter\Juniper\JuniperAdapter(),
         new \SnmpBridge\VendorAdapter\Huawei\HuaweiAdapter(),
         new \SnmpBridge\VendorAdapter\Cisco\CiscoAdapter(),
         new \SnmpBridge\VendorAdapter\ZTE\ZTEAdapter(),
@@ -256,6 +259,8 @@ function snmp_explorer_bootstrap(\PDO $pdo): array {
     $pipeline = new \SnmpBridge\Core\Discovery\DiscoveryPipeline(
         new \SnmpBridge\Core\Discovery\CapabilityResolver(),
         [
+            new \SnmpBridge\DiscoveryModules\FortinetDiscoveryModule($normalizer),
+            new \SnmpBridge\DiscoveryModules\MikrotikDiscoveryModule($normalizer),
             new \SnmpBridge\DiscoveryModules\PrinterDiscoveryModule($normalizer),
             new \SnmpBridge\DiscoveryModules\InterfaceDiscoveryModule($normalizer),
             new \SnmpBridge\DiscoveryModules\InterfaceSpeedModule(),
