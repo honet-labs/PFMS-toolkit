@@ -3186,13 +3186,17 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             }
 
             let html = '';
+            window.currentInventoryMap = {};
             res.rows.forEach(r => {
+                window.currentInventoryMap[r.id] = r;
                 const isChecked = !!selectedSensorMap[r.id];
                 const provBadge = (parseInt(r.provisioned) === 1)
                     ? `<span class="badge badge-success">Provisioned ${r.agent_name ? '(' + r.agent_name + ')' : ''}</span>`
                     : `<span class="badge badge-warning">Pending</span>`;
 
-                const valDisplay = r.normalized_value !== null ? `${r.normalized_value} ${r.unit || ''}` : (r.raw_value || 'N/A');
+                const valDisplay = (r.normalized_value !== null && r.normalized_value !== undefined && r.normalized_value !== '')
+                    ? `${r.normalized_value} ${r.unit || ''}`.trim()
+                    : (r.raw_value !== null && r.raw_value !== undefined && r.raw_value !== '' ? r.raw_value : 'N/A');
 
                 html += `
                     <tr>
@@ -3248,7 +3252,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 chk.checked = masterChk.checked;
                 const id = chk.value;
                 if (masterChk.checked) {
-                    selectedSensorMap[id] = { id: id };
+                    selectedSensorMap[id] = (window.currentInventoryMap && window.currentInventoryMap[id]) ? window.currentInventoryMap[id] : { id: id };
                 } else {
                     delete selectedSensorMap[id];
                 }
@@ -3292,13 +3296,17 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
 
             let html = '';
             items.forEach(s => {
+                const valDisplay = (s.normalized_value !== null && s.normalized_value !== undefined && s.normalized_value !== '')
+                    ? `${s.normalized_value} ${s.unit || ''}`.trim()
+                    : (s.raw_value !== null && s.raw_value !== undefined && s.raw_value !== '' ? s.raw_value : 'N/A');
+
                 html += `
                     <tr>
-                        <td class="mono"><strong>${s.ip_address || ''}</strong></td>
-                        <td><strong>${s.sensor_name || 'Sensor #' + s.id}</strong></td>
-                        <td><span class="badge badge-neutral">${s.sensor_class || ''}</span></td>
-                        <td class="mono text-truncate-cell">${s.oid || ''}</td>
-                        <td class="mono" style="color:#004d40;">${s.normalized_value !== undefined ? s.normalized_value + ' ' + (s.unit || '') : ''}</td>
+                        <td class="mono"><strong>${escapeHtml(s.ip_address || '')}</strong></td>
+                        <td><strong>${escapeHtml(s.sensor_name || 'Sensor #' + s.id)}</strong></td>
+                        <td><span class="badge badge-neutral">${escapeHtml(s.sensor_class || '')}</span></td>
+                        <td class="mono text-truncate-cell">${escapeHtml(s.oid || '')}</td>
+                        <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(valDisplay)}</td>
                     </tr>
                 `;
             });

@@ -48,9 +48,10 @@ final class PandoraProvisioner
         try {
             foreach ($sensors as $sensor) {
                 $rawValue = $sensor['raw_value'] ?? null;
-                $isAlphaNumeric = is_string($rawValue) && preg_match('/[a-zA-Z]/', $rawValue);
+                $hasRawString = is_string($rawValue) && trim($rawValue) !== '';
+                $isNumeric = ($sensor['normalized_value'] ?? null) !== null;
 
-                if (($sensor['normalized_value'] ?? null) === null && !$isAlphaNumeric) {
+                if (!$isNumeric && !$hasRawString) {
                     $summary['skipped']++;
                     $summary['results'][] = [
                         'sensor_id' => (int) $sensor['id'],

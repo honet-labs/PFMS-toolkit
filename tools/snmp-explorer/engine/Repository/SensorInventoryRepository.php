@@ -331,7 +331,7 @@ final readonly class SensorInventoryRepository
             'SELECT
                 COUNT(*) AS total,
                 COALESCE(SUM(CASE WHEN si.provisioned = 1 THEN 1 ELSE 0 END), 0) AS provisioned,
-                COALESCE(SUM(CASE WHEN si.normalized_value IS NOT NULL OR si.raw_value REGEXP \'[[:alpha:]]\' THEN 1 ELSE 0 END), 0) AS provisionable,
+                COALESCE(SUM(CASE WHEN si.normalized_value IS NOT NULL OR (si.raw_value IS NOT NULL AND TRIM(si.raw_value) != '') THEN 1 ELSE 0 END), 0) AS provisionable,
                 COUNT(DISTINCT si.vendor) AS vendors
             FROM sensor_inventory si
             INNER JOIN devices d ON d.id = si.device_id'

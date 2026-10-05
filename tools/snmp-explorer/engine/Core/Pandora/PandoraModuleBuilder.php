@@ -40,15 +40,16 @@ final class PandoraModuleBuilder
     public function build(array $sensor, int $agentId): array
     {
         $rawValue = $sensor['raw_value'] ?? null;
-        $isAlphaNumeric = is_string($rawValue) && preg_match('/[a-zA-Z]/', $rawValue);
+        $hasRawString = is_string($rawValue) && trim($rawValue) !== '';
+        $isNumeric = ($sensor['normalized_value'] ?? null) !== null;
 
-        if (($sensor['normalized_value'] ?? null) === null && !$isAlphaNumeric) {
+        if (!$isNumeric && !$hasRawString) {
             throw new InvalidArgumentException(
                 'Only numeric or string discovered sensors can be provisioned into Pandora.'
             );
         }
 
-        $idTipoModulo = $this->moduleTypeDb($sensor, $isAlphaNumeric);
+        $idTipoModulo = $this->moduleTypeDb($sensor, !$isNumeric && $hasRawString);
         $moduleName = $this->moduleName($sensor);
         $customId = $this->customId((int) $sensor['id']);
         
@@ -139,13 +140,13 @@ final class PandoraModuleBuilder
         };
     }
 
-    private function moduleType(array $sensor, bool $isAlphaNumeric): string
+    private function moduleType(array $sensor, bool $isStringSensor): string
     {
         if ($this->isPrinterPagesCountUsed($sensor)) {
             return 'generic_data';
         }
 
-        if ($isAlphaNumeric && ($sensor['normalized_value'] ?? null) === null) {
+        if ($isStringSensor) {
             return 'generic_data_string';
         }
 
