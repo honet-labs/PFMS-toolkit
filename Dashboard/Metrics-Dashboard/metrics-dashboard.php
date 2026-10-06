@@ -651,13 +651,23 @@ if ($api === 'card_data' && $db_status) {
         // For charts / history queries, sort deterministically by agent alias and module name
         // This guarantees the exact same subset of modules is selected on every refresh,
         // preventing wild color shifts and module bouncing due to minor SNMP timestamp variations.
-        $isChart = (isset($_GET['history']) && $_GET['history'] === '1') || (isset($_GET['view_type']) && in_array($_GET['view_type'], ['line', 'area', 'bar', 'history_table', 'single_value']));
+        $isChart = (isset($_GET['history']) && $_GET['history'] === '1') || (isset($_GET['view_type']) && in_array($_GET['view_type'], ['line', 'area', 'bar', 'history_table', 'single_value', 'sparkline_table']));
         if ($isChart) {
-            usort($tableData, function($a, $b) {
-                $cmp = strnatcasecmp($a['agent_alias'] ?? '', $b['agent_alias'] ?? '');
-                if ($cmp !== 0) return $cmp;
-                return strnatcasecmp($a['module_name'] ?? '', $b['module_name'] ?? '');
-            });
+            if (isset($_GET['view_type']) && $_GET['view_type'] === 'sparkline_table') {
+                // Sort by highest value descending by default for sparkline table leaderboard
+                usort($tableData, function($a, $b) {
+                    $valA = is_numeric($a['current_value'] ?? null) ? (float)$a['current_value'] : -999999;
+                    $valB = is_numeric($b['current_value'] ?? null) ? (float)$b['current_value'] : -999999;
+                    if ($valA === $valB) return 0;
+                    return ($valA > $valB) ? -1 : 1;
+                });
+            } else {
+                usort($tableData, function($a, $b) {
+                    $cmp = strnatcasecmp($a['agent_alias'] ?? '', $b['agent_alias'] ?? '');
+                    if ($cmp !== 0) return $cmp;
+                    return strnatcasecmp($a['module_name'] ?? '', $b['module_name'] ?? '');
+                });
+            }
         } else {
             // Sort tableData DESC by utimestamp for standard tabular views
             usort($tableData, function($a, $b) {
@@ -673,6 +683,8 @@ if ($api === 'card_data' && $db_status) {
             $historyLimit = (isset($_GET['chart_limit']) && (int)$_GET['chart_limit'] > 0) ? (int)$_GET['chart_limit'] : 25;
             if (isset($_GET['view_type']) && $_GET['view_type'] === 'single_value') {
                 $historyLimit = 1;
+            } elseif (isset($_GET['view_type']) && $_GET['view_type'] === 'sparkline_table') {
+                $historyLimit = (isset($_GET['limit']) && (int)$_GET['limit'] > 0) ? (int)$_GET['limit'] : count($tableData);
             }
             $slicedTableData = array_slice($tableData, 0, $historyLimit);
             $modIds = array_column($slicedTableData, 'id_agente_modulo');
@@ -1051,6 +1063,11 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         table.table-pfms { border-collapse: collapse !important; width: 100% !important; margin: 0 !important; font-family: 'Inter', system-ui, -apple-system, sans-serif !important; }
         table.table-pfms thead th { background-color: #ffffff !important; border-bottom: 2px solid #e0e4e8 !important; text-transform: uppercase; padding: 10px 15px !important; font-weight: 600 !important; color: #64748b !important; font-size: 10px !important; position: sticky; top: 0; z-index: 1; font-family: 'Inter', system-ui, -apple-system, sans-serif !important; letter-spacing: 0.5px; }
         table.table-pfms tbody td { font-family: 'Inter', system-ui, -apple-system, sans-serif !important; font-weight: normal !important; border-bottom: 1px solid #f1f5f9; padding: 12px 15px !important; color: #334155 !important; vertical-align: middle; line-height: 1.5; }
+        .sparkline-table { width: 100% !important; border-collapse: collapse !important; font-size: 12px; }
+        .sparkline-table thead th { background-color: #f8fafc !important; border-bottom: 2px solid #e0e4e8 !important; text-transform: capitalize !important; padding: 10px 14px !important; font-weight: 600 !important; color: #475569 !important; font-size: 11px !important; cursor: pointer; user-select: none; white-space: nowrap; }
+        .sparkline-table thead th:hover { color: #0284c7 !important; background-color: #f1f5f9 !important; }
+        .sparkline-table tbody td { border-bottom: 1px solid #f1f5f9; padding: 10px 14px !important; vertical-align: middle !important; }
+        .sparkline-table tbody tr:hover td { background-color: #f8fafc !important; }
 
         .node-wrap { display: inline-flex; align-items: center; gap: 8px; line-height: 1; vertical-align: middle; }
         .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; position: relative; top: -1px; }
@@ -1265,6 +1282,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             <select id="b_view_type" class="form-control-fix" onchange="toggleViewTypeOptions()">
                 <option value="table">Table View (Detailed)</option>
                 <option value="history_table">History Table View</option>
+                <option value="sparkline_table">Sparkline Table (Trend Over Time)</option>
                 <option value="single_value">Single Value Card (Sparkline)</option>
                 <option value="heatmap">Heatmap View (Grid Summary)</option>
                 <option value="cards">Cards Status View (Stats Only)</option>
@@ -2591,7 +2609,7 @@ function renderGrid() {
             div.style.minHeight = c.height + 'px';
         }
 
-        const showStatsStyle = (c.view_type !== 'cards' && (c.show_stats === 0 || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer'].includes(c.view_type))) ? 'display: none !important;' : '';
+        const showStatsStyle = (c.view_type !== 'cards' && (c.show_stats === 0 || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer', 'sparkline_table'].includes(c.view_type))) ? 'display: none !important;' : '';
         const visStats = Array.isArray(c.visible_stats) && c.visible_stats.length > 0 
             ? c.visible_stats 
             : ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'];
@@ -2637,7 +2655,7 @@ function renderGrid() {
 
 function fetchCardData(card) {
     const matchType = card.match_type || 'contains';
-    const isChart = ['line', 'area', 'bar', 'history_table', 'single_value'].includes(card.view_type);
+    const isChart = ['line', 'area', 'bar', 'history_table', 'single_value', 'sparkline_table'].includes(card.view_type);
     const range = card.time_range || 86400;
     let url = `?api=card_data&group_id=${card.group_id}&keyword=${encodeURIComponent(card.keyword)}&limit=${card.limit}&manual_ids=${card.manual_ids || ''}&match_type=${matchType}&chart_limit=${card.chart_limit || 0}&view_type=${card.view_type || ''}`;
     if (isChart) {
@@ -2671,6 +2689,9 @@ function fetchCardData(card) {
         } else if (card.view_type === 'history_table') {
             container.style.display = 'block';
             renderHistoryTableWidget(card.id, res.table || [], res.history || []);
+        } else if (card.view_type === 'sparkline_table') {
+            container.style.display = 'block';
+            renderSparklineTableWidget(card.id, res.table || [], res.history || []);
         } else {
             container.style.display = 'block';
             renderTablePage(card.id);
@@ -3067,6 +3088,290 @@ function renderHistoryTableWidget(cardId, tableData, historyData) {
             ${paginationHtml}
         </div>
     `;
+}
+
+function renderSparklineTableWidget(cardId, tableData, historyData) {
+    const container = document.getElementById(`content_view_${cardId}`);
+    if (!container) return;
+
+    if (!tableData || tableData.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:30px; color:#7f8c8d; font-weight: normal; border:1px solid #e0e4e8; border-radius:6px;">No data found.</div>';
+        return;
+    }
+
+    window.metricsSparklineStores = window.metricsSparklineStores || {};
+    window.metricsSparklineStores[cardId] = { table: tableData, history: historyData };
+
+    const card = dashboardCards.find(c => c.id === cardId);
+    if (!card) return;
+
+    const historyMap = {};
+    if (historyData && Array.isArray(historyData)) {
+        historyData.forEach(h => {
+            const mId = String(h.id_mod);
+            if (!historyMap[mId]) historyMap[mId] = [];
+            historyMap[mId].push(h);
+        });
+    }
+
+    const autoConvert = (card.auto_convert_traffic !== undefined)
+        ? (card.auto_convert_traffic === true || card.auto_convert_traffic === 1 || card.auto_convert_traffic === '1' || card.auto_convert_traffic === 'true')
+        : true;
+
+    let trendColTitle = 'Trend Over Time';
+    if (card.title) {
+        const cleanTitle = card.title.replace(/top\s+/i, '').replace(/leaderboard\s+/i, '').trim();
+        if (/cpu/i.test(cleanTitle)) trendColTitle = 'CPU Over Time';
+        else if (/mem/i.test(cleanTitle)) trendColTitle = 'Memory Over Time';
+        else if (/session/i.test(cleanTitle)) trendColTitle = 'Sessions Over Time';
+        else if (/traffic|bandwidth/i.test(cleanTitle)) trendColTitle = 'Traffic Over Time';
+        else if (/latency|ping|rtt/i.test(cleanTitle)) trendColTitle = 'Latency Over Time';
+        else trendColTitle = `${cleanTitle} Over Time`;
+    }
+
+    let items = tableData.map(m => {
+        const mId = String(m.id_agente_modulo);
+        const modHist = historyMap[mId] || [];
+
+        let valNum = parseFloat(String(m.current_value).replace(',', '.'));
+        let numericVal = isNaN(valNum) ? 0 : valNum;
+
+        const isTraffic = isTrafficMetric(m.module_name, m.unit, card.title);
+        const isByte = isTraffic && isByteTrafficMetric(m.module_name, m.unit, card.title);
+        const effectiveTraffic = (card.use_raw !== true) && autoConvert && isTraffic;
+        const bitVal = (effectiveTraffic && isByte) ? (numericVal * 8) : numericVal;
+
+        let displayVal = '';
+        if (effectiveTraffic) {
+            displayVal = formatBitsRate(bitVal);
+        } else if (card.use_raw) {
+            displayVal = (numericVal % 1 === 0 ? numericVal : numericVal.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+        } else {
+            displayVal = formatHumanMetric(numericVal, m.unit, false, m.module_name, card.title);
+        }
+
+        const primaryName = (m.ip_address && m.ip_address !== 'N/A' && m.ip_address !== '127.0.0.1')
+            ? m.ip_address
+            : (m.agent_alias || m.agent_name || m.module_name || 'Node');
+
+        const secondaryName = (primaryName === m.ip_address)
+            ? (m.agent_alias ? `${m.agent_alias} - ${m.module_name}` : m.module_name)
+            : m.module_name;
+
+        const cMap = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'};
+        const statusColor = cMap[m.estado] || '#94a3b8';
+
+        return {
+            id: m.id_agente_modulo,
+            agent_id: m.id_agente,
+            primaryName: primaryName,
+            secondaryName: secondaryName,
+            module_name: m.module_name || '',
+            agent_alias: m.agent_alias || m.agent_name || '',
+            ip_address: m.ip_address || '',
+            rawVal: numericVal,
+            sortVal: effectiveTraffic ? bitVal : numericVal,
+            displayVal: displayVal,
+            statusColor: statusColor,
+            history: modHist,
+            unit: m.unit || ''
+        };
+    });
+
+    window.metricsSparklineSearch = window.metricsSparklineSearch || {};
+    const searchKw = (window.metricsSparklineSearch[cardId] || '').toLowerCase().trim();
+    if (searchKw) {
+        items = items.filter(it => 
+            it.primaryName.toLowerCase().includes(searchKw) || 
+            it.secondaryName.toLowerCase().includes(searchKw) ||
+            it.displayVal.toLowerCase().includes(searchKw)
+        );
+    }
+
+    window.metricsSparklineSort = window.metricsSparklineSort || {};
+    if (!window.metricsSparklineSort[cardId]) {
+        window.metricsSparklineSort[cardId] = { col: 'val', order: 'desc' };
+    }
+    const currentSort = window.metricsSparklineSort[cardId];
+
+    items.sort((a, b) => {
+        let diff = 0;
+        if (currentSort.col === 'name') {
+            diff = a.primaryName.localeCompare(b.primaryName, undefined, { numeric: true, sensitivity: 'base' });
+        } else if (currentSort.col === 'val') {
+            diff = a.sortVal - b.sortVal;
+        } else if (currentSort.col === 'trend') {
+            const lastA = (a.history && a.history.length > 0) ? parseFloat(a.history[a.history.length - 1].val) : 0;
+            const lastB = (b.history && b.history.length > 0) ? parseFloat(b.history[b.history.length - 1].val) : 0;
+            diff = lastA - lastB;
+        }
+        return (currentSort.order === 'desc') ? -diff : diff;
+    });
+
+    const pageSize = parseInt(card.limit) || 10;
+    const totalItems = items.length;
+    const totalPages = Math.ceil(totalItems / pageSize) || 1;
+
+    window.metricsSparklinePages = window.metricsSparklinePages || {};
+    let currentPage = window.metricsSparklinePages[cardId] || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    window.metricsSparklinePages[cardId] = currentPage;
+
+    const startIdx = (currentPage - 1) * pageSize;
+    const endIdx = Math.min(startIdx + pageSize, totalItems);
+    const paginatedItems = items.slice(startIdx, endIdx);
+
+    const getSortIndicator = (col) => {
+        if (currentSort.col === col) {
+            return currentSort.order === 'desc'
+                ? '<span style="font-size:10px; margin-left:3px; color:#0284c7;">▼</span>'
+                : '<span style="font-size:10px; margin-left:3px; color:#0284c7;">▲</span>';
+        }
+        return '<span style="font-size:10px; margin-left:3px; color:#cbd5e1;">⇅</span>';
+    };
+
+    let paginationHtml = '';
+    if (totalPages > 1) {
+        paginationHtml = `
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:8px; padding-top:4px; font-size:11px; color:#64748b;">
+            <div>Showing ${startIdx + 1} to ${endIdx} of ${totalItems} Metrics</div>
+            <div style="display:flex; gap:6px;">
+                <button class="pagination-btn" ${currentPage === 1 ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''} onclick="changeMetricsSparklinePage('${cardId}', -1)">Prev</button>
+                <span style="font-size:11px; font-weight:600; align-self:center; color:#334155; padding:0 4px;">Page ${currentPage} / ${totalPages}</span>
+                <button class="pagination-btn" ${currentPage === totalPages ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''} onclick="changeMetricsSparklinePage('${cardId}', 1)">Next</button>
+            </div>
+        </div>`;
+    }
+
+    container.innerHTML = `
+    <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%; padding:2px 0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:500;">Top ${Math.min(pageSize, totalItems)} of ${totalItems} Items</div>
+            <div style="position:relative; width:180px;">
+                <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.metricsSparklineSearch[cardId] || '')}" oninput="window.metricsSparklineSearch['${cardId}'] = this.value; window.metricsSparklinePages['${cardId}'] = 1; renderSparklineTableWidget('${cardId}', window.metricsSparklineStores['${cardId}'].table, window.metricsSparklineStores['${cardId}'].history);">
+                <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
+            </div>
+        </div>
+        <div style="overflow-x:auto; overflow-y:auto; flex:1; max-height:420px; border:1px solid #e2e8f0; border-radius:6px; background:#fff;">
+            <table class="sparkline-table" style="font-size:12px; width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                        <th style="text-align:left; padding:8px 12px; cursor:pointer;" onclick="toggleMetricsSparklineSort('${cardId}', 'name');">Name ${getSortIndicator('name')}</th>
+                        <th style="text-align:left; padding:8px 12px; width:110px; cursor:pointer;" onclick="toggleMetricsSparklineSort('${cardId}', 'val');">Value ${getSortIndicator('val')}</th>
+                        <th style="text-align:left; padding:8px 12px; width:180px; cursor:pointer;" onclick="toggleMetricsSparklineSort('${cardId}', 'trend');">${trendColTitle} ${getSortIndicator('trend')}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${paginatedItems.map(it => `
+                        <tr style="border-bottom:1px solid #f1f5f9; transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                            <td style="padding:8px 12px; vertical-align:middle;">
+                                <div style="font-weight:600; color:#0284c7; cursor:pointer; font-size:12px; line-height:1.2;" onclick="openNativeModuleDetailModal('${it.id}', '${(it.agent_alias + ' - ' + it.module_name).replace(/'/g, "\\'")}')" title="Click to view module details">
+                                    ${escapeHtml(it.primaryName)}
+                                </div>
+                                ${it.secondaryName ? `<div style="font-size:10px; color:#64748b; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px;">${escapeHtml(it.secondaryName)}</div>` : ''}
+                            </td>
+                            <td style="padding:8px 12px; vertical-align:middle; white-space:nowrap;">
+                                <div style="display:flex; align-items:center; gap:5px;">
+                                    <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${it.statusColor}; flex-shrink:0;"></span>
+                                    <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(it.displayVal)}</span>
+                                </div>
+                            </td>
+                            <td style="padding:6px 12px; vertical-align:middle;">
+                                ${generateSparklineSvg(it.history, { height: 26, color: '#00b4d8', showArea: true })}
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        ${paginationHtml}
+    </div>`;
+}
+
+function toggleMetricsSparklineSort(cardId, col) {
+    window.metricsSparklineSort = window.metricsSparklineSort || {};
+    const curr = window.metricsSparklineSort[cardId] || { col: 'val', order: 'desc' };
+    if (curr.col === col) {
+        curr.order = (curr.order === 'desc') ? 'asc' : 'desc';
+    } else {
+        curr.col = col;
+        curr.order = (col === 'val' || col === 'trend') ? 'desc' : 'asc';
+    }
+    window.metricsSparklineSort[cardId] = curr;
+    const store = window.metricsSparklineStores && window.metricsSparklineStores[cardId];
+    if (store) renderSparklineTableWidget(cardId, store.table, store.history);
+}
+
+function changeMetricsSparklinePage(cardId, delta) {
+    window.metricsSparklinePages = window.metricsSparklinePages || {};
+    window.metricsSparklinePages[cardId] = (window.metricsSparklinePages[cardId] || 1) + delta;
+    const store = window.metricsSparklineStores && window.metricsSparklineStores[cardId];
+    if (store) renderSparklineTableWidget(cardId, store.table, store.history);
+}
+
+function generateSparklineSvg(history, options = {}) {
+    if (!history || !Array.isArray(history) || history.length < 2) {
+        return '<div style="color:#94a3b8; font-size:10px; font-style:italic; padding:4px 0;">No trend data</div>';
+    }
+    
+    const pointsData = [];
+    history.forEach(h => {
+        if (!h) return;
+        const raw = (h.val !== undefined && h.val !== null) ? h.val : (h.datos !== undefined ? h.datos : null);
+        if (raw === null || raw === undefined) return;
+        const num = parseFloat(String(raw).replace(',', '.'));
+        if (!isNaN(num)) {
+            pointsData.push({
+                val: num,
+                lbl: h.lbl || h.time || '',
+                ts: h.ts || h.utimestamp || 0
+            });
+        }
+    });
+
+    if (pointsData.length < 2) {
+        return '<div style="color:#94a3b8; font-size:10px; font-style:italic; padding:4px 0;">Insufficient data</div>';
+    }
+
+    const width = options.width || 180;
+    const height = options.height || 26;
+    const strokeColor = options.color || '#00b4d8';
+    const fillColor = options.fillColor || 'rgba(0, 180, 216, 0.12)';
+    const showArea = options.showArea !== false;
+    
+    const vals = pointsData.map(p => p.val);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const range = (max - min) === 0 ? 1 : (max - min);
+    
+    const paddingX = 3;
+    const paddingY = 3;
+    const effH = height - (paddingY * 2);
+    const effW = width - (paddingX * 2);
+    const step = effW / (pointsData.length - 1);
+    
+    const coords = pointsData.map((p, i) => {
+        const x = paddingX + (i * step);
+        const y = paddingY + effH - (((p.val - min) / range) * effH);
+        return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)) };
+    });
+    
+    const pathD = coords.map((c, i) => (i === 0 ? `M ${c.x} ${c.y}` : `L ${c.x} ${c.y}`)).join(' ');
+    const lastC = coords[coords.length - 1];
+    const areaD = `${pathD} L ${lastC.x} ${height - paddingY} L ${coords[0].x} ${height - paddingY} Z`;
+    
+    const latestVal = vals[vals.length - 1];
+    const title = `Min: ${min.toFixed(2)} | Max: ${max.toFixed(2)} | Current: ${latestVal.toFixed(2)} (${vals.length} points)`;
+
+    return `
+    <div style="width:100%; min-width:120px; max-width:240px; height:${height}px; display:flex; align-items:center;" title="${title}">
+        <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block; overflow:visible;">
+            ${showArea ? `<path d="${areaD}" fill="${fillColor}" />` : ''}
+            <path d="${pathD}" fill="none" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="${lastC.x}" cy="${lastC.y}" r="2" fill="${strokeColor}" />
+        </svg>
+    </div>`;
 }
 
 function toggleHistorySort(cardId, col) {

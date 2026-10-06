@@ -506,7 +506,7 @@ if ($api === 'bulk_panel_data') {
             $moduleResults = [];
             foreach($modulesFound as $mod) {
                 $mod_id = $mod['id_agente_modulo'];
-                if (in_array($pType, ['line', 'area', 'bar', 'heatmap', 'history_table', 'single_value', 'text', 'gauge'])) {
+                if (in_array($pType, ['line', 'area', 'bar', 'heatmap', 'history_table', 'single_value', 'text', 'gauge', 'sparkline_table'])) {
                     $raw_hist = get_module_history_data($active_pdo, $active_history_pdo, $mod_id, $start, $end, 2000, 'DESC');
                     $history = [];
                     foreach ($raw_hist as $row) {
@@ -781,6 +781,11 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             font-weight: inherit;
         }
         .table-pfms tr:hover td { background: #f8fafc; }
+        .sparkline-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .sparkline-table th { padding: 9px 12px; font-weight: 600; font-size: 11px; text-transform: capitalize; color: #475569; border-bottom: 1px solid #e2e8f0; background: #f8fafc; cursor: pointer; user-select: none; white-space: nowrap; }
+        .sparkline-table th:hover { color: #0284c7; background: #f1f5f9; }
+        .sparkline-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+        .sparkline-table tr:hover td { background: #f8fafc; }
 
         .table-wrap-dyn { 
             width: 100%; 
@@ -1146,6 +1151,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                         <option value="bar">Bar Chart</option>
                         <option value="heatmap">History Heatmap Blocks</option>
                         <option value="history_table">History Table View</option>
+                        <option value="sparkline_table">Sparkline Table (Trend Over Time)</option>
                         <option value="status_table">Table View (Current Status)</option>
                         <option value="status_heatmap">Heatmap View (Current Status)</option>
                         <option value="status_stats">Stats Cards (Current Status)</option>
@@ -2860,6 +2866,182 @@ function generateSummaryPanelHtml(p, modules) {
                 ${paginationHtml}
             `;
         }
+    } else if (p.type === 'sparkline_table') {
+        const autoConvert = (p.auto_convert_traffic !== undefined)
+            ? (p.auto_convert_traffic === true || p.auto_convert_traffic === 1 || p.auto_convert_traffic === '1' || p.auto_convert_traffic === 'true')
+            : true;
+
+        let trendColTitle = 'Trend Over Time';
+        if (p.title) {
+            const cleanTitle = p.title.replace(/top\s+/i, '').replace(/leaderboard\s+/i, '').trim();
+            if (/cpu/i.test(cleanTitle)) trendColTitle = 'CPU Over Time';
+            else if (/mem/i.test(cleanTitle)) trendColTitle = 'Memory Over Time';
+            else if (/session/i.test(cleanTitle)) trendColTitle = 'Sessions Over Time';
+            else if (/traffic|bandwidth/i.test(cleanTitle)) trendColTitle = 'Traffic Over Time';
+            else if (/latency|ping|rtt/i.test(cleanTitle)) trendColTitle = 'Latency Over Time';
+            else trendColTitle = `${cleanTitle} Over Time`;
+        }
+
+        let items = modules.map(m => {
+            const history = m.history || [];
+            let valNum = parseFloat(String(m.current).replace(',', '.'));
+            let numericVal = isNaN(valNum) ? 0 : valNum;
+
+            const isTraffic = isTrafficMetric(m.module_name, m.unit, p.title);
+            const isByte = isTraffic && isByteTrafficMetric(m.module_name, m.unit, p.title);
+            const effectiveTraffic = (p.use_raw !== true) && autoConvert && isTraffic;
+            const bitVal = (effectiveTraffic && isByte) ? (numericVal * 8) : numericVal;
+
+            let displayVal = '';
+            if (effectiveTraffic) {
+                displayVal = formatBitsRate(bitVal);
+            } else if (p.use_raw) {
+                displayVal = (numericVal % 1 === 0 ? numericVal : numericVal.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+            } else {
+                displayVal = formatHumanMetric(numericVal, m.unit, false, m.module_name, p.title);
+            }
+
+            const primaryName = (m.ip_address && m.ip_address !== 'N/A' && m.ip_address !== '127.0.0.1')
+                ? m.ip_address
+                : (m.agent_name || m.module_name || 'Node');
+
+            const secondaryName = (primaryName === m.ip_address)
+                ? (m.agent_name ? `${m.agent_name} - ${m.module_name}` : m.module_name)
+                : m.module_name;
+
+            const cMap = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'};
+            const statusColor = cMap[m.status] || '#94a3b8';
+
+            return {
+                id: m.id,
+                primaryName: primaryName,
+                secondaryName: secondaryName,
+                module_name: m.module_name || '',
+                agent_name: m.agent_name || '',
+                ip_address: m.ip_address || '',
+                rawVal: numericVal,
+                sortVal: effectiveTraffic ? bitVal : numericVal,
+                displayVal: displayVal,
+                status: m.status,
+                statusColor: statusColor,
+                history: history,
+                unit: m.unit || ''
+            };
+        });
+
+        window.sparklineTableSearch = window.sparklineTableSearch || {};
+        const searchKw = (window.sparklineTableSearch[p.id] || '').toLowerCase().trim();
+        if (searchKw) {
+            items = items.filter(it => 
+                it.primaryName.toLowerCase().includes(searchKw) || 
+                it.secondaryName.toLowerCase().includes(searchKw) ||
+                it.displayVal.toLowerCase().includes(searchKw)
+            );
+        }
+
+        window.sparklineTableSort = window.sparklineTableSort || {};
+        if (!window.sparklineTableSort[p.id]) {
+            window.sparklineTableSort[p.id] = { col: 'val', order: 'desc' };
+        }
+        const currentSort = window.sparklineTableSort[p.id];
+
+        items.sort((a, b) => {
+            let diff = 0;
+            if (currentSort.col === 'name') {
+                diff = a.primaryName.localeCompare(b.primaryName, undefined, { numeric: true, sensitivity: 'base' });
+            } else if (currentSort.col === 'val') {
+                diff = a.sortVal - b.sortVal;
+            } else if (currentSort.col === 'trend') {
+                const lastA = (a.history && a.history.length > 0) ? parseFloat(a.history[a.history.length - 1].val) : 0;
+                const lastB = (b.history && b.history.length > 0) ? parseFloat(b.history[b.history.length - 1].val) : 0;
+                diff = lastA - lastB;
+            }
+            return (currentSort.order === 'desc') ? -diff : diff;
+        });
+
+        const limit = parseInt(p.row_limit) || 10;
+        const totalItems = items.length;
+        const totalPages = Math.ceil(totalItems / limit) || 1;
+
+        window.tableCurrentPages = window.tableCurrentPages || {};
+        const currentPage = Math.min(Math.max(1, window.tableCurrentPages[p.id] || 1), totalPages);
+        window.tableCurrentPages[p.id] = currentPage;
+
+        const startIdx = (currentPage - 1) * limit;
+        const paginatedItems = items.slice(startIdx, startIdx + limit);
+
+        const tableFs = parseInt(p.font_size) || 12;
+        const tableH = p.height ? `max-height: ${Math.max(160, parseInt(p.height) - 90)}px;` : 'max-height: 400px;';
+
+        const getSortIndicator = (col) => {
+            if (currentSort.col === col) {
+                return currentSort.order === 'desc'
+                    ? '<span style="font-size:10px; margin-left:3px; color:#0284c7;">▼</span>'
+                    : '<span style="font-size:10px; margin-left:3px; color:#0284c7;">▲</span>';
+            }
+            return '<span style="font-size:10px; margin-left:3px; color:#cbd5e1;">⇅</span>';
+        };
+
+        let paginationHtml = '';
+        if (totalPages > 1) {
+            paginationHtml = `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-top:1px solid #f1f5f9; font-size:11px; color:#64748b; background:#fff;">
+                <div>Showing ${startIdx + 1} to ${Math.min(startIdx + limit, totalItems)} of ${totalItems}</div>
+                <div style="display:flex; gap:6px;">
+                    <button class="btn-pfms btn-outline-pfms" style="padding:2px 8px; font-size:10px;" ${currentPage <= 1 ? 'disabled' : ''} onclick="window.tableCurrentPages['${p.id}'] = ${currentPage - 1}; forceRefresh();">Prev</button>
+                    <span style="padding:2px 6px;">Page ${currentPage} of ${totalPages}</span>
+                    <button class="btn-pfms btn-outline-pfms" style="padding:2px 8px; font-size:10px;" ${currentPage >= totalPages ? 'disabled' : ''} onclick="window.tableCurrentPages['${p.id}'] = ${currentPage + 1}; forceRefresh();">Next</button>
+                </div>
+            </div>`;
+        }
+
+        if (items.length === 0) {
+            content = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:160px; color:#bdc3c7; font-size:11px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">query_stats</span>No data matched</div>`;
+        } else {
+            content = `
+            <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
+                    <div style="font-size:10px; color:#94a3b8; font-weight:500;">Top ${Math.min(limit, totalItems)} of ${totalItems} Items</div>
+                    <div style="position:relative; width:180px;">
+                        <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.sparklineTableSearch[p.id] || '')}" oninput="window.sparklineTableSearch['${p.id}'] = this.value; window.tableCurrentPages['${p.id}'] = 1; forceRefresh();">
+                        <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
+                    </div>
+                </div>
+                <div style="overflow-x:auto; overflow-y:auto; flex:1; ${tableH} border:1px solid #e2e8f0; border-radius:6px; background:#fff;">
+                    <table class="sparkline-table" style="font-size:${tableFs}px; width:100%;">
+                        <thead>
+                            <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                                <th style="text-align:left; padding:8px 12px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'name');">Name ${getSortIndicator('name')}</th>
+                                <th style="text-align:left; padding:8px 12px; width:110px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'val');">Value ${getSortIndicator('val')}</th>
+                                <th style="text-align:left; padding:8px 12px; width:180px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'trend');">${trendColTitle} ${getSortIndicator('trend')}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${paginatedItems.map(it => `
+                                <tr style="border-bottom:1px solid #f1f5f9; transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <td style="padding:8px 12px; vertical-align:middle;">
+                                        <div style="font-weight:600; color:#0284c7; cursor:pointer; font-size:${tableFs}px; line-height:1.2;" onclick="openNativeModuleDetailModal('${it.id}', '${(it.agent_name + ' - ' + it.module_name).replace(/'/g, "\\'")}')" title="Click to view module details">
+                                            ${escapeHtml(it.primaryName)}
+                                        </div>
+                                        ${it.secondaryName ? `<div style="font-size:${Math.max(9, tableFs - 2)}px; color:#64748b; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px;">${escapeHtml(it.secondaryName)}</div>` : ''}
+                                    </td>
+                                    <td style="padding:8px 12px; vertical-align:middle; white-space:nowrap;">
+                                        <div style="display:flex; align-items:center; gap:5px;">
+                                            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${it.statusColor}; flex-shrink:0;"></span>
+                                            <span style="font-weight:700; color:#0f172a; font-size:${tableFs}px;">${escapeHtml(it.displayVal)}</span>
+                                        </div>
+                                    </td>
+                                    <td style="padding:6px 12px; vertical-align:middle;">
+                                        ${generateSparklineSvg(it.history, { height: 26, color: '#00b4d8', showArea: true })}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ${paginationHtml}
+            </div>`;
+        }
     }
 
     const isHidden = p.hidden === true;
@@ -2959,7 +3141,7 @@ function refreshCurrentNodeData() {
                 activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
             }
 
-            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table'].includes(p.type)) {
+            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table', 'sparkline_table'].includes(p.type)) {
                 wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             } else {
                 if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
@@ -3369,7 +3551,7 @@ function toggleTypeFields() {
         document.getElementById('p_chart_font_size').disabled = !isChart;
     }
 
-    const isTable = (type === 'status_table' || type === 'history_table' || type === 'table_viewer');
+    const isTable = (type === 'status_table' || type === 'history_table' || type === 'table_viewer' || type === 'sparkline_table');
     const wrapLimit = document.getElementById('wrap_row_limit');
     if (wrapLimit) {
         wrapLimit.style.opacity = isTable ? '1' : '0.3';
@@ -3386,11 +3568,11 @@ function toggleTypeFields() {
     const lblFontWeight = document.getElementById('lbl_font_weight');
     const wrapFontOptions = document.getElementById('wrap_font_options');
     if (lblFontSize && lblFontWeight && wrapFontOptions) {
-        if (type === 'table_viewer') {
+        if (type === 'table_viewer' || type === 'sparkline_table') {
             wrapFontOptions.style.display = 'flex';
             lblFontSize.innerText = 'Table Font Size (px)';
             lblFontWeight.innerText = 'Table Font Weight';
-            document.getElementById('p_font_size').placeholder = '11';
+            document.getElementById('p_font_size').placeholder = '12';
         } else if (type === 'text' || type === 'single_value' || type === 'gauge') {
             wrapFontOptions.style.display = 'flex';
             lblFontSize.innerText = 'Value Font Size (px)';
@@ -4552,6 +4734,83 @@ function downplayDynamicEchartsSeries(uniqueId, seriesName) {
     const chart = chartInstances[uniqueId];
     if (!chart) return;
     chart.dispatchAction({ type: 'downplay', seriesName: seriesName });
+}
+
+function toggleSparklineSort(panelId, col) {
+    window.sparklineTableSort = window.sparklineTableSort || {};
+    const curr = window.sparklineTableSort[panelId] || { col: 'val', order: 'desc' };
+    if (curr.col === col) {
+        curr.order = (curr.order === 'desc') ? 'asc' : 'desc';
+    } else {
+        curr.col = col;
+        curr.order = (col === 'val' || col === 'trend') ? 'desc' : 'asc';
+    }
+    window.sparklineTableSort[panelId] = curr;
+    if (typeof forceRefresh === 'function') forceRefresh();
+}
+
+function generateSparklineSvg(history, options = {}) {
+    if (!history || !Array.isArray(history) || history.length < 2) {
+        return '<div style="color:#94a3b8; font-size:10px; font-style:italic; padding:4px 0;">No trend data</div>';
+    }
+    
+    const pointsData = [];
+    history.forEach(h => {
+        if (!h) return;
+        const raw = (h.val !== undefined && h.val !== null) ? h.val : (h.datos !== undefined ? h.datos : null);
+        if (raw === null || raw === undefined) return;
+        const num = parseFloat(String(raw).replace(',', '.'));
+        if (!isNaN(num)) {
+            pointsData.push({
+                val: num,
+                lbl: h.lbl || h.time || '',
+                ts: h.ts || h.utimestamp || 0
+            });
+        }
+    });
+
+    if (pointsData.length < 2) {
+        return '<div style="color:#94a3b8; font-size:10px; font-style:italic; padding:4px 0;">Insufficient data</div>';
+    }
+
+    const width = options.width || 180;
+    const height = options.height || 26;
+    const strokeColor = options.color || '#00b4d8';
+    const fillColor = options.fillColor || 'rgba(0, 180, 216, 0.12)';
+    const showArea = options.showArea !== false;
+    
+    const vals = pointsData.map(p => p.val);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const range = (max - min) === 0 ? 1 : (max - min);
+    
+    const paddingX = 3;
+    const paddingY = 3;
+    const effH = height - (paddingY * 2);
+    const effW = width - (paddingX * 2);
+    const step = effW / (pointsData.length - 1);
+    
+    const coords = pointsData.map((p, i) => {
+        const x = paddingX + (i * step);
+        const y = paddingY + effH - (((p.val - min) / range) * effH);
+        return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)) };
+    });
+    
+    const pathD = coords.map((c, i) => (i === 0 ? `M ${c.x} ${c.y}` : `L ${c.x} ${c.y}`)).join(' ');
+    const lastC = coords[coords.length - 1];
+    const areaD = `${pathD} L ${lastC.x} ${height - paddingY} L ${coords[0].x} ${height - paddingY} Z`;
+    
+    const latestVal = vals[vals.length - 1];
+    const title = `Min: ${min.toFixed(2)} | Max: ${max.toFixed(2)} | Current: ${latestVal.toFixed(2)} (${vals.length} points)`;
+
+    return `
+    <div style="width:100%; min-width:120px; max-width:240px; height:${height}px; display:flex; align-items:center;" title="${title}">
+        <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block; overflow:visible;">
+            ${showArea ? `<path d="${areaD}" fill="${fillColor}" />` : ''}
+            <path d="${pathD}" fill="none" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="${lastC.x}" cy="${lastC.y}" r="2" fill="${strokeColor}" />
+        </svg>
+    </div>`;
 }
 
 </script>
