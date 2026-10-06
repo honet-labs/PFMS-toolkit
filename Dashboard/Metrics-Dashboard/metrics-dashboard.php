@@ -628,7 +628,7 @@ if ($api === 'card_data' && $db_status) {
 
             // Table rows
             try {
-                $stTable = $active_pdo->prepare("SELECT a.id_agente, a.alias AS agent_alias, a.nombre AS agent_name, g.nombre AS group_name, a.direccion AS ip_address, m.id_agente_modulo, m.nombre AS module_name, e.timestamp, e.utimestamp AS last_contact, e.datos as current_value, m.min as low_limit, m.max as high_limit, COALESCE(m.unit, '') as unit, COALESCE(e.estado, 4) as estado $sqlCommon");
+                $stTable = $active_pdo->prepare("SELECT a.id_agente, a.alias AS agent_alias, a.nombre AS agent_name, g.nombre AS group_name, a.direccion AS ip_address, m.id_agente_modulo, m.nombre AS module_name, e.timestamp, e.utimestamp AS last_contact, e.datos as current_value, m.min as low_limit, m.max as high_limit, COALESCE(m.unit, '') as unit, COALESCE(e.estado, 4) as estado, m.min_warning, m.max_warning, m.min_critical, m.max_critical $sqlCommon");
                 $stTable->execute($node_params);
                 $rows = $stTable->fetchAll(PDO::FETCH_ASSOC);
                 foreach ($rows as $row) {
@@ -643,6 +643,10 @@ if ($api === 'card_data' && $db_status) {
                         $row['current_value'] = (float)$row['current_value'];
                     }
                     $row['unit'] = pretty_text($row['unit']);
+                    $row['min_warning'] = $row['min_warning'] ?? null;
+                    $row['max_warning'] = $row['max_warning'] ?? null;
+                    $row['min_critical'] = $row['min_critical'] ?? null;
+                    $row['max_critical'] = $row['max_critical'] ?? null;
                     $tableData[] = $row;
                 }
             } catch (Throwable $e) {}
@@ -3217,6 +3221,82 @@ function renderHistoryTableWidget(cardId, tableData, historyData) {
     `;
 }
 
+function evaluateModuleThresholdStatus(m, numericVal, moduleName = '', unit = '', contextTitle = '') {
+    const parseNum = (v) => {
+        if (v === null || v === undefined || v === '') return null;
+        const n = parseFloat(String(v).replace(',', '.'));
+        return isNaN(n) ? null : n;
+    };
+
+    const minCrit = parseNum(m.min_critical);
+    const maxCrit = parseNum(m.max_critical);
+    const minWarn = parseNum(m.min_warning);
+    const maxWarn = parseNum(m.max_warning);
+
+    const checkThresholdRange = (minVal, maxVal, val) => {
+        const hasMin = (minVal !== null && minVal !== undefined);
+        const hasMax = (maxVal !== null && maxVal !== undefined);
+        if (!hasMin && !hasMax) return false;
+        if (minVal === 0 && maxVal === 0) return false;
+
+        if (hasMin && minVal > 0 && (!hasMax || maxVal === 0)) {
+            return val >= minVal;
+        }
+        if (hasMax && maxVal > 0 && (!hasMin || minVal === 0)) {
+            return val <= maxVal;
+        }
+        if (hasMin && hasMax) {
+            if (minVal <= maxVal) {
+                return val >= minVal && val <= maxVal;
+            } else {
+                return val <= maxVal || val >= minVal;
+            }
+        }
+        return false;
+    };
+
+    // 1. Explicit Critical threshold
+    if (checkThresholdRange(minCrit, maxCrit, numericVal)) {
+        return { status: 1, label: 'Critical', color: '#ef4444' };
+    }
+
+    // 2. Explicit Warning threshold
+    if (checkThresholdRange(minWarn, maxWarn, numericVal)) {
+        return { status: 2, label: 'Warning', color: '#f59e0b' };
+    }
+
+    // 3. Native Pandora daemon state if already warning or critical
+    const nativeState = parseInt(m.estado !== undefined ? m.estado : (m.status !== undefined ? m.status : -1));
+    if (nativeState === 1) {
+        return { status: 1, label: 'Critical', color: '#ef4444' };
+    }
+    if (nativeState === 2) {
+        return { status: 2, label: 'Warning', color: '#f59e0b' };
+    }
+
+    // 4. Smart heuristic check for percentage / usage / load metrics when DB thresholds are unconfigured
+    const combinedStr = `${moduleName || ''} ${unit || ''} ${contextTitle || ''}`.toLowerCase();
+    const isPct = (unit && unit.includes('%')) || combinedStr.includes('%') || /cpu|usage|load|mem|disk|utilization|loss|drop/.test(combinedStr);
+    const isFreeMetric = /free|avail|available/.test(combinedStr);
+
+    if (isPct && !isNaN(numericVal)) {
+        if (isFreeMetric) {
+            if (numericVal <= 10) return { status: 1, label: 'Critical', color: '#ef4444' };
+            if (numericVal <= 25) return { status: 2, label: 'Warning', color: '#f59e0b' };
+        } else {
+            if (numericVal >= 90) return { status: 1, label: 'Critical', color: '#ef4444' };
+            if (numericVal >= 75) return { status: 2, label: 'Warning', color: '#f59e0b' };
+        }
+    }
+
+    // 5. Default mapping
+    if (nativeState === 0) return { status: 0, label: 'Normal (OK)', color: '#10b981' };
+    if (nativeState === 4) return { status: 4, label: 'Not Initialized', color: '#38bdf8' };
+    if (nativeState === 3) return { status: 3, label: 'Unknown', color: '#94a3b8' };
+
+    return { status: 0, label: 'Normal (OK)', color: '#10b981' };
+}
+
 function renderSparklineTableWidget(cardId, tableData, historyData) {
     const container = document.getElementById(`content_view_${cardId}`);
     if (!container) return;
@@ -3285,8 +3365,9 @@ function renderSparklineTableWidget(cardId, tableData, historyData) {
             ? (m.agent_alias ? `${m.agent_alias} - ${m.module_name}` : m.module_name)
             : m.module_name;
 
-        const cMap = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'};
-        const statusColor = cMap[m.estado] || '#94a3b8';
+        const statusEval = evaluateModuleThresholdStatus(m, numericVal, m.module_name, m.unit, card.title);
+        const statusColor = statusEval.color;
+        const statusLabel = statusEval.label;
 
         return {
             id: m.id_agente_modulo,
@@ -3300,6 +3381,7 @@ function renderSparklineTableWidget(cardId, tableData, historyData) {
             sortVal: effectiveTraffic ? bitVal : numericVal,
             displayVal: displayVal,
             statusColor: statusColor,
+            statusLabel: statusLabel,
             history: modHist,
             unit: m.unit || ''
         };
@@ -3399,13 +3481,13 @@ function renderSparklineTableWidget(cardId, tableData, historyData) {
                                 ${it.secondaryName ? `<div style="font-size:10px; color:#64748b; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px;">${escapeHtml(it.secondaryName)}</div>` : ''}
                             </td>
                             <td style="padding:8px 12px; vertical-align:middle; white-space:nowrap;">
-                                <div style="display:flex; align-items:center; gap:5px;">
-                                    <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${it.statusColor}; flex-shrink:0;"></span>
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${it.statusColor}; box-shadow:0 0 0 2px ${it.statusColor}28; flex-shrink:0;" title="${escapeHtml(it.statusLabel || '')}"></span>
                                     <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(it.displayVal)}</span>
                                 </div>
                             </td>
                             <td style="padding:6px 12px; vertical-align:middle;">
-                                ${generateSparklineSvg(it.history, { height: 26, color: '#00b4d8', showArea: true })}
+                                ${generateSparklineSvg(it.history, { height: 26, color: '#10b981', fillColor: 'rgba(16, 185, 129, 0.15)', showArea: true })}
                             </td>
                         </tr>
                     `).join('')}
@@ -3463,8 +3545,8 @@ function generateSparklineSvg(history, options = {}) {
 
     const width = options.width || 180;
     const height = options.height || 26;
-    const strokeColor = options.color || '#00b4d8';
-    const fillColor = options.fillColor || 'rgba(0, 180, 216, 0.12)';
+    const strokeColor = options.color || '#10b981';
+    const fillColor = options.fillColor || 'rgba(16, 185, 129, 0.15)';
     const showArea = options.showArea !== false;
     
     const vals = pointsData.map(p => p.val);
