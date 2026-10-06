@@ -2,6 +2,21 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.10] - 2026-10-06 (SNMP Explorer - Memory & Storage Percentage Fix & Auto-Repair)
+### Fixed
+- **Perbaikan Ketidaksesuaian Nilai Memory & Storage (%) pada Modul Pandora FMS:**
+  - **Koreksi OID Discovery (`MemoryDiscoveryModule.php`):** Mengubah penentuan OID sensor dari `HOST_RESOURCES_MEMORY_SIZE` (`1.3.6.1.2.1.25.2.3.1.5`) ke `HOST_RESOURCES_MEMORY_USED` (`1.3.6.1.2.1.25.2.3.1.6`). Sebelumnya modul mengarah ke OID kapasitas total partisi sehingga poller mencatat jumlah alokasi blok mentah (misal `186,307%` atau `2,474,907%`).
+  - **Dukungan Pengali `post_process`:** Karena HOST-RESOURCES-MIB mengembalikan jumlah blok alokasi mentah (Integer) dan bukan persentase langsung, sistem kini menghitung dan menyuntikkan multiplier `post_process = 100 / total_units` secara otomatis ke tabel `tagente_modulo`. Nilai yang diambil Pandora FMS kini dikalikan dengan multiplier tersebut sehingga menghasilkan persentase aktual (contoh: `13%`, `2%`, `0%`) yang konsisten dengan hasil discovery di SNMP Explorer.
+  - **Sinkronisasi Metrik Cisco (`CISCO-MEMORY-POOL-MIB`):** Menambahkan perhitungan `post_process = 100 / total_bytes` untuk pool memory Cisco yang mengembalikan nilai bytes mentah.
+  - **Penyelarasan `UniversalSystemDiscoveryModule.php`:** Menambahkan pengali `post_process` dan menyelaraskan `raw_value` ke persentase pada metrik storage `hrStorageUsed`.
+  - **Penyempurnaan Re-provisioning (`PandoraProvisioner.php` & `PandoraRepository.php`):**
+    - Menambahkan pencocokan modul berdasarkan nama (`findModulesByNames`) selain `custom_id` sehingga saat sensor di-deploy ulang, modul yang sudah ada di agen langsung diperbarui OID dan `post_process`-nya tanpa membuat modul duplikat.
+    - Menambahkan reset cache data `tagente_estado` saat modul diperbarui agar poller segera mengambil data baru yang valid.
+
+### Added
+- **Fitur Auto-Fix (%) Modules pada Antarmuka SNMP Explorer:**
+  - Menambahkan tombol **Auto-Fix (%) Modules** pada tab *Sensor Inventory* dan endpoint API `?api=repair_storage_modules` untuk memperbaiki modul-modul memory/storage HOST-RESOURCES-MIB yang sudah terlanjur dibuat di Pandora FMS dengan 1 kali klik.
+
 ## [2.9] - 2026-10-05 (SNMP Explorer - Full SNMP v3 Support with USM Security)
 ### Added
 - **Fitur SNMP v3 pada SNMP Explorer (`tools/snmp-explorer/`):**

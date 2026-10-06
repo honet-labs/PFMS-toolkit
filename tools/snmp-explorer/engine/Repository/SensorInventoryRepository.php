@@ -411,7 +411,20 @@ final readonly class SensorInventoryRepository
         );
         $statement->execute($ids);
 
-        return $statement->fetchAll();
+        $rows = $statement->fetchAll();
+
+        foreach ($rows as &$row) {
+            $row['metadata'] = [];
+            if (!empty($row['metadata_json']) && is_string($row['metadata_json'])) {
+                $decoded = json_decode($row['metadata_json'], true);
+                if (is_array($decoded)) {
+                    $row['metadata'] = $decoded;
+                }
+            }
+        }
+        unset($row);
+
+        return $rows;
     }
 
     public function markProvisioned(int $sensorId, int $agentId, int $moduleId): void

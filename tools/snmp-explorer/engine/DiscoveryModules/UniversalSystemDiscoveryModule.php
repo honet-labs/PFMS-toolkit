@@ -139,6 +139,7 @@ final readonly class UniversalSystemDiscoveryModule implements DiscoveryModuleIn
 
             // Calculate percentage
             $usedPercent = $size > 0 ? round(($usedVal / $size) * 100, 2) : 0;
+            $postProcess = $size > 0 ? (100.0 / $size) : null;
 
             $normalized = $this->normalizer->normalize(
                 $usedPercent,
@@ -161,16 +162,22 @@ final readonly class UniversalSystemDiscoveryModule implements DiscoveryModuleIn
                 'interface_name' => null,
                 'entity_index' => (int) $index,
                 'oid' => self::HR_STORAGE_USED . '.' . $index,
-                'raw_value' => $usedVal,
+                'raw_value' => (string) $usedPercent,
                 'normalized_value' => $normalized['value'],
                 'unit' => $normalized['unit'],
+                'post_process' => $postProcess,
+                'min' => 0,
+                'max' => 100,
                 'metadata_json' => json_encode([
                     'discovery_module' => 'universal_system',
                     'sensor_type' => 'storage_used_percent',
                     'storage_size_bytes' => $size * $allocUnit,
                     'storage_used_bytes' => $usedVal * $allocUnit,
+                    'storage_size_units' => $size,
+                    'storage_used_units' => $usedVal,
                     'alloc_unit' => $allocUnit,
                     'description' => $descr,
+                    'post_process' => $postProcess,
                     'source' => 'HOST-RESOURCES-MIB::hrStorageUsed',
                 ]),
             ];

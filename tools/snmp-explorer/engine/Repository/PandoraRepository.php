@@ -112,6 +112,38 @@ final class PandoraRepository
     }
 
     /**
+     * @param list<string> $names
+     * @return array<string, int>
+     */
+    public function findModulesByNames(int $agentId, array $names): array
+    {
+        $names = array_values(array_unique(array_filter(
+            $names,
+            static fn (string $name): bool => $name !== '',
+        )));
+
+        if ($names === []) {
+            return [];
+        }
+
+        $modules = [];
+
+        foreach (array_chunk($names, 500) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $statement = $this->pdo->prepare(
+                'SELECT nombre, id_agente_modulo FROM tagente_modulo WHERE id_agente = ? AND nombre IN (' . $placeholders . ')'
+            );
+            $statement->execute([$agentId, ...$chunk]);
+
+            foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $modules[(string) $row['nombre']] = (int) $row['id_agente_modulo'];
+            }
+        }
+
+        return $modules;
+    }
+
+    /**
      * Insert SNMP module into Pandora
      * 
      * Creates both:
@@ -175,6 +207,9 @@ final class PandoraRepository
             'extended_info' => $module['extended_info'] ?? null,
             'nombre' => $module['nombre'] ?? null,
             'unit' => $module['unit'] ?? null,
+            'post_process' => $module['post_process'] ?? null,
+            'min' => $module['min'] ?? null,
+            'max' => $module['max'] ?? null,
             'module_interval' => $module['module_interval'] ?? 0,
             'snmp_community' => $module['snmp_community'] ?? 'public',
             'snmp_oid' => $module['snmp_oid'] ?? null,
@@ -260,6 +295,9 @@ final class PandoraRepository
             'tcp_port' => $module['tcp_port'] ?? 161,
             'module_interval' => $module['module_interval'] ?? 0,
             'unit' => $module['unit'] ?? null,
+            'post_process' => $module['post_process'] ?? null,
+            'min' => $module['min'] ?? null,
+            'max' => $module['max'] ?? null,
             'snmp_version' => $module['snmp_version'] ?? null,
             'snmp3_sec_level' => $module['snmp3_sec_level'] ?? null,
             'snmp3_security_level' => $module['snmp3_security_level'] ?? $module['snmp3_sec_level'] ?? null,
@@ -290,6 +328,16 @@ final class PandoraRepository
             $sql = "UPDATE tagente_modulo SET " . implode(', ', $updates) . " WHERE id_agente_modulo = ?";
             $statement = $this->pdo->prepare($sql);
             $statement->execute($params);
+
+            // Reset stale data in tagente_estado so Pandora immediately polls with the corrected settings
+            try {
+                $interval = (int) ($module['module_interval'] ?? 300);
+                $this->pdo->prepare(
+                    'UPDATE tagente_estado SET datos = 0, utimestamp = ? WHERE id_agente_modulo = ?'
+                )->execute([time() - $interval, $moduleId]);
+            } catch (\Throwable) {
+                // Ignore if tagente_estado differences
+            }
         }
     }
 
@@ -442,5 +490,117 @@ final class PandoraRepository
         $statement->execute();
 
         return $statement->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Auto-repair misconfigured HOST-RESOURCES-MIB or storage/memory percentage modules.
+     * Fixes OID from hrStorageSize (.5) to hrStorageUsed (.6), computes post_process (100 / total_units),
+     * and resets tagente_estado for immediate polling.
+     * 
+     * @return array{repaired:int,details:list<array<string,mixed>>}
+     */
+    public function repairHrStorageModules(?int $agentId = null): array
+    {
+        $existingCols = $this->getTagenteModuloColumns();
+        $colMap = array_change_key_case(array_flip($existingCols), CASE_LOWER);
+        $hasPostProcess = isset($colMap['post_process']);
+
+        if (!$hasPostProcess) {
+            return ['repaired' => 0, 'details' => []];
+        }
+
+        $where = ["(m.snmp_oid LIKE '%.1.3.6.1.2.1.25.2.3.1.5.%' OR m.snmp_oid LIKE '1.3.6.1.2.1.25.2.3.1.5.%' OR m.snmp_oid LIKE '%.1.3.6.1.2.1.25.2.3.1.6.%' OR m.snmp_oid LIKE '1.3.6.1.2.1.25.2.3.1.6.%')"];
+        $where[] = "m.unit = '%'";
+        $where[] = "(m.post_process IS NULL OR m.post_process = 0 OR m.post_process = 1)";
+        $params = [];
+
+        if ($agentId !== null && $agentId > 0) {
+            $where[] = "m.id_agente = ?";
+            $params[] = $agentId;
+        }
+
+        $sql = "SELECT m.id_agente_modulo, m.id_agente, m.nombre, m.snmp_oid, m.unit, m.module_interval, e.datos
+                FROM tagente_modulo m
+                LEFT JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
+                WHERE " . implode(' AND ', $where);
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $repaired = 0;
+        $details = [];
+
+        foreach ($rows as $row) {
+            $modId = (int) $row['id_agente_modulo'];
+            $oid = trim((string) $row['snmp_oid'], '.');
+            $datos = (float) ($row['datos'] ?? 0);
+
+            // Extract index from OID
+            $parts = explode('.', $oid);
+            $index = end($parts);
+            $newOid = '1.3.6.1.2.1.25.2.3.1.6.' . $index; // Always hrStorageUsed
+
+            // Determine total capacity units
+            $totalUnits = 0.0;
+            if (str_contains($oid, '1.3.6.1.2.1.25.2.3.1.5.') && $datos > 0) {
+                // If old OID was .5 (size), the polled datos was literally the total size!
+                $totalUnits = $datos;
+            } else {
+                // Try to find total units from sensor_inventory
+                try {
+                    $sStmt = $this->pdo->prepare(
+                        "SELECT metadata_json FROM sensor_inventory WHERE oid IN (?, ?) ORDER BY id DESC LIMIT 1"
+                    );
+                    $sStmt->execute(['1.3.6.1.2.1.25.2.3.1.5.' . $index, '1.3.6.1.2.1.25.2.3.1.6.' . $index]);
+                    $mJson = $sStmt->fetchColumn();
+                    if ($mJson) {
+                        $meta = json_decode((string) $mJson, true);
+                        $totalUnits = (float) ($meta['total_units'] ?? $meta['storage_size_units'] ?? 0);
+                    }
+                } catch (\Throwable) {}
+            }
+
+            if ($totalUnits <= 0 && $datos > 100) {
+                $totalUnits = $datos;
+            }
+
+            if ($totalUnits > 0) {
+                $postProcess = 100.0 / $totalUnits;
+                $formattedPostProcess = (float) rtrim(rtrim(sprintf('%.12f', $postProcess), '0'), '.');
+
+                $uSql = "UPDATE tagente_modulo SET snmp_oid = ?, post_process = ?";
+                $uParams = [$newOid, $formattedPostProcess];
+                if (isset($colMap['min'])) {
+                    $uSql .= ", min = 0";
+                }
+                if (isset($colMap['max'])) {
+                    $uSql .= ", max = 100";
+                }
+                $uSql .= " WHERE id_agente_modulo = ?";
+                $uParams[] = $modId;
+
+                $this->pdo->prepare($uSql)->execute($uParams);
+
+                try {
+                    $interval = (int) ($row['module_interval'] ?? 300);
+                    $this->pdo->prepare(
+                        'UPDATE tagente_estado SET datos = 0, utimestamp = ? WHERE id_agente_modulo = ?'
+                    )->execute([time() - $interval, $modId]);
+                } catch (\Throwable) {}
+
+                $repaired++;
+                $details[] = [
+                    'id' => $modId,
+                    'name' => $row['nombre'],
+                    'old_oid' => $oid,
+                    'new_oid' => $newOid,
+                    'total_units' => $totalUnits,
+                    'post_process' => $formattedPostProcess,
+                ];
+            }
+        }
+
+        return ['repaired' => $repaired, 'details' => $details];
     }
 }

@@ -474,6 +474,30 @@ if (!empty($api)) {
         exit;
     }
 
+    // API: Auto-repair HR-STORAGE and Memory Modules in Pandora FMS
+    if ($api === 'repair_storage_modules' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $verify_csrf();
+        $raw = file_get_contents('php://input');
+        $input = json_decode($raw, true) ?: $_POST;
+        $agentId = isset($input['agent_id']) ? (int) $input['agent_id'] : 0;
+
+        try {
+            $rep = $pandoraRepo->repairHrStorageModules($agentId > 0 ? $agentId : null);
+            echo json_encode([
+                'ok' => true,
+                'repaired' => $rep['repaired'],
+                'details' => $rep['details'],
+                'message' => sprintf(
+                    'Successfully repaired %d memory/storage percentage module(s) in Pandora FMS! OIDs corrected to hrStorageUsed and post_process multipliers applied.',
+                    $rep['repaired']
+                ),
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
     // API: Delete Device or Sensor
     if ($api === 'delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $verify_csrf();
@@ -2041,9 +2065,12 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             <div class="dashboard-card">
                 <div class="card-header-clean">
                     <h3>Discovered Sensor Inventory</h3>
-                    <div style="display:flex; gap:10px;">
+                    <div style="display:flex; gap:10px; align-items:center;">
                         <button class="btn-secondary-custom" onclick="clearSelectedSensors()">
                             Deselect All
+                        </button>
+                        <button class="btn-secondary-custom" onclick="repairStorageModules()" title="Auto-fix existing modules in Pandora FMS where hrStorage raw allocation blocks appear as huge percentage numbers">
+                            <span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle;">build</span> Auto-Fix (%) Modules
                         </button>
                         <button class="btn-apply" onclick="proceedToProvisioning()">
                             Provision Selected (<span id="inv-selected-count">0</span>)
@@ -3396,6 +3423,35 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 btn.disabled = false;
                 btn.innerText = 'Deploy Modules to Agent';
                 resultsContent.innerHTML = `<div style="color:#b91c1c;">Network Error: ${err.message}</div>`;
+            });
+        }
+
+        // Auto-fix existing HR-STORAGE and Memory percentage modules in Pandora FMS
+        function repairStorageModules() {
+            if (!confirm('Auto-fix memory & storage percentage modules in Pandora FMS?\n\nThis will scan Pandora FMS modules for HOST-RESOURCES-MIB partitions (like /var, /config, /output, etc.), change OIDs from hrStorageSize (.5) to hrStorageUsed (.6), set the post_process multiplier (100 / total_blocks), and reset module cache so correct percentages (e.g. 13%) display immediately.')) {
+                return;
+            }
+
+            fetch('?api=repair_storage_modules', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': CSRF_TOKEN
+                },
+                body: JSON.stringify({})
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.ok) {
+                    alert(res.message || 'Modules repaired successfully!');
+                    loadStats();
+                    loadInventory(currentInventoryPage);
+                } else {
+                    alert('Repair error: ' + (res.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Network error: ' + err.message);
             });
         }
 

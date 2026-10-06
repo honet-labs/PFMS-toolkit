@@ -37,11 +37,14 @@ final class PandoraProvisioner
         $provisionedSensors = [];
         $customIdsBySensorId = [];
 
+        $moduleNames = [];
         foreach ($sensors as $sensor) {
             $customIdsBySensorId[(int) $sensor['id']] = $this->moduleBuilder->customId((int) $sensor['id']);
+            $moduleNames[] = $this->moduleBuilder->moduleName($sensor);
         }
 
         $existingModules = $this->pandoraRepository->findModulesByCustomIds($agentId, array_values($customIdsBySensorId));
+        $existingModulesByName = $this->pandoraRepository->findModulesByNames($agentId, $moduleNames);
 
         $this->pandoraRepository->beginTransaction();
 
@@ -63,10 +66,10 @@ final class PandoraProvisioner
                 }
 
                 $customId = $customIdsBySensorId[(int) $sensor['id']];
-                $existingModuleId = $existingModules[$customId] ?? null;
-
                 $moduleOverrides = $interval > 0 ? ['module_interval' => $interval] : [];
                 $module = $this->moduleBuilder->build($sensor, $agentId, $moduleOverrides);
+
+                $existingModuleId = $existingModules[$customId] ?? $existingModulesByName[$module['nombre']] ?? null;
 
                 if ($existingModuleId !== null) {
                     // Update existing module definition with latest SNMP v3 credentials & OID

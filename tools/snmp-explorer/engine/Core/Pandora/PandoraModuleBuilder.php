@@ -78,6 +78,50 @@ final class PandoraModuleBuilder
             $authProto = 'SHA';
         }
 
+        $unit = (string) ($sensor['unit'] ?? '');
+
+        // Resolve post_process multiplier for percentage metrics or raw conversions
+        $postProcess = $sensor['post_process'] ?? null;
+        if ($postProcess === null && isset($sensor['metadata']) && is_array($sensor['metadata'])) {
+            $postProcess = $sensor['metadata']['post_process'] ?? null;
+        }
+        if ($postProcess === null && !empty($sensor['metadata_json']) && is_string($sensor['metadata_json'])) {
+            $decodedMeta = json_decode($sensor['metadata_json'], true);
+            if (is_array($decodedMeta)) {
+                $postProcess = $decodedMeta['post_process'] ?? null;
+            }
+        }
+
+        // Automatic fallback calculation for percentage storage/memory metrics if missing
+        if ($postProcess === null && $unit === '%') {
+            $meta = $sensor['metadata'] ?? [];
+            if (empty($meta) && !empty($sensor['metadata_json']) && is_string($sensor['metadata_json'])) {
+                $meta = json_decode($sensor['metadata_json'], true) ?: [];
+            }
+            if (!empty($meta['total_units']) && (float) $meta['total_units'] > 0) {
+                $postProcess = 100.0 / (float) $meta['total_units'];
+            } elseif (!empty($meta['total_bytes']) && (float) $meta['total_bytes'] > 0) {
+                $postProcess = 100.0 / (float) $meta['total_bytes'];
+            } elseif (!empty($meta['storage_size_units']) && (float) $meta['storage_size_units'] > 0) {
+                $postProcess = 100.0 / (float) $meta['storage_size_units'];
+            }
+        }
+
+        $formattedPostProcess = null;
+        if ($postProcess !== null && is_numeric($postProcess)) {
+            $num = (float) $postProcess;
+            if ($num > 0) {
+                $formattedPostProcess = (float) rtrim(rtrim(sprintf('%.12f', $num), '0'), '.');
+            }
+        }
+
+        $minVal = null;
+        $maxVal = null;
+        if ($unit === '%') {
+            $minVal = 0.0;
+            $maxVal = 100.0;
+        }
+
         return [
             'id_agente' => $agentId,
             'id_tipo_modulo' => $idTipoModulo,
@@ -92,7 +136,10 @@ final class PandoraModuleBuilder
             'module_interval' => $interval,
             'max_timeout' => (int) ($this->config['module_timeout'] ?? self::DEFAULT_SNMP_TIMEOUT),
             'max_retries' => (int) ($this->config['module_retries'] ?? self::DEFAULT_SNMP_RETRIES),
-            'unit' => (string) ($sensor['unit'] ?? ''),
+            'unit' => $unit,
+            'post_process' => $formattedPostProcess,
+            'min' => $minVal,
+            'max' => $maxVal,
             'history_data' => 1,
             'disabled' => 0,
             'wizard_level' => 'nowizard',
@@ -245,7 +292,7 @@ final class PandoraModuleBuilder
         return $class ?: 'Sensor';
     }
 
-    private function moduleName(array $sensor): string
+    public function moduleName(array $sensor): string
     {
         $name = $this->namingService->formatPandoraModuleName($sensor);
         $name = preg_replace('/[^\w\s\-.\/:()%]/', '', $name);

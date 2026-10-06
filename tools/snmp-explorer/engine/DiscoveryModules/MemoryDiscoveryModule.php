@@ -96,6 +96,7 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
 
                 $usedPercent = (int) (($usedVal / $total) * 100);
                 $poolName = trim((string) ($poolNames[$index] ?? "Memory Pool {$index}"));
+                $postProcess = $total > 0 ? (100.0 / $total) : null;
 
                 $sensor = [
                     'sensor_class' => 'memory',
@@ -110,6 +111,9 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
                     'scale' => 'units',
                     'precision' => 0,
                     'status' => 'ok',
+                    'post_process' => $postProcess,
+                    'min' => 0,
+                    'max' => 100,
                     'metadata' => [
                         'discovery_module' => 'MemoryDiscoveryModule',
                         'source' => 'CISCO-MEMORY-POOL-MIB',
@@ -118,6 +122,7 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
                         'total_bytes' => $total,
                         'used_bytes' => $usedVal,
                         'free_bytes' => $free,
+                        'post_process' => $postProcess,
                     ],
                 ];
 
@@ -342,6 +347,7 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
 
             $usedPercent = (int) (($usedValue / $totalSize) * 100);
             $descr = trim((string) ($descrs[$index] ?? "Memory {$index}"));
+            $postProcess = $totalSize > 0 ? (100.0 / $totalSize) : null;
 
             $sensor = [
                 'sensor_class' => 'memory',
@@ -350,12 +356,15 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
                 'interface_index' => null,
                 'interface_name' => null,
                 'entity_index' => (int) $index,
-                'oid' => self::HOST_RESOURCES_MEMORY_SIZE . '.' . $index,
+                'oid' => self::HOST_RESOURCES_MEMORY_USED . '.' . $index,
                 'raw_value' => (string) $usedPercent,
                 'unit' => '%',
                 'scale' => 'units',
                 'precision' => 0,
                 'status' => 'ok',
+                'post_process' => $postProcess,
+                'min' => 0,
+                'max' => 100,
                 'metadata' => [
                     'discovery_module' => 'MemoryDiscoveryModule',
                     'source' => 'HOST-RESOURCES-MIB',
@@ -363,6 +372,7 @@ final readonly class MemoryDiscoveryModule implements DiscoveryModuleInterface
                     'description' => $descr,
                     'total_units' => $totalSize,
                     'used_units' => $usedValue,
+                    'post_process' => $postProcess,
                 ],
             ];
 
