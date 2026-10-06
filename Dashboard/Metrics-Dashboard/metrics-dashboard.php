@@ -1372,6 +1372,74 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             </select>
         </div>
 
+        <div class="form-group" id="wrap_heatmap_options" style="display:none; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; margin-bottom:12px;">
+            <div style="font-weight:600; color:#0f172a; margin-bottom:10px; font-size:12px; display:flex; align-items:center; gap:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px; color:#0284c7;">grid_view</span>
+                Heatmap Box & Text Configuration
+            </div>
+            
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <div style="flex:1;">
+                    <label style="font-size:11px; margin-bottom:4px; display:block;">Heatmap Box Size (Ukuran Kotak)</label>
+                    <select id="b_heatmap_box_size" class="form-control-fix" onchange="toggleHeatmapCustomSize('metrics')" style="margin-bottom:0;">
+                        <option value="rect_sm">Compact Bar (110px × 28px)</option>
+                        <option value="medium" selected>Standard Bar (160px × 34px)</option>
+                        <option value="large">Large Bar (200px × 44px)</option>
+                        <option value="xl">Extra Large Bar (260px × 54px)</option>
+                        <option value="square_sm">Square Mini (38px × 38px)</option>
+                        <option value="square_md">Square Medium (54px × 54px)</option>
+                        <option value="square_lg">Square Large (75px × 75px)</option>
+                        <option value="custom">Custom Dimensions (px)</option>
+                    </select>
+                </div>
+                <div style="flex:1;">
+                    <label style="font-size:11px; margin-bottom:4px; display:block;">Box Label / Text Display (Teks Kotak)</label>
+                    <select id="b_heatmap_text_type" class="form-control-fix" onchange="toggleHeatmapCustomText('metrics')" style="margin-bottom:0;">
+                        <option value="agent">Agent Name / Alias</option>
+                        <option value="module" selected>Module Name</option>
+                        <option value="agent_module">Agent Name - Module Name</option>
+                        <option value="ip">IP Address</option>
+                        <option value="value">Metric Value</option>
+                        <option value="agent_value">Agent Name (Value)</option>
+                        <option value="custom">Custom Text / Template</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="b_wrap_heatmap_custom_size" style="display:none; gap:10px; margin-bottom:10px;">
+                <div style="flex:1;">
+                    <label style="font-size:11px; margin-bottom:4px; display:block;">Custom Width (px / min-width)</label>
+                    <input type="number" id="b_heatmap_custom_width" class="form-control-fix" placeholder="e.g. 160" min="20" max="600" style="margin-bottom:0;">
+                </div>
+                <div style="flex:1;">
+                    <label style="font-size:11px; margin-bottom:4px; display:block;">Custom Height (px)</label>
+                    <input type="number" id="b_heatmap_custom_height" class="form-control-fix" placeholder="e.g. 34" min="16" max="300" style="margin-bottom:0;">
+                </div>
+            </div>
+
+            <div id="b_wrap_heatmap_custom_text" style="display:none; margin-bottom:10px;">
+                <label style="font-size:11px; margin-bottom:4px; display:block;">Custom Label Text / Template</label>
+                <input type="text" id="b_heatmap_custom_text" class="form-control-fix" placeholder="e.g. {agent} or {agent}: {value} or Host Alive" style="margin-bottom:2px;">
+                <small style="color:#64748b; font-size:10px; display:block;">* Tag variabel: <code>{agent}</code>, <code>{module}</code>, <code>{ip}</code>, <code>{value}</code>, <code>{unit}</code>, atau teks statis biasa.</small>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1;">
+                    <label style="font-size:11px; margin-bottom:4px; display:block;">Font Size (px, optional)</label>
+                    <input type="number" id="b_heatmap_font_size" class="form-control-fix" placeholder="Default (11)" min="8" max="32" style="margin-bottom:0;">
+                </div>
+                <div style="flex:1;">
+                    <label style="font-size:11px; margin-bottom:4px; display:block;">Font Weight</label>
+                    <select id="b_heatmap_font_weight" class="form-control-fix" style="margin-bottom:0;">
+                        <option value="400">Normal (400)</option>
+                        <option value="500">Medium (500)</option>
+                        <option value="600" selected>Semi-Bold (600)</option>
+                        <option value="700">Bold (700)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
         <div class="form-group"><label>Filter By Group</label><select id="b_group" class="form-control-fix" onchange="toggleManualSelector(); refreshBuilderModuleList();"></select></div>
         <div id="manual_selector_box" class="form-group" style="display:none;">
             <label>Select Agents (Unlimited)</label>
@@ -2772,16 +2840,75 @@ function renderTablePage(cardId) {
     }
     
     if (card.view_type === 'heatmap') {
-        h += '<div class="heatmap-wrap" style="border: 1px solid #f0f3f5; border-radius: 6px;">';
+        const boxSize = card.heatmap_box_size || 'medium';
+        const textType = card.heatmap_text_type || 'module';
+        const customTpl = card.heatmap_custom_text || '';
+        const customFs = parseInt(card.heatmap_font_size) || 0;
+        const fw = card.heatmap_font_weight || '600';
+
+        let minW = '160px';
+        let hPx = '34px';
+        let fSize = customFs ? `${customFs}px` : '11px';
+        let isSquare = false;
+
+        if (boxSize === 'rect_sm') { minW = '110px'; hPx = '28px'; if (!customFs) fSize = '10px'; }
+        else if (boxSize === 'medium') { minW = '160px'; hPx = '34px'; if (!customFs) fSize = '11px'; }
+        else if (boxSize === 'large') { minW = '200px'; hPx = '44px'; if (!customFs) fSize = '12px'; }
+        else if (boxSize === 'xl') { minW = '260px'; hPx = '54px'; if (!customFs) fSize = '13px'; }
+        else if (boxSize === 'square_sm') { minW = '38px'; hPx = '38px'; isSquare = true; if (!customFs) fSize = '9px'; }
+        else if (boxSize === 'square_md') { minW = '54px'; hPx = '54px'; isSquare = true; if (!customFs) fSize = '11px'; }
+        else if (boxSize === 'square_lg') { minW = '75px'; hPx = '75px'; isSquare = true; if (!customFs) fSize = '13px'; }
+        else if (boxSize === 'custom') {
+            minW = card.heatmap_custom_width ? `${parseInt(card.heatmap_custom_width)}px` : '160px';
+            hPx = card.heatmap_custom_height ? `${parseInt(card.heatmap_custom_height)}px` : '34px';
+            if (!customFs) fSize = '11px';
+        }
+
+        const gridCols = isSquare 
+            ? `repeat(auto-fill, ${minW})` 
+            : `repeat(auto-fill, minmax(${minW}, 1fr))`;
+
+        h += `<div class="heatmap-wrap" style="display:grid; grid-template-columns:${gridCols}; gap:8px; padding:8px; border:1px solid #f0f3f5; border-radius:6px; background:#fff;">`;
         pageData.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let unitStr = r.unit ? ` ${r.unit}` : '';
+            const cleanVal = formatValue(r.current_value, r.unit, card.use_raw, r.module_name, card.title);
+
+            let label = r.module_name;
+            if (textType === 'agent') {
+                label = r.agent_alias || r.agent_name || r.ip_address || r.module_name;
+            } else if (textType === 'module') {
+                label = r.module_name;
+            } else if (textType === 'agent_module') {
+                label = `${r.agent_alias || r.agent_name || ''} - ${r.module_name}`;
+            } else if (textType === 'ip') {
+                label = r.ip_address || r.agent_alias || r.module_name;
+            } else if (textType === 'value') {
+                label = `${cleanVal}${unitStr}`;
+            } else if (textType === 'agent_value') {
+                label = `${r.agent_alias || r.agent_name} (${cleanVal}${unitStr})`;
+            } else if (textType === 'custom') {
+                if (customTpl) {
+                    label = customTpl
+                        .replace(/\{agent\}/gi, r.agent_alias || r.agent_name || '')
+                        .replace(/\{module\}/gi, r.module_name || '')
+                        .replace(/\{ip\}/gi, r.ip_address || '')
+                        .replace(/\{value\}/gi, cleanVal !== null && cleanVal !== undefined ? cleanVal : '')
+                        .replace(/\{unit\}/gi, r.unit || '');
+                } else {
+                    label = r.agent_alias || r.module_name;
+                }
+            }
+
+            const titleTip = `Agent: ${r.agent_alias}\nIP: ${r.ip_address || '-'}\nModule: ${r.module_name}\nValue: ${cleanVal}${unitStr}\nStatus: ${sObj.label || r.estado}`;
             const isPrimaryAgent = String(r.id_agente).startsWith(PRIMARY_UUID + ':');
+            const styleAttr = `height:${hPx}; line-height:${hPx}; font-size:${fSize}; font-weight:${fw}!important; padding:0 ${isSquare ? '4px' : '10px'}; border-radius:4px; display:flex; align-items:center; justify-content:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
+
             if (isPrimaryAgent) {
                 const rawAgentId = String(r.id_agente).split(':')[1] || r.id_agente;
-                h += `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="heat-box ${sObj.color}" title="Agent: ${r.agent_alias}\nModule: ${r.module_name}\nValue: ${r.current_value}${unitStr}">${r.module_name}</a>`;
+                h += `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="heat-box ${sObj.color}" style="${styleAttr}" title="${escapeHtml(titleTip)}"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%; text-align:center;">${escapeHtml(label)}</span></a>`;
             } else {
-                h += `<span class="heat-box ${sObj.color}" title="Agent: ${r.agent_alias} (Custom Node)\nModule: ${r.module_name}\nValue: ${r.current_value}${unitStr}">${r.module_name}</span>`;
+                h += `<span class="heat-box ${sObj.color}" style="${styleAttr}" title="${escapeHtml(titleTip)}"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%; text-align:center;">${escapeHtml(label)}</span></span>`;
             }
         });
         h += '</div>';
@@ -3795,7 +3922,16 @@ function toggleViewTypeOptions() {
     const wrapSingleValue = document.getElementById('wrap_single_value_options');
     const wrapHistory = document.getElementById('wrap_history_table_options');
     const wrapColumns = document.getElementById('wrap_columns_select');
+    const wrapHeatmap = document.getElementById('wrap_heatmap_options');
     
+    if (wrapHeatmap) {
+        wrapHeatmap.style.display = (vt === 'heatmap') ? 'block' : 'none';
+        if (vt === 'heatmap') {
+            toggleHeatmapCustomSize('metrics');
+            toggleHeatmapCustomText('metrics');
+        }
+    }
+
     if (vt === 'pie' || vt === 'donut') {
         wrap.style.display = 'block';
     } else {
@@ -3824,6 +3960,24 @@ function toggleViewTypeOptions() {
     } else {
         if (wrapShowStats) wrapShowStats.style.display = 'none';
         if (wrapVisibleStats) wrapVisibleStats.style.display = 'none';
+    }
+}
+
+function toggleHeatmapCustomSize(type) {
+    const prefix = (type === 'metrics') ? 'b_' : 'p_';
+    const boxSize = document.getElementById(prefix + 'heatmap_box_size') ? document.getElementById(prefix + 'heatmap_box_size').value : '';
+    const wrapCustom = document.getElementById(prefix + 'wrap_heatmap_custom_size');
+    if (wrapCustom) {
+        wrapCustom.style.display = (boxSize === 'custom') ? 'flex' : 'none';
+    }
+}
+
+function toggleHeatmapCustomText(type) {
+    const prefix = (type === 'metrics') ? 'b_' : 'p_';
+    const textType = document.getElementById(prefix + 'heatmap_text_type') ? document.getElementById(prefix + 'heatmap_text_type').value : '';
+    const wrapText = document.getElementById(prefix + 'wrap_heatmap_custom_text');
+    if (wrapText) {
+        wrapText.style.display = (textType === 'custom') ? 'block' : 'none';
     }
 }
 
@@ -3865,6 +4019,15 @@ async function openBuilder() {
     if (document.getElementById('b_show_module_name')) document.getElementById('b_show_module_name').value = '1';
     if (document.getElementById('b_value_calc')) document.getElementById('b_value_calc').value = 'current';
     if (document.getElementById('b_history_sort')) document.getElementById('b_history_sort').value = 'time_desc';
+    if (document.getElementById('b_heatmap_box_size')) document.getElementById('b_heatmap_box_size').value = 'medium';
+    if (document.getElementById('b_heatmap_text_type')) document.getElementById('b_heatmap_text_type').value = 'agent';
+    if (document.getElementById('b_heatmap_custom_width')) document.getElementById('b_heatmap_custom_width').value = '';
+    if (document.getElementById('b_heatmap_custom_height')) document.getElementById('b_heatmap_custom_height').value = '';
+    if (document.getElementById('b_heatmap_custom_text')) document.getElementById('b_heatmap_custom_text').value = '';
+    if (document.getElementById('b_heatmap_font_size')) document.getElementById('b_heatmap_font_size').value = '';
+    if (document.getElementById('b_heatmap_font_weight')) document.getElementById('b_heatmap_font_weight').value = '600';
+    toggleHeatmapCustomSize('metrics');
+    toggleHeatmapCustomText('metrics');
     toggleViewTypeOptions();
     document.getElementById('inner_search').value = '';
     document.getElementById('sel_count').innerText = "0 Selected";
@@ -3932,6 +4095,29 @@ async function openEdit(id) {
     if (document.getElementById('b_history_sort')) {
         document.getElementById('b_history_sort').value = c.history_sort || 'time_desc';
     }
+    if (document.getElementById('b_heatmap_box_size')) {
+        document.getElementById('b_heatmap_box_size').value = c.heatmap_box_size || 'medium';
+    }
+    if (document.getElementById('b_heatmap_text_type')) {
+        document.getElementById('b_heatmap_text_type').value = c.heatmap_text_type || 'module';
+    }
+    if (document.getElementById('b_heatmap_custom_width')) {
+        document.getElementById('b_heatmap_custom_width').value = c.heatmap_custom_width || '';
+    }
+    if (document.getElementById('b_heatmap_custom_height')) {
+        document.getElementById('b_heatmap_custom_height').value = c.heatmap_custom_height || '';
+    }
+    if (document.getElementById('b_heatmap_custom_text')) {
+        document.getElementById('b_heatmap_custom_text').value = c.heatmap_custom_text || '';
+    }
+    if (document.getElementById('b_heatmap_font_size')) {
+        document.getElementById('b_heatmap_font_size').value = c.heatmap_font_size || '';
+    }
+    if (document.getElementById('b_heatmap_font_weight')) {
+        document.getElementById('b_heatmap_font_weight').value = c.heatmap_font_weight || '600';
+    }
+    toggleHeatmapCustomSize('metrics');
+    toggleHeatmapCustomText('metrics');
     toggleViewTypeOptions();
 
     const mType = c.match_type || 'contains';
@@ -4002,6 +4188,13 @@ function saveWidget() {
         value_calc: document.getElementById('b_value_calc') ? document.getElementById('b_value_calc').value : 'current',
         visible_columns: Array.from(document.querySelectorAll('.col-visibility-chk:checked')).map(el => el.value),
         history_sort: document.getElementById('b_history_sort') ? document.getElementById('b_history_sort').value : 'time_desc',
+        heatmap_box_size: document.getElementById('b_heatmap_box_size') ? document.getElementById('b_heatmap_box_size').value : 'medium',
+        heatmap_text_type: document.getElementById('b_heatmap_text_type') ? document.getElementById('b_heatmap_text_type').value : 'module',
+        heatmap_custom_width: document.getElementById('b_heatmap_custom_width') ? document.getElementById('b_heatmap_custom_width').value : '',
+        heatmap_custom_height: document.getElementById('b_heatmap_custom_height') ? document.getElementById('b_heatmap_custom_height').value : '',
+        heatmap_custom_text: document.getElementById('b_heatmap_custom_text') ? document.getElementById('b_heatmap_custom_text').value : '',
+        heatmap_font_size: document.getElementById('b_heatmap_font_size') ? document.getElementById('b_heatmap_font_size').value : '',
+        heatmap_font_weight: document.getElementById('b_heatmap_font_weight') ? document.getElementById('b_heatmap_font_weight').value : '600',
         manual_ids: selectedIds.join(',')
     };
 
