@@ -1376,6 +1376,17 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             </select>
         </div>
 
+        <div class="form-group" id="wrap_sparkline_options" style="display:none; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; margin-bottom:12px;">
+            <div style="font-weight:600; color:#0f172a; margin-bottom:8px; font-size:12px; display:flex; align-items:center; gap:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px; color:#10b981;">show_chart</span>
+                Sparkline Table Configuration
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; margin-bottom:0; color:#334155; font-weight:500;">
+                <input type="checkbox" id="b_hide_search_bar" style="width:16px; height:16px; margin:0;">
+                Hide Search Bar & Total Items (Sembunyikan Bilah Pencarian & Total Item)
+            </label>
+        </div>
+
         <div class="form-group" id="wrap_heatmap_options" style="display:none; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; margin-bottom:12px;">
             <div style="font-weight:600; color:#0f172a; margin-bottom:10px; font-size:12px; display:flex; align-items:center; gap:6px;">
                 <span class="material-symbols-outlined" style="font-size:16px; color:#0284c7;">grid_view</span>
@@ -3387,7 +3398,11 @@ function renderSparklineTableWidget(cardId, tableData, historyData) {
         };
     });
 
+    const hideSearch = (card.hide_search_bar === true || card.hide_search_bar === 1 || card.hide_search_bar === '1' || card.hide_search_bar === 'true');
     window.metricsSparklineSearch = window.metricsSparklineSearch || {};
+    if (hideSearch) {
+        window.metricsSparklineSearch[cardId] = '';
+    }
     const searchKw = (window.metricsSparklineSearch[cardId] || '').toLowerCase().trim();
     if (searchKw) {
         items = items.filter(it => 
@@ -3455,13 +3470,14 @@ function renderSparklineTableWidget(cardId, tableData, historyData) {
 
     container.innerHTML = `
     <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%; padding:2px 0;">
+        ${!hideSearch ? `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
             <div style="font-size:11px; color:#94a3b8; font-weight:500;">Top ${Math.min(pageSize, totalItems)} of ${totalItems} Items</div>
             <div style="position:relative; width:180px;">
                 <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.metricsSparklineSearch[cardId] || '')}" oninput="window.metricsSparklineSearch['${cardId}'] = this.value; window.metricsSparklinePages['${cardId}'] = 1; renderSparklineTableWidget('${cardId}', window.metricsSparklineStores['${cardId}'].table, window.metricsSparklineStores['${cardId}'].history);">
                 <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
             </div>
-        </div>
+        </div>` : ''}
         <div style="overflow-x:auto; overflow-y:auto; flex:1; max-height:420px; border:1px solid #e2e8f0; border-radius:6px; background:#fff;">
             <table class="sparkline-table" style="font-size:12px; width:100%; border-collapse:collapse;">
                 <thead>
@@ -4028,6 +4044,11 @@ function toggleViewTypeOptions() {
         wrapHistory.style.display = (vt === 'history_table') ? 'block' : 'none';
     }
 
+    const wrapSparkline = document.getElementById('wrap_sparkline_options');
+    if (wrapSparkline) {
+        wrapSparkline.style.display = (vt === 'sparkline_table') ? 'block' : 'none';
+    }
+
     if (wrapColumns) {
         wrapColumns.style.display = (vt === 'table') ? 'block' : 'none';
     }
@@ -4108,6 +4129,7 @@ async function openBuilder() {
     if (document.getElementById('b_heatmap_custom_text')) document.getElementById('b_heatmap_custom_text').value = '';
     if (document.getElementById('b_heatmap_font_size')) document.getElementById('b_heatmap_font_size').value = '';
     if (document.getElementById('b_heatmap_font_weight')) document.getElementById('b_heatmap_font_weight').value = '600';
+    if (document.getElementById('b_hide_search_bar')) document.getElementById('b_hide_search_bar').checked = false;
     toggleHeatmapCustomSize('metrics');
     toggleHeatmapCustomText('metrics');
     toggleViewTypeOptions();
@@ -4198,6 +4220,9 @@ async function openEdit(id) {
     if (document.getElementById('b_heatmap_font_weight')) {
         document.getElementById('b_heatmap_font_weight').value = c.heatmap_font_weight || '600';
     }
+    if (document.getElementById('b_hide_search_bar')) {
+        document.getElementById('b_hide_search_bar').checked = (c.hide_search_bar === true || c.hide_search_bar === 1 || c.hide_search_bar === '1' || c.hide_search_bar === 'true');
+    }
     toggleHeatmapCustomSize('metrics');
     toggleHeatmapCustomText('metrics');
     toggleViewTypeOptions();
@@ -4277,6 +4302,7 @@ function saveWidget() {
         heatmap_custom_text: document.getElementById('b_heatmap_custom_text') ? document.getElementById('b_heatmap_custom_text').value : '',
         heatmap_font_size: document.getElementById('b_heatmap_font_size') ? document.getElementById('b_heatmap_font_size').value : '',
         heatmap_font_weight: document.getElementById('b_heatmap_font_weight') ? document.getElementById('b_heatmap_font_weight').value : '600',
+        hide_search_bar: document.getElementById('b_hide_search_bar') ? document.getElementById('b_hide_search_bar').checked : false,
         manual_ids: selectedIds.join(',')
     };
 

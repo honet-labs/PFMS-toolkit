@@ -1249,6 +1249,17 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 </div>
             </div>
 
+            <div class="form-group" id="wrap_sparkline_options" style="display:none; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; margin-top:5px; margin-bottom:10px;">
+                <div style="font-weight:600; color:#0f172a; margin-bottom:8px; font-size:11px; display:flex; align-items:center; gap:6px;">
+                    <span class="material-symbols-outlined" style="font-size:15px; color:#10b981;">show_chart</span>
+                    Sparkline Table Configuration
+                </div>
+                <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;">
+                    <input type="checkbox" id="p_hide_search_bar" style="margin-right:8px; width:16px; height:16px;">
+                    Hide Search Bar & Total Items (Sembunyikan Bilah Pencarian & Total Item)
+                </label>
+            </div>
+
             <div class="form-group" id="wrap_value_calc" style="margin-top:5px; margin-bottom:10px;">
                 <label style="color:#004d40; font-size:11px; font-weight:600!important; display:block; margin-bottom:4px;">Value Calculation (Avg / Max / Min)</label>
                 <select id="p_value_calc" class="form-control-fix" style="margin-bottom:0;">
@@ -3098,7 +3109,11 @@ function generateSummaryPanelHtml(p, modules) {
             };
         });
 
+        const hideSearch = (p.hide_search_bar === true || p.hide_search_bar === 1 || p.hide_search_bar === '1' || p.hide_search_bar === 'true');
         window.sparklineTableSearch = window.sparklineTableSearch || {};
+        if (hideSearch) {
+            window.sparklineTableSearch[p.id] = '';
+        }
         const searchKw = (window.sparklineTableSearch[p.id] || '').toLowerCase().trim();
         if (searchKw) {
             items = items.filter(it => 
@@ -3169,13 +3184,14 @@ function generateSummaryPanelHtml(p, modules) {
         } else {
             content = `
             <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%;">
+                ${!hideSearch ? `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
                     <div style="font-size:10px; color:#94a3b8; font-weight:500;">Top ${Math.min(limit, totalItems)} of ${totalItems} Items</div>
                     <div style="position:relative; width:180px;">
                         <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.sparklineTableSearch[p.id] || '')}" oninput="window.sparklineTableSearch['${p.id}'] = this.value; window.tableCurrentPages['${p.id}'] = 1; forceRefresh();">
                         <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
                     </div>
-                </div>
+                </div>` : ''}
                 <div style="overflow-x:auto; overflow-y:auto; flex:1; ${tableH} border:1px solid #e2e8f0; border-radius:6px; background:#fff;">
                     <table class="sparkline-table" style="font-size:${tableFs}px; width:100%;">
                         <thead>
@@ -3721,6 +3737,11 @@ function toggleTypeFields() {
         }
     }
 
+    const wrapSparklineOptions = document.getElementById('wrap_sparkline_options');
+    if (wrapSparklineOptions) {
+        wrapSparklineOptions.style.display = (type === 'sparkline_table') ? 'block' : 'none';
+    }
+
     const isChart = ['line','area','bar'].includes(type);
     document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
     const wrapChartFont = document.getElementById('wrap_chart_font');
@@ -3877,6 +3898,9 @@ function openPanelBuilder() {
     document.getElementById('p_use_raw').checked = false;
     document.getElementById('p_auto_convert_traffic').checked = true;
     document.getElementById('p_show_time').checked = true;
+    if (document.getElementById('p_hide_search_bar')) {
+        document.getElementById('p_hide_search_bar').checked = false;
+    }
     document.getElementById('p_hidden').checked = false;
     document.getElementById('p_multi_overlay').checked = false;
     document.querySelectorAll('.col-visibility-chk').forEach(chk => chk.checked = true);
@@ -3915,6 +3939,9 @@ function openPanelEdit(id) {
     document.getElementById('p_auto_convert_traffic').checked = p.auto_convert_traffic !== false;
     document.getElementById('p_force_100').checked = p.force_100 || false;
     document.getElementById('p_show_time').checked = p.show_time !== false;
+    if (document.getElementById('p_hide_search_bar')) {
+        document.getElementById('p_hide_search_bar').checked = (p.hide_search_bar === true || p.hide_search_bar === 1 || p.hide_search_bar === '1' || p.hide_search_bar === 'true');
+    }
     document.getElementById('p_chart_engine').value = p.chart_engine || 'custom';
     document.getElementById('p_lbl_1').value = p.lbl_1 || '';
     document.getElementById('p_lbl_0').value = p.lbl_0 || '';
@@ -3980,6 +4007,7 @@ function applyPanel() {
         lbl_1: document.getElementById('p_lbl_1').value,
         lbl_0: document.getElementById('p_lbl_0').value,
         hidden: document.getElementById('p_hidden').checked,
+        hide_search_bar: document.getElementById('p_hide_search_bar') ? document.getElementById('p_hide_search_bar').checked : false,
         multi_overlay: document.getElementById('p_multi_overlay').checked,
         visible_columns: Array.from(document.querySelectorAll('.col-visibility-chk:checked')).map(el => el.value),
         excluded: editingPanelId ? (dash.panels.find(x => x.id === editingPanelId).excluded || []) : []
