@@ -107,11 +107,11 @@ final class PandoraModuleBuilder
             }
         }
 
-        // 1. Automatic calculation from raw vs normalized values (accounts for SI prefix scaling mW, mA, mV)
-        if ($postProcess === null && !empty($sensor['raw_value']) && !empty($sensor['normalized_value']) && is_numeric($sensor['raw_value']) && is_numeric($sensor['normalized_value'])) {
+        // 1. Automatic calculation from raw vs normalized values (accounts for SI prefix scaling mW, mA, mV, but ignores logarithmic dBm)
+        if ($unit !== 'dBm' && $postProcess === null && !empty($sensor['raw_value']) && !empty($sensor['normalized_value']) && is_numeric($sensor['raw_value']) && is_numeric($sensor['normalized_value'])) {
             $rawNum = (float) $sensor['raw_value'];
             $normNum = (float) $sensor['normalized_value'];
-            if ($rawNum != 0.0 && abs($rawNum - $normNum) > 0.00001) {
+            if ($rawNum > 0.0 && $normNum > 0.0 && abs($rawNum - $normNum) > 0.00001) {
                 $postProcess = $normNum / $rawNum;
             }
         }

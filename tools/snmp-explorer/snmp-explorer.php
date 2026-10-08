@@ -341,16 +341,65 @@ if (!empty($api)) {
 
             $whereSql = !empty($filters) ? 'WHERE ' . implode(' AND ', $filters) : '';
 
-            // Auto-repair existing optical / scaled inventory rows if any exist with unit prefix mismatch
+            // Auto-repair existing optical / scaled inventory rows to standard dBm and mA
             try {
+                // 1. Convert optical power rows from mW to dBm
+                $opticalRows = $pdo->query("
+                    SELECT id, sensor_name, raw_value, normalized_value, unit
+                    FROM sensor_inventory
+                    WHERE (unit = 'mW' OR sensor_name LIKE '%(mW)%')
+                      AND (sensor_class = 'optical_dom' OR sensor_name LIKE '%Power%')
+                      AND sensor_name NOT LIKE '%Bias%'
+                      AND sensor_name NOT LIKE '%Volt%'
+                      AND sensor_name NOT LIKE '%Temp%'
+                ")->fetchAll(PDO::FETCH_ASSOC);
+
+                if (!empty($opticalRows)) {
+                    $upStmt = $pdo->prepare("
+                        UPDATE sensor_inventory
+                        SET normalized_value = :dbm,
+                            unit = 'dBm',
+                            sensor_name = :new_name
+                        WHERE id = :id
+                    ");
+                    foreach ($opticalRows as $r) {
+                        $id = (int)$r['id'];
+                        $raw = is_numeric($r['raw_value']) ? (float)$r['raw_value'] : 0.0;
+                        $mW = is_numeric($r['normalized_value']) ? (float)$r['normalized_value'] : 0.0;
+
+                        if ($mW > 0.0 && $mW < 0.05 && $raw > 100.0) {
+                            $mW *= 1000.0;
+                        }
+
+                        if ($mW <= 0.0001 || $raw <= 1.0) {
+                            $dbm = -40.0;
+                        } else {
+                            $dbm = round(10.0 * log10($mW), 2);
+                        }
+
+                        $newName = preg_replace('/\(mW\)/i', '(dBm)', $r['sensor_name']);
+                        if (!str_contains($newName, '(dBm)')) {
+                            $newName = rtrim($newName) . ' (dBm)';
+                        }
+
+                        $upStmt->execute([
+                            ':dbm' => $dbm,
+                            ':new_name' => $newName,
+                            ':id' => $id,
+                        ]);
+                    }
+                }
+
+                // Ensure dark noise / LOS optical power with raw <= 1 is -40 dBm
                 $pdo->exec("
                     UPDATE sensor_inventory
-                    SET normalized_value = ROUND(normalized_value * 1000.0, 6)
-                    WHERE unit = 'mW'
-                      AND normalized_value IS NOT NULL
-                      AND normalized_value < 0.05
-                      AND CAST(raw_value AS DECIMAL(15,4)) > 100
+                    SET normalized_value = -40.0
+                    WHERE unit = 'dBm'
+                      AND (sensor_class = 'optical_dom' OR sensor_name LIKE '%Power%')
+                      AND CAST(raw_value AS DECIMAL(15,4)) <= 1.0
                 ");
+
+                // 2. Optical Bias current prefix & name repair
                 $pdo->exec("
                     UPDATE sensor_inventory
                     SET normalized_value = ROUND(normalized_value * 1000.0, 6),
@@ -544,16 +593,62 @@ if (!empty($api)) {
         $agentId = isset($input['agent_id']) ? (int) $input['agent_id'] : 0;
 
         try {
-            // Also repair sensor_inventory table for optical mW/mA scale prefix and names
+            // Also repair sensor_inventory table for optical dBm/mA conversion and names
             try {
+                $opticalRows = $pdo->query("
+                    SELECT id, sensor_name, raw_value, normalized_value, unit
+                    FROM sensor_inventory
+                    WHERE (unit = 'mW' OR sensor_name LIKE '%(mW)%')
+                      AND (sensor_class = 'optical_dom' OR sensor_name LIKE '%Power%')
+                      AND sensor_name NOT LIKE '%Bias%'
+                      AND sensor_name NOT LIKE '%Volt%'
+                      AND sensor_name NOT LIKE '%Temp%'
+                ")->fetchAll(PDO::FETCH_ASSOC);
+
+                if (!empty($opticalRows)) {
+                    $upStmt = $pdo->prepare("
+                        UPDATE sensor_inventory
+                        SET normalized_value = :dbm,
+                            unit = 'dBm',
+                            sensor_name = :new_name
+                        WHERE id = :id
+                    ");
+                    foreach ($opticalRows as $r) {
+                        $id = (int)$r['id'];
+                        $raw = is_numeric($r['raw_value']) ? (float)$r['raw_value'] : 0.0;
+                        $mW = is_numeric($r['normalized_value']) ? (float)$r['normalized_value'] : 0.0;
+
+                        if ($mW > 0.0 && $mW < 0.05 && $raw > 100.0) {
+                            $mW *= 1000.0;
+                        }
+
+                        if ($mW <= 0.0001 || $raw <= 1.0) {
+                            $dbm = -40.0;
+                        } else {
+                            $dbm = round(10.0 * log10($mW), 2);
+                        }
+
+                        $newName = preg_replace('/\(mW\)/i', '(dBm)', $r['sensor_name']);
+                        if (!str_contains($newName, '(dBm)')) {
+                            $newName = rtrim($newName) . ' (dBm)';
+                        }
+
+                        $upStmt->execute([
+                            ':dbm' => $dbm,
+                            ':new_name' => $newName,
+                            ':id' => $id,
+                        ]);
+                    }
+                }
+
                 $pdo->exec("
                     UPDATE sensor_inventory
-                    SET normalized_value = ROUND(normalized_value * 1000.0, 6)
-                    WHERE unit = 'mW'
-                      AND normalized_value IS NOT NULL
-                      AND normalized_value < 0.05
-                      AND CAST(raw_value AS DECIMAL(15,4)) > 100
+                    SET normalized_value = -40.0
+                    WHERE unit = 'dBm'
+                      AND (sensor_class = 'optical_dom' OR sensor_name LIKE '%Power%')
+                      AND CAST(raw_value AS DECIMAL(15,4)) <= 1.0
                 ");
+
                 $pdo->exec("
                     UPDATE sensor_inventory
                     SET normalized_value = ROUND(normalized_value * 1000.0, 6),

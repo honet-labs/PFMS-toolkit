@@ -61,19 +61,27 @@ final readonly class OpticalDomDiscoveryModule implements DiscoveryModuleInterfa
             );
 
             $direction = $this->directionFromOpticalLabel($label, $type);
+            $lowerLabel = strtolower($label);
+            $isOpticalPower = (str_contains($lowerLabel, 'power') || in_array($direction, ['RX', 'TX', 'Power'], true) || in_array($type, ['dBm', 'watts'], true))
+                && !str_contains($lowerLabel, 'bias')
+                && !str_contains($lowerLabel, 'volt')
+                && !str_contains($lowerLabel, 'temp');
+
+            $effectiveUnit = $isOpticalPower ? 'dBm' : $this->namingService->normalizeUnit($unit, $type);
+            $metricName = $isOpticalPower ? ($direction . ' Power') : $direction;
 
             $sensor = [
                 'sensor_class' => 'optical_dom',
                 'sensor_name' => StringHelper::safeModuleName(
                     $this->namingService->formatOpticalDomSensorName(
                         $interfaceName,
-                        $direction,
-                        $unit,
+                        $metricName,
+                        $effectiveUnit,
                         (string) $index,
                         $label,
                     ),
                 ),
-                'sensor_type' => $type,
+                'sensor_type' => $isOpticalPower ? ($direction === 'RX' ? 'rx_power' : ($direction === 'TX' ? 'tx_power' : 'optical_power')) : $type,
                 'interface_index' => $context->vendor->entityMapper()->resolveIfIndex($index, $context->entityMap),
                 'interface_name' => $interfaceName,
                 'entity_index' => (int) $index,
@@ -92,6 +100,21 @@ final readonly class OpticalDomDiscoveryModule implements DiscoveryModuleInterfa
             $normalized = $this->normalizer->normalize($sensor);
 
             if ($normalized !== null) {
+                if ($isOpticalPower) {
+                    $mW = (float) $normalized['normalized_value'];
+                    $rawNum = is_numeric($value) ? (float) $value : 0.0;
+                    if ($mW <= 0.0001 || $rawNum <= 1.0) {
+                        $dbm = -40.0;
+                    } else {
+                        $dbm = round(10.0 * log10($mW), 2);
+                    }
+                    $normalized['normalized_value'] = $dbm;
+                    $normalized['unit'] = 'dBm';
+                    unset($normalized['post_process']);
+                    if (isset($normalized['metadata']) && is_array($normalized['metadata'])) {
+                        unset($normalized['metadata']['post_process']);
+                    }
+                }
                 $sensors[] = $normalized;
             }
         }
@@ -157,6 +180,27 @@ final readonly class OpticalDomDiscoveryModule implements DiscoveryModuleInterfa
                 $normalized = $this->normalizer->normalize($sensor);
 
                 if ($normalized !== null) {
+                    $normUnit = $normalized['unit'] ?? '';
+                    $st = strtolower((string) ($normalized['sensor_type'] ?? ''));
+                    $sName = strtolower((string) ($normalized['sensor_name'] ?? ''));
+                    $isOpticalPowerVendor = ($normUnit === 'mW' || str_contains($st, 'power') || str_contains($sName, 'power'))
+                        && !str_contains($normUnit, 'mA') && !str_contains($normUnit, 'V') && !str_contains($normUnit, 'C');
+                    if ($isOpticalPowerVendor) {
+                        $mW = (float) $normalized['normalized_value'];
+                        $rawNum = is_numeric($value) ? (float) $value : 0.0;
+                        if ($mW <= 0.0001 || $rawNum <= 1.0) {
+                            $dbm = -40.0;
+                        } else {
+                            $dbm = round(10.0 * log10($mW), 2);
+                        }
+                        $normalized['normalized_value'] = $dbm;
+                        $normalized['unit'] = 'dBm';
+                        $normalized['sensor_name'] = preg_replace('/\(mW\)/i', '(dBm)', $normalized['sensor_name']);
+                        unset($normalized['post_process']);
+                        if (isset($normalized['metadata']) && is_array($normalized['metadata'])) {
+                            unset($normalized['metadata']['post_process']);
+                        }
+                    }
                     $sensors[] = $normalized;
                 }
             }

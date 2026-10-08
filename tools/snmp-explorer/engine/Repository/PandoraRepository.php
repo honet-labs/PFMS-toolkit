@@ -134,10 +134,11 @@ final class PandoraRepository
                 $targetPostProcess = null;
                 if ($hasPostProcess) {
                     $currPostProcess = isset($r['post_process']) && is_numeric($r['post_process']) ? (float)$r['post_process'] : 0.0;
-                    if ($currPostProcess <= 0.0 || $currPostProcess == 1.0) {
+                    $u = (string)($r['m_unit'] ?? $r['unit'] ?? '');
+                    if (($currPostProcess <= 0.0 || $currPostProcess == 1.0) && $u !== 'dBm') {
                         $raw = is_numeric($r['raw_value'] ?? null) ? (float)$r['raw_value'] : null;
                         $norm = is_numeric($r['normalized_value'] ?? null) ? (float)$r['normalized_value'] : null;
-                        if ($raw !== null && $norm !== null && $raw != 0.0 && abs($raw - $norm) > 0.00001) {
+                        if ($raw !== null && $norm !== null && $raw > 0.0 && $norm > 0.0 && abs($raw - $norm) > 0.00001) {
                             $targetPostProcess = round($norm / $raw, 9);
                         } elseif (!empty($r['scale']) || !empty($r['precision'])) {
                             $sc = trim((string)($r['scale'] ?? '9'));
@@ -152,14 +153,11 @@ final class PandoraRepository
                         }
 
                         if ($targetPostProcess === null) {
-                            $u = (string)($r['m_unit'] ?? $r['unit'] ?? '');
                             $sName = (string)($r['sensor_name'] ?? '');
                             if (($u === 'C' || $u === '°C' || stripos($sName, 'Temp') !== false) && $raw !== null && $raw >= 150.0 && $raw <= 1200.0) {
                                 $targetPostProcess = 0.1;
                             } elseif (($u === 'A' || stripos($sName, 'Current') !== false) && $raw !== null && $raw >= 100.0) {
                                 $targetPostProcess = 0.001;
-                            } elseif (($u === 'mW' || (stripos($sName, 'Power') !== false && stripos($sName, 'DOM') !== false)) && $raw !== null && $raw >= 100.0) {
-                                $targetPostProcess = 0.0001;
                             } elseif (($u === 'mA' && stripos($sName, 'Bias') !== false) && $raw !== null && $raw >= 100.0) {
                                 $targetPostProcess = 0.01;
                             }
@@ -842,16 +840,42 @@ final class PandoraRepository
                 $repairReason = sprintf('Current milliAmperes scaled (%.1f -> %.3f A)', $currentData, $currentData * 0.001);
             }
 
-            // Check Optical Power mW (e.g. unit 'mW' or name like 'TX Power' / 'RX Power')
-            $isOpticalPowerMw = ($unit === 'mW' || (stripos($name, 'Power') !== false && stripos($name, 'DOM') !== false));
-            if ($isOpticalPowerMw && $targetPostProcess === null && $currentData !== null) {
-                if ($currentData >= 100.0) {
-                    $targetPostProcess = 0.0001;
-                    $repairReason = sprintf('Optical Power mW scaled from raw (%.1f -> %.4f mW)', $currentData, $currentData * 0.0001);
-                } elseif ($currentData > 0.0 && $currentData < 0.05) {
-                    $targetPostProcess = 0.0001;
-                    $repairReason = sprintf('Optical Power mW fixed prefix (%.6f -> %.3f mW)', $currentData, $currentData * 1000.0);
+            // Check Optical Power mW -> convert to standard dBm
+            $isOpticalPowerMw = ($unit === 'mW' || stripos($name, '(mW)') !== false || (stripos($name, 'Power') !== false && stripos($name, 'DOM') !== false && $unit !== 'dBm'));
+            if ($isOpticalPowerMw && $currentData !== null) {
+                $targetName = preg_replace('/\(mW\)/i', '(dBm)', $name);
+                if (!str_contains($targetName, '(dBm)')) {
+                    $targetName = rtrim($targetName) . ' (dBm)';
                 }
+                $targetUnit = 'dBm';
+                $mW = $currentData;
+                if ($mW > 0.0 && $mW < 0.05) {
+                    $mW *= 1000.0;
+                } elseif ($mW >= 100.0) {
+                    $mW *= 0.0001;
+                }
+                $newVal = ($mW <= 0.0001) ? -40.0 : round(10.0 * log10($mW), 2);
+
+                $this->pdo->prepare("UPDATE tagente_modulo SET nombre = ?, descripcion = ?, unit = ? WHERE id_agente_modulo = ?")
+                    ->execute([$targetName, $targetName, $targetUnit, $modId]);
+
+                try {
+                    $interval = (int) ($row['module_interval'] ?? 300);
+                    $this->pdo->prepare('UPDATE tagente_estado SET datos = ?, utimestamp = ? WHERE id_agente_modulo = ?')
+                        ->execute([$newVal, time() - $interval, $modId]);
+                } catch (\Throwable) {}
+
+                $repaired++;
+                $details[] = [
+                    'id' => $modId,
+                    'name' => $targetName,
+                    'unit' => 'dBm',
+                    'old_value' => $currentData,
+                    'new_value' => $newVal,
+                    'post_process' => null,
+                    'reason' => sprintf('Optical Power converted to dBm (%.4f mW -> %.2f dBm)', $mW, $newVal),
+                ];
+                continue;
             }
 
             // Check Optical Bias Current mA (e.g. unit 'mA' and name like 'Bias')
