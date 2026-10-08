@@ -12,7 +12,9 @@ final class SnmpHelper
     public const string IF_DESCR = '.1.3.6.1.2.1.2.2.1.2';
     public const string IF_NAME = '.1.3.6.1.2.1.31.1.1.1.1';
     public const string ENT_PHYSICAL_DESCR = '.1.3.6.1.2.1.47.1.1.1.1.2';
+    public const string ENT_PHYSICAL_CONTAINED_IN = '.1.3.6.1.2.1.47.1.1.1.1.4';
     public const string ENT_PHYSICAL_CLASS = '.1.3.6.1.2.1.47.1.1.1.1.5';
+    public const string ENT_PHYSICAL_PARENT_REL_POS = '.1.3.6.1.2.1.47.1.1.1.1.6';
     public const string ENT_PHYSICAL_NAME = '.1.3.6.1.2.1.47.1.1.1.1.7';
     public const string ENT_ALIAS_MAPPING_IDENTIFIER = '.1.3.6.1.2.1.47.1.3.2.1.2';
     public const string ENTITY_SENSOR_TYPE = '.1.3.6.1.2.1.99.1.1.1.1';

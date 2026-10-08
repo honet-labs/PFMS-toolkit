@@ -78,6 +78,32 @@ final class OidTranslator
             'hrstorageallocationunits' => '.1.3.6.1.2.1.25.2.3.1.4',
             'hrstoragesize' => '.1.3.6.1.2.1.25.2.3.1.5',
             'hrstorageused' => '.1.3.6.1.2.1.25.2.3.1.6',
+            // ENTITY-SENSOR-MIB (RFC 3433)
+            'entphysensortype' => '.1.3.6.1.2.1.99.1.1.1.1',
+            'entphysensorscale' => '.1.3.6.1.2.1.99.1.1.1.2',
+            'entphysensorprecision' => '.1.3.6.1.2.1.99.1.1.1.3',
+            'entphysensorvalue' => '.1.3.6.1.2.1.99.1.1.1.4',
+            'entphysensoroperstatus' => '.1.3.6.1.2.1.99.1.1.1.5',
+            'entphysensorunitsdisplay' => '.1.3.6.1.2.1.99.1.1.1.6',
+            'entphysensorvaluetimestamp' => '.1.3.6.1.2.1.99.1.1.1.7',
+            'entphysensorvalueupdaterate' => '.1.3.6.1.2.1.99.1.1.1.8',
+            // ENTITY-MIB (RFC 2737 / RFC 4133 / RFC 6933)
+            'entphysicalindex' => '.1.3.6.1.2.1.47.1.1.1.1.1',
+            'entphysicaldescr' => '.1.3.6.1.2.1.47.1.1.1.1.2',
+            'entphysicalvendortype' => '.1.3.6.1.2.1.47.1.1.1.1.3',
+            'entphysicalcontainedin' => '.1.3.6.1.2.1.47.1.1.1.1.4',
+            'entphysicalclass' => '.1.3.6.1.2.1.47.1.1.1.1.5',
+            'entphysicalparentrelpos' => '.1.3.6.1.2.1.47.1.1.1.1.6',
+            'entphysicalname' => '.1.3.6.1.2.1.47.1.1.1.1.7',
+            'entphysicalhardwarerev' => '.1.3.6.1.2.1.47.1.1.1.1.8',
+            'entphysicalfirmwarerev' => '.1.3.6.1.2.1.47.1.1.1.1.9',
+            'entphysicalsoftwarerev' => '.1.3.6.1.2.1.47.1.1.1.1.10',
+            'entphysicalserialnum' => '.1.3.6.1.2.1.47.1.1.1.1.11',
+            'entphysicalmfgname' => '.1.3.6.1.2.1.47.1.1.1.1.12',
+            'entphysicalmodelname' => '.1.3.6.1.2.1.47.1.1.1.1.13',
+            'entphysicalalias' => '.1.3.6.1.2.1.47.1.1.1.1.14',
+            'entphysicalassetid' => '.1.3.6.1.2.1.47.1.1.1.1.15',
+            'entphysicalisfru' => '.1.3.6.1.2.1.47.1.1.1.1.16',
         ];
         if (isset($symbolicToNumeric[$cleanSymbolic])) {
             return $this->numericCache[$symbolic] = $symbolicToNumeric[$cleanSymbolic];
@@ -589,17 +615,44 @@ final class OidTranslator
             // MikroTik MIB
             '.1.3.6.1.4.1.14988.1.1.1.2.1.3' => ['MIKROTIK-MIB', 'mtxrProcessorLoad', 'Processor Load', 'The average percentage of time that this processor was not idle.', 'Integer32', '%', 'processor', 'numeric', '%'],
             '.1.3.6.1.4.1.14988.1.1.1.1.1.0' => ['MIKROTIK-MIB', 'mtxrCpuFrequency', 'CPU Frequency', 'CPU frequency in MHz.', 'Integer32', 'MHz', 'processor', 'numeric', 'MHz'],
+            // ENTITY-SENSOR-MIB (RFC 3433)
+            '.1.3.6.1.2.1.99.1.1.1.1' => ['ENTITY-SENSOR-MIB', 'entPhySensorType', 'Physical Sensor Type', 'The type of data returned by the associated entPhySensorValue object.', 'EntitySensorDataType', '', 'environmental', 'sensor_type', ''],
+            '.1.3.6.1.2.1.99.1.1.1.2' => ['ENTITY-SENSOR-MIB', 'entPhySensorScale', 'Physical Sensor Scale', 'The exponent to apply to values returned by entPhySensorValue.', 'EntitySensorDataScale', '', 'environmental', 'sensor_scale', ''],
+            '.1.3.6.1.2.1.99.1.1.1.3' => ['ENTITY-SENSOR-MIB', 'entPhySensorPrecision', 'Physical Sensor Precision', 'The number of decimal places of precision.', 'EntitySensorPrecision', '', 'environmental', 'sensor_precision', ''],
+            '.1.3.6.1.2.1.99.1.1.1.4' => ['ENTITY-SENSOR-MIB', 'entPhySensorValue', 'Physical Sensor Value', 'The most recent measurement obtained by the sensor.', 'EntitySensorValue', '', 'environmental', 'sensor_value', ''],
+            '.1.3.6.1.2.1.99.1.1.1.5' => ['ENTITY-SENSOR-MIB', 'entPhySensorOperStatus', 'Physical Sensor Oper Status', 'The operational status of the sensor (1=ok, 2=unavailable, 3=nonoperational).', 'EntitySensorStatus', '', 'status', 'status', ''],
+            '.1.3.6.1.2.1.99.1.1.1.6' => ['ENTITY-SENSOR-MIB', 'entPhySensorUnitsDisplay', 'Physical Sensor Units Display', 'A textual description of the data units that should be used in the display of entPhySensorValue.', 'SnmpAdminString', '', 'environmental', 'string', ''],
+            '.1.3.6.1.2.1.99.1.1.1.7' => ['ENTITY-SENSOR-MIB', 'entPhySensorValueTimeStamp', 'Physical Sensor Value Timestamp', 'The value of sysUpTime at the time the sensor value was last updated.', 'TimeStamp', 'ticks', 'system', 'numeric', 'ticks'],
+            '.1.3.6.1.2.1.99.1.1.1.8' => ['ENTITY-SENSOR-MIB', 'entPhySensorValueUpdateRate', 'Physical Sensor Update Rate', 'An indication of the reporting frequency of the sensor in milliseconds.', 'Unsigned32', 'ms', 'system', 'numeric', 'ms'],
+            // ENTITY-MIB (RFC 2737 / RFC 4133 / RFC 6933)
+            '.1.3.6.1.2.1.47.1.1.1.1.1' => ['ENTITY-MIB', 'entPhysicalIndex', 'Physical Entity Index', 'The index for this entry.', 'PhysicalIndex', '', 'inventory', 'numeric', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.2' => ['ENTITY-MIB', 'entPhysicalDescr', 'Physical Entity Description', 'A textual description of physical entity.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.3' => ['ENTITY-MIB', 'entPhysicalVendorType', 'Physical Entity Vendor Type', 'An indication of the vendor-specific hardware type of the physical entity.', 'AutonomousType', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.4' => ['ENTITY-MIB', 'entPhysicalContainedIn', 'Physical Entity Contained In', 'The value of entPhysicalIndex for the physical entity which contains this entity.', 'PhysicalIndex', '', 'inventory', 'numeric', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.5' => ['ENTITY-MIB', 'entPhysicalClass', 'Physical Entity Class', 'An indication of the general hardware type of the physical entity.', 'PhysicalClass', '', 'inventory', 'numeric', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.6' => ['ENTITY-MIB', 'entPhysicalParentRelPos', 'Physical Entity Parent Relative Position', 'An indication of the relative position among children of the same parent.', 'Integer32', '', 'inventory', 'numeric', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.7' => ['ENTITY-MIB', 'entPhysicalName', 'Physical Entity Name', 'The textual name of the physical entity.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.8' => ['ENTITY-MIB', 'entPhysicalHardwareRev', 'Physical Entity Hardware Revision', 'The vendor-specific hardware revision string.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.9' => ['ENTITY-MIB', 'entPhysicalFirmwareRev', 'Physical Entity Firmware Revision', 'The vendor-specific firmware revision string.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.10' => ['ENTITY-MIB', 'entPhysicalSoftwareRev', 'Physical Entity Software Revision', 'The vendor-specific software revision string.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.11' => ['ENTITY-MIB', 'entPhysicalSerialNum', 'Physical Entity Serial Number', 'The vendor-specific serial number string.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.12' => ['ENTITY-MIB', 'entPhysicalMfgName', 'Physical Entity Manufacturer Name', 'The name of the manufacturer of this physical component.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.13' => ['ENTITY-MIB', 'entPhysicalModelName', 'Physical Entity Model Name', 'The vendor-specific model name identifier string.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.14' => ['ENTITY-MIB', 'entPhysicalAlias', 'Physical Entity Alias', 'An alias name for the physical entity as specified by a network manager.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.15' => ['ENTITY-MIB', 'entPhysicalAssetID', 'Physical Entity Asset ID', 'This object is used by the network manager to store an asset tracking identifier.', 'SnmpAdminString', '', 'inventory', 'string', ''],
+            '.1.3.6.1.2.1.47.1.1.1.1.16' => ['ENTITY-MIB', 'entPhysicalIsFRU', 'Physical Entity Is FRU', 'An indication of whether or not this physical entity is considered a field replaceable unit.', 'TruthValue', '', 'inventory', 'numeric', ''],
         ];
 
         // Exact match
         if (isset($map[$numericOid])) {
             $def = $map[$numericOid];
+            $isScalar = str_ends_with($numericOid, '.0');
             return [
                 'numeric_oid' => $numericOid,
-                'symbolic_oid' => $def[0] . '::' . $def[1] . '.0',
+                'symbolic_oid' => $def[0] . '::' . $def[1] . ($isScalar ? '.0' : ''),
                 'mib' => $def[0],
                 'object' => $def[1],
-                'index' => '0',
+                'index' => $isScalar ? '0' : null,
                 'display_name' => $def[2],
                 'description' => $def[3],
                 'syntax' => $def[4],

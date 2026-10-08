@@ -474,11 +474,12 @@ final readonly class SensorInventoryRepository
                 continue;
             }
 
-            $key = implode('|', [
-                (string) $sensor['sensor_class'],
-                (string) $sensor['sensor_name'],
-                (string) $sensor['oid'],
-            ]);
+            $rawOid = (string) $sensor['oid'];
+            $key = \SnmpBridge\Core\Snmp\SnmpHelper::normalizeOid($rawOid);
+            if ($key === '' || $key === '.') {
+                $key = $rawOid;
+            }
+
             $unique[$key] = $sensor;
         }
 

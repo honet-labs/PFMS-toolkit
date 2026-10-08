@@ -35,7 +35,7 @@ final readonly class DiscoveryPipeline
             );
         }
 
-        $sensors = [];
+        $sensorsByOid = [];
         $maxSensors = $this->maxSensors($context);
         $deadline = $this->deadline($context);
         $translateMaxSensors = $this->translationLimit($context);
@@ -55,7 +55,7 @@ final readonly class DiscoveryPipeline
                 break;
             }
 
-            if (count($sensors) >= $maxSensors) {
+            if (count($sensorsByOid) >= $maxSensors) {
                 $limitReached = true;
                 break;
             }
@@ -64,9 +64,11 @@ final readonly class DiscoveryPipeline
                 continue;
             }
 
+            $modulePriority = $this->modulePriority($module->name());
+
             try {
                 foreach ($module->discover($context) as $sensor) {
-                    if (count($sensors) >= $maxSensors || $this->deadlineReached($deadline)) {
+                    if (count($sensorsByOid) >= $maxSensors || $this->deadlineReached($deadline)) {
                         $limitReached = true;
                         break;
                     }
@@ -82,7 +84,21 @@ final readonly class DiscoveryPipeline
                         continue;
                     }
 
-                    if (count($sensors) < $translateMaxSensors) {
+                    $rawOid = (string) ($normalizedSensor['oid'] ?? '');
+                    $oidKey = \SnmpBridge\Core\Snmp\SnmpHelper::normalizeOid($rawOid);
+                    if ($oidKey === '' || $oidKey === '.') {
+                        continue;
+                    }
+
+                    // Check for duplicate OID across modules
+                    if (isset($sensorsByOid[$oidKey])) {
+                        // Only replace if current module has strictly higher priority (more specialized)
+                        if ($modulePriority <= $sensorsByOid[$oidKey]['priority']) {
+                            continue;
+                        }
+                    }
+
+                    if (count($sensorsByOid) < $translateMaxSensors) {
                         $normalizedSensor = $this->enrichOidTranslation($normalizedSensor);
                     } elseif (!$translationLimitLogged && $this->oidTranslator instanceof \SnmpBridge\Core\Snmp\OidTranslator) {
                         $translationLimitLogged = true;
@@ -93,9 +109,12 @@ final readonly class DiscoveryPipeline
                         ));
                     }
 
-                    $sensors[] = $normalizedSensor + [
-                        'vendor' => $context->vendor->name(),
-                        'ip_address' => $context->device['ip_address'],
+                    $sensorsByOid[$oidKey] = [
+                        'sensor' => $normalizedSensor + [
+                            'vendor' => $context->vendor->name(),
+                            'ip_address' => $context->device['ip_address'],
+                        ],
+                        'priority' => $modulePriority,
                     ];
                 }
             } catch (Throwable $throwable) {
@@ -121,13 +140,92 @@ final readonly class DiscoveryPipeline
                     'Discovery stopped after module %s for %s: sensors=%d, max=%d, deadline_reached=%s',
                     $module->name(),
                     (string) ($context->device['ip_address'] ?? 'unknown'),
-                    count($sensors),
+                    count($sensorsByOid),
                     $maxSensors,
                     $this->deadlineReached($deadline) ? 'yes' : 'no',
                 ));
                 break;
             }
         }
+
+        $sensors = array_values(array_map(static fn (array $item): array => $item['sensor'], $sensorsByOid));
+
+        return $this->disambiguateSensorNames($sensors);
+    }
+
+    private function modulePriority(string $moduleName): int
+    {
+        return match ($moduleName) {
+            'environmental',
+            'optical_dom',
+            'huawei_optical',
+            'optical_power_with_thresholds',
+            'interface_discovery',
+            'cisco_interface_discovery',
+            'huawei_interface_discovery',
+            'zte_interface_discovery',
+            'alcatel_interface_discovery',
+            'raisecom_interface_discovery',
+            'cpu_usage',
+            'memory_usage',
+            'f5',
+            'f5_interface',
+            'f5_pool',
+            'f5_pool_member',
+            'f5_virtual_server',
+            'fortinet_discovery',
+            'mikrotik_discovery',
+            'dahua_discovery',
+            'printer',
+            'gpon',
+            'rectifier' => 10,
+            'ifspeed',
+            'interface_stats',
+            'bridge_port_speed' => 9,
+            'custom_metrics' => 8,
+            'inventory' => 5,
+            'system_metrics' => 5,
+            'universal_system' => 4,
+            'loaded_mibs' => 3,
+            'autonomous_enterprise' => 2,
+            'comprehensive_oids' => 1,
+            default => 5,
+        };
+    }
+
+    /**
+     * @param list<array<string, mixed>> $sensors
+     * @return list<array<string, mixed>>
+     */
+    private function disambiguateSensorNames(array $sensors): array
+    {
+        $nameCounts = [];
+        foreach ($sensors as $s) {
+            $name = trim((string) ($s['sensor_name'] ?? ''));
+            if ($name !== '') {
+                $nameCounts[$name] = ($nameCounts[$name] ?? 0) + 1;
+            }
+        }
+
+        $nameTracker = [];
+        foreach ($sensors as &$s) {
+            $name = trim((string) ($s['sensor_name'] ?? ''));
+            if ($name === '' || ($nameCounts[$name] ?? 0) <= 1) {
+                continue;
+            }
+
+            $nameTracker[$name] = ($nameTracker[$name] ?? 0) + 1;
+            $idx = $nameTracker[$name];
+
+            if (preg_match('/^(.*)\s*\(([^)]+)\)$/', $name, $matches)) {
+                $base = trim($matches[1]);
+                $unit = trim($matches[2]);
+                $s['sensor_name'] = sprintf('%s #%d (%s)', $base, $idx, $unit);
+            } else {
+                $s['sensor_name'] = sprintf('%s #%d', $name, $idx);
+            }
+        }
+        unset($s);
 
         return $sensors;
     }

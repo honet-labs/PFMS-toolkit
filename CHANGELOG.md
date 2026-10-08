@@ -2,6 +2,23 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11] - 2026-10-08 (SNMP Explorer - ENTITY-SENSOR-MIB Resolution, Parent Hierarchy Naming & Bulk Delete)
+### Fixed
+- **Resolusi OID & MIB ENTITY-SENSOR-MIB (RFC 3433):**
+  - Menambahkan definisi resmi `ENTITY-SENSOR-MIB.mib` ke direktori engine MIB.
+  - Menambahkan *in-memory fast-path* dan resolusi numerik/simbolik pada `OidTranslator.php` untuk OID `.1.3.6.1.2.1.99.1.1.1.*` (`entPhySensorValue`, `entPhySensorType`, dll) dan `ENTITY-MIB` (`.1.3.6.1.2.1.47.1.1.1.1.*`). OID sensor fisik kini langsung berstatus `TRANSLATED OK` pada Interactive Translator dan Discovery.
+- **Penyelesaian Nama Sensor Identik Melalui Penelusuran Hirarki Parent:**
+  - Pada `EnvironmentalDiscoveryModule.php`, menambahkan penelusuran relasi fisik `ENT_PHYSICAL_CONTAINED_IN`, `ENT_PHYSICAL_PARENT_REL_POS`, dan `ENT_PHYSICAL_CLASS`. Sensor leaf yang hanya memiliki nama generik (seperti "Voltage", "Current", "Power", "Fan Speed") kini mewarisi nama modul induknya (misal `Power Supply 1 - Voltage (V)`, `Power Supply 2 - Voltage (V)`, `Fan Tray 1 - Speed (rpm)`).
+  - Menambahkan deduplikasi berbasis OID ternormalisasi dengan sistem prioritas modul serta fallback penomoran otomatis (`#1`, `#2`) pada `DiscoveryPipeline.php` dan `SensorInventoryRepository.php` untuk mencegah tabrakan nama modul pada agen Pandora FMS.
+
+### Added
+- **Fitur Bulk Delete pada Sensor Inventory:**
+  - Menambahkan tombol **Delete Selected (<count>)** di toolbar Sensor Inventory untuk menghapus seluruh sensor yang dicentang secara batch.
+  - Menambahkan tombol **Clear Filtered / All** di toolbar Sensor Inventory untuk menghapus semua sensor yang sesuai dengan filter aktif atau mengosongkan seluruh sensor inventori sekaligus dengan konfirmasi aman.
+  - Menambahkan dukungan API `?api=delete` dengan mode `bulk_sensors` dan `clear_sensors`.
+- **Fitur Action Delete pada Tab Pandora Provisioning:**
+  - Menambahkan kolom **Actions** dengan tombol **Delete** pada baris antrean provisioning serta tombol **Clear All** untuk mengosongkan antrean provisioning.
+
 ## [2.10] - 2026-10-06 (SNMP Explorer - Memory & Storage Percentage Fix & Auto-Repair)
 ### Fixed
 - **Perbaikan Ketidaksesuaian Nilai Memory & Storage (%) pada Modul Pandora FMS:**

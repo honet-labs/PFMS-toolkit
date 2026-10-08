@@ -1,0 +1,263 @@
+ENTITY-SENSOR-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, Integer32, Unsigned32, mib-2
+        FROM SNMPv2-SMI
+    TEXTUAL-CONVENTION, TimeStamp
+        FROM SNMPv2-TC
+    MODULE-COMPLIANCE, OBJECT-GROUP
+        FROM SNMPv2-CONF
+    SnmpAdminString
+        FROM SNMP-FRAMEWORK-MIB
+    entPhysicalIndex
+        FROM ENTITY-MIB;
+
+entitySensorMIB MODULE-IDENTITY
+    LAST-UPDATED "200212160000Z"
+    ORGANIZATION "IETF Entity MIB Working Group"
+    CONTACT-INFO
+            "Postal: Andy Bierman
+                     Cisco Systems, Inc.
+                     170 West恶 Tasman Drive
+                     San Jose, CA USA 95134
+                Tel: +1 408 527 3792
+             E-mail: abierman@cisco.com"
+    DESCRIPTION
+            "This module defines Entity MIB extensions for physical
+             sensors.
+
+             Copyright (C) The Internet Society (2002). This version
+             of this MIB module is part of RFC 3433."
+    REVISION    "200212160000Z"
+    DESCRIPTION
+            "Initial Version of the Entity Sensor MIB module,
+             published as RFC 3433."
+    ::= { mib-2 99 }
+
+entitySensorObjects       OBJECT IDENTIFIER ::= { entitySensorMIB 1 }
+entitySensorConformance   OBJECT IDENTIFIER ::= { entitySensorMIB 2 }
+
+-- Textual Conventions
+
+EntitySensorDataType ::= TEXTUAL-CONVENTION
+    STATUS       current
+    DESCRIPTION
+            "An object using this data type represents the type of data
+             reported by a physical sensor:
+               other(1)
+               unknown(2)
+               voltsAC(3)
+               voltsDC(4)
+               amperes(5)
+               watts(6)
+               hertz(7)
+               celsius(8)
+               percentRH(9)
+               rpm(10)
+               cmm(11)
+               truthvalue(12)
+               specialEnum(13)"
+    SYNTAX       INTEGER {
+                     other(1),
+                     unknown(2),
+                     voltsAC(3),
+                     voltsDC(4),
+                     amperes(5),
+                     watts(6),
+                     hertz(7),
+                     celsius(8),
+                     percentRH(9),
+                     rpm(10),
+                     cmm(11),
+                     truthvalue(12),
+                     specialEnum(13)
+                 }
+
+EntitySensorDataScale ::= TEXTUAL-CONVENTION
+    STATUS       current
+    DESCRIPTION
+            "An object using this data type represents the data scaling
+             factor to be applied with a sensor measurement."
+    SYNTAX       INTEGER {
+                     yocto(1),
+                     zepto(2),
+                     atto(3),
+                     femto(4),
+                     pico(5),
+                     nano(6),
+                     micro(7),
+                     milli(8),
+                     units(9),
+                     kilo(10),
+                     mega(11),
+                     giga(12),
+                     tera(13),
+                     exa(14),
+                     peta(15),
+                     zetta(16),
+                     yotta(17)
+                 }
+
+EntitySensorPrecision ::= TEXTUAL-CONVENTION
+    STATUS       current
+    DESCRIPTION
+            "An object using this data type represents the number of
+             decimal places of precision in fixed-point sensor
+             measurements."
+    SYNTAX       Integer32 (-8..9)
+
+EntitySensorValue ::= TEXTUAL-CONVENTION
+    STATUS       current
+    DESCRIPTION
+            "An object using this data type represents the value of a
+             sensor measurement."
+    SYNTAX       Integer32 (-1000000000..1000000000)
+
+EntitySensorStatus ::= TEXTUAL-CONVENTION
+    STATUS       current
+    DESCRIPTION
+            "An object using this data type represents the operational
+             status of a physical sensor:
+               ok(1)
+               unavailable(2)
+               nonoperational(3)"
+    SYNTAX       INTEGER {
+                     ok(1),
+                     unavailable(2),
+                     nonoperational(3)
+                 }
+
+-- Sensor Table
+
+entPhySensorTable OBJECT-TYPE
+    SYNTAX       SEQUENCE OF EntPhySensorEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+            "This table contains one row per physical sensor represented
+             by an associated row in the entPhysicalTable."
+    ::= { entitySensorObjects 1 }
+
+entPhySensorEntry OBJECT-TYPE
+    SYNTAX       EntPhySensorEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+            "Information about a particular physical sensor."
+    INDEX        { entPhysicalIndex }
+    ::= { entPhySensorTable 1 }
+
+EntPhySensorEntry ::= SEQUENCE {
+    entPhySensorType            EntitySensorDataType,
+    entPhySensorScale           EntitySensorDataScale,
+    entPhySensorPrecision       EntitySensorPrecision,
+    entPhySensorValue           EntitySensorValue,
+    entPhySensorOperStatus      EntitySensorStatus,
+    entPhySensorUnitsDisplay    SnmpAdminString,
+    entPhySensorValueTimeStamp  TimeStamp,
+    entPhySensorValueUpdateRate Unsigned32
+}
+
+entPhySensorType OBJECT-TYPE
+    SYNTAX       EntitySensorDataType
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+            "The type of data returned by the associated
+             entPhySensorValue object."
+    ::= { entPhySensorEntry 1 }
+
+entPhySensorScale OBJECT-TYPE
+    SYNTAX       EntitySensorDataScale
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+            "The exponent to apply to values returned by
+             entPhySensorValue."
+    ::= { entPhySensorEntry 2 }
+
+entPhySensorPrecision OBJECT-TYPE
+    SYNTAX       EntitySensorPrecision
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+            "The number of decimal places of precision in fixed-point
+             sensor measurements."
+    ::= { entPhySensorEntry 3 }
+
+entPhySensorValue OBJECT-TYPE
+    SYNTAX       EntitySensorValue
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+            "The most recent measurement obtained by the sensor."
+    ::= { entPhySensorEntry 4 }
+
+entPhySensorOperStatus OBJECT-TYPE
+    SYNTAX       EntitySensorStatus
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+            "The operational status of the sensor."
+    ::= { entPhySensorEntry 5 }
+
+entPhySensorUnitsDisplay OBJECT-TYPE
+    SYNTAX       SnmpAdminString
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+            "A textual description of the data units that should be used
+             in the display of entPhySensorValue."
+    ::= { entPhySensorEntry 6 }
+
+entPhySensorValueTimeStamp OBJECT-TYPE
+    SYNTAX       TimeStamp
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+            "The value of sysUpTime at the time the sensor value was
+             last updated."
+    ::= { entPhySensorEntry 7 }
+
+entPhySensorValueUpdateRate OBJECT-TYPE
+    SYNTAX       Unsigned32
+    UNITS        "milliseconds"
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+            "An indication of the reporting frequency of the sensor in
+             milliseconds."
+    ::= { entPhySensorEntry 8 }
+
+-- Conformance Information
+
+entitySensorCompliances OBJECT IDENTIFIER ::= { entitySensorConformance 1 }
+entitySensorGroups      OBJECT IDENTIFIER ::= { entitySensorConformance 2 }
+
+entitySensorCompliance MODULE-COMPLIANCE
+    STATUS       current
+    DESCRIPTION
+            "The compliance statement for SNMP entities that implement
+             the Entity Sensor MIB."
+    MODULE  -- this module
+        MANDATORY-GROUPS { entitySensorValueGroup }
+    ::= { entitySensorCompliances 1 }
+
+entitySensorValueGroup OBJECT-GROUP
+    OBJECTS {
+        entPhySensorType,
+        entPhySensorScale,
+        entPhySensorPrecision,
+        entPhySensorValue,
+        entPhySensorOperStatus,
+        entPhySensorUnitsDisplay,
+        entPhySensorValueTimeStamp,
+        entPhySensorValueUpdateRate
+    }
+    STATUS       current
+    DESCRIPTION
+            "A collection of objects providing information about physical
+             sensors."
+    ::= { entitySensorGroups 1 }
+
+END

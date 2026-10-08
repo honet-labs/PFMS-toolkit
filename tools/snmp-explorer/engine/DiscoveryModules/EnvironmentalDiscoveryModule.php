@@ -47,24 +47,132 @@ final readonly class EnvironmentalDiscoveryModule implements DiscoveryModuleInte
         $precision = $context->walker->walkIndexed(SnmpHelper::ENTITY_SENSOR_PRECISION);
         $status = $context->walker->walkIndexed(SnmpHelper::ENTITY_SENSOR_STATUS);
         $units = $context->walker->walkIndexed(SnmpHelper::ENTITY_SENSOR_UNITS_DISPLAY);
-        $labels = $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_NAME)
-            + $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_DESCR);
+        $names = $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_NAME);
+        $descrs = $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_DESCR);
+        $containedIn = $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_CONTAINED_IN);
+        $parentRelPos = $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_PARENT_REL_POS);
+        $physicalClasses = $context->walker->walkIndexed(SnmpHelper::ENT_PHYSICAL_CLASS);
         $sensors = [];
 
+        $classNames = [
+            '3' => 'Chassis',
+            '4' => 'Backplane',
+            '5' => 'Container',
+            '6' => 'Power Supply',
+            '7' => 'Fan Tray',
+            '8' => 'Sensor',
+            '9' => 'Module',
+            '10' => 'Port',
+            '11' => 'Stack',
+            '12' => 'CPU',
+        ];
+
+        $resolveParentHierarchy = static function (
+            string|int $targetIndex,
+            array $containedInMap,
+            array $nameMap,
+            array $descrMap,
+            array $relPosMap,
+            array $classMap,
+            array $classNames
+        ): string {
+            $curr = (string) $targetIndex;
+            $visited = [$curr => true];
+            $parentLabels = [];
+            $depth = 0;
+
+            while (isset($containedInMap[$curr]) && $depth < 5) {
+                $depth++;
+                $parentId = trim((string) $containedInMap[$curr]);
+                if ($parentId === '' || $parentId === '0' || isset($visited[$parentId])) {
+                    break;
+                }
+                $visited[$parentId] = true;
+
+                $pName = trim((string) ($nameMap[$parentId] ?? ''));
+                $pDescr = trim((string) ($descrMap[$parentId] ?? ''));
+                $pLabel = $pName !== '' ? $pName : $pDescr;
+
+                $pClass = trim((string) ($classMap[$parentId] ?? ''));
+                if ($pLabel === '' && isset($classNames[$pClass])) {
+                    $pLabel = $classNames[$pClass];
+                }
+
+                if ($pLabel !== '') {
+                    $relPos = trim((string) ($relPosMap[$parentId] ?? ''));
+                    if ($relPos !== '' && ctype_digit($relPos) && (int) $relPos > 0 && preg_match('/\d/', $pLabel) === 0) {
+                        $pLabel .= ' ' . $relPos;
+                    }
+
+                    $isRootLike = preg_match('/^(chassis|system|device|rack|box|shelf|root)$/i', $pLabel) === 1;
+                    if (!$isRootLike || empty($parentLabels)) {
+                        $parentLabels[] = $pLabel;
+                    }
+                }
+
+                $curr = $parentId;
+            }
+
+            return $parentLabels[0] ?? '';
+        };
+
         foreach ($values as $index => $value) {
-            $label = trim((string) ($labels[$index] ?? 'Entity ' . $index));
+            $nameLabel = trim((string) ($names[$index] ?? ''));
+            $descrLabel = trim((string) ($descrs[$index] ?? ''));
+
+            if ($nameLabel !== '' && $descrLabel !== '') {
+                $nameHasDigits = preg_match('/\d/', $nameLabel) === 1;
+                $descrHasDigits = preg_match('/\d/', $descrLabel) === 1;
+                if ($descrHasDigits && !$nameHasDigits) {
+                    $label = $descrLabel;
+                } elseif ($nameHasDigits && !$descrHasDigits) {
+                    $label = $nameLabel;
+                } else {
+                    $label = strlen($descrLabel) > strlen($nameLabel) ? $descrLabel : $nameLabel;
+                }
+            } else {
+                $label = $nameLabel !== '' ? $nameLabel : ($descrLabel !== '' ? $descrLabel : '');
+            }
+
             $type = $this->sensorType((string) ($types[$index] ?? ''));
             $unit = trim((string) ($units[$index] ?? $type));
 
-            if (!$this->looksEnvironmental($label, $type, $unit)) {
+            if (!$this->looksEnvironmental($label !== '' ? $label : 'Entity ' . $index, $type, $unit)) {
                 continue;
+            }
+
+            $parentLabel = $resolveParentHierarchy(
+                $index,
+                $containedIn,
+                $names,
+                $descrs,
+                $parentRelPos,
+                $physicalClasses,
+                $classNames
+            );
+
+            $baseLabel = $label !== '' ? $label : $type;
+            if ($parentLabel !== '') {
+                if (!str_contains(strtolower($baseLabel), strtolower($parentLabel))) {
+                    $effectiveLabel = $parentLabel . ' - ' . $baseLabel;
+                } else {
+                    $effectiveLabel = $baseLabel;
+                }
+            } else {
+                $effectiveLabel = $baseLabel;
+                if (preg_match('/\d/', $effectiveLabel) === 0) {
+                    $relPos = trim((string) ($parentRelPos[$index] ?? ''));
+                    if ($relPos !== '' && ctype_digit($relPos) && (int) $relPos > 0) {
+                        $effectiveLabel .= ' #' . $relPos;
+                    }
+                }
             }
 
             $sensor = [
                 'sensor_class' => 'environmental',
                 'sensor_name' => StringHelper::safeModuleName(
                     $this->namingService->formatEnvironmentalSensorName(
-                        $label,
+                        $effectiveLabel,
                         $type,
                         $unit,
                         (string) $index,
@@ -83,6 +191,8 @@ final readonly class EnvironmentalDiscoveryModule implements DiscoveryModuleInte
                 'status' => $this->statusLabel($status[$index] ?? null),
                 'metadata' => [
                     'entity_label' => $label,
+                    'parent_entity' => $parentLabel !== '' ? $parentLabel : null,
+                    'contained_in' => $containedIn[$index] ?? null,
                     'source' => 'ENTITY-SENSOR-MIB',
                 ],
             ];

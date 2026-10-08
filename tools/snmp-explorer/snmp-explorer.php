@@ -498,15 +498,107 @@ if (!empty($api)) {
         exit;
     }
 
-    // API: Delete Device or Sensor
+    // API: Delete Device or Sensor (Single or Bulk)
     if ($api === 'delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $verify_csrf();
         $raw = file_get_contents('php://input');
         $input = json_decode($raw, true) ?: $_POST;
 
-        $type = $input['type'] ?? '';
-        $id = (int)($input['id'] ?? 0);
+        $type = (string)($input['type'] ?? '');
 
+        // 1. Bulk Delete Specific Sensors by ID
+        if ($type === 'bulk_sensors') {
+            $ids = array_values(array_filter(array_map('intval', (array)($input['ids'] ?? []))));
+            if (empty($ids)) {
+                echo json_encode(['ok' => false, 'error' => 'No sensors selected for deletion.']);
+                exit;
+            }
+
+            try {
+                $deletedCount = 0;
+                $chunkSize = 500;
+                foreach (array_chunk($ids, $chunkSize) as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                    $st = $pdo->prepare("DELETE FROM sensor_inventory WHERE id IN ($placeholders)");
+                    $st->execute($chunk);
+                    $deletedCount += $st->rowCount();
+                }
+                echo json_encode([
+                    'ok' => true,
+                    'count' => $deletedCount,
+                    'message' => "Successfully deleted {$deletedCount} sensor(s) from inventory.",
+                ]);
+            } catch (\Throwable $e) {
+                echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+            }
+            exit;
+        }
+
+        // 2. Clear All or Filtered Sensors
+        if ($type === 'clear_sensors') {
+            $scope = (string)($input['scope'] ?? 'all');
+            try {
+                if ($scope === 'all') {
+                    $deletedCount = (int)$pdo->exec("DELETE FROM sensor_inventory");
+                    echo json_encode([
+                        'ok' => true,
+                        'count' => $deletedCount,
+                        'message' => "Successfully cleared all {$deletedCount} sensors from inventory.",
+                    ]);
+                } else {
+                    $filters = [];
+                    $params = [];
+                    if (!empty($input['device_id'])) {
+                        $filters[] = "device_id = :device_id";
+                        $params[':device_id'] = (int)$input['device_id'];
+                    }
+                    if (!empty($input['ip_address'])) {
+                        $filters[] = "ip_address LIKE :ip_address";
+                        $params[':ip_address'] = '%' . trim((string)$input['ip_address']) . '%';
+                    }
+                    if (!empty($input['vendor'])) {
+                        $filters[] = "vendor = :vendor";
+                        $params[':vendor'] = trim((string)$input['vendor']);
+                    }
+                    if (!empty($input['sensor_class'])) {
+                        $filters[] = "sensor_class = :sensor_class";
+                        $params[':sensor_class'] = trim((string)$input['sensor_class']);
+                    }
+                    if (isset($input['provisioned']) && $input['provisioned'] !== '') {
+                        $filters[] = "provisioned = :provisioned";
+                        $params[':provisioned'] = (int)$input['provisioned'];
+                    }
+                    if (!empty($input['q'])) {
+                        $q = trim((string)$input['q']);
+                        $filters[] = "(sensor_name LIKE :q1 OR oid LIKE :q2 OR interface_name LIKE :q3 OR ip_address LIKE :q4)";
+                        $params[':q1'] = '%' . $q . '%';
+                        $params[':q2'] = '%' . $q . '%';
+                        $params[':q3'] = '%' . $q . '%';
+                        $params[':q4'] = '%' . $q . '%';
+                    }
+
+                    if (empty($filters)) {
+                        $deletedCount = (int)$pdo->exec("DELETE FROM sensor_inventory");
+                    } else {
+                        $whereSql = 'WHERE ' . implode(' AND ', $filters);
+                        $st = $pdo->prepare("DELETE FROM sensor_inventory $whereSql");
+                        $st->execute($params);
+                        $deletedCount = (int)$st->rowCount();
+                    }
+                    echo json_encode([
+                        'ok' => true,
+                        'count' => $deletedCount,
+                        'message' => "Successfully deleted {$deletedCount} filtered sensor(s) from inventory.",
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+            }
+            exit;
+        }
+
+        // 3. Single Item Deletion (Device or Sensor)
+        $id = (int)($input['id'] ?? 0);
         if ($id <= 0) {
             echo json_encode(['ok' => false, 'error' => 'Invalid ID specified.']);
             exit;
@@ -2065,7 +2157,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             <div class="dashboard-card">
                 <div class="card-header-clean">
                     <h3>Discovered Sensor Inventory</h3>
-                    <div style="display:flex; gap:10px; align-items:center;">
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                         <button class="btn-secondary-custom" onclick="clearSelectedSensors()">
                             Deselect All
                         </button>
@@ -2074,6 +2166,14 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         </button>
                         <button class="btn-apply" onclick="proceedToProvisioning()">
                             Provision Selected (<span id="inv-selected-count">0</span>)
+                        </button>
+                        <button type="button" class="btn-danger-custom" id="btn-bulk-delete-selected" onclick="bulkDeleteSelectedSensors()" style="opacity:0.6; cursor:not-allowed;" title="Permanently delete all currently selected/checked sensors from inventory">
+                            <span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle;">delete</span>
+                            Delete Selected (<span id="inv-delete-count">0</span>)
+                        </button>
+                        <button type="button" class="btn-secondary-custom" id="btn-clear-filtered" onclick="clearFilteredSensors()" style="color:#b91c1c; border-color:#fecaca;" title="Permanently delete all sensors matching current filters, or wipe entire inventory">
+                            <span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle; color:#ef4444;">delete_sweep</span>
+                            Clear Filtered / All
                         </button>
                     </div>
                 </div>
@@ -2608,9 +2708,15 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 </div>
 
                 <div style="margin-top:20px;">
-                    <h4 style="font-size:13.5px; font-weight:700; color:var(--primary-navy); margin-bottom:10px;">
-                        Selected Sensors for Provisioning (<span id="prov-selected-count">0</span>)
-                    </h4>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h4 style="font-size:13.5px; font-weight:700; color:var(--primary-navy); margin:0;">
+                            Selected Sensors for Provisioning (<span id="prov-selected-count">0</span>)
+                        </h4>
+                        <button type="button" class="btn-secondary-custom" onclick="clearSelectedSensors()" style="font-size:11.5px; padding:3px 10px; display:inline-flex; align-items:center; gap:4px; height:26px;">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#ef4444;">delete_sweep</span>
+                            Clear All
+                        </button>
+                    </div>
                     <div class="table-responsive" style="max-height:350px;">
                         <table class="custom-table" id="prov-selected-table">
                             <thead>
@@ -2620,10 +2726,11 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                                     <th>Class</th>
                                     <th>OID</th>
                                     <th>Value</th>
+                                    <th style="text-align:center; width:90px;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="prov-selected-tbody">
-                                <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No sensors currently selected. Go to Sensor Inventory to check items.</td></tr>
+                                <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No sensors currently selected. Go to Sensor Inventory to check items.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3272,6 +3379,12 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             const start = (res.page - 1) * res.per_page + 1;
             const end = Math.min(res.total, res.page * res.per_page);
             document.getElementById('pagination-info').innerText = `Showing ${start} to ${end} of ${res.total} entries`;
+            window.lastInventoryTotal = res.total;
+
+            const masterChk = document.getElementById('check-all-sensors');
+            if (masterChk) {
+                masterChk.checked = res.rows.length > 0 && res.rows.every(r => !!selectedSensorMap[r.id]);
+            }
 
             let pagesHtml = '';
             if (res.page > 1) {
@@ -3319,9 +3432,21 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
 
         function updateSelectedBadge() {
             const count = Object.keys(selectedSensorMap).length;
-            document.getElementById('inv-selected-count').innerText = count;
-            document.getElementById('selected-provision-count').innerText = count;
-            document.getElementById('prov-selected-count').innerText = count;
+            const invSel = document.getElementById('inv-selected-count');
+            if (invSel) invSel.innerText = count;
+            const invDel = document.getElementById('inv-delete-count');
+            if (invDel) invDel.innerText = count;
+            const selProv = document.getElementById('selected-provision-count');
+            if (selProv) selProv.innerText = count;
+            const provSel = document.getElementById('prov-selected-count');
+            if (provSel) provSel.innerText = count;
+
+            const btnDel = document.getElementById('btn-bulk-delete-selected');
+            if (btnDel) {
+                btnDel.disabled = count === 0;
+                btnDel.style.opacity = count === 0 ? '0.6' : '1';
+                btnDel.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
         }
 
         function proceedToProvisioning() {
@@ -3338,7 +3463,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             const items = Object.values(selectedSensorMap);
 
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No sensors currently selected. Go to Sensor Inventory to check items.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No sensors currently selected. Go to Sensor Inventory to check items.</td></tr>';
                 return;
             }
 
@@ -3358,10 +3483,37 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         <td><span class="badge badge-neutral">${escapeHtml(s.sensor_class || '')}</span></td>
                         <td class="mono text-truncate-cell">${escapeHtml(s.oid || '')}</td>
                         <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(valDisplay)}</td>
+                        <td style="text-align:center;">
+                            <button type="button" class="btn-danger-custom" style="padding:2px 8px; height:26px; font-size:11px; display:inline-flex; align-items:center; gap:3px;" onclick="removeProvisionSensor('${s.id}')" title="Remove sensor from provisioning queue">
+                                <span class="material-symbols-outlined" style="font-size:14px;">delete</span>
+                                Delete
+                            </button>
+                        </td>
                     </tr>
                 `;
             });
             tbody.innerHTML = html;
+        }
+
+        function removeProvisionSensor(id) {
+            if (!id && id !== 0) return;
+            delete selectedSensorMap[id];
+
+            // Uncheck the checkbox in inventory if currently rendered in DOM
+            const chk = document.querySelector(`.sensor-chk[value="${id}"]`);
+            if (chk) chk.checked = false;
+
+            // Check if master checkbox should be unchecked
+            const allChks = document.querySelectorAll('.sensor-chk');
+            const allChecked = allChks.length > 0 && Array.from(allChks).every(c => c.checked);
+            const masterChk = document.getElementById('check-all-sensors');
+            if (masterChk && !allChecked) masterChk.checked = false;
+
+            updateSelectedBadge();
+            renderSelectedProvisionTable();
+            if (typeof showToast === 'function') {
+                showToast('Sensor removed from provisioning queue.', 'info');
+            }
         }
 
         // Execute Provisioning
@@ -3533,12 +3685,132 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             .then(r => r.json())
             .then(res => {
                 if (res.ok) {
+                    if (type === 'sensor' && selectedSensorMap[id]) {
+                        delete selectedSensorMap[id];
+                        updateSelectedBadge();
+                    }
+                    if (typeof showToast === 'function') {
+                        showToast(res.message || `${type} deleted successfully.`, 'success');
+                    }
                     loadStats();
                     loadInventory(currentInventoryPage);
                 } else {
                     alert('Error: ' + res.error);
                 }
-            });
+            })
+            .catch(err => alert('Network error: ' + err.message));
+        }
+
+        // Bulk Delete Selected Sensors
+        async function bulkDeleteSelectedSensors() {
+            const ids = Object.keys(selectedSensorMap).map(Number);
+            if (ids.length === 0) {
+                alert('No sensors selected. Please check at least one sensor checkbox first.');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to permanently delete ${ids.length} selected sensor(s) from inventory?`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch('?api=delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        type: 'bulk_sensors',
+                        ids: ids
+                    })
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    ids.forEach(id => delete selectedSensorMap[id]);
+                    updateSelectedBadge();
+                    if (typeof showToast === 'function') {
+                        showToast(json.message || `${ids.length} sensor(s) deleted.`, 'success');
+                    } else {
+                        alert(json.message);
+                    }
+                    loadStats();
+                    loadInventory(currentInventoryPage);
+                } else {
+                    alert('Error: ' + (json.error || 'Failed to delete selected sensors.'));
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
+        }
+
+        // Clear All or Filtered Sensors
+        async function clearFilteredSensors() {
+            const deviceEl = document.getElementById('filter-device');
+            const vendorEl = document.getElementById('filter-vendor');
+            const classEl = document.getElementById('filter-class');
+            const provEl = document.getElementById('filter-provisioned');
+            const qEl = document.getElementById('filter-query');
+
+            const deviceVal = deviceEl ? deviceEl.value : '';
+            const vendorVal = vendorEl ? vendorEl.value : '';
+            const classVal = classEl ? classEl.value : '';
+            const provVal = provEl ? provEl.value : '';
+            const qVal = qEl ? qEl.value.trim() : '';
+
+            const hasFilters = deviceVal !== '' || vendorVal !== '' || classVal !== '' || provVal !== '' || qVal !== '';
+            const totalCount = window.lastInventoryTotal !== undefined ? window.lastInventoryTotal : 'all matching';
+
+            let msg = '';
+            if (hasFilters) {
+                const filterDesc = [];
+                if (deviceVal) filterDesc.push(`Device: ${deviceVal}`);
+                if (vendorVal) filterDesc.push(`Vendor: ${vendorVal}`);
+                if (classVal) filterDesc.push(`Class: ${classVal}`);
+                if (provVal !== '') filterDesc.push(`Status: ${provVal === '1' ? 'Provisioned' : 'Pending'}`);
+                if (qVal) filterDesc.push(`Query: "${qVal}"`);
+
+                msg = `Are you sure you want to permanently delete all ${totalCount} sensor(s) matching current filter?\n\nFilters: [ ${filterDesc.join(', ')} ]\n\nThis action cannot be undone!`;
+            } else {
+                msg = `WARNING: Are you sure you want to permanently delete ALL ${totalCount} sensors in the inventory?\n\nThis will completely clear the discovered sensors table. This action cannot be undone!`;
+            }
+
+            if (!confirm(msg)) return;
+
+            try {
+                const res = await fetch('?api=delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        type: 'clear_sensors',
+                        scope: hasFilters ? 'filtered' : 'all',
+                        device_id: deviceVal,
+                        vendor: vendorVal,
+                        sensor_class: classVal,
+                        provisioned: provVal,
+                        q: qVal
+                    })
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    selectedSensorMap = {};
+                    updateSelectedBadge();
+                    if (typeof showToast === 'function') {
+                        showToast(json.message || 'Sensors cleared successfully.', 'success');
+                    } else {
+                        alert(json.message);
+                    }
+                    loadStats();
+                    loadInventory(1);
+                } else {
+                    alert('Error: ' + (json.error || 'Failed to clear sensors.'));
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
         }
 
         // Save Settings
