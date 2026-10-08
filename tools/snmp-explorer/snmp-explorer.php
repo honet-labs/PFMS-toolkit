@@ -510,6 +510,30 @@ if (!empty($api)) {
         exit;
     }
 
+    // API: Auto-repair Environmental and Scaled Modules in Pandora FMS
+    if ($api === 'repair_environmental_modules' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $verify_csrf();
+        $raw = file_get_contents('php://input');
+        $input = json_decode($raw, true) ?: $_POST;
+        $agentId = isset($input['agent_id']) ? (int) $input['agent_id'] : 0;
+
+        try {
+            $rep = $pandoraRepo->repairEnvironmentalScaleModules($agentId > 0 ? $agentId : null);
+            echo json_encode([
+                'ok' => true,
+                'repaired' => $rep['repaired'],
+                'details' => $rep['details'],
+                'message' => sprintf(
+                    'Successfully repaired %d environmental module(s) in Pandora FMS! Applied post_process multipliers (0.1 for deci-Celsius, 0.001 for milliAmperes).',
+                    $rep['repaired']
+                ),
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
     // API: Get Provisioned Sensors List in Pandora FMS
     if ($api === 'get_provisioned_sensors') {
         try {
@@ -2462,6 +2486,9 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         </button>
                         <button class="btn-secondary-custom" onclick="repairStorageModules()" title="Auto-fix existing modules in Pandora FMS where hrStorage raw allocation blocks appear as huge percentage numbers">
                             <span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle;">build</span> Auto-Fix (%) Modules
+                        </button>
+                        <button class="btn-secondary-custom" onclick="repairEnvironmentalModules()" title="Auto-fix sensor values in Pandora FMS suffering from scaling issues (e.g. 360 C -> 36.0 C with 0.1, 690 A -> 0.69 A with 0.001)">
+                            <span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle; color:#ea580c;">device_thermostat</span> Auto-Fix Scales
                         </button>
                         <button type="button" class="btn-secondary-custom" id="btn-clean-duplicates" onclick="cleanDuplicateSensors()" title="Find and delete duplicate sensor rows sharing identical OID, keeping the newest entry">
                             <span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle; color:#0284c7;">cleaning_services</span> Clean Duplicates
@@ -4421,6 +4448,35 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             .then(res => {
                 if (res.ok) {
                     alert(res.message || 'Modules repaired successfully!');
+                    loadStats();
+                    loadInventory(currentInventoryPage);
+                } else {
+                    alert('Repair error: ' + (res.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Network error: ' + err.message);
+            });
+        }
+
+        // Auto-fix existing Environmental & Scaled (Temp deci-degrees, Current mA) modules in Pandora FMS
+        function repairEnvironmentalModules() {
+            if (!confirm('Auto-fix environmental sensor scales in Pandora FMS?\n\nThis will scan Pandora FMS modules for:\n- Temperature in deci-degrees (e.g. 360 C -> 36.0 C with post_process 0.1)\n- Current in milliAmperes (e.g. 690 A -> 0.69 A with post_process 0.001)\n\nIt will apply post_process multipliers and refresh cached module values immediately.')) {
+                return;
+            }
+
+            fetch('?api=repair_environmental_modules', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': CSRF_TOKEN
+                },
+                body: JSON.stringify({})
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.ok) {
+                    alert(res.message || 'Environmental modules repaired successfully!');
                     loadStats();
                     loadInventory(currentInventoryPage);
                 } else {

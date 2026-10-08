@@ -96,8 +96,13 @@ final class PandoraRepository
     public function repairModuleGroupsAndDescriptions(): int
     {
         try {
+            $existingCols = $this->getTagenteModuloColumns();
+            $colMap = array_change_key_case(array_flip($existingCols), CASE_LOWER);
+            $hasPostProcess = isset($colMap['post_process']);
+
+            $selectPostProcess = $hasPostProcess ? ", m.post_process, m.unit as m_unit" : "";
             $stmt = $this->pdo->query("
-                SELECT s.id, s.sensor_class, s.sensor_name, s.interface_name, s.pandora_module_id, m.id_agente_modulo, m.id_module_group, m.descripcion
+                SELECT s.id, s.sensor_class, s.sensor_name, s.interface_name, s.pandora_module_id, s.raw_value, s.normalized_value, s.unit, s.scale, s.precision, m.id_agente_modulo, m.id_module_group, m.descripcion{$selectPostProcess}
                 FROM sensor_inventory s
                 JOIN tagente_modulo m ON (s.pandora_module_id = m.id_agente_modulo OR m.custom_id = CONCAT('snmpbridge:', s.id) OR m.custom_id = CONCAT('snmpbridge:sensor:', s.id))
                 WHERE s.provisioned = 1
@@ -125,7 +130,44 @@ final class PandoraRepository
                 $needsGroupUpdate = ($currentGroupId <= 0 || $currentGroupId === 1) && $targetGroupId > 0 && $currentGroupId !== $targetGroupId;
                 $needsDescUpdate = (strtolower(trim($currentDesc)) === strtolower(trim($class)) || $currentDesc === '') && $targetDesc !== $currentDesc;
 
-                if ($needsGroupUpdate || $needsDescUpdate) {
+                $needsPostProcessUpdate = false;
+                $targetPostProcess = null;
+                if ($hasPostProcess) {
+                    $currPostProcess = isset($r['post_process']) && is_numeric($r['post_process']) ? (float)$r['post_process'] : 0.0;
+                    if ($currPostProcess <= 0.0 || $currPostProcess == 1.0) {
+                        $raw = is_numeric($r['raw_value'] ?? null) ? (float)$r['raw_value'] : null;
+                        $norm = is_numeric($r['normalized_value'] ?? null) ? (float)$r['normalized_value'] : null;
+                        if ($raw !== null && $norm !== null && $raw != 0.0 && abs($raw - $norm) > 0.00001) {
+                            $targetPostProcess = round($norm / $raw, 9);
+                        } elseif (!empty($r['scale']) || !empty($r['precision'])) {
+                            $sc = trim((string)($r['scale'] ?? '9'));
+                            $pr = (int)($r['precision'] ?? 0);
+                            if ($pr > 0 || ($sc !== '9' && $sc !== 'units' && $sc !== 'unit' && $sc !== '')) {
+                                $scaleNorm = new \SnmpBridge\Core\Normalize\ScaleNormalizer();
+                                $factor = $scaleNorm->normalize(1.0, $sc, $pr);
+                                if ($factor > 0 && abs($factor - 1.0) > 0.00001) {
+                                    $targetPostProcess = $factor;
+                                }
+                            }
+                        }
+
+                        if ($targetPostProcess === null) {
+                            $u = (string)($r['m_unit'] ?? $r['unit'] ?? '');
+                            $sName = (string)($r['sensor_name'] ?? '');
+                            if (($u === 'C' || $u === '°C' || stripos($sName, 'Temp') !== false) && $raw !== null && $raw >= 150.0 && $raw <= 1200.0) {
+                                $targetPostProcess = 0.1;
+                            } elseif (($u === 'A' || stripos($sName, 'Current') !== false) && $raw !== null && $raw >= 100.0) {
+                                $targetPostProcess = 0.001;
+                            }
+                        }
+
+                        if ($targetPostProcess !== null && $targetPostProcess > 0 && abs($targetPostProcess - $currPostProcess) > 0.000001) {
+                            $needsPostProcessUpdate = true;
+                        }
+                    }
+                }
+
+                if ($needsGroupUpdate || $needsDescUpdate || $needsPostProcessUpdate) {
                     $uSql = [];
                     $uParams = [];
                     if ($needsGroupUpdate) {
@@ -135,6 +177,10 @@ final class PandoraRepository
                     if ($needsDescUpdate) {
                         $uSql[] = "descripcion = ?";
                         $uParams[] = $targetDesc;
+                    }
+                    if ($needsPostProcessUpdate && $targetPostProcess !== null) {
+                        $uSql[] = "post_process = ?";
+                        $uParams[] = (float) rtrim(rtrim(sprintf('%.12f', $targetPostProcess), '0'), '.');
                     }
                     $uParams[] = $mid;
                     $uStmt = $this->pdo->prepare("UPDATE tagente_modulo SET " . implode(', ', $uSql) . " WHERE id_agente_modulo = ?");
@@ -725,6 +771,95 @@ final class PandoraRepository
                     'new_oid' => $newOid,
                     'total_units' => $totalUnits,
                     'post_process' => $formattedPostProcess,
+                ];
+            }
+        }
+
+        return ['repaired' => $repaired, 'details' => $details];
+    }
+
+    /**
+     * Auto-repair environmental sensor modules in Pandora FMS with anomalous scaling
+     * (e.g. temperature in deci-degrees showing 360 C -> post_process 0.1 -> 36.0 C,
+     *  current in milliAmperes showing 690 A -> post_process 0.001 -> 0.69 A).
+     *
+     * @return array{repaired:int,details:list<array<string,mixed>>}
+     */
+    public function repairEnvironmentalScaleModules(?int $agentId = null): array
+    {
+        $existingCols = $this->getTagenteModuloColumns();
+        $colMap = array_change_key_case(array_flip($existingCols), CASE_LOWER);
+        $hasPostProcess = isset($colMap['post_process']);
+
+        if (!$hasPostProcess) {
+            return ['repaired' => 0, 'details' => []];
+        }
+
+        $where = ["(m.post_process IS NULL OR m.post_process = 0 OR m.post_process = 1)"];
+        $params = [];
+
+        if ($agentId !== null && $agentId > 0) {
+            $where[] = "m.id_agente = ?";
+            $params[] = $agentId;
+        }
+
+        $sql = "SELECT m.id_agente_modulo, m.id_agente, m.nombre, m.snmp_oid, m.unit, m.module_interval, e.datos
+                FROM tagente_modulo m
+                LEFT JOIN tagente_estado e ON m.id_agente_modulo = e.id_agente_modulo
+                WHERE " . implode(' AND ', $where);
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $repaired = 0;
+        $details = [];
+
+        foreach ($rows as $row) {
+            $modId = (int) $row['id_agente_modulo'];
+            $name = (string) ($row['nombre'] ?? '');
+            $unit = (string) ($row['unit'] ?? '');
+            $currentData = is_numeric($row['datos'] ?? null) ? (float) $row['datos'] : null;
+
+            $targetPostProcess = null;
+            $repairReason = '';
+
+            // Check Temperature deci-degrees (e.g. unit 'C', '°C' or name like 'Temp', data between 150 and 1200)
+            $isTemp = ($unit === 'C' || $unit === '°C' || stripos($name, 'Temp') !== false);
+            if ($isTemp && $currentData !== null && $currentData >= 150.0 && $currentData <= 1200.0) {
+                $targetPostProcess = 0.1;
+                $repairReason = sprintf('Temperature deci-degrees scaled (%.1f -> %.1f C)', $currentData, $currentData * 0.1);
+            }
+
+            // Check Current milliAmperes (e.g. unit 'A' or name like 'Current', data >= 50)
+            $isCurrent = ($unit === 'A' || stripos($name, 'Current') !== false);
+            if ($isCurrent && $targetPostProcess === null && $currentData !== null && $currentData >= 50.0) {
+                $targetPostProcess = 0.001;
+                $repairReason = sprintf('Current milliAmperes scaled (%.1f -> %.3f A)', $currentData, $currentData * 0.001);
+            }
+
+            if ($targetPostProcess !== null) {
+                $formattedPostProcess = (float) rtrim(rtrim(sprintf('%.12f', $targetPostProcess), '0'), '.');
+                $uSql = "UPDATE tagente_modulo SET post_process = ? WHERE id_agente_modulo = ?";
+                $this->pdo->prepare($uSql)->execute([$formattedPostProcess, $modId]);
+
+                try {
+                    $interval = (int) ($row['module_interval'] ?? 300);
+                    $newVal = $currentData !== null ? ($currentData * $targetPostProcess) : 0;
+                    $this->pdo->prepare(
+                        'UPDATE tagente_estado SET datos = ?, utimestamp = ? WHERE id_agente_modulo = ?'
+                    )->execute([$newVal, time() - $interval, $modId]);
+                } catch (\Throwable) {}
+
+                $repaired++;
+                $details[] = [
+                    'id' => $modId,
+                    'name' => $name,
+                    'unit' => $unit,
+                    'old_value' => $currentData,
+                    'new_value' => $currentData !== null ? ($currentData * $targetPostProcess) : null,
+                    'post_process' => $formattedPostProcess,
+                    'reason' => $repairReason,
                 ];
             }
         }

@@ -107,6 +107,44 @@ final class PandoraModuleBuilder
             }
         }
 
+        // Automatic scale calculation from scale & precision
+        if ($postProcess === null && isset($sensor['scale']) && isset($sensor['precision'])) {
+            $scaleVal = trim((string) $sensor['scale']);
+            $precVal = (int) $sensor['precision'];
+            if ($precVal > 0 || ($scaleVal !== '9' && $scaleVal !== 'units' && $scaleVal !== 'unit' && $scaleVal !== '')) {
+                $scaleNormalizer = new \SnmpBridge\Core\Normalize\ScaleNormalizer();
+                $calcFactor = $scaleNormalizer->normalize(1.0, $scaleVal, $precVal);
+                if ($calcFactor > 0 && abs($calcFactor - 1.0) > 0.00001) {
+                    $postProcess = $calcFactor;
+                }
+            }
+        }
+
+        // Automatic fallback from raw vs normalized values
+        if ($postProcess === null && !empty($sensor['raw_value']) && !empty($sensor['normalized_value']) && is_numeric($sensor['raw_value']) && is_numeric($sensor['normalized_value'])) {
+            $rawNum = (float) $sensor['raw_value'];
+            $normNum = (float) $sensor['normalized_value'];
+            if ($rawNum != 0.0 && abs($rawNum - $normNum) > 0.00001) {
+                $postProcess = $normNum / $rawNum;
+            }
+        }
+
+        // Heuristic fallback for temperature in deci-degrees (raw integer 150 - 1200 with unit C)
+        if ($postProcess === null && ($unit === 'C' || $unit === '°C' || strtolower((string)($sensor['sensor_type'] ?? '')) === 'celsius' || strtolower((string)($sensor['sensor_type'] ?? '')) === 'temperature')) {
+            $rawNum = (float) ($sensor['raw_value'] ?? 0);
+            if ($rawNum >= 150.0 && $rawNum <= 1200.0) {
+                $postProcess = 0.1;
+            }
+        }
+
+        // Heuristic fallback for current in milliAmperes (raw integer >= 100 with unit A)
+        if ($postProcess === null && ($unit === 'A' || strtolower((string)($sensor['sensor_type'] ?? '')) === 'amperes' || strtolower((string)($sensor['sensor_type'] ?? '')) === 'current')) {
+            $rawNum = (float) ($sensor['raw_value'] ?? 0);
+            if ($rawNum >= 100.0) {
+                $postProcess = 0.001;
+            }
+        }
+
         $formattedPostProcess = null;
         if ($postProcess !== null && is_numeric($postProcess)) {
             $num = (float) $postProcess;

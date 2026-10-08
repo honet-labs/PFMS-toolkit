@@ -49,6 +49,14 @@ final readonly class SensorNormalizer implements NormalizerInterface
             isset($sensor['sensor_type']) ? (string) $sensor['sensor_type'] : null,
         );
 
+        if ($adjustedValue != 0.0 && abs($adjustedValue - $normalizedValue) > 0.00001) {
+            $sensor['post_process'] = round($normalizedValue / $adjustedValue, 9);
+            if (!isset($sensor['metadata']) || !is_array($sensor['metadata'])) {
+                $sensor['metadata'] = [];
+            }
+            $sensor['metadata']['post_process'] = $sensor['post_process'];
+        }
+
         return $sensor;
     }
 
