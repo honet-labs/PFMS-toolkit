@@ -2,6 +2,16 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.4] - 2026-10-08 (Dashboard - Sparkline Table Dedicated Module Column & Clean Bottom Spacing)
+### Fixed
+- **Pemisahan Kolom Module Name & Agent pada Widget Sparkline Table Trend:**
+  - Sebelumnya, nama modul dan nama/IP agen digabungkan ke dalam satu kolom "Name" (nama agen di atas dan nama modul di bawahnya).
+  - Memisahkan keduanya menjadi kolom mandiri: kolom **Agent** (menampilkan IP dan nama/alias node) dan kolom **Module Name** (menampilkan nama modul metrik secara bersih dan dapat diklik untuk membuka modal detail modul).
+  - Menambahkan dukungan pengurutan (sorting) independen untuk kolom **Agent** dan kolom **Module Name**.
+- **Pembersihan Ruang Kosong (Dead Space) di Bagian Bawah Widget Sparkline Table:**
+  - Sebelumnya, card widget Sparkline Table memaksakan `min-height` dan `flex: 1` berlebih yang menyebabkan area kosong putih yang sangat lebar di bawah tabel (terutama saat baris data sedikit, seperti 2 atau 4 baris).
+  - Mengubah kalkulasi dimensi untuk widget tabel menjadi `height: auto; min-height: 0;` dengan padding atas dan bawah yang simetris (10px), sehingga card membungkus tabel secara presisi dan rapi tanpa menyisakan ruang kosong yang timpang.
+
 ## [2.11.3] - 2026-10-08 (SNMP Explorer - Module Group Resolution from Sensor Class & Human-Readable Module Descriptions)
 ### Fixed
 - **Pemetaan Sensor Class ke Module Group Pandora FMS (`tmodule_group`):**

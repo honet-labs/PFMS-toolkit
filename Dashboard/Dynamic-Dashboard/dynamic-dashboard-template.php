@@ -3079,13 +3079,9 @@ function generateSummaryPanelHtml(p, modules) {
                 displayVal = formatHumanMetric(numericVal, m.unit, false, m.module_name, p.title);
             }
 
-            const primaryName = (m.ip_address && m.ip_address !== 'N/A' && m.ip_address !== '127.0.0.1')
-                ? m.ip_address
-                : (m.agent_name || m.module_name || 'Node');
-
-            const secondaryName = (primaryName === m.ip_address)
-                ? (m.agent_name ? `${m.agent_name} - ${m.module_name}` : m.module_name)
-                : m.module_name;
+            const agentIp = (m.ip_address && m.ip_address !== 'N/A' && m.ip_address !== '127.0.0.1') ? m.ip_address : '';
+            const agentName = m.agent_name || agentIp || 'Node';
+            const moduleName = m.module_name || 'Module';
 
             const statusEval = evaluateModuleThresholdStatus(m, numericVal, m.module_name, m.unit, p.title);
             const statusColor = statusEval.color;
@@ -3093,11 +3089,10 @@ function generateSummaryPanelHtml(p, modules) {
 
             return {
                 id: m.id,
-                primaryName: primaryName,
-                secondaryName: secondaryName,
-                module_name: m.module_name || '',
-                agent_name: m.agent_name || '',
-                ip_address: m.ip_address || '',
+                agent_id: m.agent_id,
+                agent_name: agentName,
+                ip_address: agentIp,
+                module_name: moduleName,
                 rawVal: numericVal,
                 sortVal: effectiveTraffic ? bitVal : numericVal,
                 displayVal: displayVal,
@@ -3117,8 +3112,9 @@ function generateSummaryPanelHtml(p, modules) {
         const searchKw = (window.sparklineTableSearch[p.id] || '').toLowerCase().trim();
         if (searchKw) {
             items = items.filter(it => 
-                it.primaryName.toLowerCase().includes(searchKw) || 
-                it.secondaryName.toLowerCase().includes(searchKw) ||
+                it.agent_name.toLowerCase().includes(searchKw) || 
+                it.ip_address.toLowerCase().includes(searchKw) ||
+                it.module_name.toLowerCase().includes(searchKw) ||
                 it.displayVal.toLowerCase().includes(searchKw)
             );
         }
@@ -3131,8 +3127,12 @@ function generateSummaryPanelHtml(p, modules) {
 
         items.sort((a, b) => {
             let diff = 0;
-            if (currentSort.col === 'name') {
-                diff = a.primaryName.localeCompare(b.primaryName, undefined, { numeric: true, sensitivity: 'base' });
+            if (currentSort.col === 'agent' || currentSort.col === 'name') {
+                const aName = a.ip_address || a.agent_name;
+                const bName = b.ip_address || b.agent_name;
+                diff = aName.localeCompare(bName, undefined, { numeric: true, sensitivity: 'base' });
+            } else if (currentSort.col === 'module') {
+                diff = a.module_name.localeCompare(b.module_name, undefined, { numeric: true, sensitivity: 'base' });
             } else if (currentSort.col === 'val') {
                 diff = a.sortVal - b.sortVal;
             } else if (currentSort.col === 'trend') {
@@ -3169,7 +3169,7 @@ function generateSummaryPanelHtml(p, modules) {
         let paginationHtml = '';
         if (totalPages > 1) {
             paginationHtml = `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-top:1px solid #f1f5f9; font-size:11px; color:#64748b; background:#fff;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px 0 4px; font-size:11px; color:#64748b; background:transparent;">
                 <div>Showing ${startIdx + 1} to ${Math.min(startIdx + limit, totalItems)} of ${totalItems}</div>
                 <div style="display:flex; gap:6px;">
                     <button class="btn-pfms btn-outline-pfms" style="padding:2px 8px; font-size:10px;" ${currentPage <= 1 ? 'disabled' : ''} onclick="window.tableCurrentPages['${p.id}'] = ${currentPage - 1}; forceRefresh();">Prev</button>
@@ -3183,7 +3183,7 @@ function generateSummaryPanelHtml(p, modules) {
             content = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:160px; color:#bdc3c7; font-size:11px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">query_stats</span>No data matched</div>`;
         } else {
             content = `
-            <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%;">
+            <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:auto;">
                 ${!hideSearch ? `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
                     <div style="font-size:10px; color:#94a3b8; font-weight:500;">Top ${Math.min(limit, totalItems)} of ${totalItems} Items</div>
@@ -3192,23 +3192,29 @@ function generateSummaryPanelHtml(p, modules) {
                         <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
                     </div>
                 </div>` : ''}
-                <div style="overflow-x:auto; overflow-y:auto; flex:1; ${tableH} border:1px solid #e2e8f0; border-radius:6px; background:#fff;">
-                    <table class="sparkline-table" style="font-size:${tableFs}px; width:100%;">
+                <div style="overflow-x:auto; overflow-y:auto; ${tableH} border:1px solid #e2e8f0; border-radius:6px; background:#fff;">
+                    <table class="sparkline-table" style="font-size:${tableFs}px; width:100%; border-collapse:collapse; margin:0;">
                         <thead>
                             <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
-                                <th style="text-align:left; padding:8px 12px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'name');">Name ${getSortIndicator('name')}</th>
+                                <th style="text-align:left; padding:8px 12px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'agent');">Agent ${getSortIndicator('agent')}</th>
+                                <th style="text-align:left; padding:8px 12px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'module');">Module Name ${getSortIndicator('module')}</th>
                                 <th style="text-align:left; padding:8px 12px; width:110px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'val');">Value ${getSortIndicator('val')}</th>
-                                <th style="text-align:left; padding:8px 12px; width:180px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'trend');">${trendColTitle} ${getSortIndicator('trend')}</th>
+                                <th style="text-align:left; padding:8px 12px; width:170px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'trend');">${trendColTitle} ${getSortIndicator('trend')}</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${paginatedItems.map(it => `
                                 <tr style="border-bottom:1px solid #f1f5f9; transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
-                                    <td style="padding:8px 12px; vertical-align:middle;">
-                                        <div style="font-weight:600; color:#0284c7; cursor:pointer; font-size:${tableFs}px; line-height:1.2;" onclick="openNativeModuleDetailModal('${it.id}', '${(it.agent_name + ' - ' + it.module_name).replace(/'/g, "\\'")}')" title="Click to view module details">
-                                            ${escapeHtml(it.primaryName)}
+                                    <td style="padding:8px 12px; vertical-align:middle; white-space:nowrap;">
+                                        <div style="font-weight:600; color:#0284c7; font-size:${tableFs}px; line-height:1.2;">
+                                            ${escapeHtml(it.ip_address || it.agent_name)}
                                         </div>
-                                        ${it.secondaryName ? `<div style="font-size:${Math.max(9, tableFs - 2)}px; color:#64748b; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px;">${escapeHtml(it.secondaryName)}</div>` : ''}
+                                        ${(it.ip_address && it.agent_name && it.agent_name !== it.ip_address) ? `<div style="font-size:${Math.max(9, tableFs - 2)}px; color:#64748b; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px;" title="${escapeHtml(it.agent_name)}">${escapeHtml(it.agent_name)}</div>` : ''}
+                                    </td>
+                                    <td style="padding:8px 12px; vertical-align:middle;">
+                                        <div style="font-weight:600; color:#0f172a; cursor:pointer; font-size:${tableFs}px; line-height:1.3; word-break:break-word;" onclick="openNativeModuleDetailModal('${it.id}', '${(it.agent_name + ' - ' + it.module_name).replace(/'/g, "\\'")}')" title="Click to view module details">
+                                            ${escapeHtml(it.module_name)}
+                                        </div>
                                     </td>
                                     <td style="padding:8px 12px; vertical-align:middle; white-space:nowrap;">
                                         <div style="display:flex; align-items:center; gap:6px;">
@@ -3231,14 +3237,19 @@ function generateSummaryPanelHtml(p, modules) {
 
     const isHidden = p.hidden === true;
     const hiddenClass = isHidden ? 'is-hidden' : '';
+    const isTableWidget = ['sparkline_table', 'status_table', 'history_table', 'table_viewer'].includes(p.type);
+    const cardMinH = isTableWidget ? '' : (p.height ? `min-height:${p.height}px;` : '');
+    const cardHeight = isTableWidget ? 'height:auto;' : 'height:100%;';
+    const bodyPadding = isTableWidget ? 'padding:10px;' : 'padding:10px;';
+    const bodyFlex = isTableWidget ? 'flex-grow:0;' : '';
 
     return `
-        <div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;">
+        <div class="panel-card ${hiddenClass}" style="${cardHeight} ${cardMinH} margin:0;">
             <div class="panel-header">
                 <div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; color:#b5c1c9; vertical-align:middle; margin-right:4px;" title="Drag">drag_indicator</span> ${p.title}</h6></div>
                 ${controlsHtml}
             </div>
-            <div class="panel-body" style="align-items:stretch; justify-content:flex-start; padding:10px;">${content}</div>
+            <div class="panel-body" style="align-items:stretch; justify-content:flex-start; ${bodyPadding} ${bodyFlex}">${content}</div>
         </div>`;
 }
 
