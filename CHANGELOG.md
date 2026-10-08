@@ -2,6 +2,26 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.2] - 2026-10-08 (SNMP Explorer - Pandora Provisioning Active Modules Manager, Unprovision Action & Subtabs)
+### Fixed
+- **Inkonsistensi Tab Pandora Provisioning vs Header Stats:**
+  - Memperbaiki kebingungan di mana header menampilkan jumlah sensor terprovision (misal `Provisioned: 14`), namun saat mengklik tab **Pandora Provisioning**, badge menampilkan `0` dan tabel antrean kosong (*No sensors currently selected*).
+  - Badge tab **Pandora Provisioning** kini secara konsisten menampilkan total modul aktif yang sudah terprovision di Pandora FMS (misal `14`), selaras dengan badge inventori lainnya. Ketika ada sensor baru yang dicentang di antrean staging, pill penanda sekunder `+N queued` akan menyala.
+- **Pembersihan Modul Agen Saat Unprovision:**
+  - Tindakan unprovisioning kini secara otomatis membersihkan seluruh data relasi modul pada tabel Pandora FMS (`tagente_modulo`, `tagente_estado`, `tagente_datos`, `tagente_datos_inc`, `tagente_datos_string`), mendiskon `total_modules` pada agen terkait, dan me-reset status sensor di `sensor_inventory` kembali ke `Pending` (`provisioned = 0`).
+
+### Added
+- **Sub-Tampilan Active Provisioned Modules in Pandora FMS:**
+  - Menambahkan sub-tampilan **Active Provisioned in Pandora** pada Tab Pandora Provisioning yang menampilkan daftar lengkap seluruh sensor yang telah aktif diprovision ke agen Pandora FMS.
+  - Menampilkan informasi detail: IP & Versi SNMP, Nama Agen Pandora FMS, Nama Modul (`tagente_modulo.nombre`) beserta ID modul (`#ID`), Status Polling Modul (dot indikator Normal/Warning/Critical), Nama Sensor & Class, SNMP OID, Nilai Terakhir/Ternormalisasi, serta Tanggal Provisioning.
+  - Menyediakan filter berdasarkan Agen Pandora FMS dan kotak pencarian real-time (search OID, nama modul, nama sensor, IP).
+  - Menambahkan pagination controls dan total counter.
+- **Tindakan Unprovision / Delete Modul dari Pandora FMS:**
+  - Menambahkan tombol aksi **Unprovision** pada setiap baris modul untuk menghapus modul dari Pandora FMS dengan konfirmasi detail.
+  - Menambahkan fitur **Unprovision Selected (Bulk)** untuk menghapus beberapa modul sekaligus secara batch.
+- **Sinkronisasi Otomatis Database Toolkit & Pandora FMS:**
+  - Menambahkan tombol dan API **Sync with Pandora** (`?api=sync_provisioned_status`) untuk melakukan rekonsiliasi dua arah antara tabel `sensor_inventory` dan `tagente_modulo` (memastikan modul eksternal atau modul yang dihapus langsung di GUI console Pandora FMS tersinkronisasi 100%).
+
 ## [2.11.1] - 2026-10-08 (SNMP Explorer - Sensor Deletion Persistence, Sensor ID Display, Cache Busting & Duplicate Cleaner)
 ### Fixed
 - **Validasi & Verifikasi Penghapusan Sensor (`tools/snmp-explorer/snmp-explorer.php`):**

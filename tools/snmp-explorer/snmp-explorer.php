@@ -509,6 +509,209 @@ if (!empty($api)) {
         exit;
     }
 
+    // API: Get Provisioned Sensors List in Pandora FMS
+    if ($api === 'get_provisioned_sensors') {
+        try {
+            $page = max(1, (int)($_GET['page'] ?? 1));
+            $per_page = max(10, min(500, (int)($_GET['per_page'] ?? 50)));
+            $offset = ($page - 1) * $per_page;
+
+            $filters = ["s.provisioned = 1"];
+            $params = [];
+
+            if (!empty($_GET['agent_id'])) {
+                $filters[] = "s.pandora_agent_id = :agent_id";
+                $params[':agent_id'] = (int)$_GET['agent_id'];
+            }
+            if (!empty($_GET['q'])) {
+                $q = trim((string)$_GET['q']);
+                $filters[] = "(s.sensor_name LIKE :q1 OR s.oid LIKE :q2 OR s.ip_address LIKE :q3 OR COALESCE(m.nombre, '') LIKE :q4 OR COALESCE(a.nombre, '') LIKE :q5)";
+                $params[':q1'] = '%' . $q . '%';
+                $params[':q2'] = '%' . $q . '%';
+                $params[':q3'] = '%' . $q . '%';
+                $params[':q4'] = '%' . $q . '%';
+                $params[':q5'] = '%' . $q . '%';
+            }
+
+            $whereSql = 'WHERE ' . implode(' AND ', $filters);
+
+            // Count total
+            $countSql = "SELECT COUNT(*) 
+                         FROM sensor_inventory s 
+                         LEFT JOIN tagente a ON s.pandora_agent_id = a.id_agente 
+                         LEFT JOIN tagente_modulo m ON (s.pandora_module_id = m.id_agente_modulo OR m.custom_id = CONCAT('snmpbridge:', s.id))
+                         $whereSql";
+            $countStmt = $pdo->prepare($countSql);
+            $countStmt->execute($params);
+            $total = (int)$countStmt->fetchColumn();
+
+            // Fetch rows
+            $dataSql = "SELECT 
+                            s.*, 
+                            d.hostname, 
+                            COALESCE(d.snmp_version, '2c') AS snmp_version, 
+                            COALESCE(a.nombre, CONCAT('Agent #', s.pandora_agent_id)) AS agent_name, 
+                            a.alias AS agent_alias, 
+                            COALESCE(m.nombre, s.sensor_name) AS module_name, 
+                            COALESCE(m.id_agente_modulo, s.pandora_module_id) AS resolved_module_id,
+                            m.descripcion AS module_description,
+                            e.datos AS module_latest_data,
+                            e.estado AS module_status
+                        FROM sensor_inventory s 
+                        LEFT JOIN devices d ON s.device_id = d.id 
+                        LEFT JOIN tagente a ON s.pandora_agent_id = a.id_agente 
+                        LEFT JOIN tagente_modulo m ON (s.pandora_module_id = m.id_agente_modulo OR m.custom_id = CONCAT('snmpbridge:', s.id)) 
+                        LEFT JOIN tagente_estado e ON (m.id_agente_modulo IS NOT NULL AND m.id_agente_modulo = e.id_agente_modulo)
+                        $whereSql 
+                        ORDER BY s.provisioned_at DESC, s.id DESC 
+                        LIMIT $per_page OFFSET $offset";
+            $dataStmt = $pdo->prepare($dataSql);
+            $dataStmt->execute($params);
+            $rows = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode([
+                'ok' => true,
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $per_page,
+                'total_pages' => ceil($total / $per_page),
+                'rows' => $rows,
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // API: Unprovision / Delete Module from Pandora FMS
+    if ($api === 'unprovision' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $verify_csrf();
+        $raw = file_get_contents('php://input');
+        $input = json_decode($raw, true) ?: $_POST;
+
+        $ids = array_values(array_filter(array_map('intval', (array)($input['sensor_ids'] ?? [$input['sensor_id'] ?? 0]))));
+        $deleteSensor = !empty($input['delete_sensor']);
+
+        if (empty($ids)) {
+            echo json_encode(['ok' => false, 'error' => 'No sensors selected for unprovisioning.']);
+            exit;
+        }
+
+        try {
+            $inPlaceholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $pdo->prepare("SELECT id, pandora_agent_id, pandora_module_id FROM sensor_inventory WHERE id IN ($inPlaceholders)");
+            $stmt->execute($ids);
+            $sensors = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $unprovisionedCount = 0;
+            $agentModuleDecrement = [];
+
+            foreach ($sensors as $sensor) {
+                $sensorId = (int)$sensor['id'];
+                $agentId = (int)($sensor['pandora_agent_id'] ?? 0);
+                $moduleId = (int)($sensor['pandora_module_id'] ?? 0);
+
+                if ($moduleId <= 0) {
+                    $modFind = $pdo->prepare("SELECT id_agente_modulo, id_agente FROM tagente_modulo WHERE custom_id = ? LIMIT 1");
+                    $modFind->execute(['snmpbridge:' . $sensorId]);
+                    $modRow = $modFind->fetch(PDO::FETCH_ASSOC);
+                    if ($modRow) {
+                        $moduleId = (int)$modRow['id_agente_modulo'];
+                        if ($agentId <= 0) {
+                            $agentId = (int)$modRow['id_agente'];
+                        }
+                    }
+                }
+
+                if ($moduleId > 0) {
+                    try { $pdo->prepare("DELETE FROM tagente_datos WHERE id_agente_modulo = ?")->execute([$moduleId]); } catch (\Throwable $t) {}
+                    try { $pdo->prepare("DELETE FROM tagente_datos_inc WHERE id_agente_modulo = ?")->execute([$moduleId]); } catch (\Throwable $t) {}
+                    try { $pdo->prepare("DELETE FROM tagente_datos_string WHERE id_agente_modulo = ?")->execute([$moduleId]); } catch (\Throwable $t) {}
+                    try { $pdo->prepare("DELETE FROM tagente_estado WHERE id_agente_modulo = ?")->execute([$moduleId]); } catch (\Throwable $t) {}
+                    try { $pdo->prepare("DELETE FROM tagente_modulo WHERE id_agente_modulo = ?")->execute([$moduleId]); } catch (\Throwable $t) {}
+
+                    if ($agentId > 0) {
+                        $agentModuleDecrement[$agentId] = ($agentModuleDecrement[$agentId] ?? 0) + 1;
+                    }
+                }
+
+                if ($deleteSensor) {
+                    $pdo->prepare("DELETE FROM sensor_inventory WHERE id = ?")->execute([$sensorId]);
+                } else {
+                    $pdo->prepare("UPDATE sensor_inventory SET provisioned = 0, pandora_agent_id = NULL, pandora_module_id = NULL, provisioned_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$sensorId]);
+                }
+                $unprovisionedCount++;
+            }
+
+            foreach ($agentModuleDecrement as $aId => $decCount) {
+                try {
+                    $pdo->prepare("UPDATE tagente SET total_modules = GREATEST(0, total_modules - ?) WHERE id_agente = ?")->execute([$decCount, $aId]);
+                } catch (\Throwable $t) {}
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'count' => $unprovisionedCount,
+                'message' => sprintf('Successfully unprovisioned and deleted %d module(s) from Pandora FMS.', $unprovisionedCount),
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // API: Synchronize Provisioned Modules status with Pandora FMS database
+    if ($api === 'sync_provisioned_status' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $verify_csrf();
+        try {
+            $syncedCount = 0;
+            // 1. Detect modules in tagente_modulo that match custom_id 'snmpbridge:%'
+            $stMods = $pdo->query("SELECT id_agente_modulo, id_agente, custom_id FROM tagente_modulo WHERE custom_id LIKE 'snmpbridge:%'");
+            $activeModuleIds = [];
+            while ($mRow = $stMods->fetch(PDO::FETCH_ASSOC)) {
+                $cid = $mRow['custom_id'];
+                $sId = (int)str_replace('snmpbridge:', '', $cid);
+                $mId = (int)$mRow['id_agente_modulo'];
+                $aId = (int)$mRow['id_agente'];
+                $activeModuleIds[$mId] = true;
+
+                if ($sId > 0) {
+                    $upd = $pdo->prepare("UPDATE sensor_inventory SET provisioned = 1, pandora_agent_id = ?, pandora_module_id = ?, provisioned_at = COALESCE(provisioned_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND (provisioned = 0 OR pandora_module_id IS NULL OR pandora_module_id != ?)");
+                    $upd->execute([$aId, $mId, $sId, $mId]);
+                    if ($upd->rowCount() > 0) {
+                        $syncedCount++;
+                    }
+                }
+            }
+
+            // 2. Detect sensor_inventory marked as provisioned whose module no longer exists in tagente_modulo
+            $stSens = $pdo->query("SELECT id, pandora_module_id FROM sensor_inventory WHERE provisioned = 1 AND pandora_module_id IS NOT NULL");
+            $staleCount = 0;
+            while ($sRow = $stSens->fetch(PDO::FETCH_ASSOC)) {
+                $sMid = (int)$sRow['pandora_module_id'];
+                if (!isset($activeModuleIds[$sMid])) {
+                    $chk = $pdo->prepare("SELECT COUNT(*) FROM tagente_modulo WHERE id_agente_modulo = ?");
+                    $chk->execute([$sMid]);
+                    if ((int)$chk->fetchColumn() === 0) {
+                        $rst = $pdo->prepare("UPDATE sensor_inventory SET provisioned = 0, pandora_agent_id = NULL, pandora_module_id = NULL, provisioned_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+                        $rst->execute([(int)$sRow['id']]);
+                        $staleCount++;
+                    }
+                }
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'synced' => $syncedCount,
+                'stale_cleared' => $staleCount,
+                'message' => sprintf('Sync completed! %d modules updated, %d stale records reconciled.', $syncedCount, $staleCount),
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
     // API: Delete Device or Sensor (Single or Bulk)
     if ($api === 'delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $verify_csrf();
@@ -1667,6 +1870,10 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             border-color: var(--brand-green) !important;
             box-shadow: 0 2px 4px rgba(0,77,64,0.15);
         }
+        .subtab-btn.active .badge-pill {
+            background: rgba(255, 255, 255, 0.25) !important;
+            color: #ffffff !important;
+        }
         .oid-chip {
             background: #f1f5f9;
             color: #334155;
@@ -2025,7 +2232,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             </button>
             <button class="tab-btn" data-tab="tab-provision" onclick="switchTab('tab-provision')">
                 Pandora Provisioning
-                <span class="badge-pill" id="selected-provision-count" style="background:#004d40; color:#fff;">0</span>
+                <span class="badge-pill" id="selected-provision-count" style="background:#004d40; color:#fff;" title="Active provisioned sensors">0</span>
+                <span class="badge-pill d-none" id="staged-tab-badge" style="background:#d97706; color:#fff; font-size:10.5px; margin-left:4px;" title="Sensors queued for deployment">+0 queued</span>
             </button>
             <button class="tab-btn" data-tab="tab-settings" onclick="switchTab('tab-settings')">
                 Settings & Profiles
@@ -2762,72 +2970,172 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         <!-- TAB 4: PANDORA PROVISIONING                                   -->
         <!-- ============================================================= -->
         <div id="tab-provision" class="tab-content d-none">
-            <div class="dashboard-card">
-                <div class="card-header-clean">
-                    <h3>Provisioning to Pandora FMS</h3>
-                    <button class="btn-secondary-custom" onclick="openCreateAgentModal()">
-                        Create New Agent
+            <!-- Provisioning Subtabs & Global Actions -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+                <div class="prov-subtabs-bar" style="display:inline-flex; background:#f1f5f9; padding:4px; border-radius:8px; gap:4px; border:1px solid #e2e8f0;">
+                    <button type="button" id="subtab-prov-active-btn" class="subtab-btn active" onclick="switchProvSubTab('active')" style="display:inline-flex; align-items:center; gap:8px; padding:7px 18px; border-radius:6px; font-weight:700; font-size:13px; border:none; cursor:pointer;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">cloud_done</span>
+                        Active Provisioned in Pandora
+                        <span class="badge-pill" id="prov-subtab-active-count" style="font-size:11px; padding:2px 7px;">0</span>
+                    </button>
+                    <button type="button" id="subtab-prov-deploy-btn" class="subtab-btn" onclick="switchProvSubTab('deploy')" style="display:inline-flex; align-items:center; gap:8px; padding:7px 18px; border-radius:6px; font-weight:600; font-size:13px; border:none; cursor:pointer;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">rocket_launch</span>
+                        Deploy Staging Queue
+                        <span class="badge-pill" id="prov-subtab-deploy-count" style="font-size:11px; padding:2px 7px;">0</span>
                     </button>
                 </div>
 
-                <div class="form-grid" style="grid-template-columns: 2fr 1fr 1fr;">
-                    <div class="form-group">
-                        <label class="form-label">Select Target Pandora FMS Agent *</label>
-                        <select id="prov-agent-select" class="form-control">
-                            <option value="">-- Choose Agent from Pandora FMS --</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Module Interval</label>
-                        <select id="prov-interval" class="form-control">
-                            <option value="60">1 Minute (60s)</option>
-                            <option value="300" selected>5 Minutes (300s)</option>
-                            <option value="600">10 Minutes (600s)</option>
-                            <option value="3600">1 Hour (3600s)</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="justify-content: flex-end;">
-                        <button class="btn-apply" onclick="executeProvisioning()" id="btn-execute-provision">
-                            Deploy Modules to Agent
-                        </button>
-                    </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn-secondary-custom" onclick="syncProvisionedStatus()" title="Synchronize modules with Pandora FMS database" style="display:inline-flex; align-items:center; gap:5px; height:32px; font-size:12px;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">sync</span>
+                        Sync with Pandora
+                    </button>
+                    <button class="btn-secondary-custom" onclick="openCreateAgentModal()" style="display:inline-flex; align-items:center; gap:5px; height:32px; font-size:12px;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">add_circle</span>
+                        Create New Agent
+                    </button>
                 </div>
+            </div>
 
-                <div style="margin-top:20px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <h4 style="font-size:13.5px; font-weight:700; color:var(--primary-navy); margin:0;">
-                            Selected Sensors for Provisioning (<span id="prov-selected-count">0</span>)
-                        </h4>
-                        <button type="button" class="btn-secondary-custom" onclick="clearSelectedSensors()" style="font-size:11.5px; padding:3px 10px; display:inline-flex; align-items:center; gap:4px; height:26px;">
-                            <span class="material-symbols-outlined" style="font-size:15px; color:#ef4444;">delete_sweep</span>
-                            Clear All
-                        </button>
+            <!-- SUBVIEW 1: ACTIVE PROVISIONED MODULES IN PANDORA FMS -->
+            <div id="prov-view-active">
+                <div class="dashboard-card">
+                    <div class="card-header-clean">
+                        <h3>
+                            <span class="material-symbols-outlined" style="color:#004d40;">inventory</span>
+                            Active Provisioned Modules in Pandora FMS
+                            <span class="badge-pill" id="prov-active-header-badge" style="background:#004d40; color:#fff; font-size:11px;">0</span>
+                        </h3>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button type="button" class="btn-danger-custom" id="btn-bulk-unprovision" onclick="unprovisionSelectedBatch()" disabled style="display:inline-flex; align-items:center; gap:4px; height:30px; font-size:12px; opacity:0.5; cursor:not-allowed;">
+                                <span class="material-symbols-outlined" style="font-size:15px;">link_off</span>
+                                Unprovision Selected (<span id="prov-bulk-selected-count">0</span>)
+                            </button>
+                            <button class="btn-secondary-custom" onclick="loadProvisionedList(1)" style="display:inline-flex; align-items:center; gap:4px; height:30px; font-size:12px;">
+                                <span class="material-symbols-outlined" style="font-size:16px;">refresh</span>
+                                Refresh
+                            </button>
+                        </div>
                     </div>
-                    <div class="table-responsive" style="max-height:350px;">
-                        <table class="custom-table" id="prov-selected-table">
+
+                    <!-- Filter Bar -->
+                    <div class="form-grid" style="grid-template-columns: 2fr 3fr; margin-bottom:14px;">
+                        <div class="form-group">
+                            <label class="form-label">Filter by Target Pandora Agent</label>
+                            <select id="filter-prov-agent" class="form-control" onchange="loadProvisionedList(1)">
+                                <option value="">-- All Pandora Agents --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Search Query</label>
+                            <input type="text" id="filter-prov-query" class="form-control" placeholder="Search Module Name, Sensor Name, IP Address, OID..." onkeyup="debounceLoadProvisioned()">
+                        </div>
+                    </div>
+
+                    <!-- Active Provisioned Table -->
+                    <div class="table-responsive">
+                        <table class="custom-table" id="prov-active-table">
                             <thead>
                                 <tr>
-                                    <th>IP Address</th>
-                                    <th>Sensor Name</th>
-                                    <th>Class</th>
-                                    <th>OID</th>
+                                    <th style="width:36px; text-align:center;">
+                                        <input type="checkbox" id="check-all-prov" onchange="toggleSelectAllProv(this)">
+                                    </th>
+                                    <th>Target IP</th>
+                                    <th>Pandora Agent</th>
+                                    <th>Module Name</th>
+                                    <th>Sensor Name & Class</th>
+                                    <th>SNMP OID</th>
                                     <th>Value</th>
-                                    <th style="text-align:center; width:90px;">Actions</th>
+                                    <th>Provisioned At</th>
+                                    <th style="text-align:right; width:130px;">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody id="prov-selected-tbody">
-                                <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No sensors currently selected. Go to Sensor Inventory to check items.</td></tr>
+                            <tbody id="prov-active-tbody">
+                                <tr><td colspan="9" style="text-align:center; padding:30px; color:#94a3b8;">Loading provisioned modules...</td></tr>
                             </tbody>
                         </table>
                     </div>
-                </div>
 
-                <!-- Provisioning Log / Feedback Card -->
-                <div class="dashboard-card d-none" id="prov-results-card" style="margin-top:20px; background:#f8fafc;">
-                    <div class="card-header-clean">
-                        <h3>Provisioning Deployment Summary</h3>
+                    <!-- Pagination -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:10px; border-top:1px solid #f1f5f9;">
+                        <div id="prov-pagination-info" style="font-size:12px; color:#64748b;">Showing 0 of 0 entries</div>
+                        <div id="prov-pagination-controls" style="display:flex; gap:6px; align-items:center;"></div>
                     </div>
-                    <div id="prov-results-content"></div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 2: DEPLOY STAGING QUEUE -->
+            <div id="prov-view-deploy" class="d-none">
+                <div class="dashboard-card">
+                    <div class="card-header-clean">
+                        <h3>
+                            <span class="material-symbols-outlined" style="color:#004d40;">rocket_launch</span>
+                            Deploy Selected Sensors to Agent
+                        </h3>
+                        <button class="btn-secondary-custom" onclick="openCreateAgentModal()">
+                            Create New Agent
+                        </button>
+                    </div>
+
+                    <div class="form-grid" style="grid-template-columns: 2fr 1fr 1fr;">
+                        <div class="form-group">
+                            <label class="form-label">Select Target Pandora FMS Agent *</label>
+                            <select id="prov-agent-select" class="form-control">
+                                <option value="">-- Choose Agent from Pandora FMS --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Module Interval</label>
+                            <select id="prov-interval" class="form-control">
+                                <option value="60">1 Minute (60s)</option>
+                                <option value="300" selected>5 Minutes (300s)</option>
+                                <option value="600">10 Minutes (600s)</option>
+                                <option value="3600">1 Hour (3600s)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="justify-content: flex-end;">
+                            <button class="btn-apply" onclick="executeProvisioning()" id="btn-execute-provision">
+                                Deploy Modules to Agent
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <h4 style="font-size:13.5px; font-weight:700; color:var(--primary-navy); margin:0;">
+                                Selected Sensors for Provisioning (<span id="prov-selected-count">0</span>)
+                            </h4>
+                            <button type="button" class="btn-secondary-custom" onclick="clearSelectedSensors()" style="font-size:11.5px; padding:3px 10px; display:inline-flex; align-items:center; gap:4px; height:26px;">
+                                <span class="material-symbols-outlined" style="font-size:15px; color:#ef4444;">delete_sweep</span>
+                                Clear All
+                            </button>
+                        </div>
+                        <div class="table-responsive" style="max-height:350px;">
+                            <table class="custom-table" id="prov-selected-table">
+                                <thead>
+                                    <tr>
+                                        <th>IP Address</th>
+                                        <th>Sensor Name</th>
+                                        <th>Class</th>
+                                        <th>OID</th>
+                                        <th>Value</th>
+                                        <th style="text-align:center; width:90px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="prov-selected-tbody">
+                                    <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No sensors currently selected. Go to Sensor Inventory to check items.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Provisioning Log / Feedback Card -->
+                    <div class="dashboard-card d-none" id="prov-results-card" style="margin-top:20px; background:#f8fafc;">
+                        <div class="card-header-clean">
+                            <h3>Provisioning Deployment Summary</h3>
+                        </div>
+                        <div id="prov-results-content"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2956,12 +3264,19 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
         let currentInventoryPage = 1;
         let inventoryDebounceTimer = null;
 
+        // Pandora Provisioning State
+        let currentProvSubTab = 'active';
+        let currentProvPage = 1;
+        let selectedProvMap = {};
+        let provSearchTimeout = null;
+
         document.addEventListener('DOMContentLoaded', () => {
             loadStats();
             loadDevicesList();
             loadAgentsList();
             loadInventory(1);
             loadMibsList();
+            loadProvisionedList(1);
         });
 
         // Tab Switching
@@ -2976,7 +3291,11 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             if (tabId === 'tab-inventory') {
                 loadInventory(currentInventoryPage);
             } else if (tabId === 'tab-provision') {
-                renderSelectedProvisionTable();
+                if (currentProvSubTab === 'deploy') {
+                    renderSelectedProvisionTable();
+                } else {
+                    loadProvisionedList(currentProvPage || 1);
+                }
             } else if (tabId === 'tab-mibs') {
                 loadMibsList();
                 if (!window.hasLoadedOidSearch) {
@@ -2992,6 +3311,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             loadInventory(currentInventoryPage);
             loadMibsList();
             searchOids();
+            loadProvisionedList(currentProvPage || 1);
         }
 
         // Toggle Single vs Subnet Scan
@@ -3092,6 +3412,14 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         document.getElementById('stat-sensors').innerText = res.sensors;
                         document.getElementById('stat-provisioned').innerText = res.provisioned;
                         document.getElementById('inventory-tab-count').innerText = res.sensors;
+
+                        // Synchronize provisioned counts across tab headers and badges
+                        const selProv = document.getElementById('selected-provision-count');
+                        if (selProv) selProv.innerText = res.provisioned;
+                        const subtabActive = document.getElementById('prov-subtab-active-count');
+                        if (subtabActive) subtabActive.innerText = res.provisioned;
+                        const activeHeader = document.getElementById('prov-active-header-badge');
+                        if (activeHeader) activeHeader.innerText = res.provisioned;
                     }
                 })
                 .catch(console.error);
@@ -3137,18 +3465,36 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
 
         // Load Agents Dropdown
         function loadAgentsList() {
-            fetch('?api=get_agents')
+            fetch(`?api=get_agents&_t=${Date.now()}`, { cache: 'no-store' })
                 .then(r => r.json())
                 .then(res => {
                     if (res.ok) {
                         const sel = document.getElementById('prov-agent-select');
-                        sel.innerHTML = '<option value="">-- Choose Agent from Pandora FMS --</option>';
-                        res.agents.forEach(a => {
-                            const opt = document.createElement('option');
-                            opt.value = a.id_agente;
-                            opt.innerText = a.nombre + (a.direccion ? ' [' + a.direccion + ']' : '');
-                            sel.appendChild(opt);
-                        });
+                        if (sel) {
+                            sel.innerHTML = '<option value="">-- Choose Agent from Pandora FMS --</option>';
+                            res.agents.forEach(a => {
+                                const opt = document.createElement('option');
+                                opt.value = a.id_agente;
+                                opt.innerText = a.nombre + (a.direccion ? ' [' + a.direccion + ']' : '');
+                                sel.appendChild(opt);
+                            });
+                        }
+
+                        // Also populate filter on Active Provisioned tab
+                        const filterAgent = document.getElementById('filter-prov-agent');
+                        if (filterAgent) {
+                            const curVal = filterAgent.value;
+                            filterAgent.innerHTML = '<option value="">-- All Pandora Agents --</option>';
+                            res.agents.forEach(a => {
+                                const opt = document.createElement('option');
+                                opt.value = a.id_agente;
+                                opt.innerText = a.nombre + (a.direccion ? ' [' + a.direccion + ']' : '');
+                                filterAgent.appendChild(opt);
+                            });
+                            if (curVal && Array.from(filterAgent.options).some(o => o.value == curVal)) {
+                                filterAgent.value = curVal;
+                            }
+                        }
                     }
                 });
         }
@@ -3543,10 +3889,21 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             if (invSel) invSel.innerText = count;
             const invDel = document.getElementById('inv-delete-count');
             if (invDel) invDel.innerText = count;
-            const selProv = document.getElementById('selected-provision-count');
-            if (selProv) selProv.innerText = count;
             const provSel = document.getElementById('prov-selected-count');
             if (provSel) provSel.innerText = count;
+            const provDeploySubtab = document.getElementById('prov-subtab-deploy-count');
+            if (provDeploySubtab) provDeploySubtab.innerText = count;
+
+            // Indicator for deployment queue on main tab
+            const stagedBadge = document.getElementById('staged-tab-badge');
+            if (stagedBadge) {
+                if (count > 0) {
+                    stagedBadge.classList.remove('d-none');
+                    stagedBadge.innerText = `+${count} queued`;
+                } else {
+                    stagedBadge.classList.add('d-none');
+                }
+            }
 
             const btnDel = document.getElementById('btn-bulk-delete-selected');
             if (btnDel) {
@@ -3563,6 +3920,351 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 return;
             }
             switchTab('tab-provision');
+            switchProvSubTab('deploy');
+        }
+
+        // Subtab Navigation inside Pandora Provisioning Tab
+        function switchProvSubTab(subTab) {
+            currentProvSubTab = subTab;
+            const btnActive = document.getElementById('subtab-prov-active-btn');
+            const btnDeploy = document.getElementById('subtab-prov-deploy-btn');
+            const viewActive = document.getElementById('prov-view-active');
+            const viewDeploy = document.getElementById('prov-view-deploy');
+
+            if (subTab === 'deploy') {
+                if (btnActive) {
+                    btnActive.classList.remove('active');
+                    btnActive.style.background = 'transparent';
+                    btnActive.style.color = '#64748b';
+                    btnActive.style.boxShadow = 'none';
+                }
+                if (btnDeploy) {
+                    btnDeploy.classList.add('active');
+                    btnDeploy.style.background = '#004d40';
+                    btnDeploy.style.color = '#fff';
+                    btnDeploy.style.boxShadow = '0 2px 4px rgba(0,77,64,0.15)';
+                }
+                if (viewActive) viewActive.classList.add('d-none');
+                if (viewDeploy) viewDeploy.classList.remove('d-none');
+                renderSelectedProvisionTable();
+            } else {
+                if (btnActive) {
+                    btnActive.classList.add('active');
+                    btnActive.style.background = '#004d40';
+                    btnActive.style.color = '#fff';
+                    btnActive.style.boxShadow = '0 2px 4px rgba(0,77,64,0.15)';
+                }
+                if (btnDeploy) {
+                    btnDeploy.classList.remove('active');
+                    btnDeploy.style.background = 'transparent';
+                    btnDeploy.style.color = '#64748b';
+                    btnDeploy.style.boxShadow = 'none';
+                }
+                if (viewActive) viewActive.classList.remove('d-none');
+                if (viewDeploy) viewDeploy.classList.add('d-none');
+                loadProvisionedList(currentProvPage || 1);
+            }
+        }
+
+        // Debounce search query for provisioned modules
+        function debounceLoadProvisioned() {
+            clearTimeout(provSearchTimeout);
+            provSearchTimeout = setTimeout(() => {
+                loadProvisionedList(1);
+            }, 300);
+        }
+
+        // Load Active Provisioned Modules in Pandora FMS
+        function loadProvisionedList(page = 1) {
+            currentProvPage = page;
+            const tbody = document.getElementById('prov-active-tbody');
+            if (!tbody) return;
+
+            const agentFilter = document.getElementById('filter-prov-agent') ? document.getElementById('filter-prov-agent').value : '';
+            const queryFilter = document.getElementById('filter-prov-query') ? document.getElementById('filter-prov-query').value : '';
+
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:#64748b;"><span class="material-symbols-outlined" style="vertical-align:middle; animation:spin 1s linear infinite;">sync</span> Loading provisioned modules...</td></tr>';
+
+            const params = new URLSearchParams({
+                api: 'get_provisioned_sensors',
+                page: page,
+                per_page: 50,
+                agent_id: agentFilter,
+                q: queryFilter,
+                _t: Date.now()
+            });
+
+            fetch('?' + params.toString(), { cache: 'no-store' })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.ok && res.rows) {
+                        renderProvisionedTable(res);
+                    } else {
+                        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:#ef4444;">${res.error || 'Failed to load provisioned modules.'}</td></tr>`;
+                    }
+                })
+                .catch(err => {
+                    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:#ef4444;">Error: ${err.message}</td></tr>`;
+                });
+        }
+
+        function renderProvisionedTable(res) {
+            const tbody = document.getElementById('prov-active-tbody');
+            if (!tbody) return;
+
+            // Synchronize counters
+            const activeHeader = document.getElementById('prov-active-header-badge');
+            if (activeHeader) activeHeader.innerText = res.total;
+            const subtabActive = document.getElementById('prov-subtab-active-count');
+            if (subtabActive) subtabActive.innerText = res.total;
+            const tabBadge = document.getElementById('selected-provision-count');
+            if (tabBadge) tabBadge.innerText = res.total;
+            const statBadge = document.getElementById('stat-provisioned');
+            if (statBadge) statBadge.innerText = res.total;
+
+            if (res.rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:#94a3b8;">No provisioned modules found in Pandora FMS matching the filter.</td></tr>';
+                document.getElementById('prov-pagination-info').innerText = 'Showing 0 of 0 entries';
+                document.getElementById('prov-pagination-controls').innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            window.currentProvRowsMap = {};
+            res.rows.forEach(r => {
+                window.currentProvRowsMap[r.id] = r;
+                const isChecked = !!selectedProvMap[r.id];
+
+                const valDisplay = (r.module_latest_data !== null && r.module_latest_data !== undefined && r.module_latest_data !== '')
+                    ? `${r.module_latest_data} ${r.unit || ''}`.trim()
+                    : ((r.normalized_value !== null && r.normalized_value !== undefined && r.normalized_value !== '')
+                        ? `${r.normalized_value} ${r.unit || ''}`.trim()
+                        : (r.raw_value || 'N/A'));
+
+                const vStr = r.snmp_version ? (r.snmp_version.toString().toLowerCase().includes('3') ? 'v3' : 'v' + r.snmp_version) : '';
+                const vBadge = vStr ? `<span class="badge ${vStr === 'v3' ? 'badge-primary' : 'badge-neutral'}" style="margin-left:6px; font-size:10px; padding:2px 6px;">${vStr}</span>` : '';
+                const modIdBadge = r.resolved_module_id ? `<span style="display:inline-block; font-size:10px; font-family:monospace; background:#e0f2fe; color:#0369a1; padding:1px 5px; border-radius:3px; margin-right:4px;" title="Pandora Module ID #${r.resolved_module_id}">#${r.resolved_module_id}</span>` : '';
+
+                // Module Status Dot
+                let statusDot = '';
+                if (r.module_status !== null && r.module_status !== undefined) {
+                    const st = parseInt(r.module_status);
+                    const colors = { 0: '#16a34a', 1: '#d97706', 2: '#dc2626', 3: '#94a3b8' };
+                    const labels = { 0: 'Normal', 1: 'Warning', 2: 'Critical', 3: 'Unknown' };
+                    statusDot = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${colors[st] || '#94a3b8'}; margin-right:5px; vertical-align:middle;" title="Module Status: ${labels[st] || 'Unknown'}"></span>`;
+                }
+
+                const provDate = r.provisioned_at ? escapeHtml(r.provisioned_at) : 'N/A';
+                const agentDisplayName = r.agent_alias ? `${escapeHtml(r.agent_name)} (${escapeHtml(r.agent_alias)})` : escapeHtml(r.agent_name || 'Agent #' + r.pandora_agent_id);
+
+                html += `
+                    <tr>
+                        <td style="text-align:center;">
+                            <input type="checkbox" class="prov-chk" value="${r.id}" ${isChecked ? 'checked' : ''} onchange="toggleProvSelect(${r.id}, this.checked, ${JSON.stringify(r).replace(/"/g, '&quot;')})">
+                        </td>
+                        <td class="mono"><strong>${escapeHtml(r.ip_address || '')}</strong>${vBadge}</td>
+                        <td>
+                            <strong style="color:var(--primary-navy);">${agentDisplayName}</strong>
+                        </td>
+                        <td>
+                            ${statusDot}${modIdBadge}<strong>${escapeHtml(r.module_name || '')}</strong>
+                        </td>
+                        <td>
+                            <span class="badge badge-neutral" style="margin-right:4px;">${escapeHtml(r.sensor_class || '')}</span>
+                            <span style="font-size:12px; color:#475569;" title="${escapeHtml(r.sensor_name || '')}">${escapeHtml(r.sensor_name || '')}</span>
+                        </td>
+                        <td class="mono text-truncate-cell" title="${escapeHtml(r.oid || '')}">${escapeHtml(r.oid || '')}</td>
+                        <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(valDisplay)}</td>
+                        <td style="font-size:11.5px; color:#64748b;">${provDate}</td>
+                        <td style="text-align:right;">
+                            <div style="display:inline-flex; gap:4px; align-items:center;">
+                                <button type="button" class="btn-danger-custom" style="padding:2px 8px; height:26px; font-size:11px; display:inline-flex; align-items:center; gap:3px;" onclick="unprovisionSingle(${r.id}, '${escapeHtml(r.module_name || r.sensor_name || '')}', '${escapeHtml(r.agent_name || '')}')" title="Unprovision and remove module from Pandora FMS">
+                                    <span class="material-symbols-outlined" style="font-size:13px;">link_off</span>
+                                    Unprovision
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+
+            // Pagination Controls
+            const start = (res.page - 1) * res.per_page + 1;
+            const end = Math.min(res.total, res.page * res.per_page);
+            document.getElementById('prov-pagination-info').innerText = `Showing ${start} to ${end} of ${res.total} entries`;
+
+            const masterChk = document.getElementById('check-all-prov');
+            if (masterChk) {
+                masterChk.checked = res.rows.length > 0 && res.rows.every(r => !!selectedProvMap[r.id]);
+            }
+
+            let pagesHtml = '';
+            if (res.page > 1) {
+                pagesHtml += `<button class="btn-secondary-custom" style="height:28px; padding:0 10px;" onclick="loadProvisionedList(${res.page - 1})">Prev</button>`;
+            }
+            pagesHtml += `<span style="padding:4px 8px; font-weight:700;">Page ${res.page} / ${res.total_pages || 1}</span>`;
+            if (res.page < res.total_pages) {
+                pagesHtml += `<button class="btn-secondary-custom" style="height:28px; padding:0 10px;" onclick="loadProvisionedList(${res.page + 1})">Next</button>`;
+            }
+            document.getElementById('prov-pagination-controls').innerHTML = pagesHtml;
+        }
+
+        // Selection Management for Active Provisioned Modules
+        function toggleProvSelect(id, isChecked, sensorObj) {
+            if (isChecked) {
+                selectedProvMap[id] = sensorObj;
+            } else {
+                delete selectedProvMap[id];
+            }
+            updateProvBulkBadge();
+        }
+
+        function toggleSelectAllProv(masterChk) {
+            const chks = document.querySelectorAll('.prov-chk');
+            chks.forEach(chk => {
+                chk.checked = masterChk.checked;
+                const id = parseInt(chk.value);
+                if (masterChk.checked) {
+                    selectedProvMap[id] = (window.currentProvRowsMap && window.currentProvRowsMap[id]) ? window.currentProvRowsMap[id] : { id: id };
+                } else {
+                    delete selectedProvMap[id];
+                }
+            });
+            updateProvBulkBadge();
+        }
+
+        function updateProvBulkBadge() {
+            const count = Object.keys(selectedProvMap).length;
+            const badge = document.getElementById('prov-bulk-selected-count');
+            if (badge) badge.innerText = count;
+
+            const btn = document.getElementById('btn-bulk-unprovision');
+            if (btn) {
+                btn.disabled = count === 0;
+                btn.style.opacity = count === 0 ? '0.5' : '1';
+                btn.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
+        }
+
+        // Unprovision single module from Pandora FMS
+        function unprovisionSingle(sensorId, moduleName, agentName) {
+            if (!sensorId) return;
+
+            const msg = `Are you sure you want to unprovision module "${moduleName}" from Pandora Agent "${agentName}"?\n\nThis will permanently delete the module and its collected metrics from Pandora FMS.\nThe sensor will remain in your inventory and its status will be reset to Pending.`;
+            if (!confirm(msg)) {
+                return;
+            }
+
+            fetch('?api=unprovision', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': CSRF_TOKEN
+                },
+                body: JSON.stringify({
+                    sensor_id: sensorId
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.ok) {
+                    delete selectedProvMap[sensorId];
+                    updateProvBulkBadge();
+                    if (typeof showToast === 'function') {
+                        showToast(res.message || 'Module unprovisioned successfully.', 'success');
+                    } else {
+                        alert(res.message || 'Module unprovisioned successfully.');
+                    }
+                    loadProvisionedList(currentProvPage || 1);
+                    loadStats();
+                    loadInventory(currentInventoryPage);
+                } else {
+                    alert('Error unprovisioning module: ' + (res.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Network error: ' + err.message);
+            });
+        }
+
+        // Unprovision batch of selected modules from Pandora FMS
+        function unprovisionSelectedBatch() {
+            const ids = Object.keys(selectedProvMap).map(Number);
+            if (ids.length === 0) {
+                alert('Please select at least one provisioned sensor to unprovision.');
+                return;
+            }
+
+            const msg = `Are you sure you want to unprovision ${ids.length} selected module(s) from Pandora FMS?\n\nThis will delete the modules and their metrics from Pandora FMS agents.\nThe sensors will remain in your inventory and their status will return to Pending.`;
+            if (!confirm(msg)) {
+                return;
+            }
+
+            fetch('?api=unprovision', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': CSRF_TOKEN
+                },
+                body: JSON.stringify({
+                    sensor_ids: ids
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.ok) {
+                    selectedProvMap = {};
+                    updateProvBulkBadge();
+                    if (typeof showToast === 'function') {
+                        showToast(res.message || `Successfully unprovisioned ${ids.length} modules.`, 'success');
+                    } else {
+                        alert(res.message || `Successfully unprovisioned ${ids.length} modules.`);
+                    }
+                    loadProvisionedList(1);
+                    loadStats();
+                    loadInventory(currentInventoryPage);
+                } else {
+                    alert('Error: ' + (res.error || 'Failed to unprovision modules.'));
+                }
+            })
+            .catch(err => {
+                alert('Network error: ' + err.message);
+            });
+        }
+
+        // Synchronize provisioned modules status between Pandora FMS and toolkit
+        function syncProvisionedStatus() {
+            if (!confirm('Synchronize provisioned status with Pandora FMS database?\n\nThis will cross-check all modules in Pandora FMS table (tagente_modulo) with your sensor inventory to ensure counts and statuses match 100%.')) {
+                return;
+            }
+
+            fetch('?api=sync_provisioned_status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': CSRF_TOKEN
+                },
+                body: JSON.stringify({})
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.ok) {
+                    if (typeof showToast === 'function') {
+                        showToast(res.message || 'Synchronization complete.', 'success');
+                    } else {
+                        alert(res.message || 'Synchronization complete.');
+                    }
+                    loadStats();
+                    loadProvisionedList(1);
+                    loadInventory(currentInventoryPage);
+                } else {
+                    alert('Sync error: ' + (res.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Network error: ' + err.message);
+            });
         }
 
         function renderSelectedProvisionTable() {
@@ -3672,8 +4374,16 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         </div>
                         <p style="font-size:12.5px; color:#166534; font-weight:600;">${res.message}</p>
                     `;
+                    clearSelectedSensors();
                     loadStats();
                     loadInventory(currentInventoryPage);
+                    loadProvisionedList(1);
+                    if (typeof showToast === 'function') {
+                        showToast('Sensors successfully provisioned to Pandora FMS agent!', 'success');
+                    }
+                    setTimeout(() => {
+                        switchProvSubTab('active');
+                    }, 1200);
                 } else {
                     resultsContent.innerHTML = `<div style="color:#b91c1c; font-weight:700;">Error: ${res.error || 'Provisioning failed.'}</div>`;
                 }
