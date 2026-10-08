@@ -126,9 +126,9 @@ final class PandoraModuleBuilder
             'id_agente' => $agentId,
             'id_tipo_modulo' => $idTipoModulo,
             'id_modulo' => self::MODULE_SERVER_NETWORK,
-            'id_module_group' => (int) ($this->config['default_module_group_id'] ?? 1),
+            'id_module_group' => (int) ($overrides['id_module_group'] ?? $sensor['id_module_group'] ?? ($this->config['default_module_group_id'] ?? 1)),
             'nombre' => $moduleName,
-            'descripcion' => $this->buildDescription($sensor),
+            'descripcion' => $overrides['descripcion'] ?? $overrides['description'] ?? $this->buildDescription($sensor),
             'tcp_port' => (int) ($sensor['snmp_port'] ?? 161),
             'snmp_oid' => (string) $sensor['oid'],
             'snmp_community' => $isV3 ? '' : (string) ($sensor['snmp_community'] ?? 'public'),
@@ -168,7 +168,7 @@ final class PandoraModuleBuilder
     /**
      * Build Pandora SNMP module for XML format
      */
-    public function buildForXml(array $sensor): array
+    public function buildForXml(array $sensor, array $overrides = []): array
     {
         $rawValue = $sensor['raw_value'] ?? null;
         $isAlphaNumeric = is_string($rawValue) && preg_match('/[a-zA-Z]/', $rawValue);
@@ -185,11 +185,11 @@ final class PandoraModuleBuilder
 
         return [
             'name' => $moduleName,
-            'description' => $this->buildDescription($sensor),
+            'description' => $overrides['descripcion'] ?? $overrides['description'] ?? $this->buildDescription($sensor),
             'type' => $moduleType,
             'data' => (string) $value,
             'unit' => (string) ($sensor['unit'] ?? ''),
-            'module_group' => 'snmp-bridge',
+            'module_group' => $overrides['module_group'] ?? $this->formatModuleGroupName((string) ($sensor['sensor_class'] ?? 'General')),
         ];
     }
 
@@ -280,16 +280,47 @@ final class PandoraModuleBuilder
         }
     }
 
+    public function formatModuleGroupName(string $sensorClass): string
+    {
+        $class = strtolower(trim($sensorClass));
+        return match ($class) {
+            'environmental', 'environment' => 'Environmental',
+            'interface', 'network', 'networking' => 'Networking',
+            'storage' => 'Storage',
+            'memory' => 'Memory',
+            'system' => 'System',
+            'optical_dom', 'optical_power', 'optical' => 'Optical',
+            'printer' => 'Printer',
+            'gpon' => 'GPON',
+            'dahua_camera', 'camera' => 'Camera',
+            'bgp', 'routing' => 'Routing',
+            'f5_virtual_server', 'f5_pool_member' => 'F5 BIG-IP',
+            default => ucwords(str_replace('_', ' ', $class)) ?: 'General',
+        };
+    }
+
     private function buildDescription(array $sensor): string
     {
-        $class = $sensor['sensor_class'] ?? '';
-        if ($class === 'interface' && isset($sensor['interface_name'])) {
-            return $sensor['interface_name'];
+        $sensorName = trim((string) ($sensor['sensor_name'] ?? ''));
+        $class = trim((string) ($sensor['sensor_class'] ?? ''));
+
+        if ($class === 'interface' && !empty($sensor['interface_name'])) {
+            $interfaceName = trim((string) $sensor['interface_name']);
+            if ($sensorName !== '' && stripos($sensorName, $interfaceName) === false) {
+                return $interfaceName . ' - ' . $sensorName;
+            }
+            return $sensorName ?: $interfaceName;
         }
+
         if ($class === 'dahua_camera' && !empty($sensor['metadata']['ip_address'])) {
-            return 'Camera IP: ' . $sensor['metadata']['ip_address'];
+            return ($sensorName ? $sensorName . ' ' : '') . '(Camera IP: ' . $sensor['metadata']['ip_address'] . ')';
         }
-        return $class ?: 'Sensor';
+
+        if ($sensorName !== '') {
+            return $sensorName;
+        }
+
+        return $class ? $this->formatModuleGroupName($class) : 'SNMP Sensor';
     }
 
     public function moduleName(array $sensor): string

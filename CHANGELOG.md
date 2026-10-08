@@ -2,6 +2,18 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.3] - 2026-10-08 (SNMP Explorer - Module Group Resolution from Sensor Class & Human-Readable Module Descriptions)
+### Fixed
+- **Pemetaan Sensor Class ke Module Group Pandora FMS (`tmodule_group`):**
+  - Sebelumnya, saat deploy/provisioning sensor ke agen Pandora FMS, nilai class sensor (seperti `environmental`, `interface`, `storage`, `system`) secara keliru dituliskan ke kolom `tagente_modulo.descripcion` ("Description"), sedangkan `tagente_modulo.id_module_group` ("Module group") bernilai `0` sehingga di console agen Pandora FMS tampil sebagai `Module group: None`.
+  - Memperbaiki alur provisioning agar class sensor secara otomatis dipetakan ke grup modul Pandora FMS yang rapi (`Environmental`, `Networking`, `Storage`, `Memory`, `System`, `Optical`, `Printer`, `GPON`, `Camera`, `Routing`, `F5 BIG-IP`).
+  - Menambahkan metode `resolveModuleGroupId()` pada `PandoraRepository` yang mencari ID grup di `tmodule_group` atau membuat grup baru secara otomatis jika belum ada di database Pandora FMS.
+- **Deskripsi Modul Informatif & Manusiawi (Human-Readable):**
+  - Kolom `tagente_modulo.descripcion` ("Description") kini diisi dengan nama sensor yang informatif dan deskriptif (misalnya `Chassis Temperature #1 (C)`, `Power Supply 1 - Voltage (V)`, atau detail interface `Eth1/1 - ifHCInOctets`), bukan lagi hanya teks nama class mentah (`environmental`).
+- **Auto-Repair / Migrasi Retroaktif untuk Modul yang Sudah Terdeploy:**
+  - Menambahkan fungsi `repairModuleGroupsAndDescriptions()` pada `PandoraRepository` yang secara otomatis mendeteksi dan memperbarui modul-modul yang sebelumnya terprovision dengan grup `None` (0) atau deskripsi berupa nama class mentah.
+  - Perbaikan ini dieksekusi secara otomatis saat membuka daftar modul provisioned (`get_provisioned_sensors`), saat melakukan sinkronisasi (`sync_provisioned_status`), maupun saat provisioning modul baru (`provision`), sehingga pengguna tidak perlu menghapus atau me-redeploy manual modul yang sudah ada.
+
 ## [2.11.2] - 2026-10-08 (SNMP Explorer - Pandora Provisioning Active Modules Manager, Unprovision Action & Subtabs)
 ### Fixed
 - **Inkonsistensi Tab Pandora Provisioning vs Header Stats:**

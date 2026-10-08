@@ -19,8 +19,134 @@ final class PandoraRepository
 {
     private const int MODULE_STATUS_NO_DATA = 4;
 
+    /**
+     * Cache for resolved module group IDs by group name
+     * @var array<string, int>
+     */
+    private array $moduleGroupCache = [];
+
     public function __construct(private readonly PDO $pdo)
     {
+    }
+
+    /**
+     * Map a sensor class to a clean, user-facing Pandora FMS module group name
+     */
+    public function formatModuleGroupName(string $sensorClass): string
+    {
+        $class = strtolower(trim($sensorClass));
+        return match ($class) {
+            'environmental', 'environment' => 'Environmental',
+            'interface', 'network', 'networking' => 'Networking',
+            'storage' => 'Storage',
+            'memory' => 'Memory',
+            'system' => 'System',
+            'optical_dom', 'optical_power', 'optical' => 'Optical',
+            'printer' => 'Printer',
+            'gpon' => 'GPON',
+            'dahua_camera', 'camera' => 'Camera',
+            'bgp', 'routing' => 'Routing',
+            'f5_virtual_server', 'f5_pool_member' => 'F5 BIG-IP',
+            default => ucwords(str_replace('_', ' ', $class)) ?: 'General',
+        };
+    }
+
+    /**
+     * Resolve or automatically create a Pandora FMS module group ID (tmodule_group.id_mg)
+     */
+    public function resolveModuleGroupId(string $sensorClass): int
+    {
+        $groupName = $this->formatModuleGroupName($sensorClass);
+        $cacheKey = strtolower($groupName);
+
+        if (isset($this->moduleGroupCache[$cacheKey])) {
+            return $this->moduleGroupCache[$cacheKey];
+        }
+
+        try {
+            // Check if module group exists by case-insensitive name
+            $stmt = $this->pdo->prepare('SELECT id_mg FROM tmodule_group WHERE LOWER(name) = ? LIMIT 1');
+            $stmt->execute([$cacheKey]);
+            $groupId = $stmt->fetchColumn();
+
+            if ($groupId !== false && $groupId !== null && (int)$groupId > 0) {
+                $this->moduleGroupCache[$cacheKey] = (int)$groupId;
+                return (int)$groupId;
+            }
+
+            // Create new module group in Pandora FMS
+            $insert = $this->pdo->prepare('INSERT INTO tmodule_group (name) VALUES (?)');
+            $insert->execute([$groupName]);
+            $newId = (int)$this->pdo->lastInsertId();
+
+            if ($newId > 0) {
+                $this->moduleGroupCache[$cacheKey] = $newId;
+                return $newId;
+            }
+        } catch (\Throwable $e) {
+            // Fallback gracefully to default group 1 (General) if table issue occurs
+        }
+
+        return 1;
+    }
+
+    /**
+     * Retroactively repair module groups and descriptions for modules previously created with class name in description
+     */
+    public function repairModuleGroupsAndDescriptions(): int
+    {
+        try {
+            $stmt = $this->pdo->query("
+                SELECT s.id, s.sensor_class, s.sensor_name, s.interface_name, s.pandora_module_id, m.id_agente_modulo, m.id_module_group, m.descripcion
+                FROM sensor_inventory s
+                JOIN tagente_modulo m ON (s.pandora_module_id = m.id_agente_modulo OR m.custom_id = CONCAT('snmpbridge:', s.id) OR m.custom_id = CONCAT('snmpbridge:sensor:', s.id))
+                WHERE s.provisioned = 1
+            ");
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $updated = 0;
+            foreach ($rows as $r) {
+                $mid = (int)$r['id_agente_modulo'];
+                $class = (string)($r['sensor_class'] ?? '');
+                $currentGroupId = (int)($r['id_module_group'] ?? 0);
+                $currentDesc = (string)($r['descripcion'] ?? '');
+
+                $targetGroupId = $this->resolveModuleGroupId($class);
+
+                // Target description: sensor_name (never just the raw class name)
+                $targetDesc = trim((string)($r['sensor_name'] ?? ''));
+                if ($class === 'interface' && !empty($r['interface_name'])) {
+                    $targetDesc = $r['interface_name'] . ($targetDesc !== '' && stripos($targetDesc, $r['interface_name']) === false ? ' - ' . $targetDesc : '');
+                }
+                if ($targetDesc === '') {
+                    $targetDesc = $r['sensor_name'] ?: 'SNMP Sensor';
+                }
+
+                $needsGroupUpdate = ($currentGroupId <= 0 || $currentGroupId === 1) && $targetGroupId > 0 && $currentGroupId !== $targetGroupId;
+                $needsDescUpdate = (strtolower(trim($currentDesc)) === strtolower(trim($class)) || $currentDesc === '') && $targetDesc !== $currentDesc;
+
+                if ($needsGroupUpdate || $needsDescUpdate) {
+                    $uSql = [];
+                    $uParams = [];
+                    if ($needsGroupUpdate) {
+                        $uSql[] = "id_module_group = ?";
+                        $uParams[] = $targetGroupId;
+                    }
+                    if ($needsDescUpdate) {
+                        $uSql[] = "descripcion = ?";
+                        $uParams[] = $targetDesc;
+                    }
+                    $uParams[] = $mid;
+                    $uStmt = $this->pdo->prepare("UPDATE tagente_modulo SET " . implode(', ', $uSql) . " WHERE id_agente_modulo = ?");
+                    $uStmt->execute($uParams);
+                    $updated++;
+                }
+            }
+
+            return $updated;
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 
     public function beginTransaction(): void
@@ -289,6 +415,8 @@ final class PandoraRepository
         }
 
         $fields = [
+            'id_module_group' => $module['id_module_group'] ?? null,
+            'descripcion' => $module['descripcion'] ?? null,
             'snmp_community' => $module['snmp_community'] ?? '',
             'snmp_oid' => $module['snmp_oid'] ?? null,
             'ip_target' => $module['ip_target'] ?? null,

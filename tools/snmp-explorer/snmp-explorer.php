@@ -469,6 +469,7 @@ if (!empty($api)) {
 
         try {
             $summary = $provisioner->provision($sensorIds, $agentId, $interval);
+            $pandoraRepo->repairModuleGroupsAndDescriptions();
             echo json_encode([
                 'ok' => true,
                 'summary' => $summary,
@@ -512,6 +513,8 @@ if (!empty($api)) {
     // API: Get Provisioned Sensors List in Pandora FMS
     if ($api === 'get_provisioned_sensors') {
         try {
+            $pandoraRepo->repairModuleGroupsAndDescriptions();
+
             $page = max(1, (int)($_GET['page'] ?? 1));
             $per_page = max(10, min(500, (int)($_GET['per_page'] ?? 50)));
             $offset = ($page - 1) * $per_page;
@@ -539,7 +542,7 @@ if (!empty($api)) {
             $countSql = "SELECT COUNT(*) 
                          FROM sensor_inventory s 
                          LEFT JOIN tagente a ON s.pandora_agent_id = a.id_agente 
-                         LEFT JOIN tagente_modulo m ON (s.pandora_module_id = m.id_agente_modulo OR m.custom_id = CONCAT('snmpbridge:', s.id))
+                         LEFT JOIN tagente_modulo m ON (s.pandora_module_id = m.id_agente_modulo OR m.custom_id = CONCAT('snmpbridge:', s.id) OR m.custom_id = CONCAT('snmpbridge:sensor:', s.id))
                          $whereSql";
             $countStmt = $pdo->prepare($countSql);
             $countStmt->execute($params);
@@ -555,12 +558,14 @@ if (!empty($api)) {
                             COALESCE(m.nombre, s.sensor_name) AS module_name, 
                             COALESCE(m.id_agente_modulo, s.pandora_module_id) AS resolved_module_id,
                             m.descripcion AS module_description,
+                            COALESCE(mg.name, 'General') AS module_group_name,
                             e.datos AS module_latest_data,
                             e.estado AS module_status
                         FROM sensor_inventory s 
                         LEFT JOIN devices d ON s.device_id = d.id 
                         LEFT JOIN tagente a ON s.pandora_agent_id = a.id_agente 
-                        LEFT JOIN tagente_modulo m ON (s.pandora_module_id = m.id_agente_modulo OR m.custom_id = CONCAT('snmpbridge:', s.id)) 
+                        LEFT JOIN tagente_modulo m ON (s.pandora_module_id = m.id_agente_modulo OR m.custom_id = CONCAT('snmpbridge:', s.id) OR m.custom_id = CONCAT('snmpbridge:sensor:', s.id)) 
+                        LEFT JOIN tmodule_group mg ON m.id_module_group = mg.id_mg
                         LEFT JOIN tagente_estado e ON (m.id_agente_modulo IS NOT NULL AND m.id_agente_modulo = e.id_agente_modulo)
                         $whereSql 
                         ORDER BY s.provisioned_at DESC, s.id DESC 
@@ -670,7 +675,7 @@ if (!empty($api)) {
             $activeModuleIds = [];
             while ($mRow = $stMods->fetch(PDO::FETCH_ASSOC)) {
                 $cid = $mRow['custom_id'];
-                $sId = (int)str_replace('snmpbridge:', '', $cid);
+                $sId = (int)str_replace(['snmpbridge:sensor:', 'snmpbridge:'], '', $cid);
                 $mId = (int)$mRow['id_agente_modulo'];
                 $aId = (int)$mRow['id_agente'];
                 $activeModuleIds[$mId] = true;
@@ -699,6 +704,9 @@ if (!empty($api)) {
                     }
                 }
             }
+
+            // 3. Repair module groups and descriptions for active modules
+            $pandoraRepo->repairModuleGroupsAndDescriptions();
 
             echo json_encode([
                 'ok' => true,

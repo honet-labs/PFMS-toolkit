@@ -66,7 +66,14 @@ final class PandoraProvisioner
                 }
 
                 $customId = $customIdsBySensorId[(int) $sensor['id']];
-                $moduleOverrides = $interval > 0 ? ['module_interval' => $interval] : [];
+                $sensorClass = (string) ($sensor['sensor_class'] ?? '');
+                $moduleGroupId = $this->pandoraRepository->resolveModuleGroupId($sensorClass);
+                $moduleOverrides = [
+                    'id_module_group' => $moduleGroupId,
+                ];
+                if ($interval > 0) {
+                    $moduleOverrides['module_interval'] = $interval;
+                }
                 $module = $this->moduleBuilder->build($sensor, $agentId, $moduleOverrides);
 
                 $existingModuleId = $existingModules[$customId] ?? $existingModulesByName[$module['nombre']] ?? null;
