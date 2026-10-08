@@ -2,6 +2,24 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.1] - 2026-10-08 (SNMP Explorer - Sensor Deletion Persistence, Sensor ID Display, Cache Busting & Duplicate Cleaner)
+### Fixed
+- **Validasi & Verifikasi Penghapusan Sensor (`tools/snmp-explorer/snmp-explorer.php`):**
+  - Mengubah penanganan `DELETE FROM sensor_inventory` pada mode single (`sensor`) dan batch (`bulk_sensors`, `clear_sensors`) agar memvalidasi `rowCount()`. Jika ID tidak ditemukan atau 0 baris terhapus, API mengembalikan pesan error yang jelas dan tidak lagi memberikan respons semu sukses.
+  - Memperbaiki penghapusan device (`type: 'device'`) agar sekaligus membersihkan seluruh sensor relasi pada `sensor_inventory WHERE device_id = ?` sehingga tidak meninggalkan data yatim (*orphaned sensors*).
+  - Menyuntikkan header `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` dan `Pragma: no-cache` pada seluruh respons endpoint API JSON untuk mencegah browser (Edge/Chrome) mengembalikan cache tabel inventory lama saat halaman di-refresh.
+  - Menambahkan parameter cache-buster `_t` serta opsi `{ cache: 'no-store' }` pada seluruh panggilan AJAX `fetch` (`get_inventory`, `get_stats`, `get_devices`, `delete`, dll).
+  - Memperkuat verifikasi CSRF (`$verify_csrf`) dengan membaca token dari header HTTP, parameter POST, maupun JSON payload `php://input` guna mencegah kegagalan hapus akibat token yang ter-strip oleh reverse proxy/webserver.
+- **Pembedaan Visual Sensor ID & Konfirmasi Hapus yang Akurat:**
+  - Menampilkan badge ID sensor (`#ID`) secara eksplisit di samping nama sensor pada tabel Sensor Inventory. Hal ini memudahkan pengguna membedakan sensor-sensor yang memiliki nama serupa (seperti beberapa sensor voltage/current pada power supply yang sama).
+  - Dialog konfirmasi hapus kini menampilkan ID dan nama sensor spesifik yang akan dihapus (`Are you sure you want to permanently delete sensor #ID "Name"?`).
+  - Menjaga nilai pilihan dropdown filter device (`filter-device`) agar tidak ter-reset kembali ke `-- All Devices --` saat tabel di-refresh.
+
+### Added
+- **Fitur Clean Duplicates pada Sensor Inventory:**
+  - Menambahkan tombol **Clean Duplicates** dan API `?api=deduplicate_sensors` untuk membersihkan sensor duplikat OID lama pada perangkat terpilih (atau seluruh inventori) secara otomatis dengan mempertahankan entri terbaru dan modul yang sudah diprovision.
+  - Tombol **Clear Filtered / All** kini secara cerdas menampilkan teks **Clear Device Sensors** ketika ada device yang sedang difilter.
+
 ## [2.11] - 2026-10-08 (SNMP Explorer - ENTITY-SENSOR-MIB Resolution, Parent Hierarchy Naming & Bulk Delete)
 ### Fixed
 - **Resolusi OID & MIB ENTITY-SENSOR-MIB (RFC 3433):**

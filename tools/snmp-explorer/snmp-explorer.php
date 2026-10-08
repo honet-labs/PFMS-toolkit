@@ -102,10 +102,21 @@ if (!empty($api)) {
 
     while (ob_get_level() > 0) ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
 
     // Helper: CSRF verification for mutating requests
     $verify_csrf = function() use ($csrf_token) {
         $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
+        if (empty($client_token)) {
+            $rawInput = file_get_contents('php://input');
+            if (!empty($rawInput)) {
+                $decoded = @json_decode($rawInput, true);
+                if (is_array($decoded) && !empty($decoded['csrf_token'])) {
+                    $client_token = (string)$decoded['csrf_token'];
+                }
+            }
+        }
         if (empty($client_token) || $client_token !== $csrf_token) {
             http_response_code(403);
             echo json_encode(['ok' => false, 'error' => 'Invalid or expired CSRF token. Please refresh the page.']);
@@ -606,16 +617,88 @@ if (!empty($api)) {
 
         try {
             if ($type === 'device') {
+                $stSens = $pdo->prepare("DELETE FROM sensor_inventory WHERE device_id = ?");
+                $stSens->execute([$id]);
+                $sensCount = (int)$stSens->rowCount();
+
                 $st = $pdo->prepare("DELETE FROM devices WHERE id = ?");
                 $st->execute([$id]);
-                echo json_encode(['ok' => true, 'message' => 'Device and associated sensors removed.']);
+                echo json_encode([
+                    'ok' => true,
+                    'message' => "Device #{$id} and {$sensCount} associated sensor(s) permanently removed.",
+                ]);
             } elseif ($type === 'sensor') {
                 $st = $pdo->prepare("DELETE FROM sensor_inventory WHERE id = ?");
                 $st->execute([$id]);
-                echo json_encode(['ok' => true, 'message' => 'Sensor removed from inventory.']);
+                $count = (int)$st->rowCount();
+                if ($count === 0) {
+                    echo json_encode([
+                        'ok' => false,
+                        'error' => "Sensor ID #{$id} was not found in database (it may have already been deleted).",
+                    ]);
+                } else {
+                    echo json_encode([
+                        'ok' => true,
+                        'count' => $count,
+                        'message' => "Sensor #{$id} permanently deleted from inventory.",
+                    ]);
+                }
             } else {
                 echo json_encode(['ok' => false, 'error' => 'Unknown delete target.']);
             }
+        } catch (\Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // API: Clean / Deduplicate Sensors in Inventory
+    if ($api === 'deduplicate_sensors' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $verify_csrf();
+        $raw = file_get_contents('php://input');
+        $input = json_decode($raw, true) ?: $_POST;
+        $deviceId = (int)($input['device_id'] ?? 0);
+
+        try {
+            $whereDev = $deviceId > 0 ? "WHERE device_id = :dev_id" : "";
+            $dupSql = "SELECT id, device_id, oid, provisioned FROM sensor_inventory $whereDev ORDER BY device_id, oid, provisioned DESC, id DESC";
+            $st = $pdo->prepare($dupSql);
+            if ($deviceId > 0) {
+                $st->execute([':dev_id' => $deviceId]);
+            } else {
+                $st->execute();
+            }
+            $allRows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+            $seen = [];
+            $toDeleteIds = [];
+            foreach ($allRows as $row) {
+                $key = $row['device_id'] . '_' . $row['oid'];
+                if (isset($seen[$key])) {
+                    if ((int)$row['provisioned'] === 0) {
+                        $toDeleteIds[] = (int)$row['id'];
+                    }
+                } else {
+                    $seen[$key] = true;
+                }
+            }
+
+            $deletedCount = 0;
+            if (!empty($toDeleteIds)) {
+                $chunkSize = 500;
+                foreach (array_chunk($toDeleteIds, $chunkSize) as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                    $delStmt = $pdo->prepare("DELETE FROM sensor_inventory WHERE id IN ($placeholders)");
+                    $delStmt->execute($chunk);
+                    $deletedCount += (int)$delStmt->rowCount();
+                }
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'count' => $deletedCount,
+                'message' => "Successfully cleaned {$deletedCount} duplicate unprovisioned sensor(s) from inventory.",
+            ]);
         } catch (\Throwable $e) {
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
         }
@@ -2164,6 +2247,9 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         <button class="btn-secondary-custom" onclick="repairStorageModules()" title="Auto-fix existing modules in Pandora FMS where hrStorage raw allocation blocks appear as huge percentage numbers">
                             <span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle;">build</span> Auto-Fix (%) Modules
                         </button>
+                        <button type="button" class="btn-secondary-custom" id="btn-clean-duplicates" onclick="cleanDuplicateSensors()" title="Find and delete duplicate sensor rows sharing identical OID, keeping the newest entry">
+                            <span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle; color:#0284c7;">cleaning_services</span> Clean Duplicates
+                        </button>
                         <button class="btn-apply" onclick="proceedToProvisioning()">
                             Provision Selected (<span id="inv-selected-count">0</span>)
                         </button>
@@ -2182,7 +2268,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom:14px;">
                     <div class="form-group">
                         <label class="form-label">Filter Device / IP</label>
-                        <select id="filter-device" class="form-control" onchange="loadInventory(1)">
+                        <select id="filter-device" class="form-control" onchange="updateFilterButtons(); loadInventory(1);">
                             <option value="">-- All Devices --</option>
                         </select>
                     </div>
@@ -2998,7 +3084,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
 
         // Load Global Stats
         function loadStats() {
-            fetch('?api=get_stats')
+            fetch(`?api=get_stats&_t=${Date.now()}`, { cache: 'no-store' })
                 .then(r => r.json())
                 .then(res => {
                     if (res.ok) {
@@ -3013,11 +3099,12 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
 
         // Load Devices Dropdown
         function loadDevicesList() {
-            fetch('?api=get_devices')
+            fetch(`?api=get_devices&_t=${Date.now()}`, { cache: 'no-store' })
                 .then(r => r.json())
                 .then(res => {
                     if (res.ok) {
                         const sel = document.getElementById('filter-device');
+                        const currentVal = sel ? sel.value : '';
                         sel.innerHTML = '<option value="">-- All Devices --</option>';
                         res.devices.forEach(d => {
                             const opt = document.createElement('option');
@@ -3026,8 +3113,26 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                             opt.innerText = (d.hostname ? d.hostname + ' (' + d.ip_address + ')' : d.ip_address) + (vLabel ? ' [' + vLabel + ']' : '');
                             sel.appendChild(opt);
                         });
+                        if (currentVal && Array.from(sel.options).some(o => o.value == currentVal)) {
+                            sel.value = currentVal;
+                        }
+                        updateFilterButtons();
                     }
                 });
+        }
+
+        function updateFilterButtons() {
+            const deviceEl = document.getElementById('filter-device');
+            const clearBtn = document.getElementById('btn-clear-filtered');
+            if (!clearBtn) return;
+            if (deviceEl && deviceEl.value !== '') {
+                const optText = (deviceEl.selectedIndex >= 0 && deviceEl.options[deviceEl.selectedIndex]) ? deviceEl.options[deviceEl.selectedIndex].text : '';
+                clearBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle; color:#ef4444;">delete_sweep</span> Clear Device Sensors';
+                clearBtn.title = `Permanently delete all discovered sensors belonging to ${optText}`;
+            } else {
+                clearBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle; color:#ef4444;">delete_sweep</span> Clear Filtered / All';
+                clearBtn.title = 'Permanently delete all sensors matching current filters, or wipe entire inventory';
+            }
         }
 
         // Load Agents Dropdown
@@ -3312,9 +3417,10 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 sensor_class: document.getElementById('filter-class').value,
                 provisioned: document.getElementById('filter-provisioned').value,
                 q: document.getElementById('filter-query').value,
+                _t: Date.now()
             });
 
-            fetch('?' + params.toString())
+            fetch('?' + params.toString(), { cache: 'no-store' })
                 .then(r => r.json())
                 .then(res => {
                     if (res.ok && res.rows) {
@@ -3343,7 +3449,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 window.currentInventoryMap[r.id] = r;
                 const isChecked = !!selectedSensorMap[r.id];
                 const provBadge = (parseInt(r.provisioned) === 1)
-                    ? `<span class="badge badge-success">Provisioned ${r.agent_name ? '(' + r.agent_name + ')' : ''}</span>`
+                    ? `<span class="badge badge-success">Provisioned ${r.agent_name ? '(' + escapeHtml(r.agent_name) + ')' : ''}</span>`
                     : `<span class="badge badge-warning">Pending</span>`;
 
                 const valDisplay = (r.normalized_value !== null && r.normalized_value !== undefined && r.normalized_value !== '')
@@ -3352,21 +3458,22 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
 
                 const vStr = r.snmp_version ? (r.snmp_version.toString().toLowerCase().includes('3') ? 'v3' : 'v' + r.snmp_version) : '';
                 const vBadge = vStr ? `<span class="badge ${vStr === 'v3' ? 'badge-primary' : 'badge-neutral'}" style="margin-left:6px; font-size:10px; padding:2px 6px;">${vStr}</span>` : '';
+                const idBadge = `<span style="display:inline-block; font-size:10px; font-family:monospace; background:#e2e8f0; color:#475569; padding:1px 5px; border-radius:3px; margin-right:6px;" title="Sensor ID #${r.id}">#${r.id}</span>`;
 
                 html += `
                     <tr>
                         <td style="text-align:center;">
                             <input type="checkbox" class="sensor-chk" value="${r.id}" ${isChecked ? 'checked' : ''} onchange="toggleSensorSelect(${r.id}, this.checked, ${JSON.stringify(r).replace(/"/g, '&quot;')})">
                         </td>
-                        <td class="mono"><strong>${r.ip_address}</strong>${vBadge}</td>
-                        <td><span class="badge badge-info">${r.vendor}</span></td>
-                        <td><span class="badge badge-neutral">${r.sensor_class}</span></td>
-                        <td class="text-truncate-cell" title="${r.sensor_name}"><strong>${r.sensor_name}</strong></td>
-                        <td class="mono" style="color:#004d40; font-weight:700;">${valDisplay}</td>
-                        <td class="mono text-truncate-cell" title="${r.oid}">${r.oid}</td>
+                        <td class="mono"><strong>${escapeHtml(r.ip_address || '')}</strong>${vBadge}</td>
+                        <td><span class="badge badge-info">${escapeHtml(r.vendor || '')}</span></td>
+                        <td><span class="badge badge-neutral">${escapeHtml(r.sensor_class || '')}</span></td>
+                        <td class="text-truncate-cell" title="[ID #${r.id}] ${escapeHtml(r.sensor_name || '')}">${idBadge}<strong>${escapeHtml(r.sensor_name || '')}</strong></td>
+                        <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(valDisplay)}</td>
+                        <td class="mono text-truncate-cell" title="${escapeHtml(r.oid || '')}">${escapeHtml(r.oid || '')}</td>
                         <td>${provBadge}</td>
                         <td style="text-align:right;">
-                            <button class="btn-danger-custom" style="padding:2px 8px; height:26px; font-size:11px;" onclick="deleteItem('sensor', ${r.id})">
+                            <button type="button" class="btn-danger-custom" style="padding:2px 8px; height:26px; font-size:11px;" onclick="deleteItem('sensor', ${r.id})">
                                 Delete
                             </button>
                         </td>
@@ -3672,15 +3779,20 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
 
         // Delete Item
         function deleteItem(type, id) {
-            if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
+            let itemDesc = `${type} #${id}`;
+            if (type === 'sensor' && window.currentInventoryMap && window.currentInventoryMap[id]) {
+                const s = window.currentInventoryMap[id];
+                itemDesc = `sensor #${id} "${s.sensor_name}"`;
+            }
+            if (!confirm(`Are you sure you want to permanently delete ${itemDesc}?`)) return;
 
-            fetch('?api=delete', {
+            fetch(`?api=delete&_t=${Date.now()}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': CSRF_TOKEN
                 },
-                body: JSON.stringify({ type: type, id: id })
+                body: JSON.stringify({ type: type, id: id, csrf_token: CSRF_TOKEN })
             })
             .then(r => r.json())
             .then(res => {
@@ -3690,7 +3802,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         updateSelectedBadge();
                     }
                     if (typeof showToast === 'function') {
-                        showToast(res.message || `${type} deleted successfully.`, 'success');
+                        showToast(res.message || `${itemDesc} deleted successfully.`, 'success');
                     }
                     loadStats();
                     loadInventory(currentInventoryPage);
@@ -3714,7 +3826,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             }
 
             try {
-                const res = await fetch('?api=delete', {
+                const res = await fetch(`?api=delete&_t=${Date.now()}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -3722,7 +3834,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     },
                     body: JSON.stringify({
                         type: 'bulk_sensors',
-                        ids: ids
+                        ids: ids,
+                        csrf_token: CSRF_TOKEN
                     })
                 });
                 const json = await res.json();
@@ -3764,7 +3877,9 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             let msg = '';
             if (hasFilters) {
                 const filterDesc = [];
-                if (deviceVal) filterDesc.push(`Device: ${deviceVal}`);
+                if (deviceVal && deviceEl.options[deviceEl.selectedIndex]) {
+                    filterDesc.push(`Device: ${deviceEl.options[deviceEl.selectedIndex].text}`);
+                }
                 if (vendorVal) filterDesc.push(`Vendor: ${vendorVal}`);
                 if (classVal) filterDesc.push(`Class: ${classVal}`);
                 if (provVal !== '') filterDesc.push(`Status: ${provVal === '1' ? 'Provisioned' : 'Pending'}`);
@@ -3778,7 +3893,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             if (!confirm(msg)) return;
 
             try {
-                const res = await fetch('?api=delete', {
+                const res = await fetch(`?api=delete&_t=${Date.now()}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -3791,7 +3906,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                         vendor: vendorVal,
                         sensor_class: classVal,
                         provisioned: provVal,
-                        q: qVal
+                        q: qVal,
+                        csrf_token: CSRF_TOKEN
                     })
                 });
                 const json = await res.json();
@@ -3807,6 +3923,48 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     loadInventory(1);
                 } else {
                     alert('Error: ' + (json.error || 'Failed to clear sensors.'));
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
+        }
+
+        // Clean duplicate sensors sharing identical OID
+        async function cleanDuplicateSensors() {
+            const deviceEl = document.getElementById('filter-device');
+            const deviceVal = deviceEl ? deviceEl.value : '';
+            const optText = (deviceEl && deviceEl.selectedIndex >= 0 && deviceEl.options[deviceEl.selectedIndex]) ? deviceEl.options[deviceEl.selectedIndex].text : '';
+            const msg = deviceVal 
+                ? `Clean up duplicate sensors (same OID) for device "${optText}"?\nOnly unprovisioned duplicate rows will be deleted, keeping the newest entry.`
+                : `Clean up duplicate sensors (same OID) across ALL devices in inventory?\nOnly unprovisioned duplicate rows will be deleted, keeping the newest entry.`;
+
+            if (!confirm(msg)) return;
+
+            try {
+                const res = await fetch(`?api=deduplicate_sensors&_t=${Date.now()}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        device_id: deviceVal,
+                        csrf_token: CSRF_TOKEN
+                    })
+                });
+                const json = await res.json();
+                if (json.ok) {
+                    selectedSensorMap = {};
+                    updateSelectedBadge();
+                    if (typeof showToast === 'function') {
+                        showToast(json.message || `Cleaned duplicate sensors.`, 'success');
+                    } else {
+                        alert(json.message);
+                    }
+                    loadStats();
+                    loadInventory(1);
+                } else {
+                    alert('Error: ' + (json.error || 'Failed to clean duplicates.'));
                 }
             } catch (err) {
                 alert('Network error: ' + err.message);
