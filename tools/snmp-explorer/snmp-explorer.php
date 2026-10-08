@@ -341,6 +341,32 @@ if (!empty($api)) {
 
             $whereSql = !empty($filters) ? 'WHERE ' . implode(' AND ', $filters) : '';
 
+            // Auto-repair existing optical / scaled inventory rows if any exist with unit prefix mismatch
+            try {
+                $pdo->exec("
+                    UPDATE sensor_inventory
+                    SET normalized_value = ROUND(normalized_value * 1000.0, 6)
+                    WHERE unit = 'mW'
+                      AND normalized_value IS NOT NULL
+                      AND normalized_value < 0.05
+                      AND CAST(raw_value AS DECIMAL(15,4)) > 100
+                ");
+                $pdo->exec("
+                    UPDATE sensor_inventory
+                    SET normalized_value = ROUND(normalized_value * 1000.0, 6),
+                        sensor_name = REPLACE(sensor_name, ' - TX Power', '')
+                    WHERE unit = 'mA'
+                      AND normalized_value IS NOT NULL
+                      AND normalized_value < 0.5
+                      AND CAST(raw_value AS DECIMAL(15,4)) > 100
+                ");
+                $pdo->exec("
+                    UPDATE sensor_inventory
+                    SET sensor_name = REPLACE(sensor_name, ' - TX Power', '')
+                    WHERE sensor_name LIKE '%Bias% - TX Power%'
+                ");
+            } catch (\Throwable) {}
+
             // Count total
             $countStmt = $pdo->prepare("SELECT COUNT(*) FROM sensor_inventory s $whereSql");
             $countStmt->execute($params);
@@ -518,13 +544,39 @@ if (!empty($api)) {
         $agentId = isset($input['agent_id']) ? (int) $input['agent_id'] : 0;
 
         try {
+            // Also repair sensor_inventory table for optical mW/mA scale prefix and names
+            try {
+                $pdo->exec("
+                    UPDATE sensor_inventory
+                    SET normalized_value = ROUND(normalized_value * 1000.0, 6)
+                    WHERE unit = 'mW'
+                      AND normalized_value IS NOT NULL
+                      AND normalized_value < 0.05
+                      AND CAST(raw_value AS DECIMAL(15,4)) > 100
+                ");
+                $pdo->exec("
+                    UPDATE sensor_inventory
+                    SET normalized_value = ROUND(normalized_value * 1000.0, 6),
+                        sensor_name = REPLACE(sensor_name, ' - TX Power', '')
+                    WHERE unit = 'mA'
+                      AND normalized_value IS NOT NULL
+                      AND normalized_value < 0.5
+                      AND CAST(raw_value AS DECIMAL(15,4)) > 100
+                ");
+                $pdo->exec("
+                    UPDATE sensor_inventory
+                    SET sensor_name = REPLACE(sensor_name, ' - TX Power', '')
+                    WHERE sensor_name LIKE '%Bias% - TX Power%'
+                ");
+            } catch (\Throwable) {}
+
             $rep = $pandoraRepo->repairEnvironmentalScaleModules($agentId > 0 ? $agentId : null);
             echo json_encode([
                 'ok' => true,
                 'repaired' => $rep['repaired'],
                 'details' => $rep['details'],
                 'message' => sprintf(
-                    'Successfully repaired %d environmental module(s) in Pandora FMS! Applied post_process multipliers (0.1 for deci-Celsius, 0.001 for milliAmperes).',
+                    'Successfully repaired %d environmental / optical module(s) in Pandora FMS and updated sensor inventory! Applied scaling multipliers (0.1 for deci-Celsius, 0.001 for milliAmperes, optical mW/mA prefix adjustments).',
                     $rep['repaired']
                 ),
             ]);

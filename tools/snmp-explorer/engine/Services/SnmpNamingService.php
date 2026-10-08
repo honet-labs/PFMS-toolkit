@@ -188,7 +188,10 @@ final readonly class SnmpNamingService
             $candidate === 'db' || str_contains($candidate, 'decibel') => 'dB',
             str_contains($candidate, 'celsius'), str_contains($candidate, 'centigrade'), $candidate === 'c' => 'C',
             str_contains($candidate, 'fahrenheit'), $candidate === 'f' => 'F',
+            str_contains($candidate, 'milliwatt') || $candidate === 'mw' => 'mW',
+            str_contains($candidate, 'microwatt') || $candidate === 'uw' || $candidate === 'µw' => 'µW',
             str_contains($candidate, 'milliam') || $candidate === 'ma' => 'mA',
+            str_contains($candidate, 'microamp') || $candidate === 'ua' || $candidate === 'µa' => 'µA',
             str_contains($candidate, 'amp') || $candidate === 'a' => 'A',
             str_contains($candidate, 'millivolt') || $candidate === 'mv' => 'mV',
             str_contains($candidate, 'volt') || $candidate === 'v' => 'V',
@@ -206,9 +209,9 @@ final readonly class SnmpNamingService
 
         return match (true) {
             str_contains($source, 'rx at olt') || str_contains($source, 'olt rx') => 'RX at OLT',
+            str_contains($source, 'bias') => 'TX Bias',
             str_contains($source, 'rx power') || preg_match('/\brx\b/', $source) === 1 || str_contains($source, 'receive power') => 'RX Power',
             str_contains($source, 'tx power') || preg_match('/\btx\b/', $source) === 1 || str_contains($source, 'transmit power') => 'TX Power',
-            str_contains($source, 'bias') => 'TX Bias',
             str_contains($source, 'temp') || str_contains($source, 'celsius') || str_contains($source, 'thermal') => 'Temperature',
             str_contains($source, 'humidity') || str_contains($source, 'percentrh') => 'Humidity',
             str_contains($source, 'fan') || str_contains($source, 'rpm') => 'Speed',

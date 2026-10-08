@@ -838,6 +838,20 @@ final class PandoraRepository
                 $repairReason = sprintf('Current milliAmperes scaled (%.1f -> %.3f A)', $currentData, $currentData * 0.001);
             }
 
+            // Check Optical Power mW (e.g. unit 'mW' or name like 'TX Power' / 'RX Power', raw data >= 100)
+            $isOpticalPowerMw = ($unit === 'mW' || (stripos($name, 'Power') !== false && stripos($name, 'DOM') !== false));
+            if ($isOpticalPowerMw && $targetPostProcess === null && $currentData !== null && $currentData >= 100.0) {
+                $targetPostProcess = 0.0001;
+                $repairReason = sprintf('Optical Power mW scaled (%.1f -> %.4f mW)', $currentData, $currentData * 0.0001);
+            }
+
+            // Check Optical Bias Current mA (e.g. unit 'mA' and name like 'Bias', raw data >= 100)
+            $isOpticalBiasMa = ($unit === 'mA' && stripos($name, 'Bias') !== false);
+            if ($isOpticalBiasMa && $targetPostProcess === null && $currentData !== null && $currentData >= 100.0) {
+                $targetPostProcess = 0.01;
+                $repairReason = sprintf('Optical Bias Current mA scaled (%.1f -> %.2f mA)', $currentData, $currentData * 0.01);
+            }
+
             if ($targetPostProcess !== null) {
                 $formattedPostProcess = (float) rtrim(rtrim(sprintf('%.12f', $targetPostProcess), '0'), '.');
                 $uSql = "UPDATE tagente_modulo SET post_process = ? WHERE id_agente_modulo = ?";
