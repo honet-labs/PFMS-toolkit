@@ -107,25 +107,32 @@ final class PandoraModuleBuilder
             }
         }
 
-        // Automatic scale calculation from scale & precision
+        // 1. Automatic calculation from raw vs normalized values (accounts for SI prefix scaling mW, mA, mV)
+        if ($postProcess === null && !empty($sensor['raw_value']) && !empty($sensor['normalized_value']) && is_numeric($sensor['raw_value']) && is_numeric($sensor['normalized_value'])) {
+            $rawNum = (float) $sensor['raw_value'];
+            $normNum = (float) $sensor['normalized_value'];
+            if ($rawNum != 0.0 && abs($rawNum - $normNum) > 0.00001) {
+                $postProcess = $normNum / $rawNum;
+            }
+        }
+
+        // 2. Automatic scale calculation from scale & precision with unit prefix awareness
         if ($postProcess === null && isset($sensor['scale']) && isset($sensor['precision'])) {
             $scaleVal = trim((string) $sensor['scale']);
             $precVal = (int) $sensor['precision'];
             if ($precVal > 0 || ($scaleVal !== '9' && $scaleVal !== 'units' && $scaleVal !== 'unit' && $scaleVal !== '')) {
                 $scaleNormalizer = new \SnmpBridge\Core\Normalize\ScaleNormalizer();
                 $calcFactor = $scaleNormalizer->normalize(1.0, $scaleVal, $precVal);
+                $prefixMultiplier = match ($unit) {
+                    'mW', 'mA', 'mV' => 1000.0,
+                    'µW', 'uW', 'µA', 'uA', 'µV', 'uV' => 1000000.0,
+                    'kW', 'kA', 'kV' => 0.001,
+                    default => 1.0,
+                };
+                $calcFactor *= $prefixMultiplier;
                 if ($calcFactor > 0 && abs($calcFactor - 1.0) > 0.00001) {
                     $postProcess = $calcFactor;
                 }
-            }
-        }
-
-        // Automatic fallback from raw vs normalized values
-        if ($postProcess === null && !empty($sensor['raw_value']) && !empty($sensor['normalized_value']) && is_numeric($sensor['raw_value']) && is_numeric($sensor['normalized_value'])) {
-            $rawNum = (float) $sensor['raw_value'];
-            $normNum = (float) $sensor['normalized_value'];
-            if ($rawNum != 0.0 && abs($rawNum - $normNum) > 0.00001) {
-                $postProcess = $normNum / $rawNum;
             }
         }
 

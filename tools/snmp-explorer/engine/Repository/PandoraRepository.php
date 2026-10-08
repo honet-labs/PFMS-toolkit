@@ -158,6 +158,10 @@ final class PandoraRepository
                                 $targetPostProcess = 0.1;
                             } elseif (($u === 'A' || stripos($sName, 'Current') !== false) && $raw !== null && $raw >= 100.0) {
                                 $targetPostProcess = 0.001;
+                            } elseif (($u === 'mW' || (stripos($sName, 'Power') !== false && stripos($sName, 'DOM') !== false)) && $raw !== null && $raw >= 100.0) {
+                                $targetPostProcess = 0.0001;
+                            } elseif (($u === 'mA' && stripos($sName, 'Bias') !== false) && $raw !== null && $raw >= 100.0) {
+                                $targetPostProcess = 0.01;
                             }
                         }
 
@@ -795,7 +799,7 @@ final class PandoraRepository
             return ['repaired' => 0, 'details' => []];
         }
 
-        $where = ["(m.post_process IS NULL OR m.post_process = 0 OR m.post_process = 1)"];
+        $where = ["(m.post_process IS NULL OR m.post_process = 0 OR m.post_process = 1 OR m.post_process < 0.00005)"];
         $params = [];
 
         if ($agentId !== null && $agentId > 0) {
@@ -838,28 +842,61 @@ final class PandoraRepository
                 $repairReason = sprintf('Current milliAmperes scaled (%.1f -> %.3f A)', $currentData, $currentData * 0.001);
             }
 
-            // Check Optical Power mW (e.g. unit 'mW' or name like 'TX Power' / 'RX Power', raw data >= 100)
+            // Check Optical Power mW (e.g. unit 'mW' or name like 'TX Power' / 'RX Power')
             $isOpticalPowerMw = ($unit === 'mW' || (stripos($name, 'Power') !== false && stripos($name, 'DOM') !== false));
-            if ($isOpticalPowerMw && $targetPostProcess === null && $currentData !== null && $currentData >= 100.0) {
-                $targetPostProcess = 0.0001;
-                $repairReason = sprintf('Optical Power mW scaled (%.1f -> %.4f mW)', $currentData, $currentData * 0.0001);
+            if ($isOpticalPowerMw && $targetPostProcess === null && $currentData !== null) {
+                if ($currentData >= 100.0) {
+                    $targetPostProcess = 0.0001;
+                    $repairReason = sprintf('Optical Power mW scaled from raw (%.1f -> %.4f mW)', $currentData, $currentData * 0.0001);
+                } elseif ($currentData > 0.0 && $currentData < 0.05) {
+                    $targetPostProcess = 0.0001;
+                    $repairReason = sprintf('Optical Power mW fixed prefix (%.6f -> %.3f mW)', $currentData, $currentData * 1000.0);
+                }
             }
 
-            // Check Optical Bias Current mA (e.g. unit 'mA' and name like 'Bias', raw data >= 100)
+            // Check Optical Bias Current mA (e.g. unit 'mA' and name like 'Bias')
             $isOpticalBiasMa = ($unit === 'mA' && stripos($name, 'Bias') !== false);
-            if ($isOpticalBiasMa && $targetPostProcess === null && $currentData !== null && $currentData >= 100.0) {
-                $targetPostProcess = 0.01;
-                $repairReason = sprintf('Optical Bias Current mA scaled (%.1f -> %.2f mA)', $currentData, $currentData * 0.01);
+            if ($isOpticalBiasMa && $targetPostProcess === null && $currentData !== null) {
+                if ($currentData >= 100.0) {
+                    $targetPostProcess = 0.01;
+                    $repairReason = sprintf('Optical Bias Current mA scaled from raw (%.1f -> %.2f mA)', $currentData, $currentData * 0.01);
+                } elseif ($currentData > 0.0 && $currentData < 0.5) {
+                    $targetPostProcess = 0.01;
+                    $repairReason = sprintf('Optical Bias Current mA fixed prefix (%.6f -> %.2f mA)', $currentData, $currentData * 1000.0);
+                }
             }
 
             if ($targetPostProcess !== null) {
+                $targetName = $name;
+                if ($isOpticalBiasMa && stripos($targetName, ' - TX Power') !== false) {
+                    $targetName = str_ireplace(' - TX Power', '', $targetName);
+                }
+
                 $formattedPostProcess = (float) rtrim(rtrim(sprintf('%.12f', $targetPostProcess), '0'), '.');
-                $uSql = "UPDATE tagente_modulo SET post_process = ? WHERE id_agente_modulo = ?";
-                $this->pdo->prepare($uSql)->execute([$formattedPostProcess, $modId]);
+                $uSql = "UPDATE tagente_modulo SET post_process = ?";
+                $uParams = [$formattedPostProcess];
+                if ($targetName !== $name) {
+                    $uSql .= ", nombre = ?, descripcion = ?";
+                    $uParams[] = $targetName;
+                    $uParams[] = $targetName;
+                }
+                $uSql .= " WHERE id_agente_modulo = ?";
+                $uParams[] = $modId;
+                $this->pdo->prepare($uSql)->execute($uParams);
 
                 try {
                     $interval = (int) ($row['module_interval'] ?? 300);
-                    $newVal = $currentData !== null ? ($currentData * $targetPostProcess) : 0;
+                    if ($currentData !== null) {
+                        if ($currentData >= 100.0) {
+                            $newVal = $currentData * $targetPostProcess;
+                        } elseif ($currentData < 0.5 && ($isOpticalPowerMw || $isOpticalBiasMa)) {
+                            $newVal = $currentData * 1000.0;
+                        } else {
+                            $newVal = $currentData * $targetPostProcess;
+                        }
+                    } else {
+                        $newVal = 0;
+                    }
                     $this->pdo->prepare(
                         'UPDATE tagente_estado SET datos = ?, utimestamp = ? WHERE id_agente_modulo = ?'
                     )->execute([$newVal, time() - $interval, $modId]);
@@ -868,7 +905,7 @@ final class PandoraRepository
                 $repaired++;
                 $details[] = [
                     'id' => $modId,
-                    'name' => $name,
+                    'name' => $targetName,
                     'unit' => $unit,
                     'old_value' => $currentData,
                     'new_value' => $currentData !== null ? ($currentData * $targetPostProcess) : null,
