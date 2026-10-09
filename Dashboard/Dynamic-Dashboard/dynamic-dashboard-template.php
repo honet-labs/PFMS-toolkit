@@ -738,10 +738,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .heatmap-wrap { width: 100%; display: flex; flex-wrap: wrap; gap: 3px; align-content: flex-start; height: auto; min-height: 60px; margin-top: 10px; background: #f8f9fa; border: 1px solid #e0e4e8; border-radius: 4px; padding: 6px; overflow-y: auto; }
         .heat-block { width: 16px; height: 16px; border-radius: 3px; transition: 0.2s; border: 1px solid rgba(0,0,0,0.08); }
         .heat-block:hover { transform: scale(1.4); filter: brightness(1.1); z-index: 10; box-shadow: 0 3px 8px rgba(0,0,0,0.25); }
-        .legend-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: #f8fafc; border: 1px solid #e2e8f0; transition: all 0.15s ease; cursor: pointer; }
-        .legend-chip:hover { background: #f1f5f9; border-color: #cbd5e1; }
-        .legend-color-dot-label { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; cursor: pointer; border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.22); position: relative; margin: 0; transition: transform 0.15s ease, box-shadow 0.15s ease; }
-        .legend-color-dot-label:hover { transform: scale(1.35); box-shadow: 0 0 0 2px #0284c7; }
+        .legend-chip { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; transition: opacity 0.2s ease, background 0.15s ease; border-radius: 4px; padding: 1px 4px; margin: 1px 0; }
+        .legend-chip:hover { background: rgba(241, 245, 249, 0.7); }
+        .legend-color-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .legend-color-dot:hover { transform: scale(1.4); box-shadow: 0 0 0 2px #0284c7; }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(2px); padding: 20px; }
         .modal-box { background: #fff; width: 550px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 1px solid #e0e4e8; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; }
@@ -3462,6 +3462,48 @@ function showToastNotice(msg, type = 'info') {
     }, 3500);
 }
 
+function colorToHex(color) {
+    if (!color) return '#0284c7';
+    color = String(color).trim();
+    if (color.startsWith('#')) {
+        if (color.length === 7) return color;
+        if (color.length === 4) return '#' + color[1]+color[1] + color[2]+color[2] + color[3]+color[3];
+    }
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (match) {
+        const r = parseInt(match[1]).toString(16).padStart(2, '0');
+        const g = parseInt(match[2]).toString(16).padStart(2, '0');
+        const b = parseInt(match[3]).toString(16).padStart(2, '0');
+        return `#${r}${g}${b}`;
+    }
+    return '#0284c7';
+}
+
+function openSeriesColorPicker(e, panelId, seriesName, chartUniqueId, dotEl) {
+    if (e) {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+    }
+    let picker = document.getElementById('global_legend_color_picker');
+    if (!picker) {
+        picker = document.createElement('input');
+        picker.type = 'color';
+        picker.id = 'global_legend_color_picker';
+        picker.style.cssText = 'position:fixed; top:-9999px; left:-9999px; opacity:0; visibility:hidden; width:0; height:0; pointer-events:none; border:none; padding:0;';
+        document.body.appendChild(picker);
+    }
+    const currColor = dotEl ? (dotEl.style.backgroundColor || dotEl.getAttribute('data-color')) : '#0284c7';
+    picker.value = colorToHex(currColor);
+    picker.onchange = function() {
+        onSeriesColorChanged(panelId, seriesName, picker.value, chartUniqueId);
+    };
+    if (typeof picker.showPicker === 'function') {
+        picker.showPicker();
+    } else {
+        picker.click();
+    }
+}
+
 function onSeriesColorChanged(panelId, seriesName, newColor, chartUniqueId) {
     const dash = masterDashboards.find(d => d.id === currentDashId);
     if (!dash) return;
@@ -3493,8 +3535,11 @@ function onSeriesColorChanged(panelId, seriesName, newColor, chartUniqueId) {
 
     const legendEl = document.getElementById(`chart_legend_${chartUniqueId}`);
     if (legendEl) {
-        const dots = legendEl.querySelectorAll(`.legend-chip[data-series="${seriesName.replace(/"/g, '\\"')}"] .legend-color-dot-label, .legend-color-dot-label`);
-        dots.forEach(d => { d.style.backgroundColor = newColor; });
+        const dots = legendEl.querySelectorAll(`.legend-chip[data-series="${seriesName.replace(/"/g, '\\"')}"] .legend-color-dot, .legend-color-dot`);
+        dots.forEach(d => { 
+            d.style.backgroundColor = newColor; 
+            d.setAttribute('data-color', newColor);
+        });
     }
 
     markUnsaved();
@@ -3829,10 +3874,8 @@ function refreshCurrentNodeData() {
                                 const color = s.itemStyle ? s.itemStyle.color : panelPalette[idx % panelPalette.length];
                                 const safeName = s.name.replace(/"/g, '&quot;');
                                 const safeJsName = s.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-                                return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none; transition: opacity 0.2s;" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" title="${safeName} (klik bulatan warna untuk ganti warna, klik nama untuk sembunyikan)">
-                                    <label class="legend-color-dot-label" style="background-color: ${color};" onclick="event.stopPropagation();" title="Ganti warna seri ini">
-                                        <input type="color" value="${color.startsWith('#') && color.length === 7 ? color : '#0284c7'}" onchange="onSeriesColorChanged('${p.id}', '${safeJsName}', this.value, '${uniqueId}')">
-                                    </label>
+                                return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 6px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none; transition: opacity 0.2s;" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" title="${safeName} (klik bulatan untuk ganti warna, klik teks untuk sembunyikan)">
+                                    <span class="legend-color-dot" data-color="${color}" style="background-color: ${color};" onclick="openSeriesColorPicker(event, '${p.id}', '${safeJsName}', '${uniqueId}', this)" title="Klik untuk ganti warna"></span>
                                     <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; cursor: pointer;" onclick="toggleDynamicEchartsLegend('${uniqueId}', this.closest('.legend-chip'))">${s.name}</span>
                                 </div>`;
                             }).join('');
@@ -4093,10 +4136,8 @@ function refreshCurrentNodeData() {
                             if (legendEl) {
                                 const safeName = seriesKey.replace(/"/g, '&quot;');
                                 const safeJsName = seriesKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-                                legendEl.innerHTML = `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none;" title="${safeName} (klik bulatan warna untuk ganti warna)">
-                                    <label class="legend-color-dot-label" style="background-color: ${color};" onclick="event.stopPropagation();" title="Ganti warna grafik">
-                                        <input type="color" value="${color.startsWith('#') && color.length === 7 ? color : '#0284c7'}" onchange="onSeriesColorChanged('${p.id}', '${safeJsName}', this.value, '${uniqueId}')">
-                                    </label>
+                                legendEl.innerHTML = `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 6px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none;" title="${safeName} (klik bulatan untuk ganti warna)">
+                                    <span class="legend-color-dot" data-color="${color}" style="background-color: ${color};" onclick="openSeriesColorPicker(event, '${p.id}', '${safeJsName}', '${uniqueId}', this)" title="Klik untuk ganti warna"></span>
                                     <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${seriesKey}</span>
                                 </div>`;
                             }
