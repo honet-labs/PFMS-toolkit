@@ -738,6 +738,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .heatmap-wrap { width: 100%; display: flex; flex-wrap: wrap; gap: 3px; align-content: flex-start; height: auto; min-height: 60px; margin-top: 10px; background: #f8f9fa; border: 1px solid #e0e4e8; border-radius: 4px; padding: 6px; overflow-y: auto; }
         .heat-block { width: 16px; height: 16px; border-radius: 3px; transition: 0.2s; border: 1px solid rgba(0,0,0,0.08); }
         .heat-block:hover { transform: scale(1.4); filter: brightness(1.1); z-index: 10; box-shadow: 0 3px 8px rgba(0,0,0,0.25); }
+        .legend-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: #f8fafc; border: 1px solid #e2e8f0; transition: all 0.15s ease; cursor: pointer; }
+        .legend-chip:hover { background: #f1f5f9; border-color: #cbd5e1; }
+        .legend-color-dot-label { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; cursor: pointer; border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.22); position: relative; margin: 0; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .legend-color-dot-label:hover { transform: scale(1.35); box-shadow: 0 0 0 2px #0284c7; }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(2px); padding: 20px; }
         .modal-box { background: #fff; width: 550px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 1px solid #e0e4e8; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; }
@@ -1182,7 +1186,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 </div>
                 <div style="margin-top:8px; display:flex; align-items:center; gap:10px; background:#e0f2f1; padding:8px 12px; border-radius:6px; border:1px solid #b2dfdb;">
                     <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:700; color:#004d40; margin:0;">
-                        <input type="checkbox" id="p_multi_overlay" style="margin-right:8px; width:16px; height:16px;"> Overlay Multiple Modules in One Chart
+                        <input type="checkbox" id="p_multi_overlay" style="margin-right:8px; width:16px; height:16px;" onchange="toggleTypeFields(); renderSeriesColorsEditor();"> Overlay Multiple Modules in One Chart
                     </label>
                 </div>
                 <small style="color:#7f8c8d; font-size:10px; display:block; margin-top:4px;">* Tip: Use commas for different modules (e.g. <b>CPU Load, Memory Usage</b>)</small>
@@ -1383,6 +1387,56 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                     <div style="display:flex; align-items:center; gap:8px;">
                         <input type="color" id="p_stat_font_color" value="#334155" style="width:36px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; background:#fff;" onchange="document.getElementById('p_stat_font_color_hex').value = this.value;">
                         <input type="text" id="p_stat_font_color_hex" class="form-control-fix" value="" placeholder="Default (Status Color)" style="flex:1; height:34px; margin-bottom:0;" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('p_stat_font_color').value = this.value;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Line & Multi-Series Color Customizer -->
+            <div id="wrap_chart_colors" style="display:none; margin-top:5px; margin-bottom:10px; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                    <div style="font-weight:700; color:#0f172a; font-size:11px; display:flex; align-items:center; gap:6px;">
+                        <span class="material-symbols-outlined" style="font-size:16px; color:#0284c7;">palette</span>
+                        Chart & Series Colors (Kustomisasi Warna Grafik)
+                    </div>
+                    <button type="button" onclick="resetPanelSeriesColors()" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; padding:2px 8px; font-size:10px; font-weight:600; color:#475569; cursor:pointer;" title="Reset custom colors to default auto palette">
+                        Reset ke Auto
+                    </button>
+                </div>
+
+                <!-- Palette Preset Selector -->
+                <div style="display:flex; gap:10px; margin-bottom:8px; align-items:flex-end;">
+                    <div style="flex:1;">
+                        <label style="font-size:10px; font-weight:600; color:#64748b; margin-bottom:3px; display:block;">Color Palette (Palet Otomatis Multi-Series)</label>
+                        <select id="p_color_palette" class="form-control-fix" onchange="previewPaletteSelection()" style="margin-bottom:0; font-size:11px;">
+                            <option value="vibrant">Modern Vibrant (Kontras Tinggi - Beda Hue)</option>
+                            <option value="distinct">Distinct Bold (Biru, Hijau, Merah, Amber, Ungu)</option>
+                            <option value="neon">Neon Tech (Cyan, Lime, Hot Pink, Amber, Violet)</option>
+                            <option value="ocean">Cool Ocean (Biru Langit, Teal, Cyan, Navy)</option>
+                            <option value="warm">Warm Sunset (Oranye, Crimson, Amber, Emas)</option>
+                            <option value="pastel">Pastel Soft (Biru Muda, Hijau Mint, Coral, Lavender)</option>
+                        </select>
+                    </div>
+                    <div id="palette_swatch_preview" style="display:flex; gap:4px; align-items:center; padding-bottom:6px;">
+                        <!-- Swatches preview rendered dynamically -->
+                    </div>
+                </div>
+
+                <!-- Single Module Fixed Chart Color -->
+                <div id="wrap_single_chart_color" style="display:none; margin-bottom:4px;">
+                    <label style="font-size:10px; font-weight:600; color:#64748b; margin-bottom:4px; display:block;">Warna Garis/Bar (Fixed Color)</label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="color" id="p_chart_color" value="#0284c7" style="width:36px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; background:#fff;" onchange="document.getElementById('p_chart_color_hex').value = this.value;">
+                        <input type="text" id="p_chart_color_hex" class="form-control-fix" placeholder="Auto (Status Color: Hijau/Kuning/Merah)" style="flex:1; height:34px; margin-bottom:0; font-size:11px;" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('p_chart_color').value = this.value;">
+                        <button type="button" onclick="document.getElementById('p_chart_color_hex').value=''; document.getElementById('p_chart_color').value='#0284c7';" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; padding:6px 10px; font-size:10px; font-weight:600; color:#475569; cursor:pointer;" title="Gunakan warna status modul bawaan">Gunakan Status</button>
+                    </div>
+                    <small style="color:#94a3b8; font-size:10px; display:block; margin-top:3px;">* Kosongkan untuk mengikuti warna status Pandora FMS (OK = Hijau, Warning = Kuning, Critical = Merah).</small>
+                </div>
+
+                <!-- Multi-Module Individual Series Colors List -->
+                <div id="wrap_series_colors_list" style="display:none;">
+                    <label style="font-size:10px; font-weight:600; color:#64748b; margin-bottom:4px; display:block;">Kustomisasi Warna Per-Series (Atur Manual Setiap Garis):</label>
+                    <div id="series_colors_container" style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; padding:6px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px;">
+                        <!-- Series rows rendered by renderSeriesColorsEditor() -->
                     </div>
                 </div>
             </div>
@@ -3352,6 +3406,189 @@ function generateSummaryPanelHtml(p, modules) {
         </div>`;
 }
 
+// =========================================================================
+// CHART COLOR PALETTES & INTERACTIVE SERIES COLOR CUSTOMIZATION ENGINE
+// =========================================================================
+const COLOR_PALETTES = {
+    'vibrant': [
+        '#2563eb', '#16a34a', '#ea580c', '#8b5cf6', '#06b6d4',
+        '#e11d48', '#f59e0b', '#10b981', '#6366f1', '#d946ef',
+        '#14b8a6', '#f43f5e', '#84cc16', '#3b82f6', '#ec4899', '#0284c7'
+    ],
+    'distinct': [
+        '#0284c7', '#16a34a', '#dc2626', '#d97706', '#7c3aed',
+        '#0d9488', '#e11d48', '#2563eb', '#ca8a04', '#9333ea',
+        '#059669', '#ea580c', '#64748b', '#db2777', '#0891b2',
+        '#4f46e5', '#65a30d', '#c026d3', '#b45309', '#0369a1'
+    ],
+    'neon': [
+        '#00e5ff', '#00e676', '#ff1744', '#ffea00', '#d500f9',
+        '#ff9100', '#651fff', '#1de9b6', '#f50057', '#00b0ff'
+    ],
+    'ocean': [
+        '#0284c7', '#0d9488', '#2563eb', '#0891b2', '#4f46e5',
+        '#059669', '#3b82f6', '#14b8a6', '#1e40af', '#0e7490'
+    ],
+    'warm': [
+        '#ea580c', '#e11d48', '#d97706', '#ca8a04', '#b91c1c',
+        '#c2410c', '#b45309', '#f59e0b', '#f43f5e', '#854d0e'
+    ],
+    'pastel': [
+        '#60a5fa', '#4ade80', '#f87171', '#fbbf24', '#a78bfa',
+        '#2dd4bf', '#fb7185', '#38bdf8', '#818cf8', '#f472b6'
+    ]
+};
+
+function getPaletteColors(paletteKey) {
+    return COLOR_PALETTES[paletteKey] || COLOR_PALETTES['vibrant'];
+}
+
+function showToastNotice(msg, type = 'info') {
+    let toast = document.getElementById('dyn_dash_toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'dyn_dash_toast';
+        toast.style.cssText = 'position:fixed; bottom:24px; right:24px; background:#0f172a; color:#fff; padding:10px 16px; border-radius:8px; font-size:12px; font-weight:600; box-shadow:0 10px 25px rgba(0,0,0,0.25); z-index:999999; display:flex; align-items:center; gap:8px; transition:opacity 0.3s, transform 0.3s; opacity:0; transform:translateY(10px); pointer-events:none;';
+        document.body.appendChild(toast);
+    }
+    const icon = type === 'success' ? 'palette' : 'info';
+    toast.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px; color:#38bdf8;">${icon}</span><span>${msg}</span>`;
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+    if (window.__toastTimer) clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+    }, 3500);
+}
+
+function onSeriesColorChanged(panelId, seriesName, newColor, chartUniqueId) {
+    const dash = masterDashboards.find(d => d.id === currentDashId);
+    if (!dash) return;
+    const p = dash.panels.find(x => String(x.id) === String(panelId));
+    if (!p) return;
+
+    if (!p.series_colors) p.series_colors = {};
+    p.series_colors[seriesName] = newColor;
+
+    if (!p.multi_overlay) {
+        p.chart_color = newColor;
+    }
+
+    const chart = chartInstances[chartUniqueId];
+    if (chart) {
+        const opt = chart.getOption();
+        if (opt && opt.series) {
+            opt.series.forEach(s => {
+                if (s.name === seriesName || (!p.multi_overlay && opt.series.length === 1)) {
+                    s.itemStyle = s.itemStyle || {};
+                    s.itemStyle.color = newColor;
+                    if (s.areaStyle) s.areaStyle.color = newColor;
+                    if (s.lineStyle) s.lineStyle.color = newColor;
+                }
+            });
+            chart.setOption({ series: opt.series });
+        }
+    }
+
+    const legendEl = document.getElementById(`chart_legend_${chartUniqueId}`);
+    if (legendEl) {
+        const dots = legendEl.querySelectorAll(`.legend-chip[data-series="${seriesName.replace(/"/g, '\\"')}"] .legend-color-dot-label, .legend-color-dot-label`);
+        dots.forEach(d => { d.style.backgroundColor = newColor; });
+    }
+
+    markUnsaved();
+    showToastNotice(`Warna "${seriesName}" diubah ke ${newColor}. Klik "Save Changes" di toolbar untuk menyimpan.`, 'success');
+}
+
+function previewPaletteSelection() {
+    const el = document.getElementById('palette_swatch_preview');
+    if (!el) return;
+    const key = document.getElementById('p_color_palette') ? document.getElementById('p_color_palette').value : 'vibrant';
+    const colors = getPaletteColors(key).slice(0, 6);
+    el.innerHTML = colors.map(c => `<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background-color:${c}; border:1.5px solid #ffffff; box-shadow:0 0 0 1px rgba(0,0,0,0.15);" title="${c}"></span>`).join('');
+    renderSeriesColorsEditor();
+}
+
+function renderSeriesColorsEditor(p = null) {
+    const container = document.getElementById('series_colors_container');
+    if (!container) return;
+
+    if (!p && editingPanelId) {
+        const dash = masterDashboards.find(d => d.id === currentDashId);
+        if (dash) p = dash.panels.find(x => x.id === editingPanelId);
+    }
+
+    const paletteKey = document.getElementById('p_color_palette') ? document.getElementById('p_color_palette').value : (p?.color_palette || 'vibrant');
+    const activePalette = getPaletteColors(paletteKey);
+
+    let seriesList = [];
+    if (editingPanelId && typeof lastFetchedData !== 'undefined' && lastFetchedData && lastFetchedData[editingPanelId]?.modules) {
+        seriesList = lastFetchedData[editingPanelId].modules.map(m => `${m.agent_name || ''} - ${m.module_name || ''}`);
+    } else if (p && p.series_colors && Object.keys(p.series_colors).length > 0) {
+        seriesList = Object.keys(p.series_colors);
+    }
+
+    seriesList = [...new Set(seriesList)].filter(Boolean);
+
+    if (seriesList.length === 0) {
+        container.innerHTML = `<div style="font-size:11px; color:#64748b; padding:8px; text-align:center; line-height:1.4;">Warna seri akan otomatis diisi dengan palet <b>${paletteKey.toUpperCase()}</b> yang berlainan hue agar tidak mirip saat data dimuat. Anda juga bisa langsung klik bulatan warna pada legenda grafik di dashboard untuk menggantinya secara instan!</div>`;
+        return;
+    }
+
+    const seriesColors = window.__editingPanelSeriesColors || (p?.series_colors || {});
+
+    container.innerHTML = seriesList.map((seriesName, idx) => {
+        const autoColor = activePalette[idx % activePalette.length];
+        const isCustom = !!seriesColors[seriesName];
+        const currentColor = seriesColors[seriesName] || autoColor;
+        const safeName = seriesName.replace(/"/g, '&quot;');
+        const safeJsName = seriesName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+        return `
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px;">
+                <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
+                    <input type="color" value="${currentColor.startsWith('#') && currentColor.length === 7 ? currentColor : autoColor}" 
+                        style="width:28px; height:26px; padding:1px; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; background:#fff;" 
+                        onchange="setSeriesEditorColor('${safeJsName}', this.value)">
+                    <span style="font-size:11px; color:#334155; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${safeName}">${safeName}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-size:10px; font-family:monospace; color:#64748b;">${currentColor}</span>
+                    ${isCustom ? `
+                        <button type="button" onclick="resetSeriesEditorColor('${safeJsName}')" style="background:#fee2e2; border:1px solid #fca5a5; border-radius:3px; padding:2px 6px; font-size:9px; font-weight:700; color:#dc2626; cursor:pointer;" title="Reset ke warna palet otomatis">
+                            Reset
+                        </button>
+                    ` : `
+                        <span style="font-size:9px; background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:3px; font-weight:600;">Auto</span>
+                    `}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function setSeriesEditorColor(seriesName, color) {
+    if (!window.__editingPanelSeriesColors) window.__editingPanelSeriesColors = {};
+    window.__editingPanelSeriesColors[seriesName] = color;
+    renderSeriesColorsEditor();
+}
+
+function resetSeriesEditorColor(seriesName) {
+    if (window.__editingPanelSeriesColors) {
+        delete window.__editingPanelSeriesColors[seriesName];
+    }
+    renderSeriesColorsEditor();
+}
+
+function resetPanelSeriesColors() {
+    window.__editingPanelSeriesColors = {};
+    if (document.getElementById('p_chart_color_hex')) {
+        document.getElementById('p_chart_color_hex').value = '';
+    }
+    renderSeriesColorsEditor();
+}
+
 function refreshCurrentNodeData() {
     if (!currentDashId) return;
     const currentDash = masterDashboards.find(d => d.id === currentDashId);
@@ -3544,13 +3781,11 @@ function refreshCurrentNodeData() {
                     const cardIsTraffic = (p.use_raw !== true) && (autoConvert !== false) && activeModules.some(m => isTrafficMetric(m.module_name, m.unit, p.title));
                     const commonUnit = activeModules.length > 0 ? (activeModules[0].unit || '').trim() : '';
 
-                    if (!window.__dynamicChartColorMap) window.__dynamicChartColorMap = {};
+                    const panelPalette = getPaletteColors(p.color_palette || 'vibrant');
                     const seriesData = activeModules.map((m, idx) => {
                         const seriesKey = `${m.agent_name} - ${m.module_name}`;
-                        if (!window.__dynamicChartColorMap[seriesKey]) {
-                            window.__dynamicChartColorMap[seriesKey] = borders[idx % borders.length];
-                        }
-                        const color = window.__dynamicChartColorMap[seriesKey];
+                        const customColor = (p.series_colors && (p.series_colors[seriesKey] || p.series_colors[m.id])) || null;
+                        const color = customColor || panelPalette[idx % panelPalette.length];
                         const isByte = cardIsTraffic && isByteTrafficMetric(m.module_name, m.unit, p.title);
                         const historyMap = {};
                         (m.history || []).forEach(h => {
@@ -3591,11 +3826,14 @@ function refreshCurrentNodeData() {
                         const legendEl = document.getElementById(`chart_legend_${uniqueId}`);
                         if (legendEl && seriesData.length > 0) {
                             legendEl.innerHTML = seriesData.map((s, idx) => {
-                                const color = s.itemStyle ? s.itemStyle.color : (window.__dynamicChartColorMap[s.name] || borders[idx % borders.length]);
+                                const color = s.itemStyle ? s.itemStyle.color : panelPalette[idx % panelPalette.length];
                                 const safeName = s.name.replace(/"/g, '&quot;');
-                                return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; cursor: pointer; user-select: none; transition: opacity 0.2s;" onclick="toggleDynamicEchartsLegend('${uniqueId}', this)" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeName.replace(/'/g, "\\'")}')" title="Click to show/hide ${safeName}">
-                                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span>
-                                    <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${s.name}</span>
+                                const safeJsName = s.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                                return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none; transition: opacity 0.2s;" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" title="${safeName} (klik bulatan warna untuk ganti warna, klik nama untuk sembunyikan)">
+                                    <label class="legend-color-dot-label" style="background-color: ${color};" onclick="event.stopPropagation();" title="Ganti warna seri ini">
+                                        <input type="color" value="${color.startsWith('#') && color.length === 7 ? color : '#0284c7'}" onchange="onSeriesColorChanged('${p.id}', '${safeJsName}', this.value, '${uniqueId}')">
+                                    </label>
+                                    <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; cursor: pointer;" onclick="toggleDynamicEchartsLegend('${uniqueId}', this.closest('.legend-chip'))">${s.name}</span>
                                 </div>`;
                             }).join('');
                         }
@@ -3700,7 +3938,10 @@ function refreshCurrentNodeData() {
                     }
                     const canvas = document.getElementById(`chart_${uniqueId}`);
                     if (!canvas) return;
-                    const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[m.status] || '#95a5a6';
+                    const defaultColor = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[m.status] || '#95a5a6';
+                    const seriesKey = `${m.agent_name} - ${m.module_name}`;
+                    const customColor = (p.series_colors && (p.series_colors[seriesKey] || p.series_colors[m.id])) || p.chart_color || null;
+                    const color = customColor || defaultColor;
                     const history = m.history || [];
                     if (['line','area','bar'].includes(p.type) && p.chart_engine === 'native') return;
                     const isHistoryChart = ['line','area','bar', 'single_value'].includes(p.type);
@@ -3848,6 +4089,18 @@ function refreshCurrentNodeData() {
                                 }]
                             });
 
+                            const legendEl = document.getElementById(`chart_legend_${uniqueId}`);
+                            if (legendEl) {
+                                const safeName = seriesKey.replace(/"/g, '&quot;');
+                                const safeJsName = seriesKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                                legendEl.innerHTML = `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 5px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none;" title="${safeName} (klik bulatan warna untuk ganti warna)">
+                                    <label class="legend-color-dot-label" style="background-color: ${color};" onclick="event.stopPropagation();" title="Ganti warna grafik">
+                                        <input type="color" value="${color.startsWith('#') && color.length === 7 ? color : '#0284c7'}" onchange="onSeriesColorChanged('${p.id}', '${safeJsName}', this.value, '${uniqueId}')">
+                                    </label>
+                                    <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${seriesKey}</span>
+                                </div>`;
+                            }
+
                             setTimeout(() => {
                                 if (chartInstances[uniqueId] && typeof chartInstances[uniqueId].resize === 'function') {
                                     chartInstances[uniqueId].resize();
@@ -3910,6 +4163,17 @@ function toggleTypeFields() {
     if (document.getElementById('wrap_show_time')) document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_show_yaxis')) document.getElementById('wrap_show_yaxis').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_force_100')) document.getElementById('wrap_force_100').style.display = isChart ? 'flex' : 'none';
+    const wrapChartColors = document.getElementById('wrap_chart_colors');
+    if (wrapChartColors) {
+        wrapChartColors.style.display = isChart ? 'block' : 'none';
+    }
+    const isMulti = document.getElementById('p_multi_overlay') ? document.getElementById('p_multi_overlay').checked : false;
+    if (document.getElementById('wrap_single_chart_color')) {
+        document.getElementById('wrap_single_chart_color').style.display = (isChart && !isMulti) ? 'block' : 'none';
+    }
+    if (document.getElementById('wrap_series_colors_list')) {
+        document.getElementById('wrap_series_colors_list').style.display = (isChart && isMulti) ? 'block' : 'none';
+    }
     const wrapChartFont = document.getElementById('wrap_chart_font');
     if (wrapChartFont) {
         wrapChartFont.style.opacity = isChart ? '1' : '0.3';
@@ -4318,6 +4582,10 @@ function openPanelBuilder() {
     }
     document.getElementById('p_hidden').checked = false;
     document.getElementById('p_multi_overlay').checked = false;
+    if (document.getElementById('p_color_palette')) document.getElementById('p_color_palette').value = 'vibrant';
+    if (document.getElementById('p_chart_color')) document.getElementById('p_chart_color').value = '#0284c7';
+    if (document.getElementById('p_chart_color_hex')) document.getElementById('p_chart_color_hex').value = '';
+    window.__editingPanelSeriesColors = {};
     document.querySelectorAll('.col-visibility-chk').forEach(chk => chk.checked = true);
     document.querySelector('input[name="p_match_type"][value="contains"]').checked = true;
     togglePanelLayoutOptions();
@@ -4325,6 +4593,8 @@ function openPanelBuilder() {
     toggleHeatmapCustomTextDyn();
     toggleTypeFields();
     toggleChartEngine();
+    previewPaletteSelection();
+    renderSeriesColorsEditor();
     updateVisualTypePreview();
     document.getElementById('panelModal').style.display = 'flex';
 }
@@ -4364,6 +4634,10 @@ function openPanelEdit(id) {
     document.getElementById('p_lbl_0').value = p.lbl_0 || '';
     document.getElementById('p_hidden').checked = p.hidden || false;
     document.getElementById('p_multi_overlay').checked = p.multi_overlay || false;
+    if (document.getElementById('p_color_palette')) document.getElementById('p_color_palette').value = p.color_palette || 'vibrant';
+    if (document.getElementById('p_chart_color')) document.getElementById('p_chart_color').value = p.chart_color || '#0284c7';
+    if (document.getElementById('p_chart_color_hex')) document.getElementById('p_chart_color_hex').value = p.chart_color || '';
+    window.__editingPanelSeriesColors = JSON.parse(JSON.stringify(p.series_colors || {}));
     
     const activeCols = p.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
     document.querySelectorAll('.col-visibility-chk').forEach(el => {
@@ -4386,6 +4660,8 @@ function openPanelEdit(id) {
     toggleHeatmapCustomTextDyn();
     toggleTypeFields();
     toggleChartEngine();
+    previewPaletteSelection();
+    renderSeriesColorsEditor(p);
     updateVisualTypePreview();
     document.getElementById('panelModal').style.display = 'flex';
 }
@@ -4428,6 +4704,9 @@ function applyPanel() {
         hidden: document.getElementById('p_hidden').checked,
         hide_search_bar: document.getElementById('p_hide_search_bar') ? document.getElementById('p_hide_search_bar').checked : false,
         multi_overlay: document.getElementById('p_multi_overlay').checked,
+        color_palette: document.getElementById('p_color_palette') ? document.getElementById('p_color_palette').value : 'vibrant',
+        chart_color: document.getElementById('p_chart_color_hex') ? document.getElementById('p_chart_color_hex').value.trim() : '',
+        series_colors: window.__editingPanelSeriesColors ? { ...window.__editingPanelSeriesColors } : (editingPanelId ? (dash.panels.find(x => x.id === editingPanelId)?.series_colors || {}) : {}),
         visible_columns: Array.from(document.querySelectorAll('.col-visibility-chk:checked')).map(el => el.value),
         excluded: editingPanelId ? (dash.panels.find(x => x.id === editingPanelId).excluded || []) : []
     };
