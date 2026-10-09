@@ -3976,15 +3976,7 @@ function refreshCurrentNodeData() {
                                     sortedParams.forEach(sp => {
                                         const mod = activeModules[sp.seriesIndex];
                                         const unitStr = (mod && mod.unit) ? mod.unit : '';
-                                        const modIsTraffic = cardIsTraffic || isTrafficMetric(mod ? mod.module_name : sp.seriesName, unitStr, p.title);
-                                        let displayVal;
-                                        if (modIsTraffic) {
-                                            const isByte = isByteTrafficMetric(mod ? mod.module_name : sp.seriesName, unitStr, p.title);
-                                            const bits = (cardIsTraffic && isByte) ? sp.value : (isByte ? sp.value * 8 : sp.value);
-                                            displayVal = formatBitsRate(bits);
-                                        } else {
-                                            displayVal = formatHumanMetric(sp.value, unitStr, true, mod ? mod.module_name : '', p.title);
-                                        }
+                                        const displayVal = formatHumanMetric(sp.value, unitStr, !p.use_raw, mod ? mod.module_name : '', p.title);
                                         html += `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin:3px 0;">
                                             <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${sp.marker} ${sp.seriesName}</span>
                                             <span style="font-weight:600; color:#fff; white-space:nowrap; margin-left:auto;">${displayVal}</span>
@@ -4008,8 +4000,17 @@ function refreshCurrentNodeData() {
                                     fontSize: Math.max(8, chartFs - 2), 
                                     color: '#64748b',
                                     formatter: function(value) {
+                                        if (p.use_raw) {
+                                            const rawVal = parseFloat(value);
+                                            const formatted = isNaN(rawVal) ? value : ((rawVal % 1 === 0) ? rawVal.toString() : Number(rawVal.toFixed(2)).toString());
+                                            return `${formatted}${commonUnit ? ' ' + commonUnit : ''}`;
+                                        }
                                         const u = (commonUnit || '').toLowerCase();
-                                        const isTrafficUnit = cardIsTraffic || u.includes('byte') || u.includes('b/s') || u.includes('bit') || u.includes('bps') || u.includes('octet');
+                                        if (u === 'kbps' || u === 'mbps' || u === 'gbps') {
+                                            const formatted = (value % 1 === 0) ? value : parseFloat(value.toFixed(1));
+                                            return `${formatted} ${commonUnit}`;
+                                        }
+                                        const isTrafficUnit = cardIsTraffic || u.includes('byte') || u.includes('b/s') || u.includes('octet') || (u === 'bps' || u === 'bit');
                                         if (isTrafficUnit) {
                                             if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
                                             if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
@@ -4109,7 +4110,10 @@ function refreshCurrentNodeData() {
                                 }]
                             });
                         } else if (['line','area','bar'].includes(p.type)) {
-                            const isModTraffic = isTrafficMetric(m.module_name, m.unit, p.title);
+                            const autoConvert = (p.auto_convert_traffic !== undefined)
+                                ? (p.auto_convert_traffic === true || p.auto_convert_traffic === 1 || p.auto_convert_traffic === '1' || p.auto_convert_traffic === 'true')
+                                : true;
+                            const isModTraffic = (p.use_raw !== true) && (autoConvert !== false) && isTrafficMetric(m.module_name, m.unit, p.title);
                             const isByte = isModTraffic && isByteTrafficMetric(m.module_name, m.unit, p.title);
                             const singleChartData = (history || []).map(h => {
                                 if (h.val !== null && h.val !== undefined && h.val !== '' && !isNaN(h.val)) {
@@ -4137,11 +4141,7 @@ function refreshCurrentNodeData() {
                                             let val = sp.value;
                                             let displayVal = 'N/A';
                                             if (val !== null && val !== undefined && val !== '' && !isNaN(val)) {
-                                                if (isModTraffic) {
-                                                    displayVal = formatBitsRate(val);
-                                                } else {
-                                                    displayVal = formatHumanMetric(val, m.unit, true, m.module_name, p.title);
-                                                }
+                                                displayVal = formatHumanMetric(val, m.unit, !p.use_raw, m.module_name, p.title);
                                             }
                                             html += `${sp.marker}${sp.seriesName}: <b>${displayVal}</b><br/>`;
                                         });
@@ -4172,8 +4172,17 @@ function refreshCurrentNodeData() {
                                         fontSize: Math.max(8, chartFs - 2),
                                         color: '#64748b',
                                         formatter: function(value) {
+                                            if (p.use_raw) {
+                                                const rawVal = parseFloat(value);
+                                                const formatted = isNaN(rawVal) ? value : ((rawVal % 1 === 0) ? rawVal.toString() : Number(rawVal.toFixed(2)).toString());
+                                                return `${formatted}${unitStr ? ' ' + unitStr : ''}`;
+                                            }
                                             const u = unitStr.toLowerCase();
-                                            const isTrafficUnit = isModTraffic || u.includes('byte') || u.includes('b/s') || u.includes('bit') || u.includes('bps') || u.includes('octet');
+                                            if (u === 'kbps' || u === 'mbps' || u === 'gbps') {
+                                                const formatted = (value % 1 === 0) ? value : parseFloat(value.toFixed(1));
+                                                return `${formatted} ${unitStr}`;
+                                            }
+                                            const isTrafficUnit = isModTraffic || u.includes('byte') || u.includes('b/s') || u.includes('octet') || (u === 'bps' || u === 'bit');
                                             if (isTrafficUnit) {
                                                 if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
                                                 if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
