@@ -1034,7 +1034,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             <div class="toolbar-item" id="wrap_top_agent">
                 <span class="toolbar-label">Node</span>
                 <div class="dropdown-wrapper">
-                    <input type="text" id="agent_search_input" class="toolbar-select" placeholder="-- Pilih Node --" onkeyup="renderAgentList()" onfocus="this.select(); showAgentDropdown()" autocomplete="off">
+                    <input type="text" id="agent_search_input" class="toolbar-select" placeholder="-- Select Node --" onkeyup="renderAgentList()" onfocus="this.select(); showAgentDropdown()" autocomplete="off">
                     <input type="hidden" id="top_agent" value="0">
                     <div id="agent_dropdown" class="custom-dropdown" style="display:none;">
                         <ul id="agent_ul" class="custom-dropdown-list"></ul>
@@ -1240,8 +1240,8 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                         <span style="font-size:11px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:0.5px;">Visual Type Preview</span>
                         <span id="vtp_badge" style="font-size:10px; font-weight:600; padding:2px 8px; border-radius:12px; background:#e0f2fe; color:#0369a1;">Time-Series History</span>
                     </div>
-                    <button type="button" onclick="openVisualGalleryModal()" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; padding:3px 8px; font-size:11px; font-weight:600; color:#334155; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.03);" title="Lihat galeri semua tipe visual">
-                        <span class="material-symbols-outlined" style="font-size:14px; color:#004d40;">dashboard_customize</span> Galeri Semua Tipe
+                    <button type="button" onclick="openVisualGalleryModal()" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; padding:3px 8px; font-size:11px; font-weight:600; color:#334155; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.03);" title="Browse all visual type previews">
+                        <span class="material-symbols-outlined" style="font-size:14px; color:#004d40;">dashboard_customize</span> All Types Gallery
                     </button>
                 </div>
                 <div id="vtp_mockup_area" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:10px; display:flex; align-items:center; justify-content:center; min-height:105px; box-shadow:inset 0 1px 2px rgba(0,0,0,0.02);">
@@ -1396,24 +1396,24 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
                     <div style="font-weight:700; color:#0f172a; font-size:11px; display:flex; align-items:center; gap:6px;">
                         <span class="material-symbols-outlined" style="font-size:16px; color:#0284c7;">palette</span>
-                        Chart & Series Colors (Kustomisasi Warna Grafik)
+                        Chart & Series Colors
                     </div>
                     <button type="button" onclick="resetPanelSeriesColors()" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; padding:2px 8px; font-size:10px; font-weight:600; color:#475569; cursor:pointer;" title="Reset custom colors to default auto palette">
-                        Reset ke Auto
+                        Reset to Auto
                     </button>
                 </div>
 
                 <!-- Palette Preset Selector -->
                 <div style="display:flex; gap:10px; margin-bottom:8px; align-items:flex-end;">
                     <div style="flex:1;">
-                        <label style="font-size:10px; font-weight:600; color:#64748b; margin-bottom:3px; display:block;">Color Palette (Palet Otomatis Multi-Series)</label>
+                        <label style="font-size:10px; font-weight:600; color:#64748b; margin-bottom:3px; display:block;">Color Palette (Auto Multi-Series)</label>
                         <select id="p_color_palette" class="form-control-fix" onchange="previewPaletteSelection()" style="margin-bottom:0; font-size:11px;">
-                            <option value="vibrant">Modern Vibrant (Kontras Tinggi - Beda Hue)</option>
-                            <option value="distinct">Distinct Bold (Biru, Hijau, Merah, Amber, Ungu)</option>
-                            <option value="neon">Neon Tech (Cyan, Lime, Hot Pink, Amber, Violet)</option>
-                            <option value="ocean">Cool Ocean (Biru Langit, Teal, Cyan, Navy)</option>
-                            <option value="warm">Warm Sunset (Oranye, Crimson, Amber, Emas)</option>
-                            <option value="pastel">Pastel Soft (Biru Muda, Hijau Mint, Coral, Lavender)</option>
+                            <option value="vibrant">Modern Vibrant (High Contrast - Distinct Hues)</option>
+                            <option value="distinct">Distinct Bold (Maximum Color Distance)</option>
+                            <option value="neon">Neon Tech (Cyan, Lime, Hot Pink, Violet)</option>
+                            <option value="ocean">Cool Ocean (Sky Blue, Teal, Cyan, Navy)</option>
+                            <option value="warm">Warm Sunset (Orange, Crimson, Amber, Gold)</option>
+                            <option value="pastel">Pastel Soft (Soft Indigo, Mint, Coral, Lavender)</option>
                         </select>
                     </div>
                     <div id="palette_swatch_preview" style="display:flex; gap:4px; align-items:center; padding-bottom:6px;">
@@ -1423,18 +1423,18 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
 
                 <!-- Single Module Fixed Chart Color -->
                 <div id="wrap_single_chart_color" style="display:none; margin-bottom:4px;">
-                    <label style="font-size:10px; font-weight:600; color:#64748b; margin-bottom:4px; display:block;">Warna Garis/Bar (Fixed Color)</label>
+                    <label style="font-size:10px; font-weight:600; color:#64748b; margin-bottom:4px; display:block;">Line / Bar Color (Fixed Color)</label>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <input type="color" id="p_chart_color" value="#0284c7" style="width:36px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; background:#fff;" onchange="document.getElementById('p_chart_color_hex').value = this.value;">
-                        <input type="text" id="p_chart_color_hex" class="form-control-fix" placeholder="Auto (Status Color: Hijau/Kuning/Merah)" style="flex:1; height:34px; margin-bottom:0; font-size:11px;" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('p_chart_color').value = this.value;">
-                        <button type="button" onclick="document.getElementById('p_chart_color_hex').value=''; document.getElementById('p_chart_color').value='#0284c7';" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; padding:6px 10px; font-size:10px; font-weight:600; color:#475569; cursor:pointer;" title="Gunakan warna status modul bawaan">Gunakan Status</button>
+                        <input type="text" id="p_chart_color_hex" class="form-control-fix" placeholder="Auto (Status Color: Green / Yellow / Red)" style="flex:1; height:34px; margin-bottom:0; font-size:11px;" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('p_chart_color').value = this.value;">
+                        <button type="button" onclick="document.getElementById('p_chart_color_hex').value=''; document.getElementById('p_chart_color').value='#0284c7';" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; padding:6px 10px; font-size:10px; font-weight:600; color:#475569; cursor:pointer;" title="Follow default Pandora FMS module status color">Use Status Color</button>
                     </div>
-                    <small style="color:#94a3b8; font-size:10px; display:block; margin-top:3px;">* Kosongkan untuk mengikuti warna status Pandora FMS (OK = Hijau, Warning = Kuning, Critical = Merah).</small>
+                    <small style="color:#94a3b8; font-size:10px; display:block; margin-top:3px;">* Leave empty to follow Pandora FMS status color (OK = Green, Warning = Yellow, Critical = Red).</small>
                 </div>
 
                 <!-- Multi-Module Individual Series Colors List -->
                 <div id="wrap_series_colors_list" style="display:none;">
-                    <label style="font-size:10px; font-weight:600; color:#64748b; margin-bottom:4px; display:block;">Kustomisasi Warna Per-Series (Atur Manual Setiap Garis):</label>
+                    <label style="font-size:10px; font-weight:600; color:#64748b; margin-bottom:4px; display:block;">Per-Series Color Overrides (Customize Individual Lines):</label>
                     <div id="series_colors_container" style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; padding:6px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px;">
                         <!-- Series rows rendered by renderSeriesColorsEditor() -->
                     </div>
@@ -1499,26 +1499,26 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
     </div>
 </div>
 
-<!-- Visual Gallery Modal (Katalog & Preview Semua Visual Type) -->
+<!-- Visual Gallery Modal (Visual Type Catalog & Preview) -->
 <div class="modal-overlay" id="visualGalleryModal" style="display:none; z-index:99999;">
     <div class="modal-box" style="width:95%; max-width:1150px; max-height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
         <div style="padding:16px 20px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; background:#fafbfc;">
             <div>
                 <h4 style="margin:0; font-size:16px; color:#0b1a26; font-weight:700; display:flex; align-items:center; gap:8px;">
-                    <span class="material-symbols-outlined" style="color:#004d40;">dashboard_customize</span> Katalog & Preview Visual Type
+                    <span class="material-symbols-outlined" style="color:#004d40;">dashboard_customize</span> Visual Type Catalog & Preview
                 </h4>
-                <p style="margin:4px 0 0; font-size:11px; color:#64748b;">Lihat tampilan visual dan pilih tipe grafik / tabel yang paling cocok untuk kebutuhan modul monitoring Anda.</p>
+                <p style="margin:4px 0 0; font-size:11px; color:#64748b;">Browse visual previews and choose the most suitable chart or table type for your monitoring needs.</p>
             </div>
             <span class="material-symbols-outlined" style="cursor:pointer; font-size:22px; color:#64748b;" onclick="closeVisualGalleryModal()">close</span>
         </div>
         
         <!-- Filter Tabs -->
         <div style="padding:8px 20px; background:#ffffff; border-bottom:1px solid #f1f5f9; display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="button" class="vtp-tab-btn active" onclick="setVisualGalleryFilter('all', this)">Semua (15)</button>
-            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('timeseries', this)">Grafik & Time-Series (4)</button>
-            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('status', this)">Status & Grid Real-Time (5)</button>
-            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('kpi', this)">Nilai Tunggal & KPI (3)</button>
-            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('table', this)">Tabel & Snapshot (3)</button>
+            <button type="button" class="vtp-tab-btn active" onclick="setVisualGalleryFilter('all', this)">All (15)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('timeseries', this)">Charts & Time-Series (4)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('status', this)">Status & Real-Time Grids (5)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('kpi', this)">Single Value & KPIs (3)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('table', this)">Tables & Snapshots (3)</button>
         </div>
 
         <div class="modal-body-scroll" style="padding:16px 20px; background:#f8fafc;">
@@ -1526,7 +1526,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         </div>
 
         <div style="padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; background:#fafbfc;">
-            <button type="button" class="btn-secondary-custom" onclick="closeVisualGalleryModal()">Tutup</button>
+            <button type="button" class="btn-secondary-custom" onclick="closeVisualGalleryModal()">Close</button>
         </div>
     </div>
 </div>
@@ -3543,7 +3543,7 @@ function onSeriesColorChanged(panelId, seriesName, newColor, chartUniqueId) {
     }
 
     markUnsaved();
-    showToastNotice(`Warna "${seriesName}" diubah ke ${newColor}. Klik "Save Changes" di toolbar untuk menyimpan.`, 'success');
+    showToastNotice(`Color for "${seriesName}" changed to ${newColor}. Click "Save Changes" on toolbar to save.`, 'success');
 }
 
 function previewPaletteSelection() {
@@ -3577,7 +3577,7 @@ function renderSeriesColorsEditor(p = null) {
     seriesList = [...new Set(seriesList)].filter(Boolean);
 
     if (seriesList.length === 0) {
-        container.innerHTML = `<div style="font-size:11px; color:#64748b; padding:8px; text-align:center; line-height:1.4;">Warna seri akan otomatis diisi dengan palet <b>${paletteKey.toUpperCase()}</b> yang berlainan hue agar tidak mirip saat data dimuat. Anda juga bisa langsung klik bulatan warna pada legenda grafik di dashboard untuk menggantinya secara instan!</div>`;
+        container.innerHTML = `<div style="font-size:11px; color:#64748b; padding:8px; text-align:center; line-height:1.4;">Series colors will automatically use the <b>${paletteKey.toUpperCase()}</b> palette with distinct hues. You can also click the color dot on the chart legend to change colors instantly!</div>`;
         return;
     }
 
@@ -3601,7 +3601,7 @@ function renderSeriesColorsEditor(p = null) {
                 <div style="display:flex; align-items:center; gap:6px;">
                     <span style="font-size:10px; font-family:monospace; color:#64748b;">${currentColor}</span>
                     ${isCustom ? `
-                        <button type="button" onclick="resetSeriesEditorColor('${safeJsName}')" style="background:#fee2e2; border:1px solid #fca5a5; border-radius:3px; padding:2px 6px; font-size:9px; font-weight:700; color:#dc2626; cursor:pointer;" title="Reset ke warna palet otomatis">
+                        <button type="button" onclick="resetSeriesEditorColor('${safeJsName}')" style="background:#fee2e2; border:1px solid #fca5a5; border-radius:3px; padding:2px 6px; font-size:9px; font-weight:700; color:#dc2626; cursor:pointer;" title="Reset to automatic palette color">
                             Reset
                         </button>
                     ` : `
@@ -3874,8 +3874,8 @@ function refreshCurrentNodeData() {
                                 const color = s.itemStyle ? s.itemStyle.color : panelPalette[idx % panelPalette.length];
                                 const safeName = s.name.replace(/"/g, '&quot;');
                                 const safeJsName = s.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-                                return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 6px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none; transition: opacity 0.2s;" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" title="${safeName} (klik bulatan untuk ganti warna, klik teks untuk sembunyikan)">
-                                    <span class="legend-color-dot" data-color="${color}" style="background-color: ${color};" onclick="openSeriesColorPicker(event, '${p.id}', '${safeJsName}', '${uniqueId}', this)" title="Klik untuk ganti warna"></span>
+                                return `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 6px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none; transition: opacity 0.2s;" onmouseenter="highlightDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" onmouseleave="downplayDynamicEchartsSeries('${uniqueId}', '${safeJsName}')" title="${safeName} (click dot to change color, click text to toggle)">
+                                    <span class="legend-color-dot" data-color="${color}" style="background-color: ${color};" onclick="openSeriesColorPicker(event, '${p.id}', '${safeJsName}', '${uniqueId}', this)" title="Click to change color"></span>
                                     <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; cursor: pointer;" onclick="toggleDynamicEchartsLegend('${uniqueId}', this.closest('.legend-chip'))">${s.name}</span>
                                 </div>`;
                             }).join('');
@@ -4136,8 +4136,8 @@ function refreshCurrentNodeData() {
                             if (legendEl) {
                                 const safeName = seriesKey.replace(/"/g, '&quot;');
                                 const safeJsName = seriesKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-                                legendEl.innerHTML = `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 6px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none;" title="${safeName} (klik bulatan untuk ganti warna)">
-                                    <span class="legend-color-dot" data-color="${color}" style="background-color: ${color};" onclick="openSeriesColorPicker(event, '${p.id}', '${safeJsName}', '${uniqueId}', this)" title="Klik untuk ganti warna"></span>
+                                legendEl.innerHTML = `<div class="legend-chip" data-series="${safeName}" style="display: inline-flex; align-items: center; gap: 6px; font-size: ${Math.max(9, chartFs - 1)}px; color: #475569; user-select: none;" title="${safeName} (click dot to change color)">
+                                    <span class="legend-color-dot" data-color="${color}" style="background-color: ${color};" onclick="openSeriesColorPicker(event, '${p.id}', '${safeJsName}', '${uniqueId}', this)" title="Click to change color"></span>
                                     <span style="white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;">${seriesKey}</span>
                                 </div>`;
                             }
@@ -4290,8 +4290,8 @@ const VISUAL_TYPE_CATALOG = {
         badge: 'Time-Series History',
         badgeColor: '#e0f2fe',
         badgeTextColor: '#0369a1',
-        desc: 'Grafik garis kontinyu yang menunjukkan fluktuasi histori nilai seiring waktu. Ideal untuk data bandwidth traffic, CPU load, memory, dan sensor analog.',
-        bestFor: 'Bandwidth Interface, CPU Load, Memori, Suhu/Temp',
+        desc: 'Continuous line chart showing metric fluctuations over time. Ideal for bandwidth traffic, CPU load, memory usage, and analog sensors.',
+        bestFor: 'Interface Bandwidth, CPU Load, Memory, Temperature',
         render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="28" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><text x="4" y="18" font-size="7" fill="#94a3b8">100</text><text x="9" y="48" font-size="7" fill="#94a3b8">50</text><text x="14" y="74" font-size="7" fill="#94a3b8">0</text><path d="M 32 65 Q 65 25 100 48 T 165 18 T 225 42 T 265 15" fill="none" stroke="#2563eb" stroke-width="2.5"/><circle cx="32" cy="65" r="3" fill="#2563eb"/><circle cx="100" cy="48" r="3" fill="#2563eb"/><circle cx="165" cy="18" r="3" fill="#2563eb"/><circle cx="225" cy="42" r="3" fill="#2563eb"/><circle cx="265" cy="15" r="3" fill="#2563eb"/><text x="32" y="82" font-size="8" fill="#94a3b8">00:00</text><text x="145" y="82" font-size="8" fill="#94a3b8">12:00</text><text x="250" y="82" font-size="8" fill="#94a3b8">23:00</text></svg>`
     },
     'area': {
@@ -4300,8 +4300,8 @@ const VISUAL_TYPE_CATALOG = {
         badge: 'Time-Series History',
         badgeColor: '#e0f2fe',
         badgeTextColor: '#0369a1',
-        desc: 'Grafik area dengan arsiran gradasi halus di bawah kurva untuk menonjolkan akumulasi volume atau throughput jaringan.',
-        bestFor: 'Network In/Out Traffic, Throughput Data, Total Connections',
+        desc: 'Area chart with smooth shaded gradient under the curve to emphasize cumulative volume and network throughput.',
+        bestFor: 'Network In/Out Traffic, Data Throughput, Total Connections',
         render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0284c7" stop-opacity="0.45"/><stop offset="100%" stop-color="#0284c7" stop-opacity="0.03"/></linearGradient></defs><line x1="28" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><text x="3" y="18" font-size="7" fill="#94a3b8">100M</text><text x="8" y="48" font-size="7" fill="#94a3b8">50M</text><text x="14" y="74" font-size="7" fill="#94a3b8">0</text><path d="M 32 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14 L 265 72 L 32 72 Z" fill="url(#areaGrad)"/><path d="M 32 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14" fill="none" stroke="#0284c7" stroke-width="2.5"/><circle cx="175" cy="16" r="3" fill="#0284c7"/><text x="32" y="82" font-size="8" fill="#94a3b8">In: 45 Mbps</text><text x="205" y="82" font-size="8" fill="#0284c7" font-weight="bold">Out: 120 Mbps</text></svg>`
     },
     'bar': {
@@ -4310,118 +4310,118 @@ const VISUAL_TYPE_CATALOG = {
         badge: 'Time-Series History',
         badgeColor: '#e0f2fe',
         badgeTextColor: '#0369a1',
-        desc: 'Grafik batang vertikal berkala yang sangat pas untuk data periodik atau perbandingan lonjakan nilai per jam/hari.',
+        desc: 'Periodic vertical bar chart ideal for discrete intervals and detecting spikes per hour or day.',
         bestFor: 'Request Count, Error Spikes, Hit Counts, Disk IOPS',
         render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="24" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><line x1="24" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="24" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><text x="3" y="18" font-size="7" fill="#94a3b8">60</text><text x="3" y="48" font-size="7" fill="#94a3b8">30</text><text x="7" y="74" font-size="7" fill="#94a3b8">0</text><rect x="32" y="38" width="16" height="34" rx="2" fill="#0d9488"/><rect x="62" y="22" width="16" height="50" rx="2" fill="#0d9488"/><rect x="92" y="48" width="16" height="24" rx="2" fill="#0d9488"/><rect x="122" y="15" width="16" height="57" rx="2" fill="#0f766e"/><rect x="152" y="32" width="16" height="40" rx="2" fill="#0d9488"/><rect x="182" y="55" width="16" height="17" rx="2" fill="#0d9488"/><rect x="212" y="28" width="16" height="44" rx="2" fill="#0d9488"/><rect x="242" y="42" width="16" height="30" rx="2" fill="#0d9488"/><text x="32" y="82" font-size="7" fill="#94a3b8">02:00</text><text x="122" y="82" font-size="7" fill="#94a3b8">10:00</text><text x="212" y="82" font-size="7" fill="#94a3b8">18:00</text></svg>`
     },
     'gauge': {
         title: 'Gauge Chart',
         group: 'kpi',
-        badge: 'Gauge & Indikator',
+        badge: 'Gauge & Indicator',
         badgeColor: '#fef3c7',
         badgeTextColor: '#b45309',
-        desc: 'Speedometer melingkar 0–100% dengan jarum analog dan arc indikator batas ambang (OK = Hijau, Warning = Kuning, Critical = Merah).',
-        bestFor: 'Persentase Utilisasi CPU, RAM, Disk Partition, Suhu C',
+        desc: 'Circular 0–100% speedometer with analog needle and threshold arc indicators (OK = Green, Warning = Yellow, Critical = Red).',
+        bestFor: 'CPU Utilization %, RAM Usage %, Disk Partition %, Temperature',
         render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><path d="M 85 70 A 55 55 0 0 1 195 70" fill="none" stroke="#e2e8f0" stroke-width="12" stroke-linecap="round"/><path d="M 85 70 A 55 55 0 0 1 140 15" fill="none" stroke="#10b981" stroke-width="12" stroke-linecap="round"/><path d="M 140 15 A 55 55 0 0 1 175 28" fill="none" stroke="#f59e0b" stroke-width="12"/><path d="M 175 28 A 55 55 0 0 1 195 70" fill="none" stroke="#ef4444" stroke-width="12" stroke-linecap="round"/><circle cx="140" cy="70" r="5" fill="#0f172a"/><line x1="140" y1="70" x2="168" y2="35" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/><text x="140" y="64" text-anchor="middle" font-size="14" font-weight="bold" fill="#0f172a">76 %</text><text x="140" y="78" text-anchor="middle" font-size="8" fill="#64748b">CPU Usage (Warning)</text></svg>`
     },
     'single_value': {
         title: 'Single Value Card (Sparkline)',
         group: 'kpi',
-        badge: 'KPI & Tren Cepat',
+        badge: 'KPI & Quick Trend',
         badgeColor: '#dcfce7',
         badgeTextColor: '#15803d',
-        desc: 'Kartu metrik berukuran besar yang dilengkapi status pill badge dan grafik garis sparkline mini di dasarnya untuk melihat tren 24 jam secara ringkas.',
-        bestFor: 'Metrik Utama Wallboard, Traffic Out, Ping Latency, Active Users',
+        desc: 'Prominent numeric metric card with status pill badge and a mini sparkline chart to track 24-hour trends at a glance.',
+        bestFor: 'Wallboard Key Metrics, Traffic Out, Ping Latency, Active Users',
         render: () => `<div style="display:flex; align-items:center; justify-content:space-between; width:100%; max-width:270px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px;"><div style="text-align:left;"><div style="font-size:9px; font-weight:700; color:#64748b; text-transform:uppercase;">WAN Outbound</div><div style="font-size:20px; font-weight:800; color:#0b1a26; line-height:1.2;">142.5 <span style="font-size:11px; font-weight:600; color:#64748b;">Mbps</span></div><div style="font-size:9px; color:#10b981; font-weight:600; margin-top:2px;">▲ +12% vs last hour</div></div><div style="width:70px; height:35px; text-align:right;"><svg viewBox="0 0 70 35" style="width:100%; height:25px;"><path d="M 2 28 Q 18 8 35 20 T 68 5" fill="none" stroke="#10b981" stroke-width="2.2"/><circle cx="68" cy="5" r="2.5" fill="#10b981"/></svg><div style="font-size:8px; font-weight:700; color:#047857; background:#d1fae5; border-radius:3px; padding:1px 4px; display:inline-block;">NORMAL</div></div></div>`
     },
     'text': {
         title: 'Value Number / Text',
         group: 'kpi',
-        badge: 'Teks / Angka Utama',
+        badge: 'Key Text / Value',
         badgeColor: '#f1f5f9',
         badgeTextColor: '#475569',
-        desc: 'Menampilkan nilai teks status (misal: UP, ESTABLISHED, ACTIVE) atau angka besar dengan indikator status dot, ukuran font, dan latar warna fleksibel.',
-        bestFor: 'Status Link BGP, Service State (UP/DOWN), Cluster Active Role',
-        render: () => `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:250px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; box-shadow:0 1px 3px rgba(0,0,0,0.02);"><div style="font-size:9px; font-weight:700; color:#64748b; letter-spacing:0.5px;">BGP PEER STATUS</div><div style="font-size:22px; font-weight:800; color:#10b981; margin:2px 0;">ESTABLISHED</div><div style="display:flex; align-items:center; gap:4px; font-size:10px; color:#64748b;"><span style="width:6px; height:6px; background:#10b981; border-radius:50%; display:inline-block;"></span> Uptime: 45 hari 12 jam</div></div>`
+        desc: 'Displays status text (e.g., UP, ESTABLISHED, ACTIVE) or large numbers with a status dot indicator, font size, and flexible background color.',
+        bestFor: 'BGP Peer Status, Service State (UP/DOWN), Cluster Active Role',
+        render: () => `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:250px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; box-shadow:0 1px 3px rgba(0,0,0,0.02);"><div style="font-size:9px; font-weight:700; color:#64748b; letter-spacing:0.5px;">BGP PEER STATUS</div><div style="font-size:22px; font-weight:800; color:#10b981; margin:2px 0;">ESTABLISHED</div><div style="display:flex; align-items:center; gap:4px; font-size:10px; color:#64748b;"><span style="width:6px; height:6px; background:#10b981; border-radius:50%; display:inline-block;"></span> Uptime: 45 days 12 hrs</div></div>`
     },
     'heatmap': {
         title: 'History Heatmap Blocks',
         group: 'timeseries',
-        badge: 'Riwayat Timeline',
+        badge: 'Timeline History',
         badgeColor: '#e0f2fe',
         badgeTextColor: '#0369a1',
-        desc: 'Blok riwayat status horizontal berdasarkan interval waktu (seperti commit heatmap), memperlihatkan histori stabilitas atau downtime perangkat.',
-        bestFor: 'Audit Stabilitas 24 Jam, Deteksi Jam-Jam Gangguan/Flapping',
+        desc: 'Horizontal time-slice status blocks (similar to commit heatmaps) showcasing device stability and downtime history.',
+        bestFor: '24-Hour Stability Audit, Flapping & Incident Detection',
         render: () => `<div style="width:100%; max-width:270px;"><div style="display:flex; justify-content:space-between; font-size:8px; color:#64748b; margin-bottom:3px;"><span>00:00 (Uptime History)</span><span>23:59</span></div><div style="display:grid; grid-template-columns:repeat(14, 1fr); gap:2px;"><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#f59e0b; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#ef4444; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div></div><div style="font-size:8px; color:#10b981; font-weight:600; margin-top:4px; text-align:right;">99.4% Availability (24h)</div></div>`
     },
     'history_table': {
         title: 'History Table View',
         group: 'table',
-        badge: 'Tabel Riwayat Log',
+        badge: 'Log History Table',
         badgeColor: '#f1f5f9',
         badgeTextColor: '#475569',
-        desc: 'Tabel log riwayat data histori per timestamp, berguna untuk audit berkala, pencarian nilai historis, atau pelacakan insiden.',
-        bestFor: 'Audit Trail Kejadian, Rekap Log Perubahan Nilai Sensor',
+        desc: 'Structured tabular log of historical data by timestamp, useful for auditing, log lookups, or incident tracking.',
+        bestFor: 'Event Audit Trail, Sensor History Log, Metric Recap',
         render: () => `<table style="width:100%; max-width:270px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Timestamp</th><th style="padding:2px 4px; text-align:right;">Value</th><th style="padding:2px 4px; text-align:center;">State</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; color:#64748b;">2026-10-09 14:35</td><td style="padding:2px 4px; text-align:right; font-weight:600;">45.2 Mbps</td><td style="padding:2px 4px; text-align:center;"><span style="background:#d1fae5; color:#047857; font-weight:700; padding:1px 3px; border-radius:2px;">OK</span></td></tr><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; color:#64748b;">2026-10-09 14:30</td><td style="padding:2px 4px; text-align:right; font-weight:600;">42.8 Mbps</td><td style="padding:2px 4px; text-align:center;"><span style="background:#d1fae5; color:#047857; font-weight:700; padding:1px 3px; border-radius:2px;">OK</span></td></tr><tr><td style="padding:2px 4px; color:#64748b;">2026-10-09 14:25</td><td style="padding:2px 4px; text-align:right; font-weight:600;">85.1 Mbps</td><td style="padding:2px 4px; text-align:center;"><span style="background:#fef3c7; color:#b45309; font-weight:700; padding:1px 3px; border-radius:2px;">WARN</span></td></tr></tbody></table>`
     },
     'sparkline_table': {
         title: 'Sparkline Table (Trend Over Time)',
         group: 'table',
-        badge: 'Tabel dengan Tren',
+        badge: 'Table with Trend',
         badgeColor: '#ede9fe',
         badgeTextColor: '#6d28d9',
-        desc: 'Tabel multi-node cerdas di mana setiap baris menyertakan grafik sparkline mini tren 24 jam untuk mendeteksi anomali seketika.',
-        bestFor: 'Monitoring Banyak Node Sekaligus + Tren Grafik Singkat',
+        desc: 'Multi-node intelligent table where each row includes a 24-hour mini sparkline chart to detect anomalies instantly.',
+        bestFor: 'Multi-Node Monitoring, Compact Overview + Trend Graph',
         render: () => `<table style="width:100%; max-width:280px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Node / Target</th><th style="padding:2px 4px; text-align:right;">Current</th><th style="padding:2px 4px; text-align:center;">Trend (24h)</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">RT-CORE-01</td><td style="padding:2px 4px; text-align:right; font-weight:600;">145 Mbps</td><td style="padding:1px 4px; text-align:center;"><svg width="55" height="14"><path d="M 2 11 Q 15 2 28 7 T 53 3" fill="none" stroke="#2563eb" stroke-width="1.8"/></svg></td></tr><tr><td style="padding:2px 4px; font-weight:600;">SW-DIST-02</td><td style="padding:2px 4px; text-align:right; font-weight:600;">64 Mbps</td><td style="padding:1px 4px; text-align:center;"><svg width="55" height="14"><path d="M 2 4 Q 18 13 32 5 T 53 2" fill="none" stroke="#10b981" stroke-width="1.8"/></svg></td></tr></tbody></table>`
     },
     'status_table': {
         title: 'Table View (Current Status)',
         group: 'status',
-        badge: 'Tabel Data Real-Time',
+        badge: 'Real-Time Data Table',
         badgeColor: '#ecfdf5',
         badgeTextColor: '#065f46',
-        desc: 'Tabel daftar status real-time seluruh node/modul lengkap dengan nama perangkat, IP address, nilai terkini, dan status badge.',
-        bestFor: 'Daftar Status Modul Inventori, Rekap Interface Router/Switch',
+        desc: 'Real-time status table of all matching nodes/modules with device name, IP address, current value, and status badges.',
+        bestFor: 'Inventory Module Status List, Router/Switch Interface Summary',
         render: () => `<table style="width:100%; max-width:280px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Device</th><th style="padding:2px 4px; text-align:left;">Module</th><th style="padding:2px 4px; text-align:center;">Status</th><th style="padding:2px 4px; text-align:right;">Val</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">SRV-WEB-01</td><td style="padding:2px 4px; color:#64748b;">CPU Load</td><td style="padding:2px 4px; text-align:center;"><span style="background:#d1fae5; color:#047857; font-weight:700; padding:1px 3px; border-radius:2px;">OK</span></td><td style="padding:2px 4px; text-align:right; font-weight:600;">24 %</td></tr><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">SRV-DB-01</td><td style="padding:2px 4px; color:#64748b;">Disk C:</td><td style="padding:2px 4px; text-align:center;"><span style="background:#fef3c7; color:#b45309; font-weight:700; padding:1px 3px; border-radius:2px;">WARN</span></td><td style="padding:2px 4px; text-align:right; font-weight:600;">88 %</td></tr><tr><td style="padding:2px 4px; font-weight:600;">SW-EDGE-01</td><td style="padding:2px 4px; color:#64748b;">Ping</td><td style="padding:2px 4px; text-align:center;"><span style="background:#fee2e2; color:#b91c1c; font-weight:700; padding:1px 3px; border-radius:2px;">CRIT</span></td><td style="padding:2px 4px; text-align:right; font-weight:600;">0 ms</td></tr></tbody></table>`
     },
     'status_heatmap': {
         title: 'Heatmap View (Current Status)',
         group: 'status',
-        badge: 'Matrix Grid Status',
+        badge: 'Status Grid Matrix',
         badgeColor: '#ecfdf5',
         badgeTextColor: '#065f46',
-        desc: 'Matriks kotak berwarna status (Hijau = OK, Kuning = Warn, Merah = Crit) untuk memonitor puluhan/ratusan perangkat dalam satu layar penuh.',
-        bestFor: 'NOC Wallboard, Status Grid Server Farm, Device Health Matrix',
+        desc: 'Color-coded status grid matrix (Green = OK, Yellow = Warn, Red = Crit) to monitor dozens or hundreds of devices on one screen.',
+        bestFor: 'NOC Wallboard, Server Farm Status Grid, Device Health Matrix',
         render: () => `<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; width:100%; max-width:270px;"><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SRV-01<br><span style="font-size:7px; opacity:0.85;">28%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SRV-02<br><span style="font-size:7px; opacity:0.85;">34%</span></div><div style="background:#f59e0b; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SRV-03<br><span style="font-size:8px; opacity:0.85;">84%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SW-CORE<br><span style="font-size:7px; opacity:0.85;">12%</span></div><div style="background:#ef4444; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">ROUTER<br><span style="font-size:7px; opacity:0.85;">DOWN</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">FIREWALL<br><span style="font-size:7px; opacity:0.85;">45%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">STORAGE<br><span style="font-size:7px; opacity:0.85;">52%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">DB-MASTER<br><span style="font-size:7px; opacity:0.85;">61%</span></div></div>`
     },
     'status_stats': {
         title: 'Stats Cards (Current Status)',
         group: 'status',
-        badge: 'Ringkasan Status',
+        badge: 'Status Summary',
         badgeColor: '#ecfdf5',
         badgeTextColor: '#065f46',
-        desc: 'Kartu agregat hitungan status real-time (Total OK, Warning, Critical, Unknown) dari seluruh agen atau modul yang cocok.',
-        bestFor: 'Ringkasan Atas Dashboard (Top Counters), Health Summary',
+        desc: 'Real-time aggregate status counter cards (Total OK, Warning, Critical, Unknown) across all matching agents or modules.',
+        bestFor: 'Dashboard Top Counters, Overall Health Summary',
         render: () => `<div style="display:flex; gap:6px; width:100%; max-width:280px; justify-content:center;"><div style="flex:1; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#065f46;">OK</div><div style="font-size:15px; font-weight:800; color:#047857;">42</div></div><div style="flex:1; background:#fffbeb; border:1px solid #fde68a; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#92400e;">WARN</div><div style="font-size:15px; font-weight:800; color:#b45309;">3</div></div><div style="flex:1; background:#fef2f2; border:1px solid #fecaca; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#991b1b;">CRIT</div><div style="font-size:15px; font-weight:800; color:#b91c1c;">1</div></div><div style="flex:1; background:#f8fafc; border:1px solid #e2e8f0; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#475569;">UNKN</div><div style="font-size:15px; font-weight:800; color:#64748b;">0</div></div></div>`
     },
     'pie': {
         title: 'Pie Chart (Current Status)',
         group: 'status',
-        badge: 'Distribusi Proporsi',
+        badge: 'Proportion Distribution',
         badgeColor: '#ecfdf5',
         badgeTextColor: '#065f46',
-        desc: 'Diagram lingkaran penuh untuk melihat perbandingan proporsi status perangkat (persentase OK vs Warning vs Critical).',
-        bestFor: 'Analisis Proporsi Kesehatan Sistem, Rasio Status Global',
+        desc: 'Full circular pie chart showing status proportion ratios (percentage OK vs Warning vs Critical).',
+        bestFor: 'System Health Ratio, Global Status Distribution',
         render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><g transform="translate(80, 42)"><circle r="36" fill="#10b981"/><path d="M 0 0 L 0 -36 A 36 36 0 0 1 34 11 Z" fill="#f59e0b"/><path d="M 0 0 L 34 11 A 36 36 0 0 1 20 30 Z" fill="#ef4444"/><circle r="2" fill="#fff"/></g><g transform="translate(145, 18)"><rect x="0" y="0" width="8" height="8" rx="2" fill="#10b981"/><text x="14" y="8" font-size="9" fill="#334155" font-weight="600">OK (78%)</text><rect x="0" y="16" width="8" height="8" rx="2" fill="#f59e0b"/><text x="14" y="24" font-size="9" fill="#334155" font-weight="600">Warning (16%)</text><rect x="0" y="32" width="8" height="8" rx="2" fill="#ef4444"/><text x="14" y="40" font-size="9" fill="#334155" font-weight="600">Critical (6%)</text></g></svg>`
     },
     'donut': {
         title: 'Donut Chart (Current Status)',
         group: 'status',
-        badge: 'Distribusi Ring',
+        badge: 'Ring Distribution',
         badgeColor: '#ecfdf5',
         badgeTextColor: '#065f46',
-        desc: 'Diagram donat modern dengan ruang tengah untuk indikator total, memberikan tampilan visual yang bersih dan elegan.',
-        bestFor: 'Distribusi Modul / Host State, Executive Dashboard Summary',
+        desc: 'Modern donut chart with center metric total display, offering a clean and executive visual layout.',
+        bestFor: 'Host / Module Distribution, Executive Dashboard Summary',
         render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><g transform="translate(80, 42)"><circle r="36" fill="none" stroke="#e2e8f0" stroke-width="14"/><circle r="36" fill="none" stroke="#10b981" stroke-width="14" stroke-dasharray="170 226" transform="rotate(-90)"/><circle r="36" fill="none" stroke="#f59e0b" stroke-width="14" stroke-dasharray="35 226" stroke-dashoffset="-170" transform="rotate(-90)"/><circle r="36" fill="none" stroke="#ef4444" stroke-width="14" stroke-dasharray="21 226" stroke-dashoffset="-205" transform="rotate(-90)"/><text x="0" y="3" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">48</text><text x="0" y="14" text-anchor="middle" font-size="6" fill="#64748b">TOTAL</text></g><g transform="translate(145, 18)"><rect x="0" y="0" width="8" height="8" rx="2" fill="#10b981"/><text x="14" y="8" font-size="9" fill="#334155" font-weight="600">OK (38)</text><rect x="0" y="16" width="8" height="8" rx="2" fill="#f59e0b"/><text x="14" y="24" font-size="9" fill="#334155" font-weight="600">Warning (7)</text><rect x="0" y="32" width="8" height="8" rx="2" fill="#ef4444"/><text x="14" y="40" font-size="9" fill="#334155" font-weight="600">Critical (3)</text></g></svg>`
     },
     'table_viewer': {
@@ -4430,8 +4430,8 @@ const VISUAL_TYPE_CATALOG = {
         badge: 'Snapshot / SNMP Table',
         badgeColor: '#f1f5f9',
         badgeTextColor: '#475569',
-        desc: 'Penampil tabel terstruktur khusus modul snapshot (seperti tabel interface SNMP, routing table, atau inventaris modul).',
-        bestFor: 'Tabel Port Interface SNMP, Modul Snapshot Teks / CSV',
+        desc: 'Structured table viewer tailored for snapshot modules (such as SNMP interface tables, routing tables, or inventory modules).',
+        bestFor: 'SNMP Port Table, Text / CSV Snapshot Modules',
         render: () => `<div style="width:100%; max-width:280px; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><div style="background:#f8fafc; padding:2px 5px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:7px; font-weight:700; color:#475569;">SNMP INTERFACE TABLE</span><span style="font-size:7px; color:#64748b; background:#e2e8f0; padding:1px 3px; border-radius:2px;">Search 🔍</span></div><table style="width:100%; font-size:7px; border-collapse:collapse;"><tr style="background:#f1f5f9; color:#475569; font-weight:600;"><th style="padding:2px 4px; text-align:left;">ifName</th><th style="padding:2px 4px; text-align:left;">Admin</th><th style="padding:2px 4px; text-align:left;">Oper</th><th style="padding:2px 4px; text-align:right;">Speed</th></tr><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px;">Gi0/0/1</td><td style="padding:2px 4px; color:#10b981;">UP</td><td style="padding:2px 4px; color:#10b981;">UP</td><td style="padding:2px 4px; text-align:right;">1 Gbps</td></tr><tr><td style="padding:2px 4px;">Te0/1/0</td><td style="padding:2px 4px; color:#10b981;">UP</td><td style="padding:2px 4px; color:#ef4444;">DOWN</td><td style="padding:2px 4px; text-align:right;">10 Gbps</td></tr></table></div>`
     }
 };
@@ -4456,7 +4456,7 @@ function updateVisualTypePreview() {
         mockupEl.innerHTML = info.render();
     }
     if (descEl) {
-        descEl.innerHTML = `<strong>${escapeHtml(info.title)}:</strong> ${escapeHtml(info.desc)} <div style="margin-top:3px; font-size:10px; color:#004d40;"><strong>Rekomendasi Penggunaan:</strong> ${escapeHtml(info.bestFor)}</div>`;
+        descEl.innerHTML = `<strong>${escapeHtml(info.title)}:</strong> ${escapeHtml(info.desc)} <div style="margin-top:3px; font-size:10px; color:#004d40;"><strong>Recommended For:</strong> ${escapeHtml(info.bestFor)}</div>`;
     }
 }
 
@@ -4518,9 +4518,9 @@ function renderVisualGalleryCards(filter = 'all') {
                 <p style="font-size:11px; color:#64748b; line-height:1.4; margin:0 0 6px 0;">${escapeHtml(item.desc)}</p>
             </div>
             <div style="display:flex; align-items:center; justify-content:space-between; border-top:1px solid #f1f5f9; padding-top:6px; margin-top:6px;">
-                <span style="font-size:10px; color:#004d40; font-weight:600;">Cocok: ${escapeHtml(item.bestFor.split(',')[0])}</span>
+                <span style="font-size:10px; color:#004d40; font-weight:600;">Best for: ${escapeHtml(item.bestFor.split(',')[0])}</span>
                 <button type="button" class="btn btn-sm ${isCurrent ? 'btn-success' : 'btn-outline-primary'}" style="font-size:10px; padding:2px 8px;" onclick="event.stopPropagation(); selectVisualTypeFromGallery('${key}')">
-                    ${isCurrent ? '✓ Terpilih' : 'Pilih'}
+                    ${isCurrent ? '✓ Selected' : 'Select'}
                 </button>
             </div>
         </div>`;
