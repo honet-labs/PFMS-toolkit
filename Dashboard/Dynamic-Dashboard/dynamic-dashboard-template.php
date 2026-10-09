@@ -1362,7 +1362,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;" id="wrap_show_time">
                     <input type="checkbox" id="p_show_time" checked style="margin-right:8px; width:16px; height:16px;"> Show Chart Time
                 </label>
-                <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#e67e22; margin-bottom:0;">
+                <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;" id="wrap_show_yaxis">
+                    <input type="checkbox" id="p_show_yaxis" checked style="margin-right:8px; width:16px; height:16px;"> Show Y-Axis
+                </label>
+                <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#e67e22; margin-bottom:0;" id="wrap_force_100">
                     <input type="checkbox" id="p_force_100" style="margin-right:8px; width:16px; height:16px;"> Force 0-100% Y-Axis
                 </label>
             </div>
@@ -3645,8 +3648,11 @@ function refreshCurrentNodeData() {
                             xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: labels, show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                             yAxis: { 
                                 type: 'value', 
+                                show: (p.show_yaxis !== false),
                                 max: (p.force_100 || (commonUnit === '%')) ? 100 : null, 
-                                splitLine: { lineStyle: { color: '#f0f3f5' } }, 
+                                splitLine: { show: (p.show_yaxis !== false), lineStyle: { color: '#f0f3f5' } }, 
+                                axisLine: { show: false },
+                                axisTick: { show: false },
                                 axisLabel: { 
                                     fontSize: Math.max(8, chartFs - 2), 
                                     color: '#64748b',
@@ -3659,13 +3665,13 @@ function refreshCurrentNodeData() {
                                             if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
                                             return value.toFixed(0) + ' bps';
                                         }
-                                        if (commonUnit === '%') return value.toFixed(0) + '%';
-                                        if (commonUnit === 'ms') return value.toFixed(0) + ' ms';
-                                        if (commonUnit === 'dBm') return value.toFixed(1) + ' dBm';
-                                        if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (commonUnit ? ' G' + commonUnit : 'G');
-                                        if (value >= 1000000) return (value / 1000000).toFixed(1) + (commonUnit ? ' M' + commonUnit : 'M');
-                                        if (value >= 1000) return (value / 1000).toFixed(1) + (commonUnit ? ' k' + commonUnit : 'k');
-                                        return value + (commonUnit ? ' ' + commonUnit : '');
+                                        if (commonUnit === '%') return (Number.isInteger(value) ? value : parseFloat(value.toFixed(1))) + '%';
+                                        if (commonUnit === 'ms') return (Number.isInteger(value) ? value : parseFloat(value.toFixed(1))) + ' ms';
+                                        if (commonUnit === 'dBm') return parseFloat(value.toFixed(1)) + ' dBm';
+                                        if (Math.abs(value) >= 1000000000) return (value / 1000000000).toFixed(1) + (commonUnit ? ' G' + commonUnit : 'G');
+                                        if (Math.abs(value) >= 1000000) return (value / 1000000).toFixed(1) + (commonUnit ? ' M' + commonUnit : 'M');
+                                        if (Math.abs(value) >= 1000) return (value / 1000).toFixed(1) + (commonUnit ? ' k' + commonUnit : 'k');
+                                        return (Number.isInteger(value) ? value : parseFloat(value.toFixed(2))) + (commonUnit ? ' ' + commonUnit : '');
                                     }
                                 } 
                             },
@@ -3758,6 +3764,10 @@ function refreshCurrentNodeData() {
                                 return null;
                             });
 
+                            const unitStr = (m.unit || '').trim();
+                            const combinedStr = `${m.module_name || ''} ${unitStr} ${p.title || ''}`.toLowerCase();
+                            const isPct = unitStr === '%' || combinedStr.includes('%') || /cpu|usage|load|mem|disk|utilization|loss|drop/.test(combinedStr);
+
                             chartInstances[uniqueId].setOption({
                                 tooltip: { 
                                     trigger: 'axis', 
@@ -3769,8 +3779,8 @@ function refreshCurrentNodeData() {
                                     borderRadius: 6,
                                     formatter: function(params) {
                                         let html = params[0].name ? params[0].name + '<br/>' : '';
-                                        params.forEach(p => {
-                                            let val = p.value;
+                                        params.forEach(sp => {
+                                            let val = sp.value;
                                             let displayVal = 'N/A';
                                             if (val !== null && val !== undefined && val !== '' && !isNaN(val)) {
                                                 if (isModTraffic) {
@@ -3779,14 +3789,55 @@ function refreshCurrentNodeData() {
                                                     displayVal = formatHumanMetric(val, m.unit, true, m.module_name, p.title);
                                                 }
                                             }
-                                            html += `${p.marker}${p.seriesName}: <b>${displayVal}</b><br/>`;
+                                            html += `${sp.marker}${sp.seriesName}: <b>${displayVal}</b><br/>`;
                                         });
                                         return html;
                                     }
                                 },
-                                grid: { left: 0, right: 0, top: 0, bottom: p.show_time ? 30 : 0, containLabel: p.show_time },
-                                xAxis: { type: 'category', boundaryGap: p.type === 'bar', data: history.map(h=>h.lbl), show: !!p.show_time, axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' } },
-                                yAxis: { type: 'value', show: false, max: p.force_100 ? 100 : null },
+                                grid: { left: 8, right: 15, top: 12, bottom: p.show_time ? 28 : 10, containLabel: true },
+                                xAxis: { 
+                                    type: 'category', 
+                                    boundaryGap: p.type === 'bar', 
+                                    data: history.map(h=>h.lbl), 
+                                    show: !!p.show_time, 
+                                    axisLabel: { fontSize: Math.max(8, chartFs - 2), color: '#64748b' },
+                                    axisLine: { show: false },
+                                    axisTick: { show: false }
+                                },
+                                yAxis: { 
+                                    type: 'value', 
+                                    show: (p.show_yaxis !== false),
+                                    max: (p.force_100 || (unitStr === '%' || (isPct && !isModTraffic))) ? 100 : null,
+                                    splitLine: { 
+                                        show: (p.show_yaxis !== false), 
+                                        lineStyle: { color: '#f0f3f5' } 
+                                    },
+                                    axisLine: { show: false },
+                                    axisTick: { show: false },
+                                    axisLabel: {
+                                        fontSize: Math.max(8, chartFs - 2),
+                                        color: '#64748b',
+                                        formatter: function(value) {
+                                            const u = unitStr.toLowerCase();
+                                            const isTrafficUnit = isModTraffic || u.includes('byte') || u.includes('b/s') || u.includes('bit') || u.includes('bps') || u.includes('octet');
+                                            if (isTrafficUnit) {
+                                                if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
+                                                if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
+                                                if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
+                                                return value.toFixed(0) + ' bps';
+                                            }
+                                            if (unitStr === '%' || (isPct && !isModTraffic)) {
+                                                return (Number.isInteger(value) ? value : parseFloat(value.toFixed(1))) + '%';
+                                            }
+                                            if (unitStr === 'ms') return (Number.isInteger(value) ? value : parseFloat(value.toFixed(1))) + ' ms';
+                                            if (unitStr === 'dBm') return parseFloat(value.toFixed(1)) + ' dBm';
+                                            if (Math.abs(value) >= 1000000000) return (value / 1000000000).toFixed(1) + (unitStr ? ' G' + unitStr : 'G');
+                                            if (Math.abs(value) >= 1000000) return (value / 1000000).toFixed(1) + (unitStr ? ' M' + unitStr : 'M');
+                                            if (Math.abs(value) >= 1000) return (value / 1000).toFixed(1) + (unitStr ? ' k' + unitStr : 'k');
+                                            return (Number.isInteger(value) ? value : parseFloat(value.toFixed(2))) + (unitStr ? ' ' + unitStr : '');
+                                        }
+                                    }
+                                },
                                 series: [{
                                     name: `${m.agent_name} - ${m.module_name}`,
                                     type: p.type === 'bar' ? 'bar' : 'line',
@@ -3796,6 +3847,12 @@ function refreshCurrentNodeData() {
                                     smooth: true, showSymbol: false, connectNulls: true, lineStyle: { width: p.type === 'bar' ? 0 : 2 }
                                 }]
                             });
+
+                            setTimeout(() => {
+                                if (chartInstances[uniqueId] && typeof chartInstances[uniqueId].resize === 'function') {
+                                    chartInstances[uniqueId].resize();
+                                }
+                            }, 50);
                         }
                         window.addEventListener('resize', () => chartInstances[uniqueId].resize());
                     } catch(e) { console.error("Chart build error:", e); }
@@ -3850,7 +3907,9 @@ function toggleTypeFields() {
     }
 
     const isChart = ['line','area','bar'].includes(type);
-    document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
+    if (document.getElementById('wrap_show_time')) document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
+    if (document.getElementById('wrap_show_yaxis')) document.getElementById('wrap_show_yaxis').style.display = isChart ? 'flex' : 'none';
+    if (document.getElementById('wrap_force_100')) document.getElementById('wrap_force_100').style.display = isChart ? 'flex' : 'none';
     const wrapChartFont = document.getElementById('wrap_chart_font');
     if (wrapChartFont) {
         wrapChartFont.style.opacity = isChart ? '1' : '0.3';
@@ -3928,7 +3987,7 @@ const VISUAL_TYPE_CATALOG = {
         badgeTextColor: '#0369a1',
         desc: 'Grafik garis kontinyu yang menunjukkan fluktuasi histori nilai seiring waktu. Ideal untuk data bandwidth traffic, CPU load, memory, dan sensor analog.',
         bestFor: 'Bandwidth Interface, CPU Load, Memori, Suhu/Temp',
-        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="25" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="25" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="25" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><path d="M 30 65 Q 65 25 100 48 T 165 18 T 225 42 T 265 15" fill="none" stroke="#2563eb" stroke-width="2.5"/><circle cx="30" cy="65" r="3" fill="#2563eb"/><circle cx="100" cy="48" r="3" fill="#2563eb"/><circle cx="165" cy="18" r="3" fill="#2563eb"/><circle cx="225" cy="42" r="3" fill="#2563eb"/><circle cx="265" cy="15" r="3" fill="#2563eb"/><text x="30" y="82" font-size="8" fill="#94a3b8">00:00</text><text x="145" y="82" font-size="8" fill="#94a3b8">12:00</text><text x="250" y="82" font-size="8" fill="#94a3b8">23:00</text></svg>`
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="28" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><text x="4" y="18" font-size="7" fill="#94a3b8">100</text><text x="9" y="48" font-size="7" fill="#94a3b8">50</text><text x="14" y="74" font-size="7" fill="#94a3b8">0</text><path d="M 32 65 Q 65 25 100 48 T 165 18 T 225 42 T 265 15" fill="none" stroke="#2563eb" stroke-width="2.5"/><circle cx="32" cy="65" r="3" fill="#2563eb"/><circle cx="100" cy="48" r="3" fill="#2563eb"/><circle cx="165" cy="18" r="3" fill="#2563eb"/><circle cx="225" cy="42" r="3" fill="#2563eb"/><circle cx="265" cy="15" r="3" fill="#2563eb"/><text x="32" y="82" font-size="8" fill="#94a3b8">00:00</text><text x="145" y="82" font-size="8" fill="#94a3b8">12:00</text><text x="250" y="82" font-size="8" fill="#94a3b8">23:00</text></svg>`
     },
     'area': {
         title: 'Area Chart',
@@ -3938,7 +3997,7 @@ const VISUAL_TYPE_CATALOG = {
         badgeTextColor: '#0369a1',
         desc: 'Grafik area dengan arsiran gradasi halus di bawah kurva untuk menonjolkan akumulasi volume atau throughput jaringan.',
         bestFor: 'Network In/Out Traffic, Throughput Data, Total Connections',
-        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0284c7" stop-opacity="0.45"/><stop offset="100%" stop-color="#0284c7" stop-opacity="0.03"/></linearGradient></defs><line x1="25" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="25" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="25" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><path d="M 30 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14 L 265 72 L 30 72 Z" fill="url(#areaGrad)"/><path d="M 30 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14" fill="none" stroke="#0284c7" stroke-width="2.5"/><circle cx="175" cy="16" r="3" fill="#0284c7"/><text x="30" y="82" font-size="8" fill="#94a3b8">In: 45 Mbps</text><text x="205" y="82" font-size="8" fill="#0284c7" font-weight="bold">Out: 120 Mbps</text></svg>`
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0284c7" stop-opacity="0.45"/><stop offset="100%" stop-color="#0284c7" stop-opacity="0.03"/></linearGradient></defs><line x1="28" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><text x="3" y="18" font-size="7" fill="#94a3b8">100M</text><text x="8" y="48" font-size="7" fill="#94a3b8">50M</text><text x="14" y="74" font-size="7" fill="#94a3b8">0</text><path d="M 32 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14 L 265 72 L 32 72 Z" fill="url(#areaGrad)"/><path d="M 32 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14" fill="none" stroke="#0284c7" stroke-width="2.5"/><circle cx="175" cy="16" r="3" fill="#0284c7"/><text x="32" y="82" font-size="8" fill="#94a3b8">In: 45 Mbps</text><text x="205" y="82" font-size="8" fill="#0284c7" font-weight="bold">Out: 120 Mbps</text></svg>`
     },
     'bar': {
         title: 'Bar Chart',
@@ -3948,7 +4007,7 @@ const VISUAL_TYPE_CATALOG = {
         badgeTextColor: '#0369a1',
         desc: 'Grafik batang vertikal berkala yang sangat pas untuk data periodik atau perbandingan lonjakan nilai per jam/hari.',
         bestFor: 'Request Count, Error Spikes, Hit Counts, Disk IOPS',
-        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="20" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><rect x="30" y="38" width="16" height="34" rx="2" fill="#0d9488"/><rect x="60" y="22" width="16" height="50" rx="2" fill="#0d9488"/><rect x="90" y="48" width="16" height="24" rx="2" fill="#0d9488"/><rect x="120" y="15" width="16" height="57" rx="2" fill="#0f766e"/><rect x="150" y="32" width="16" height="40" rx="2" fill="#0d9488"/><rect x="180" y="55" width="16" height="17" rx="2" fill="#0d9488"/><rect x="210" y="28" width="16" height="44" rx="2" fill="#0d9488"/><rect x="240" y="42" width="16" height="30" rx="2" fill="#0d9488"/><text x="30" y="82" font-size="7" fill="#94a3b8">02:00</text><text x="120" y="82" font-size="7" fill="#94a3b8">10:00</text><text x="210" y="82" font-size="7" fill="#94a3b8">18:00</text></svg>`
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="24" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><line x1="24" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="24" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><text x="3" y="18" font-size="7" fill="#94a3b8">60</text><text x="3" y="48" font-size="7" fill="#94a3b8">30</text><text x="7" y="74" font-size="7" fill="#94a3b8">0</text><rect x="32" y="38" width="16" height="34" rx="2" fill="#0d9488"/><rect x="62" y="22" width="16" height="50" rx="2" fill="#0d9488"/><rect x="92" y="48" width="16" height="24" rx="2" fill="#0d9488"/><rect x="122" y="15" width="16" height="57" rx="2" fill="#0f766e"/><rect x="152" y="32" width="16" height="40" rx="2" fill="#0d9488"/><rect x="182" y="55" width="16" height="17" rx="2" fill="#0d9488"/><rect x="212" y="28" width="16" height="44" rx="2" fill="#0d9488"/><rect x="242" y="42" width="16" height="30" rx="2" fill="#0d9488"/><text x="32" y="82" font-size="7" fill="#94a3b8">02:00</text><text x="122" y="82" font-size="7" fill="#94a3b8">10:00</text><text x="212" y="82" font-size="7" fill="#94a3b8">18:00</text></svg>`
     },
     'gauge': {
         title: 'Gauge Chart',
@@ -4253,6 +4312,7 @@ function openPanelBuilder() {
     document.getElementById('p_use_raw').checked = false;
     document.getElementById('p_auto_convert_traffic').checked = true;
     document.getElementById('p_show_time').checked = true;
+    if (document.getElementById('p_show_yaxis')) document.getElementById('p_show_yaxis').checked = true;
     if (document.getElementById('p_hide_search_bar')) {
         document.getElementById('p_hide_search_bar').checked = false;
     }
@@ -4295,6 +4355,7 @@ function openPanelEdit(id) {
     document.getElementById('p_auto_convert_traffic').checked = p.auto_convert_traffic !== false;
     document.getElementById('p_force_100').checked = p.force_100 || false;
     document.getElementById('p_show_time').checked = p.show_time !== false;
+    if (document.getElementById('p_show_yaxis')) document.getElementById('p_show_yaxis').checked = p.show_yaxis !== false;
     if (document.getElementById('p_hide_search_bar')) {
         document.getElementById('p_hide_search_bar').checked = (p.hide_search_bar === true || p.hide_search_bar === 1 || p.hide_search_bar === '1' || p.hide_search_bar === 'true');
     }
@@ -4360,6 +4421,7 @@ function applyPanel() {
         auto_convert_traffic: document.getElementById('p_auto_convert_traffic').checked,
         force_100: document.getElementById('p_force_100').checked,
         show_time: document.getElementById('p_show_time').checked,
+        show_yaxis: document.getElementById('p_show_yaxis') ? document.getElementById('p_show_yaxis').checked : true,
         chart_engine: document.getElementById('p_chart_engine').value || 'custom',
         lbl_1: document.getElementById('p_lbl_1').value,
         lbl_0: document.getElementById('p_lbl_0').value,
