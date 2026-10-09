@@ -930,6 +930,50 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 height: auto !important;
             }
         }
+
+        /* Visual Type Preview & Gallery Styles */
+        .vtp-tab-btn {
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #475569;
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .vtp-tab-btn:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+        .vtp-tab-btn.active {
+            background: #004d40;
+            border-color: #004d40;
+            color: #ffffff;
+            box-shadow: 0 1px 3px rgba(0, 77, 64, 0.25);
+        }
+        .vtp-gallery-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: all 0.15s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        }
+        .vtp-gallery-card:hover {
+            transform: translateY(-2px);
+            border-color: #004d40;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.06) !important;
+        }
+        .vtp-gallery-card.is-active {
+            border: 2px solid #004d40 !important;
+            background: #f0fdf4 !important;
+        }
     </style>
 </head>
 <body class="<?= $isStandalone ? 'is-standalone-view' : '' ?>">
@@ -1147,7 +1191,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             <div style="display:flex; gap:10px;">
                 <div class="form-group" style="flex:1;">
                     <label>Visual Type</label>
-                    <select id="p_type" class="form-control-fix" onchange="toggleTypeFields(); toggleChartEngine();">
+                    <select id="p_type" class="form-control-fix" onchange="toggleTypeFields(); toggleChartEngine(); updateVisualTypePreview();">
                         <option value="text">Value Number / Text</option>
                         <option value="gauge">Gauge Chart</option>
                         <option value="single_value">Single Value Card (Sparkline)</option>
@@ -1181,6 +1225,26 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                         <option value="11">Span 11</option>
                         <option value="12" selected>Span 12</option>
                     </select>
+                </div>
+            </div>
+
+            <!-- Interactive Visual Type Preview Card -->
+            <div id="visual_type_preview_container" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:12px; transition:all 0.2s ease;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span class="material-symbols-outlined" style="font-size:16px; color:#004d40;">visibility</span>
+                        <span style="font-size:11px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:0.5px;">Visual Type Preview</span>
+                        <span id="vtp_badge" style="font-size:10px; font-weight:600; padding:2px 8px; border-radius:12px; background:#e0f2fe; color:#0369a1;">Time-Series History</span>
+                    </div>
+                    <button type="button" onclick="openVisualGalleryModal()" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; padding:3px 8px; font-size:11px; font-weight:600; color:#334155; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.03);" title="Lihat galeri semua tipe visual">
+                        <span class="material-symbols-outlined" style="font-size:14px; color:#004d40;">dashboard_customize</span> Galeri Semua Tipe
+                    </button>
+                </div>
+                <div id="vtp_mockup_area" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:10px; display:flex; align-items:center; justify-content:center; min-height:105px; box-shadow:inset 0 1px 2px rgba(0,0,0,0.02);">
+                    <!-- Dynamic mockup SVG rendered here -->
+                </div>
+                <div id="vtp_description" style="margin-top:8px; font-size:11px; color:#64748b; line-height:1.45;">
+                    <!-- Description & recommendation -->
                 </div>
             </div>
 
@@ -1374,6 +1438,38 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         <div class="modal-footer-custom">
             <button class="btn-secondary-custom" onclick="closePanelModal()">Cancel</button>
             <button class="btn-apply" onclick="applyPanel()">Apply Panel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Visual Gallery Modal (Katalog & Preview Semua Visual Type) -->
+<div class="modal-overlay" id="visualGalleryModal" style="display:none; z-index:99999;">
+    <div class="modal-box" style="width:95%; max-width:1150px; max-height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+        <div style="padding:16px 20px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; background:#fafbfc;">
+            <div>
+                <h4 style="margin:0; font-size:16px; color:#0b1a26; font-weight:700; display:flex; align-items:center; gap:8px;">
+                    <span class="material-symbols-outlined" style="color:#004d40;">dashboard_customize</span> Katalog & Preview Visual Type
+                </h4>
+                <p style="margin:4px 0 0; font-size:11px; color:#64748b;">Lihat tampilan visual dan pilih tipe grafik / tabel yang paling cocok untuk kebutuhan modul monitoring Anda.</p>
+            </div>
+            <span class="material-symbols-outlined" style="cursor:pointer; font-size:22px; color:#64748b;" onclick="closeVisualGalleryModal()">close</span>
+        </div>
+        
+        <!-- Filter Tabs -->
+        <div style="padding:8px 20px; background:#ffffff; border-bottom:1px solid #f1f5f9; display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="vtp-tab-btn active" onclick="setVisualGalleryFilter('all', this)">Semua (15)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('timeseries', this)">Grafik & Time-Series (4)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('status', this)">Status & Grid Real-Time (5)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('kpi', this)">Nilai Tunggal & KPI (3)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('table', this)">Tabel & Snapshot (3)</button>
+        </div>
+
+        <div class="modal-body-scroll" style="padding:16px 20px; background:#f8fafc;">
+            <div id="vtp_gallery_grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:14px;"></div>
+        </div>
+
+        <div style="padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; background:#fafbfc;">
+            <button type="button" class="btn-secondary-custom" onclick="closeVisualGalleryModal()">Tutup</button>
         </div>
     </div>
 </div>
@@ -3820,6 +3916,254 @@ function toggleHeatmapCustomTextDyn() {
     }
 }
 
+// =========================================================================
+// VISUAL TYPE PREVIEW & INTERACTIVE GALLERY ENGINE
+// =========================================================================
+const VISUAL_TYPE_CATALOG = {
+    'line': {
+        title: 'Line Chart',
+        group: 'timeseries',
+        badge: 'Time-Series History',
+        badgeColor: '#e0f2fe',
+        badgeTextColor: '#0369a1',
+        desc: 'Grafik garis kontinyu yang menunjukkan fluktuasi histori nilai seiring waktu. Ideal untuk data bandwidth traffic, CPU load, memory, dan sensor analog.',
+        bestFor: 'Bandwidth Interface, CPU Load, Memori, Suhu/Temp',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="25" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="25" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="25" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><path d="M 30 65 Q 65 25 100 48 T 165 18 T 225 42 T 265 15" fill="none" stroke="#2563eb" stroke-width="2.5"/><circle cx="30" cy="65" r="3" fill="#2563eb"/><circle cx="100" cy="48" r="3" fill="#2563eb"/><circle cx="165" cy="18" r="3" fill="#2563eb"/><circle cx="225" cy="42" r="3" fill="#2563eb"/><circle cx="265" cy="15" r="3" fill="#2563eb"/><text x="30" y="82" font-size="8" fill="#94a3b8">00:00</text><text x="145" y="82" font-size="8" fill="#94a3b8">12:00</text><text x="250" y="82" font-size="8" fill="#94a3b8">23:00</text></svg>`
+    },
+    'area': {
+        title: 'Area Chart',
+        group: 'timeseries',
+        badge: 'Time-Series History',
+        badgeColor: '#e0f2fe',
+        badgeTextColor: '#0369a1',
+        desc: 'Grafik area dengan arsiran gradasi halus di bawah kurva untuk menonjolkan akumulasi volume atau throughput jaringan.',
+        bestFor: 'Network In/Out Traffic, Throughput Data, Total Connections',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0284c7" stop-opacity="0.45"/><stop offset="100%" stop-color="#0284c7" stop-opacity="0.03"/></linearGradient></defs><line x1="25" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="25" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="25" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><path d="M 30 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14 L 265 72 L 30 72 Z" fill="url(#areaGrad)"/><path d="M 30 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14" fill="none" stroke="#0284c7" stroke-width="2.5"/><circle cx="175" cy="16" r="3" fill="#0284c7"/><text x="30" y="82" font-size="8" fill="#94a3b8">In: 45 Mbps</text><text x="205" y="82" font-size="8" fill="#0284c7" font-weight="bold">Out: 120 Mbps</text></svg>`
+    },
+    'bar': {
+        title: 'Bar Chart',
+        group: 'timeseries',
+        badge: 'Time-Series History',
+        badgeColor: '#e0f2fe',
+        badgeTextColor: '#0369a1',
+        desc: 'Grafik batang vertikal berkala yang sangat pas untuk data periodik atau perbandingan lonjakan nilai per jam/hari.',
+        bestFor: 'Request Count, Error Spikes, Hit Counts, Disk IOPS',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="20" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><rect x="30" y="38" width="16" height="34" rx="2" fill="#0d9488"/><rect x="60" y="22" width="16" height="50" rx="2" fill="#0d9488"/><rect x="90" y="48" width="16" height="24" rx="2" fill="#0d9488"/><rect x="120" y="15" width="16" height="57" rx="2" fill="#0f766e"/><rect x="150" y="32" width="16" height="40" rx="2" fill="#0d9488"/><rect x="180" y="55" width="16" height="17" rx="2" fill="#0d9488"/><rect x="210" y="28" width="16" height="44" rx="2" fill="#0d9488"/><rect x="240" y="42" width="16" height="30" rx="2" fill="#0d9488"/><text x="30" y="82" font-size="7" fill="#94a3b8">02:00</text><text x="120" y="82" font-size="7" fill="#94a3b8">10:00</text><text x="210" y="82" font-size="7" fill="#94a3b8">18:00</text></svg>`
+    },
+    'gauge': {
+        title: 'Gauge Chart',
+        group: 'kpi',
+        badge: 'Gauge & Indikator',
+        badgeColor: '#fef3c7',
+        badgeTextColor: '#b45309',
+        desc: 'Speedometer melingkar 0–100% dengan jarum analog dan arc indikator batas ambang (OK = Hijau, Warning = Kuning, Critical = Merah).',
+        bestFor: 'Persentase Utilisasi CPU, RAM, Disk Partition, Suhu C',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><path d="M 85 70 A 55 55 0 0 1 195 70" fill="none" stroke="#e2e8f0" stroke-width="12" stroke-linecap="round"/><path d="M 85 70 A 55 55 0 0 1 140 15" fill="none" stroke="#10b981" stroke-width="12" stroke-linecap="round"/><path d="M 140 15 A 55 55 0 0 1 175 28" fill="none" stroke="#f59e0b" stroke-width="12"/><path d="M 175 28 A 55 55 0 0 1 195 70" fill="none" stroke="#ef4444" stroke-width="12" stroke-linecap="round"/><circle cx="140" cy="70" r="5" fill="#0f172a"/><line x1="140" y1="70" x2="168" y2="35" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/><text x="140" y="64" text-anchor="middle" font-size="14" font-weight="bold" fill="#0f172a">76 %</text><text x="140" y="78" text-anchor="middle" font-size="8" fill="#64748b">CPU Usage (Warning)</text></svg>`
+    },
+    'single_value': {
+        title: 'Single Value Card (Sparkline)',
+        group: 'kpi',
+        badge: 'KPI & Tren Cepat',
+        badgeColor: '#dcfce7',
+        badgeTextColor: '#15803d',
+        desc: 'Kartu metrik berukuran besar yang dilengkapi status pill badge dan grafik garis sparkline mini di dasarnya untuk melihat tren 24 jam secara ringkas.',
+        bestFor: 'Metrik Utama Wallboard, Traffic Out, Ping Latency, Active Users',
+        render: () => `<div style="display:flex; align-items:center; justify-content:space-between; width:100%; max-width:270px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px;"><div style="text-align:left;"><div style="font-size:9px; font-weight:700; color:#64748b; text-transform:uppercase;">WAN Outbound</div><div style="font-size:20px; font-weight:800; color:#0b1a26; line-height:1.2;">142.5 <span style="font-size:11px; font-weight:600; color:#64748b;">Mbps</span></div><div style="font-size:9px; color:#10b981; font-weight:600; margin-top:2px;">▲ +12% vs last hour</div></div><div style="width:70px; height:35px; text-align:right;"><svg viewBox="0 0 70 35" style="width:100%; height:25px;"><path d="M 2 28 Q 18 8 35 20 T 68 5" fill="none" stroke="#10b981" stroke-width="2.2"/><circle cx="68" cy="5" r="2.5" fill="#10b981"/></svg><div style="font-size:8px; font-weight:700; color:#047857; background:#d1fae5; border-radius:3px; padding:1px 4px; display:inline-block;">NORMAL</div></div></div>`
+    },
+    'text': {
+        title: 'Value Number / Text',
+        group: 'kpi',
+        badge: 'Teks / Angka Utama',
+        badgeColor: '#f1f5f9',
+        badgeTextColor: '#475569',
+        desc: 'Menampilkan nilai teks status (misal: UP, ESTABLISHED, ACTIVE) atau angka besar dengan indikator status dot, ukuran font, dan latar warna fleksibel.',
+        bestFor: 'Status Link BGP, Service State (UP/DOWN), Cluster Active Role',
+        render: () => `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:250px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; box-shadow:0 1px 3px rgba(0,0,0,0.02);"><div style="font-size:9px; font-weight:700; color:#64748b; letter-spacing:0.5px;">BGP PEER STATUS</div><div style="font-size:22px; font-weight:800; color:#10b981; margin:2px 0;">ESTABLISHED</div><div style="display:flex; align-items:center; gap:4px; font-size:10px; color:#64748b;"><span style="width:6px; height:6px; background:#10b981; border-radius:50%; display:inline-block;"></span> Uptime: 45 hari 12 jam</div></div>`
+    },
+    'heatmap': {
+        title: 'History Heatmap Blocks',
+        group: 'timeseries',
+        badge: 'Riwayat Timeline',
+        badgeColor: '#e0f2fe',
+        badgeTextColor: '#0369a1',
+        desc: 'Blok riwayat status horizontal berdasarkan interval waktu (seperti commit heatmap), memperlihatkan histori stabilitas atau downtime perangkat.',
+        bestFor: 'Audit Stabilitas 24 Jam, Deteksi Jam-Jam Gangguan/Flapping',
+        render: () => `<div style="width:100%; max-width:270px;"><div style="display:flex; justify-content:space-between; font-size:8px; color:#64748b; margin-bottom:3px;"><span>00:00 (Uptime History)</span><span>23:59</span></div><div style="display:grid; grid-template-columns:repeat(14, 1fr); gap:2px;"><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#f59e0b; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#ef4444; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div><div style="height:14px; background:#10b981; border-radius:2px;"></div></div><div style="font-size:8px; color:#10b981; font-weight:600; margin-top:4px; text-align:right;">99.4% Availability (24h)</div></div>`
+    },
+    'history_table': {
+        title: 'History Table View',
+        group: 'table',
+        badge: 'Tabel Riwayat Log',
+        badgeColor: '#f1f5f9',
+        badgeTextColor: '#475569',
+        desc: 'Tabel log riwayat data histori per timestamp, berguna untuk audit berkala, pencarian nilai historis, atau pelacakan insiden.',
+        bestFor: 'Audit Trail Kejadian, Rekap Log Perubahan Nilai Sensor',
+        render: () => `<table style="width:100%; max-width:270px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Timestamp</th><th style="padding:2px 4px; text-align:right;">Value</th><th style="padding:2px 4px; text-align:center;">State</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; color:#64748b;">2026-10-09 14:35</td><td style="padding:2px 4px; text-align:right; font-weight:600;">45.2 Mbps</td><td style="padding:2px 4px; text-align:center;"><span style="background:#d1fae5; color:#047857; font-weight:700; padding:1px 3px; border-radius:2px;">OK</span></td></tr><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; color:#64748b;">2026-10-09 14:30</td><td style="padding:2px 4px; text-align:right; font-weight:600;">42.8 Mbps</td><td style="padding:2px 4px; text-align:center;"><span style="background:#d1fae5; color:#047857; font-weight:700; padding:1px 3px; border-radius:2px;">OK</span></td></tr><tr><td style="padding:2px 4px; color:#64748b;">2026-10-09 14:25</td><td style="padding:2px 4px; text-align:right; font-weight:600;">85.1 Mbps</td><td style="padding:2px 4px; text-align:center;"><span style="background:#fef3c7; color:#b45309; font-weight:700; padding:1px 3px; border-radius:2px;">WARN</span></td></tr></tbody></table>`
+    },
+    'sparkline_table': {
+        title: 'Sparkline Table (Trend Over Time)',
+        group: 'table',
+        badge: 'Tabel dengan Tren',
+        badgeColor: '#ede9fe',
+        badgeTextColor: '#6d28d9',
+        desc: 'Tabel multi-node cerdas di mana setiap baris menyertakan grafik sparkline mini tren 24 jam untuk mendeteksi anomali seketika.',
+        bestFor: 'Monitoring Banyak Node Sekaligus + Tren Grafik Singkat',
+        render: () => `<table style="width:100%; max-width:280px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Node / Target</th><th style="padding:2px 4px; text-align:right;">Current</th><th style="padding:2px 4px; text-align:center;">Trend (24h)</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">RT-CORE-01</td><td style="padding:2px 4px; text-align:right; font-weight:600;">145 Mbps</td><td style="padding:1px 4px; text-align:center;"><svg width="55" height="14"><path d="M 2 11 Q 15 2 28 7 T 53 3" fill="none" stroke="#2563eb" stroke-width="1.8"/></svg></td></tr><tr><td style="padding:2px 4px; font-weight:600;">SW-DIST-02</td><td style="padding:2px 4px; text-align:right; font-weight:600;">64 Mbps</td><td style="padding:1px 4px; text-align:center;"><svg width="55" height="14"><path d="M 2 4 Q 18 13 32 5 T 53 2" fill="none" stroke="#10b981" stroke-width="1.8"/></svg></td></tr></tbody></table>`
+    },
+    'status_table': {
+        title: 'Table View (Current Status)',
+        group: 'status',
+        badge: 'Tabel Data Real-Time',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Tabel daftar status real-time seluruh node/modul lengkap dengan nama perangkat, IP address, nilai terkini, dan status badge.',
+        bestFor: 'Daftar Status Modul Inventori, Rekap Interface Router/Switch',
+        render: () => `<table style="width:100%; max-width:280px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Device</th><th style="padding:2px 4px; text-align:left;">Module</th><th style="padding:2px 4px; text-align:center;">Status</th><th style="padding:2px 4px; text-align:right;">Val</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">SRV-WEB-01</td><td style="padding:2px 4px; color:#64748b;">CPU Load</td><td style="padding:2px 4px; text-align:center;"><span style="background:#d1fae5; color:#047857; font-weight:700; padding:1px 3px; border-radius:2px;">OK</span></td><td style="padding:2px 4px; text-align:right; font-weight:600;">24 %</td></tr><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">SRV-DB-01</td><td style="padding:2px 4px; color:#64748b;">Disk C:</td><td style="padding:2px 4px; text-align:center;"><span style="background:#fef3c7; color:#b45309; font-weight:700; padding:1px 3px; border-radius:2px;">WARN</span></td><td style="padding:2px 4px; text-align:right; font-weight:600;">88 %</td></tr><tr><td style="padding:2px 4px; font-weight:600;">SW-EDGE-01</td><td style="padding:2px 4px; color:#64748b;">Ping</td><td style="padding:2px 4px; text-align:center;"><span style="background:#fee2e2; color:#b91c1c; font-weight:700; padding:1px 3px; border-radius:2px;">CRIT</span></td><td style="padding:2px 4px; text-align:right; font-weight:600;">0 ms</td></tr></tbody></table>`
+    },
+    'status_heatmap': {
+        title: 'Heatmap View (Current Status)',
+        group: 'status',
+        badge: 'Matrix Grid Status',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Matriks kotak berwarna status (Hijau = OK, Kuning = Warn, Merah = Crit) untuk memonitor puluhan/ratusan perangkat dalam satu layar penuh.',
+        bestFor: 'NOC Wallboard, Status Grid Server Farm, Device Health Matrix',
+        render: () => `<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; width:100%; max-width:270px;"><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SRV-01<br><span style="font-size:7px; opacity:0.85;">28%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SRV-02<br><span style="font-size:7px; opacity:0.85;">34%</span></div><div style="background:#f59e0b; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SRV-03<br><span style="font-size:8px; opacity:0.85;">84%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SW-CORE<br><span style="font-size:7px; opacity:0.85;">12%</span></div><div style="background:#ef4444; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">ROUTER<br><span style="font-size:7px; opacity:0.85;">DOWN</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">FIREWALL<br><span style="font-size:7px; opacity:0.85;">45%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">STORAGE<br><span style="font-size:7px; opacity:0.85;">52%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">DB-MASTER<br><span style="font-size:7px; opacity:0.85;">61%</span></div></div>`
+    },
+    'status_stats': {
+        title: 'Stats Cards (Current Status)',
+        group: 'status',
+        badge: 'Ringkasan Status',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Kartu agregat hitungan status real-time (Total OK, Warning, Critical, Unknown) dari seluruh agen atau modul yang cocok.',
+        bestFor: 'Ringkasan Atas Dashboard (Top Counters), Health Summary',
+        render: () => `<div style="display:flex; gap:6px; width:100%; max-width:280px; justify-content:center;"><div style="flex:1; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#065f46;">OK</div><div style="font-size:15px; font-weight:800; color:#047857;">42</div></div><div style="flex:1; background:#fffbeb; border:1px solid #fde68a; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#92400e;">WARN</div><div style="font-size:15px; font-weight:800; color:#b45309;">3</div></div><div style="flex:1; background:#fef2f2; border:1px solid #fecaca; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#991b1b;">CRIT</div><div style="font-size:15px; font-weight:800; color:#b91c1c;">1</div></div><div style="flex:1; background:#f8fafc; border:1px solid #e2e8f0; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#475569;">UNKN</div><div style="font-size:15px; font-weight:800; color:#64748b;">0</div></div></div>`
+    },
+    'pie': {
+        title: 'Pie Chart (Current Status)',
+        group: 'status',
+        badge: 'Distribusi Proporsi',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Diagram lingkaran penuh untuk melihat perbandingan proporsi status perangkat (persentase OK vs Warning vs Critical).',
+        bestFor: 'Analisis Proporsi Kesehatan Sistem, Rasio Status Global',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><g transform="translate(80, 42)"><circle r="36" fill="#10b981"/><path d="M 0 0 L 0 -36 A 36 36 0 0 1 34 11 Z" fill="#f59e0b"/><path d="M 0 0 L 34 11 A 36 36 0 0 1 20 30 Z" fill="#ef4444"/><circle r="2" fill="#fff"/></g><g transform="translate(145, 18)"><rect x="0" y="0" width="8" height="8" rx="2" fill="#10b981"/><text x="14" y="8" font-size="9" fill="#334155" font-weight="600">OK (78%)</text><rect x="0" y="16" width="8" height="8" rx="2" fill="#f59e0b"/><text x="14" y="24" font-size="9" fill="#334155" font-weight="600">Warning (16%)</text><rect x="0" y="32" width="8" height="8" rx="2" fill="#ef4444"/><text x="14" y="40" font-size="9" fill="#334155" font-weight="600">Critical (6%)</text></g></svg>`
+    },
+    'donut': {
+        title: 'Donut Chart (Current Status)',
+        group: 'status',
+        badge: 'Distribusi Ring',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Diagram donat modern dengan ruang tengah untuk indikator total, memberikan tampilan visual yang bersih dan elegan.',
+        bestFor: 'Distribusi Modul / Host State, Executive Dashboard Summary',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><g transform="translate(80, 42)"><circle r="36" fill="none" stroke="#e2e8f0" stroke-width="14"/><circle r="36" fill="none" stroke="#10b981" stroke-width="14" stroke-dasharray="170 226" transform="rotate(-90)"/><circle r="36" fill="none" stroke="#f59e0b" stroke-width="14" stroke-dasharray="35 226" stroke-dashoffset="-170" transform="rotate(-90)"/><circle r="36" fill="none" stroke="#ef4444" stroke-width="14" stroke-dasharray="21 226" stroke-dashoffset="-205" transform="rotate(-90)"/><text x="0" y="3" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">48</text><text x="0" y="14" text-anchor="middle" font-size="6" fill="#64748b">TOTAL</text></g><g transform="translate(145, 18)"><rect x="0" y="0" width="8" height="8" rx="2" fill="#10b981"/><text x="14" y="8" font-size="9" fill="#334155" font-weight="600">OK (38)</text><rect x="0" y="16" width="8" height="8" rx="2" fill="#f59e0b"/><text x="14" y="24" font-size="9" fill="#334155" font-weight="600">Warning (7)</text><rect x="0" y="32" width="8" height="8" rx="2" fill="#ef4444"/><text x="14" y="40" font-size="9" fill="#334155" font-weight="600">Critical (3)</text></g></svg>`
+    },
+    'table_viewer': {
+        title: 'View Snapshot Module',
+        group: 'table',
+        badge: 'Snapshot / SNMP Table',
+        badgeColor: '#f1f5f9',
+        badgeTextColor: '#475569',
+        desc: 'Penampil tabel terstruktur khusus modul snapshot (seperti tabel interface SNMP, routing table, atau inventaris modul).',
+        bestFor: 'Tabel Port Interface SNMP, Modul Snapshot Teks / CSV',
+        render: () => `<div style="width:100%; max-width:280px; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><div style="background:#f8fafc; padding:2px 5px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:7px; font-weight:700; color:#475569;">SNMP INTERFACE TABLE</span><span style="font-size:7px; color:#64748b; background:#e2e8f0; padding:1px 3px; border-radius:2px;">Search 🔍</span></div><table style="width:100%; font-size:7px; border-collapse:collapse;"><tr style="background:#f1f5f9; color:#475569; font-weight:600;"><th style="padding:2px 4px; text-align:left;">ifName</th><th style="padding:2px 4px; text-align:left;">Admin</th><th style="padding:2px 4px; text-align:left;">Oper</th><th style="padding:2px 4px; text-align:right;">Speed</th></tr><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px;">Gi0/0/1</td><td style="padding:2px 4px; color:#10b981;">UP</td><td style="padding:2px 4px; color:#10b981;">UP</td><td style="padding:2px 4px; text-align:right;">1 Gbps</td></tr><tr><td style="padding:2px 4px;">Te0/1/0</td><td style="padding:2px 4px; color:#10b981;">UP</td><td style="padding:2px 4px; color:#ef4444;">DOWN</td><td style="padding:2px 4px; text-align:right;">10 Gbps</td></tr></table></div>`
+    }
+};
+
+let currentGalleryFilter = 'all';
+
+function updateVisualTypePreview() {
+    const sel = document.getElementById('p_type');
+    const type = sel ? sel.value : 'line';
+    const info = VISUAL_TYPE_CATALOG[type] || VISUAL_TYPE_CATALOG['line'];
+    
+    const badgeEl = document.getElementById('vtp_badge');
+    const mockupEl = document.getElementById('vtp_mockup_area');
+    const descEl = document.getElementById('vtp_description');
+    
+    if (badgeEl) {
+        badgeEl.innerText = info.badge || info.title;
+        badgeEl.style.backgroundColor = info.badgeColor || '#e0f2fe';
+        badgeEl.style.color = info.badgeTextColor || '#0369a1';
+    }
+    if (mockupEl) {
+        mockupEl.innerHTML = info.render();
+    }
+    if (descEl) {
+        descEl.innerHTML = `<strong>${escapeHtml(info.title)}:</strong> ${escapeHtml(info.desc)} <div style="margin-top:3px; font-size:10px; color:#004d40;"><strong>Rekomendasi Penggunaan:</strong> ${escapeHtml(info.bestFor)}</div>`;
+    }
+}
+
+function openVisualGalleryModal() {
+    currentGalleryFilter = 'all';
+    renderVisualGalleryCards('all');
+    document.querySelectorAll('.vtp-tab-btn').forEach(b => b.classList.remove('active'));
+    const firstTab = document.querySelector('.vtp-tab-btn');
+    if (firstTab) firstTab.classList.add('active');
+    document.getElementById('visualGalleryModal').style.display = 'flex';
+}
+
+function closeVisualGalleryModal() {
+    document.getElementById('visualGalleryModal').style.display = 'none';
+}
+
+function setVisualGalleryFilter(filter, btn) {
+    currentGalleryFilter = filter;
+    document.querySelectorAll('.vtp-tab-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderVisualGalleryCards(filter);
+}
+
+function selectVisualTypeFromGallery(type) {
+    const sel = document.getElementById('p_type');
+    if (sel) {
+        sel.value = type;
+        toggleTypeFields();
+        toggleChartEngine();
+        updateVisualTypePreview();
+    }
+    closeVisualGalleryModal();
+}
+
+function renderVisualGalleryCards(filter = 'all') {
+    const grid = document.getElementById('vtp_gallery_grid');
+    if (!grid) return;
+    
+    const currentSelected = document.getElementById('p_type') ? document.getElementById('p_type').value : '';
+    
+    let html = '';
+    Object.keys(VISUAL_TYPE_CATALOG).forEach(key => {
+        const item = VISUAL_TYPE_CATALOG[key];
+        if (filter !== 'all' && item.group !== filter) return;
+        
+        const isCurrent = (key === currentSelected);
+        const cardClass = isCurrent ? 'vtp-gallery-card is-active' : 'vtp-gallery-card';
+        
+        html += `
+        <div class="${cardClass}" onclick="selectVisualTypeFromGallery('${key}')">
+            <div>
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <span style="font-weight:700; font-size:12px; color:#0f172a;">${escapeHtml(item.title)}</span>
+                    <span style="font-size:9px; font-weight:600; padding:2px 8px; border-radius:10px; background:${item.badgeColor}; color:${item.badgeTextColor};">${escapeHtml(item.badge)}</span>
+                </div>
+                <div style="background:#f8fafc; border:1px solid #f1f5f9; border-radius:6px; padding:8px; display:flex; align-items:center; justify-content:center; min-height:85px; margin-bottom:8px;">
+                    ${item.render()}
+                </div>
+                <p style="font-size:11px; color:#64748b; line-height:1.4; margin:0 0 6px 0;">${escapeHtml(item.desc)}</p>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; border-top:1px solid #f1f5f9; padding-top:6px; margin-top:6px;">
+                <span style="font-size:10px; color:#004d40; font-weight:600;">Cocok: ${escapeHtml(item.bestFor.split(',')[0])}</span>
+                <button type="button" class="btn btn-sm ${isCurrent ? 'btn-success' : 'btn-outline-primary'}" style="font-size:10px; padding:2px 8px;" onclick="event.stopPropagation(); selectVisualTypeFromGallery('${key}')">
+                    ${isCurrent ? '✓ Terpilih' : 'Pilih'}
+                </button>
+            </div>
+        </div>`;
+    });
+    grid.innerHTML = html;
+}
+
 function showExactDropdown() { document.getElementById('exact_dropdown').style.display = 'flex'; renderExactModuleList(1); }
 function renderExactModuleList(page = 1) {
     const ul = document.getElementById('exact_module_ul');
@@ -3921,6 +4265,7 @@ function openPanelBuilder() {
     toggleHeatmapCustomTextDyn();
     toggleTypeFields();
     toggleChartEngine();
+    updateVisualTypePreview();
     document.getElementById('panelModal').style.display = 'flex';
 }
 
@@ -3980,6 +4325,7 @@ function openPanelEdit(id) {
     toggleHeatmapCustomTextDyn();
     toggleTypeFields();
     toggleChartEngine();
+    updateVisualTypePreview();
     document.getElementById('panelModal').style.display = 'flex';
 }
 
