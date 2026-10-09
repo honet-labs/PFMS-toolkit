@@ -78,8 +78,15 @@ $csrf_token = $_SESSION['pfms_csrf_token'];
 // =====================================================================
 // Default Configuration
 $config_data = [
-    'exclude_dirs' => ['temp', 'cache', 'assets', 'includes', 'versions', 'scanning-mib', 'scratch', 'Engine', 'engine'],
-    'exclude_files' => ['nfx_local_config.php', 'pdb_local_config.php', 'config.php', 'utils.php', 'check_cols.php,', 'check_schema.php', 'check_schema_v2.php', 'temp_query.php', 'pfms_latency_map.php', 'api_network.php', 'api-network.php', 'api-topology.php', 'DeviceClassifier.php', 'cron.php', 'pfms_latency_map.php', 'pfms_lib.php'],
+    'exclude_dirs' => ['temp', 'cache', 'assets', 'includes', 'scanning-mib', 'scratch', 'vendor', 'Engine', 'engine', 'network-mapping'],
+    'exclude_files' => [
+        'nfx_local_config.php', 'pdb_local_config.php', 'config.php', 'utils.php',
+        'check_schema.php', 'check_schema_v2.php', 'temp_query.php', 'pfms_latency_map.php',
+        'api_network.php', 'api-network.php', 'api-topology.php', 'DeviceClassifier.php',
+        'debug.php', 'cron.php', 'topology-cron.php', 'pfms_lib.php',
+        'traffic-interface.php', 'mib-webui-(beta).php', 'mibs-converter-%28beta%29.php',
+        'cron_route_parser.php', 'network-mapping.php'
+    ],
     'custom_connections' => [],
     'primary_override' => null,
     'history_override' => null,
@@ -109,8 +116,8 @@ $sys_files = ['custom-index.php'];
 $active_exclude_dirs = array_unique(array_merge($config_data['exclude_dirs'], $sys_dirs));
 $active_exclude_files = array_unique(array_merge($config_data['exclude_files'], $sys_files));
 
-// Core dashboard directories must NEVER be excluded by local config overrides
-$core_dashboards = ['Topology-Network', 'topology-network', 'Network-Mapping', 'network-mapping', 'Traffic-Dashboard', 'traffic-dashboard', 'Route-Parser', 'route-parser', 'Netflow-Explorer', 'netflow-explorer', 'Metrics-Dashboard', 'metrics-dashboard', 'Dynamic-Dashboard', 'dynamic-dashboard', 'Table-Viewer', 'table-viewer'];
+// Core dashboard directories must NEVER be excluded by local config overrides (unless configured by user)
+$core_dashboards = ['Topology-Network', 'topology-network', 'Traffic-Dashboard', 'traffic-dashboard', 'Route-Parser', 'route-parser', 'Netflow-Explorer', 'netflow-explorer', 'Metrics-Dashboard', 'metrics-dashboard', 'Dynamic-Dashboard', 'dynamic-dashboard', 'Table-Viewer', 'table-viewer'];
 $active_exclude_dirs = array_values(array_diff($active_exclude_dirs, $core_dashboards));
 
 // API Forwarding / Routing to sub-pages to prevent 500 errors caused by direct execution blocks in webservers
@@ -404,7 +411,8 @@ function github_api_request($url, $github_token = null) {
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 4);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 6);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         
@@ -434,7 +442,7 @@ function github_api_request($url, $github_token = null) {
         'http' => [
             'method' => 'GET',
             'header' => implode("\r\n", $headers),
-            'timeout' => 10,
+            'timeout' => 6,
             'ignore_errors' => true
         ],
         'ssl' => [
@@ -631,7 +639,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'check_update') {
 
         $fetch_output = [];
         $fetch_status = -1;
-        @exec($git_cmd . 'fetch origin main 2>&1', $fetch_output, $fetch_status);
+        @exec($git_cmd . '-c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 fetch origin main 2>&1', $fetch_output, $fetch_status);
 
         if ($fetch_status === 0) {
             $git_head = trim((string) @shell_exec($git_cmd . 'rev-parse HEAD 2>&1'));
@@ -1159,17 +1167,20 @@ if (!empty($current_page)) {
     <link rel="icon" href="<?= htmlspecialchars($pandora_base) ?>/images/pandora.ico" type="image/x-icon">
     
     
-    <link href="<?= htmlspecialchars($base_url) ?>/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= htmlspecialchars($base_url) ?>/vendor/fonts/fonts.css" />
+    <link href="<?= htmlspecialchars($base_url ? $base_url . '/' : '') ?>vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="vendor/fonts/fonts.css" rel="stylesheet">
 
-    <!-- Google Fonts CDN Fallback (Inter & Material Symbols) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <!-- Google Fonts CDN Fallback (Inter & Material Symbols, Non-Blocking) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" media="print" onload="this.media='all'">
 
     <script>
-        // Hapus Header Ganda di Iframe (Defined early to prevent not defined errors on fast iframe loads)
+        // Hapus Header Ganda di Iframe & Selesaikan progress bar
         function cleanIframeHeader() {
+            const bar = document.getElementById('topProgressBar');
+            if (bar) {
+                bar.classList.add('finish');
+                setTimeout(() => bar.classList.remove('loading', 'finish'), 350);
+            }
             const iframe = document.getElementById('contentFrame');
             if (!iframe) return;
             try {
@@ -1177,6 +1188,19 @@ if (!empty($current_page)) {
                 const topHeader = innerDoc.querySelector('.pandora-header-top');
                 if (topHeader) topHeader.style.display = 'none';
             } catch (e) {}
+        }
+
+        function onMenuLinkClick(link) {
+            const bar = document.getElementById('topProgressBar');
+            if (bar) {
+                bar.classList.remove('finish');
+                bar.classList.add('loading');
+                clearTimeout(window.__progressTimer);
+                window.__progressTimer = setTimeout(() => {
+                    bar.classList.add('finish');
+                    setTimeout(() => bar.classList.remove('loading', 'finish'), 350);
+                }, 8000);
+            }
         }
     </script>
 
@@ -1209,15 +1233,15 @@ if (!empty($current_page)) {
         .logo-link:hover { opacity: 0.8; }
         .header-logo { height: 24px; width: auto; object-fit: contain; border: none; }
         .header-divider { width: 1px; height: 28px; background-color: #dce1e5; margin: 0 20px; }
-        .header-title-box { display: flex; flex-direction: column; line-height: 1.2; }
-        .header-title-box .main-title { font-size: 14px !important; font-weight: normal !important; color: #0b1a26 !important; }
-        .header-title-box .sub-title { font-size: 12px !important; font-weight: normal !important; color: #7f8c8d !important; }
+        .header-title-box { display: flex; flex-direction: column; line-height: 1.25; }
+        .header-title-box .main-title { font-size: 14px; font-weight: 600; color: #0b1a26; letter-spacing: -0.01em; }
+        .header-title-box .sub-title { font-size: 11.5px; font-weight: 500; color: #64748b; }
 
         /* SEARCH BAR */
         .custom-search-container { position: relative; flex-grow: 1; max-width: 500px; margin-left: 30px; }
         .custom-search-container .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #7f8c8d !important; font-size: 18px !important; pointer-events: none; }
-        .custom-search-container input { width: 100%; height: 32px; padding: 8px 15px 8px 35px; border-radius: 16px; border: 1px solid #dce1e5; background-color: #f8f9fa; font-size: 12px !important; color: #333 !important; transition: all 0.2s ease; }
-        .custom-search-container input:focus { background-color: #ffffff; border-color: #b5c1c9; outline: none; box-shadow: 0 0 0 2px rgba(181, 193, 201, 0.2); }
+        .custom-search-container input { width: 100%; height: 32px; padding: 8px 15px 8px 35px; border-radius: 16px; border: 1px solid #dce1e5; background-color: #f8f9fa; font-size: 12.5px; font-family: inherit; color: #1e293b; transition: all 0.2s ease; }
+        .custom-search-container input:focus { background-color: #ffffff; border-color: #004d40; outline: none; box-shadow: 0 0 0 2px rgba(0, 77, 64, 0.15); }
 
         /* HEADER ICONS */
         .header-right { display: flex; align-items: center; gap: 10px; }
@@ -1225,56 +1249,70 @@ if (!empty($current_page)) {
         .nav-icon-btn:hover { background-color: #e0e4e8; color: #0b1a26 !important; }
 
         /* LAYOUT & SIDEBAR */
-        .layout-wrapper { display: flex; flex-grow: 1; overflow: hidden; }
+        .layout-wrapper { display: flex; flex-grow: 1; overflow: hidden; position: relative; }
         .sidebar { width: 260px; background-color: #ffffff; border-right: 1px solid #e0e4e8; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; }
-        .sidebar-header { padding: 15px 20px; background-color: #f8f9fa; border-bottom: 1px solid #e0e4e8; font-weight: normal !important; font-size: 11px !important; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
-        .sidebar-menu-container { flex-grow: 1; overflow-y: auto; padding: 15px 10px; }
+        .sidebar-header { padding: 14px 18px; background-color: #f8fafc; border-bottom: 1px solid #e0e4e8; font-weight: 600; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.75px; }
+        .sidebar-menu-container { flex-grow: 1; overflow-y: auto; padding: 12px 10px; }
         
         ul.sidebar-menu, ul.sidebar-submenu { list-style: none; padding: 0; margin: 0; }
-        ul.sidebar-submenu { padding-left: 20px; display: none; }
+        ul.sidebar-submenu { padding-left: 18px; display: none; }
         ul.sidebar-submenu.open { display: block; }
         
         .nav-item { margin-bottom: 2px; }
-        .nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 15px; text-decoration: none; color: #4a5568 !important; font-weight: normal !important; border-radius: 6px; transition: 0.2s; }
+        .nav-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; text-decoration: none; color: #475569; font-weight: 500; font-size: 13px; border-radius: 6px; transition: all 0.15s ease; }
+        .nav-link .menu-text { flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         
-        /* Fixed Active Color */
-        .nav-link:hover { background-color: #f4f6f8; color: #0b1a26 !important; }
-        .nav-link:hover .menu-text, .nav-link:hover .material-symbols-outlined { color: #0b1a26 !important; }
-        .nav-link.active { background-color: #004d40 !important; color: #ffffff !important; }
+        /* Directory Group / Folder Toggle Styling */
+        .nav-link.folder-toggle { font-weight: 600; color: #1e293b; }
+        .nav-link.folder-toggle:hover { background-color: #f1f5f9; color: #0b1a26; }
+        .nav-link.folder-toggle.open { color: #004d40; background-color: rgba(0, 77, 64, 0.04); }
+        .nav-link.folder-toggle.open .folder-icon { color: #d97706 !important; }
+        
+        /* Leaf Menu Link Styling */
+        .nav-link.menu-link { font-weight: 450; color: #475569; }
+        .nav-link.menu-link:hover { background-color: #f1f5f9; color: #0b1a26; font-weight: 500; }
+        .nav-link.menu-link:hover .material-symbols-outlined { color: #004d40 !important; }
+        
+        /* Active Page Highlighting */
+        .nav-link.active { background-color: #004d40 !important; color: #ffffff !important; font-weight: 600 !important; box-shadow: 0 1px 3px rgba(0,77,64,0.2); }
         .nav-link.active .menu-text, .nav-link.active .material-symbols-outlined { color: #ffffff !important; }
         
-        .nav-link .arrow { margin-left: auto; transition: transform 0.3s; font-size: 16px !important; color: #b5c1c9 !important; }
-        .nav-link.open .arrow { transform: rotate(180deg); }
+        .nav-link .arrow { margin-left: auto; transition: transform 0.25s ease; font-size: 16px !important; color: #94a3b8 !important; }
+        .nav-link.open .arrow { transform: rotate(180deg); color: #004d40 !important; }
 
-        /* MAIN CONTENT */
+        /* MAIN CONTENT & TOP PROGRESS BAR */
         .main-content { flex-grow: 1; min-height: 0; overflow: hidden; background-color: #f4f6f8; display: flex; flex-direction: column; position: relative; }
+        #topProgressBar { position: absolute; top: 0; left: 0; width: 0%; height: 3px; background: linear-gradient(90deg, #004d40, #10b981); z-index: 99; transition: width 0.3s ease, opacity 0.3s ease; opacity: 0; pointer-events: none; }
+        #topProgressBar.loading { opacity: 1; width: 70%; }
+        #topProgressBar.finish { width: 100%; opacity: 0; }
+
         #contentFrame { width: 100%; height: 100%; border: none; flex-grow: 1; background: #f4f6f8; }
         .welcome-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #7f8c8d; text-align: center; }
         .welcome-screen .material-symbols-outlined { font-size: 64px !important; color: #dce1e5 !important; margin-bottom: 15px; }
-        .welcome-screen h2 { font-size: 20px !important; color: #0b1a26 !important; margin: 0 0 10px 0; }
+        .welcome-screen h2 { font-size: 20px; font-weight: 600; color: #0b1a26; margin: 0 0 10px 0; }
 
         /* SETTINGS MODAL */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; }
         .modal-box { background: #fff; width: 500px; max-width: 95%; border-radius: 8px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
         .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e4e8; padding-bottom: 15px; margin-bottom: 20px; }
-        .modal-title { font-size: 16px !important; font-weight: normal !important; color: #0b1a26 !important; margin: 0; display: flex; align-items: center; gap: 8px; }
+        .modal-title { font-size: 15px; font-weight: 600; color: #0b1a26; margin: 0; display: flex; align-items: center; gap: 8px; }
         
         .form-group { margin-bottom: 20px; }
-        .form-label { display: block; font-size: 11px !important; font-weight: normal !important; color: #7f8c8d; margin-bottom: 8px; text-transform: uppercase; }
-        .form-control { width: 100%; padding: 10px 12px; border: 1px solid #dce1e5; border-radius: 4px; resize: vertical; min-height: 80px; font-family: 'Courier New', Courier, monospace !important; font-size: 12px !important; outline: none; }
+        .form-label { display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-control { width: 100%; padding: 10px 12px; border: 1px solid #dce1e5; border-radius: 4px; resize: vertical; min-height: 80px; font-family: 'Courier New', Courier, monospace !important; font-size: 12px; outline: none; }
         .form-control:focus { border-color: #004d40; box-shadow: 0 0 0 2px rgba(0,77,64,0.1); }
-        .form-hint { font-size: 11px !important; color: #b5c1c9; margin-top: 5px; }
+        .form-hint { font-size: 11px; color: #94a3b8; margin-top: 5px; }
 
-        .btn-apply { background: #004d40; color: #fff !important; border: none; padding: 8px 20px; border-radius: 4px; font-weight: normal !important; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 5px;}
+        .btn-apply { background: #004d40; color: #fff !important; border: none; padding: 8px 18px; border-radius: 4px; font-weight: 500; font-size: 13px; cursor: pointer; transition: 0.15s; display: inline-flex; align-items: center; gap: 6px;}
         .btn-apply:hover { background: #00695c; }
-        .btn-outline { background: #fff; color: #4a5568 !important; border: 1px solid #dce1e5; padding: 8px 20px; border-radius: 4px; font-weight: normal !important; cursor: pointer; transition: 0.2s; }
-        .btn-outline:hover { background: #f4f6f8; color: #0b1a26 !important; }
+        .btn-outline { background: #fff; color: #4a5568 !important; border: 1px solid #dce1e5; padding: 8px 18px; border-radius: 4px; font-weight: 500; font-size: 13px; cursor: pointer; transition: 0.15s; }
+        .btn-outline:hover { background: #f8fafc; color: #0b1a26 !important; border-color: #cbd5e1; }
 
         /* DOCS MODAL */
         .docs-modal-box { width: 800px !important; max-width: 95%; display: flex; flex-direction: column; max-height: 85vh; }
         .docs-tabs { display: flex; gap: 20px; border-bottom: 1px solid #e0e4e8; margin-bottom: 20px; }
-        .docs-tab { padding: 10px 0; cursor: pointer; font-weight: normal; color: #7f8c8d; border-bottom: 2px solid transparent; transition: 0.2s; }
-        .docs-tab.active { color: #004d40; border-bottom-color: #004d40; }
+        .docs-tab { padding: 10px 0; cursor: pointer; font-weight: 500; color: #7f8c8d; border-bottom: 2px solid transparent; transition: 0.2s; }
+        .docs-tab.active { color: #004d40; border-bottom-color: #004d40; font-weight: 600; }
         .docs-content-area { overflow-y: auto; flex-grow: 1; padding: 10px 5px; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace !important; font-size: 12px !important; line-height: 1.6; background: #fafafa; border-radius: 4px; border: 1px solid #eee; }
         
         /* UPDATER STYLES */
@@ -1365,9 +1403,11 @@ if (!empty($current_page)) {
                             });
                             
                             $openClass = $isOpen ? 'open' : '';
+                            $folderIcon = $isOpen ? 'folder_open' : 'folder';
                             $html .= '<li class="nav-item has-submenu folder-item">';
-                            $html .= '<a href="#" class="nav-link folder-toggle ' . $openClass . '" onclick="toggleFolder(this)">
-                                        <span class="material-symbols-outlined" style="color:#f1c40f;">folder</span> <span class="menu-text">' . htmlspecialchars($node['name']) . '</span>
+                            $html .= '<a href="#" class="nav-link folder-toggle ' . $openClass . '" onclick="toggleFolder(this, event)">
+                                        <span class="material-symbols-outlined folder-icon" style="color:#d97706; font-size:18px!important;">' . $folderIcon . '</span>
+                                        <span class="menu-text">' . htmlspecialchars($node['name']) . '</span>
                                         <span class="material-symbols-outlined arrow">expand_more</span>
                                       </a>';
                             $html .= '<ul class="sidebar-submenu ' . $openClass . '">';
@@ -1378,18 +1418,20 @@ if (!empty($current_page)) {
                             $url = '?page=' . urlencode($node['path']);
                             $icon = 'article';
                             
-                             if (stripos($node['name'], 'dashboard') !== false) $icon = 'dashboard';
-                             elseif (stripos($node['name'], 'query') !== false) $icon = 'database';
-                             elseif (stripos($node['name'], 'converter') !== false) $icon = 'transform';
-                             elseif (stripos($node['name'], 'alert') !== false) $icon = 'notifications_active';
-                             elseif (stripos($node['name'], 'netflow') !== false) $icon = 'account_tree';
-                             elseif (stripos($node['name'], 'chart') !== false || stripos($node['name'], 'export') !== false) $icon = 'bar_chart';
-                             elseif (stripos($node['name'], 'raw data') !== false || stripos($node['name'], 'availability') !== false || stripos($node['name'], 'report') !== false) $icon = 'analytics';
-                             elseif (stripos($node['name'], 'log') !== false) $icon = 'terminal';
+                            if (stripos($node['name'], 'dashboard') !== false) $icon = 'dashboard';
+                            elseif (stripos($node['name'], 'query') !== false) $icon = 'database';
+                            elseif (stripos($node['name'], 'converter') !== false) $icon = 'transform';
+                            elseif (stripos($node['name'], 'alert') !== false) $icon = 'notifications_active';
+                            elseif (stripos($node['name'], 'netflow') !== false) $icon = 'account_tree';
+                            elseif (stripos($node['name'], 'chart') !== false || stripos($node['name'], 'export') !== false) $icon = 'bar_chart';
+                            elseif (stripos($node['name'], 'raw data') !== false || stripos($node['name'], 'availability') !== false || stripos($node['name'], 'report') !== false) $icon = 'analytics';
+                            elseif (stripos($node['name'], 'log') !== false) $icon = 'terminal';
 
+                            $iconColor = $isActive ? '#ffffff' : '#94a3b8';
                             $html .= '<li class="nav-item file-item">';
-                            $html .= '<a href="' . $url . '" class="nav-link menu-link ' . $isActive . '">
-                                        <span class="material-symbols-outlined" style="color:#b5c1c9;">' . $icon . '</span> <span class="menu-text">' . htmlspecialchars($node['name']) . '</span>
+                            $html .= '<a href="' . $url . '" class="nav-link menu-link ' . $isActive . '" onclick="onMenuLinkClick(this)">
+                                        <span class="material-symbols-outlined" style="color:' . $iconColor . ';">' . $icon . '</span>
+                                        <span class="menu-text">' . htmlspecialchars($node['name']) . '</span>
                                       </a>';
                             $html .= '</li>';
                         }
@@ -1403,6 +1445,7 @@ if (!empty($current_page)) {
     </div>
 
     <div class="main-content">
+        <div id="topProgressBar"></div>
         <?php if ($iframe_src !== ''): ?>
             <iframe id="contentFrame" src="<?= htmlspecialchars($iframe_src) ?>" onload="cleanIframeHeader()"></iframe>
         <?php else: ?>
@@ -1765,9 +1808,13 @@ if (!empty($current_page)) {
                 cat.style.display = '';
                 const submenu = cat.querySelector('.sidebar-submenu');
                 const link = cat.querySelector('.folder-toggle');
-                if (!submenu.querySelector('.menu-link.active')) {
+                const folderIcon = link ? link.querySelector('.folder-icon') : null;
+                if (submenu && !submenu.querySelector('.menu-link.active')) {
                     submenu.classList.remove('open');
-                    link.classList.remove('open');
+                    if (link) link.classList.remove('open');
+                    if (folderIcon) folderIcon.innerText = 'folder';
+                } else if (folderIcon) {
+                    folderIcon.innerText = 'folder_open';
                 }
             });
         } else {
@@ -1785,10 +1832,14 @@ if (!empty($current_page)) {
                     }
                 });
 
+                const link = cat.querySelector('.folder-toggle');
+                const folderIcon = link ? link.querySelector('.folder-icon') : null;
                 if (hasVisibleChild) {
                     cat.style.display = '';
-                    cat.querySelector('.sidebar-submenu').classList.add('open');
-                    cat.querySelector('.folder-toggle').classList.add('open');
+                    const submenu = cat.querySelector('.sidebar-submenu');
+                    if (submenu) submenu.classList.add('open');
+                    if (link) link.classList.add('open');
+                    if (folderIcon) folderIcon.innerText = 'folder_open';
                 } else {
                     cat.style.display = 'none';
                 }
@@ -1803,12 +1854,16 @@ if (!empty($current_page)) {
     });
 
     // Toggle Menu Folder
-    function toggleFolder(element) {
-        event.preventDefault();
-        element.classList.toggle('open');
+    function toggleFolder(element, evt) {
+        if (evt) evt.preventDefault();
+        const isOpen = element.classList.toggle('open');
+        const folderIcon = element.querySelector('.folder-icon');
+        if (folderIcon) {
+            folderIcon.innerText = isOpen ? 'folder_open' : 'folder';
+        }
         const submenu = element.nextElementSibling;
         if (submenu) {
-            submenu.classList.toggle('open');
+            submenu.classList.toggle('open', isOpen);
         }
     }
 
@@ -2372,14 +2427,17 @@ if (!empty($current_page)) {
 
     async function checkUpdateSilently() {
         try {
-            const response = await fetch('?api=check_update');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            const response = await fetch('?api=check_update', { signal: controller.signal });
+            clearTimeout(timeoutId);
             const data = await response.json();
             if (data.ok && data.update_available) {
                 document.getElementById('updateBadge').style.display = 'block';
                 document.getElementById('updateNavBtn').style.color = '#ef4444';
             }
         } catch (e) {
-            console.error('Silent update check failed:', e);
+            // Silently ignore offline / timeout states
         }
     }
 
@@ -2399,12 +2457,18 @@ if (!empty($current_page)) {
     }
 
     async function checkUpdate(force = false) {
+        const checkState = document.getElementById('updaterCheckState');
+        const viewState = document.getElementById('updaterViewState');
+
         try {
-            const response = await fetch('?api=check_update' + (force ? '&force=1' : ''));
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            const response = await fetch('?api=check_update' + (force ? '&force=1' : ''), { signal: controller.signal });
+            clearTimeout(timeoutId);
             const data = await response.json();
             
-            document.getElementById('updaterCheckState').style.display = 'none';
-            document.getElementById('updaterViewState').style.display = 'block';
+            checkState.style.display = 'none';
+            viewState.style.display = 'block';
             
             const stateIcon = document.getElementById('updateStateIcon');
             const stateTitle = document.getElementById('updateStateTitle');
@@ -2417,9 +2481,9 @@ if (!empty($current_page)) {
                 stateIcon.innerText = 'error';
                 stateIcon.style.color = '#ef4444';
                 stateTitle.innerText = 'Update Check Failed';
-                changelog.innerText = data.error || 'Connection failed: Web server cannot reach api.github.com. Verify internet access.';
-                localTag.innerText = 'N/A';
-                remoteTag.innerText = 'N/A';
+                changelog.innerText = data.error || 'Connection failed: Web server cannot reach api.github.com.\nYou can still update manually using the Offline / Local Update option below.';
+                localTag.innerText = 'v<?= PORTAL_VERSION ?>';
+                remoteTag.innerText = 'Offline';
                 execBtn.style.display = 'none';
                 return;
             }
@@ -2448,12 +2512,17 @@ if (!empty($current_page)) {
                 execBtn.style.display = 'none';
             }
         } catch (e) {
-            document.getElementById('updaterCheckState').style.display = 'none';
-            document.getElementById('updaterViewState').style.display = 'block';
-            document.getElementById('updateStateIcon').innerText = 'error';
+            checkState.style.display = 'none';
+            viewState.style.display = 'block';
+            const isTimeout = e.name === 'AbortError';
+            document.getElementById('updateStateIcon').innerText = 'cloud_off';
             document.getElementById('updateStateIcon').style.color = '#ef4444';
-            document.getElementById('updateStateTitle').innerText = 'Error checking updates';
-            document.getElementById('updateChangelog').innerText = 'Could not fetch update status. Please verify networking or GitHub API access.';
+            document.getElementById('updateStateTitle').innerText = isTimeout ? 'Update Check Timed Out' : 'Update Check Failed';
+            document.getElementById('updateChangelog').innerText = isTimeout 
+                ? 'Connection timed out (no response within 6s). The web server cannot reach GitHub API or git remote.\nYou can still update manually using the "Offline / Local Update" option below.'
+                : (e.message || 'Error checking updates. Use the Offline / Local Update option below.');
+            document.getElementById('localVersionTag').innerText = 'v<?= PORTAL_VERSION ?>';
+            document.getElementById('remoteVersionTag').innerText = 'Offline';
             document.getElementById('updateExecuteBtn').style.display = 'none';
         }
     }

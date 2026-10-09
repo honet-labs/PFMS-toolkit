@@ -1125,10 +1125,8 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <script src="../../vendor/echarts/echarts.min.js"></script>
     <script src="<?= htmlspecialchars($vendor_url ?? "../../vendor") ?>/echarts/echarts.min.js"></script>
 
-    <!-- Google Fonts CDN Fallback (Inter & Material Symbols) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <!-- Google Fonts CDN Fallback (Inter & Material Symbols, Non-Blocking) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" media="print" onload="this.media='all'">
     <style>
         :root { --primary-bg: #f4f6f8; --card-bg: #fff; --toolbar-bg: #fff; --border-color: #e0e4e8; --text-main: #334155; --text-dim: #64748b; --accent: #004d40; }
         body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }

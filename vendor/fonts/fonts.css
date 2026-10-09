@@ -1,7 +1,4 @@
-/* Online High-Resolution CDN Fallback (Loads instantly if internet available) */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
-
-/* Local Fallback for Inter Variable Font (Offline Support) */
+/* Local High-Performance Font Declarations (Instant Zero-Latency Offline Load) */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -10,12 +7,12 @@
   src: url('./Inter-Variable.woff2') format('woff2');
 }
 
-/* Local Fallback for Material Symbols Outlined (Multi-weight compatibility) */
+/* Local Material Symbols Outlined (Multi-weight compatibility, Zero FOIT) */
 @font-face {
   font-family: 'Material Symbols Outlined';
   font-style: normal;
   font-weight: normal;
-  font-display: block;
+  font-display: swap;
   src: url('./MaterialSymbolsOutlined.woff2') format('woff2'),
        url('./material-symbols-outlined.ttf') format('truetype');
 }
@@ -24,7 +21,7 @@
   font-family: 'Material Symbols Outlined';
   font-style: normal;
   font-weight: 400;
-  font-display: block;
+  font-display: swap;
   src: url('./MaterialSymbolsOutlined.woff2') format('woff2'),
        url('./material-symbols-outlined.ttf') format('truetype');
 }
@@ -33,7 +30,7 @@
   font-family: 'Material Symbols Outlined';
   font-style: normal;
   font-weight: 100 700;
-  font-display: block;
+  font-display: swap;
   src: url('./MaterialSymbolsOutlined.woff2') format('woff2'),
        url('./material-symbols-outlined.ttf') format('truetype');
 }
@@ -75,5 +72,38 @@ body, html, input, button, select, textarea {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   vertical-align: middle;
+}
+
+/* Universal Loading Animations & Spinners (Globally Available) */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes spinRotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.spin-icon, .icon-spin, .rotating {
+  animation: spin 1s linear infinite !important;
+  display: inline-block !important;
+}
+
+.spinner-border {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  vertical-align: -0.125em;
+  border: 0.15em solid currentColor;
+  border-right-color: transparent !important;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+.spinner-border-sm {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-width: 0.12em;
 }
 

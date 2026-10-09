@@ -1138,8 +1138,8 @@ if (!$current_dashboard):
     <title>Route Parser Dashboards | PFMS-Toolkit</title>
     
     <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <!-- Google Fonts Fallbacks (Non-Blocking) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" media="print" onload="this.media='all'">
     
     <style>
         :root {
@@ -2354,8 +2354,8 @@ $standalone_url = $full_origin . $clean_script_path . "?dashboard_id=" . urlenco
     <title><?= h($current_dashboard['name']) ?> | Route Parser</title>
     
     <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <!-- Google Fonts Fallbacks (Non-Blocking) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" media="print" onload="this.media='all'">
     
     <style>
         :root {

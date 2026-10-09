@@ -413,7 +413,8 @@ if ($isPure && $target_panel_id) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0">
+    <!-- Google Fonts Fallback (Non-Blocking) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" media="print" onload="this.media='all'">
     <style>
         * { box-sizing: border-box; }
         body, input, button, select, textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }

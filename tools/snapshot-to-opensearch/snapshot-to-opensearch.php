@@ -648,6 +648,11 @@ function runBackgroundCron($pdo) {
         .table-custom tr:hover { background: #fafafa; }
         
         .logs-box { background: #0b1a26; color: #94a3b8; font-family: monospace; padding: 15px; border-radius: 6px; max-height: 200px; overflow-y: auto; font-size: 11px; line-height: 1.5; }
+        
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .spin-icon, .icon-spin, .rotating { animation: spin 1s linear infinite !important; display: inline-block !important; }
+        .spinner-border { display: inline-block; width: 1rem; height: 1rem; vertical-align: -0.125em; border: 0.15em solid currentColor; border-right-color: transparent !important; border-radius: 50%; animation: spin 0.75s linear infinite; }
+        .spinner-border-sm { width: 0.85rem; height: 0.85rem; border-width: 0.12em; }
     </style>
 </head>
 <body>
@@ -885,8 +890,16 @@ function runBackgroundCron($pdo) {
         body.innerHTML = `<tr><td colspan="7" align="center" style="color:#94a3b8; padding:30px;"><span class="spinner-border spinner-border-sm"></span> Loading modules...</td></tr>`;
         
         try {
-            const res = await fetch('?api=get_modules');
-            modulesList = await res.json();
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch('?api=get_modules', { signal: controller.signal });
+            clearTimeout(timeoutId);
+            
+            const data = await res.json();
+            if (!Array.isArray(data)) {
+                throw new Error(data && data.error ? data.error : 'Invalid response from server');
+            }
+            modulesList = data;
             
             if (modulesList.length === 0) {
                 body.innerHTML = `<tr><td colspan="7" align="center" style="color:#94a3b8; padding:30px;">No snapshot modules found in agent states.</td></tr>`;
@@ -910,7 +923,8 @@ function runBackgroundCron($pdo) {
             filteredList = [...modulesList];
             renderCurrentPage();
         } catch (e) {
-            body.innerHTML = `<tr><td colspan="7" align="center" style="color:#ef4444; padding:30px;">Error fetching modules: ${e.message}</td></tr>`;
+            const msg = e.name === 'AbortError' ? 'Request timed out after 8s.' : e.message;
+            body.innerHTML = `<tr><td colspan="7" align="center" style="color:#ef4444; padding:30px;"><span class="material-symbols-outlined" style="vertical-align:middle; margin-right:4px;">error</span> Error fetching modules: ${escapeHtml(msg)} <button class="btn btn-sm btn-outline-secondary ms-2" onclick="loadModules()">Retry</button></td></tr>`;
         }
     }
 
@@ -1189,7 +1203,10 @@ function runBackgroundCron($pdo) {
         if (!box) return;
         
         try {
-            const res = await fetch('?api=get_logs');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            const res = await fetch('?api=get_logs', { signal: controller.signal });
+            clearTimeout(timeoutId);
             const data = await res.json();
             if (data.ok) {
                 if (!data.logs || data.logs.length === 0) {
@@ -1213,7 +1230,8 @@ function runBackgroundCron($pdo) {
                 box.innerHTML = `<div style="color:#ef4444;">Error loading logs: ${escapeHtml(data.error)}</div>`;
             }
         } catch (e) {
-            box.innerHTML = `<div style="color:#ef4444;">Failed to fetch logs: ${escapeHtml(e.message)}</div>`;
+            const msg = e.name === 'AbortError' ? 'Request timed out.' : e.message;
+            box.innerHTML = `<div style="color:#ef4444;">Failed to fetch logs: ${escapeHtml(msg)}</div>`;
         }
     }
 

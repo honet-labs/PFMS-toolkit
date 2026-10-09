@@ -1853,10 +1853,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
     <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
 
-    <!-- 3. High-res Google Fonts CDN Fallback (Inter & Material Symbols) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <!-- 3. High-res Google Fonts CDN Fallback (Inter & Material Symbols, Non-Blocking) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" media="print" onload="this.media='all'">
     
     <style>
         /* Fallback local font-face declarations to guarantee rendering */
@@ -1874,6 +1872,15 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             font-display: swap;
             src: url('../../vendor/fonts/MaterialSymbolsOutlined.woff2') format('woff2'),
                  url('../../vendor/fonts/material-symbols-outlined.ttf') format('truetype');
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .spin-icon, .icon-spin, .rotating {
+            animation: spin 1s linear infinite !important;
+            display: inline-block !important;
         }
 
         :root {
@@ -4176,8 +4183,14 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                 _t: Date.now()
             });
 
-            fetch('?' + params.toString(), { cache: 'no-store' })
-                .then(r => r.json())
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+            fetch('?' + params.toString(), { cache: 'no-store', signal: controller.signal })
+                .then(r => {
+                    clearTimeout(timeoutId);
+                    return r.json();
+                })
                 .then(res => {
                     if (res.ok && res.rows) {
                         renderProvisionedTable(res);
@@ -4186,7 +4199,9 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
                     }
                 })
                 .catch(err => {
-                    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:#ef4444;">Error: ${err.message}</td></tr>`;
+                    clearTimeout(timeoutId);
+                    const msg = err.name === 'AbortError' ? 'Request timed out after 10s.' : err.message;
+                    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:#ef4444;">Error: ${msg}</td></tr>`;
                 });
         }
 
