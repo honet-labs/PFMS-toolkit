@@ -1363,6 +1363,9 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;">
                     <input type="checkbox" id="p_use_raw" style="margin-right:8px; width:16px; height:16px;"> Use Raw Value
                 </label>
+                <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;" id="wrap_show_status_dot">
+                    <input type="checkbox" id="p_show_status_dot" checked style="margin-right:8px; width:16px; height:16px;"> Show Status Indicator (Dot)
+                </label>
                 <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;" id="wrap_show_time">
                     <input type="checkbox" id="p_show_time" checked style="margin-right:8px; width:16px; height:16px;"> Show Chart Time
                 </label>
@@ -2670,10 +2673,12 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const isMultiOverlay = moduleData.module_name === 'Multi-Module Overlay';
     const chartH = Math.max(220, (parseInt(p.height) || 260) - 20);
     const modNameHtml = (showMod && !isMultiOverlay) ? `<div class="mod-subtitle">${moduleData.module_name}</div>` : '';
-    const statusHtml = isMultiOverlay ? '' : `<div style="display:flex; align-items:center;"><span class="status-dot ${bgClass}"></span><span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span></div>`;
+    const showStatusDot = p.show_status_dot !== false;
+    const dotHtml = showStatusDot ? `<span class="status-dot ${bgClass}"></span>` : '';
+    const statusHtml = isMultiOverlay ? '' : `<div style="display:flex; align-items:center;">${dotHtml}<span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span></div>`;
 
     if (p.type === 'text') {
-        contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;"><div style="display:flex; align-items:baseline; justify-content:center;"><span class="status-dot ${bgClass}"></span><span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${summaryHtml}${modNameHtml}</div>`;
+        contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;"><div style="display:flex; align-items:baseline; justify-content:center;">${dotHtml}<span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${summaryHtml}${modNameHtml}</div>`;
     } 
     else if (p.type === 'single_value') {
         const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[moduleData.status] || '#95a5a6';
@@ -4204,6 +4209,7 @@ function toggleTypeFields() {
     if (document.getElementById('wrap_show_time')) document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_show_yaxis')) document.getElementById('wrap_show_yaxis').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_force_100')) document.getElementById('wrap_force_100').style.display = isChart ? 'flex' : 'none';
+    if (document.getElementById('wrap_show_status_dot')) document.getElementById('wrap_show_status_dot').style.display = (type === 'text' || isChart) ? 'flex' : 'none';
     const wrapChartColors = document.getElementById('wrap_chart_colors');
     if (wrapChartColors) {
         wrapChartColors.style.display = isChart ? 'block' : 'none';
@@ -4615,6 +4621,7 @@ function openPanelBuilder() {
     document.getElementById('p_stat_font_color_hex').value = '';
     document.getElementById('p_show_module').checked = true;
     document.getElementById('p_use_raw').checked = false;
+    if (document.getElementById('p_show_status_dot')) document.getElementById('p_show_status_dot').checked = true;
     document.getElementById('p_auto_convert_traffic').checked = true;
     document.getElementById('p_show_time').checked = true;
     if (document.getElementById('p_show_yaxis')) document.getElementById('p_show_yaxis').checked = true;
@@ -4663,6 +4670,7 @@ function openPanelEdit(id) {
     document.getElementById('p_stat_font_color_hex').value = p.stat_font_color || '';
     document.getElementById('p_show_module').checked = p.show_module !== false;
     document.getElementById('p_use_raw').checked = p.use_raw || false;
+    if (document.getElementById('p_show_status_dot')) document.getElementById('p_show_status_dot').checked = p.show_status_dot !== false;
     document.getElementById('p_auto_convert_traffic').checked = p.auto_convert_traffic !== false;
     document.getElementById('p_force_100').checked = p.force_100 || false;
     document.getElementById('p_show_time').checked = p.show_time !== false;
@@ -4735,6 +4743,7 @@ function applyPanel() {
         stat_font_color: document.getElementById('p_stat_font_color_hex').value.trim(),
         show_module: document.getElementById('p_show_module').checked,
         use_raw: document.getElementById('p_use_raw').checked,
+        show_status_dot: document.getElementById('p_show_status_dot') ? document.getElementById('p_show_status_dot').checked : true,
         auto_convert_traffic: document.getElementById('p_auto_convert_traffic').checked,
         force_100: document.getElementById('p_force_100').checked,
         show_time: document.getElementById('p_show_time').checked,
