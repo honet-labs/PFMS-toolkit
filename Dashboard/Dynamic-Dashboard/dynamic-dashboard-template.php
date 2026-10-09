@@ -2727,7 +2727,8 @@ function initPanelResize(e, panelId) {
 
     const wrapperRect = wrapper.getBoundingClientRect();
     const startWidth = wrapperRect.width;
-    const startHeight = parseInt(panel.height) || Math.round(wrapperRect.height) || 200;
+    const isTableType = ['sparkline_table', 'status_table', 'history_table', 'table_viewer', 'device_info'].includes(panel.type);
+    const startHeight = isTableType ? Math.round(wrapperRect.height) : (parseInt(panel.height) || Math.round(wrapperRect.height) || 200);
     const startSpan = Math.max(1, Math.min(12, parseInt(panel.width) || 12));
 
     let currentSpan = startSpan;
@@ -2760,7 +2761,12 @@ function initPanelResize(e, panelId) {
         let newSpan = Math.round((targetWidth + gap) / colStep);
         newSpan = Math.max(1, Math.min(12, newSpan));
 
-        let newHeight = Math.round(startHeight + deltaY);
+        let effectiveDeltaY = deltaY;
+        if (isTableType && Math.abs(deltaX) > 25 && Math.abs(deltaY) < 25) {
+            effectiveDeltaY = 0;
+        }
+
+        let newHeight = Math.round(startHeight + effectiveDeltaY);
         newHeight = Math.max(80, Math.min(1500, newHeight));
 
         currentSpan = newSpan;
@@ -3875,7 +3881,7 @@ function generateSummaryPanelHtml(p, modules) {
     const isHidden = p.hidden === true;
     const hiddenClass = isHidden ? 'is-hidden' : '';
     const isTableWidget = ['sparkline_table', 'status_table', 'history_table', 'table_viewer', 'device_info'].includes(p.type);
-    const cardMinH = p.height ? `min-height:${p.height}px;` : '';
+    const cardMinH = isTableWidget ? '' : (p.height ? `min-height:${p.height}px;` : '');
     const cardHeight = isTableWidget ? 'height:auto;' : 'height:100%;';
     const bodyPadding = isTableWidget ? 'padding:10px;' : 'padding:10px;';
     const bodyFlex = isTableWidget ? 'flex-grow:1;' : '';
