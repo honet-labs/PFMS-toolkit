@@ -1197,6 +1197,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                     <label>Visual Type</label>
                     <select id="p_type" class="form-control-fix" onchange="toggleTypeFields(); toggleChartEngine(); updateVisualTypePreview();">
                         <option value="text">Value Number / Text</option>
+                        <option value="device_info">Device Info / Key-Value List</option>
                         <option value="gauge">Gauge Chart</option>
                         <option value="single_value">Single Value Card (Sparkline)</option>
                         <option value="line" selected>Line Chart</option>
@@ -1517,10 +1518,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         
         <!-- Filter Tabs -->
         <div style="padding:8px 20px; background:#ffffff; border-bottom:1px solid #f1f5f9; display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="button" class="vtp-tab-btn active" onclick="setVisualGalleryFilter('all', this)">All (15)</button>
+            <button type="button" class="vtp-tab-btn active" onclick="setVisualGalleryFilter('all', this)">All (16)</button>
             <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('timeseries', this)">Charts & Time-Series (4)</button>
             <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('status', this)">Status & Real-Time Grids (5)</button>
-            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('kpi', this)">Single Value & KPIs (3)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('kpi', this)">Single Value & KPIs (4)</button>
             <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('table', this)">Tables & Snapshots (3)</button>
         </div>
 
@@ -3391,11 +3392,75 @@ function generateSummaryPanelHtml(p, modules) {
                 ${paginationHtml}
             </div>`;
         }
+    } else if (p.type === 'device_info') {
+        const itemFs = parseInt(p.font_size) || 12;
+        const itemFw = p.font_weight || '600';
+        const showDot = p.show_status_dot !== false;
+        const limit = parseInt(p.row_limit) || 200;
+        
+        let displayModules = [...modules];
+        // If exact match with comma-separated list, preserve the user's defined order
+        if (p.keyword && (p.match_type === 'exact' || !p.match_type)) {
+            const orderKeywords = p.keyword.split(',').map(k => k.trim().toLowerCase());
+            displayModules.sort((a, b) => {
+                const idxA = orderKeywords.indexOf((a.module_name || '').trim().toLowerCase());
+                const idxB = orderKeywords.indexOf((b.module_name || '').trim().toLowerCase());
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                if (idxA !== -1) return -1;
+                if (idxB !== -1) return 1;
+                return (a.module_name || '').localeCompare(b.module_name || '');
+            });
+        }
+        displayModules = displayModules.slice(0, limit);
+
+        const distinctAgents = new Set(modules.map(m => m.agent_name).filter(Boolean));
+        const showAgentBadge = distinctAgents.size > 1;
+
+        let maxHStyle = '';
+        if (p.height && parseInt(p.height) > 0) {
+            maxHStyle = `max-height: ${Math.max(100, parseInt(p.height) - 60)}px; overflow-y: auto;`;
+        }
+
+        if (displayModules.length === 0) {
+            content = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:120px; color:#94a3b8; font-size:11px;">
+                <span class="material-symbols-outlined" style="font-size:24px; margin-bottom:4px; color:#cbd5e1;">info</span>
+                No modules matched
+            </div>`;
+        } else {
+            content = `
+            <div class="device-info-list" style="width:100%; ${maxHStyle} display:flex; flex-direction:column;">
+                ${displayModules.map((m, idx) => {
+                    let rawVal = m.current;
+                    let valText = formatSmartValue(rawVal, p.use_raw);
+                    if (p.lbl_1 && (rawVal == 1 || rawVal === '1')) valText = p.lbl_1;
+                    else if (p.lbl_0 && (rawVal == 0 || rawVal === '0')) valText = p.lbl_0;
+
+                    const unitHtml = (m.unit && m.unit !== '') ? `<span style="font-size:${Math.max(9, Math.round(itemFs * 0.85))}px; font-weight:normal; color:#64748b; margin-left:4px;">${escapeHtml(m.unit)}</span>` : '';
+                    const bgClass = {0:'bg-green', 1:'bg-red', 2:'bg-yellow', 4:'bg-blue'}[m.status] || 'bg-gray';
+                    const dotHtml = showDot ? `<span class="status-dot ${bgClass}" style="margin:0 8px 0 0; width:8px; height:8px; flex-shrink:0;"></span>` : '';
+                    const agentHtml = showAgentBadge ? `<span style="font-size:${Math.max(9, itemFs - 2)}px; color:#94a3b8; font-weight:normal; margin-left:6px;">(${escapeHtml(m.agent_name)})</span>` : '';
+                    const borderBottom = (idx === displayModules.length - 1) ? 'border-bottom:none;' : 'border-bottom:1px solid #f1f5f9;';
+                    const safeModName = (m.module_name || '').replace(/'/g, "\\'");
+
+                    return `
+                    <div class="device-info-row" style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; ${borderBottom} transition:background 0.15s ease; gap:16px; cursor:pointer;" onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background='transparent'" onclick="show_module_detail_dialog('${m.id}', '${m.agent_id}', 'data', 0, 86400, '${safeModName}')" title="${escapeHtml(m.module_name)}: ${escapeHtml(String(valText))}${m.unit ? ' ' + escapeHtml(m.unit) : ''} (Click to inspect)">
+                        <div style="font-size:${itemFs}px; font-weight:500; color:#475569; display:flex; align-items:center; min-width:0; flex:1;">
+                            ${dotHtml}
+                            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(m.module_name)}">${escapeHtml(m.module_name)}</span>
+                            ${agentHtml}
+                        </div>
+                        <div style="font-size:${itemFs}px; font-weight:${itemFw}; color:#0f172a; text-align:right; max-width:65%; word-break:break-word; line-height:1.35;">
+                            <span>${escapeHtml(String(valText))}</span>${unitHtml}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>`;
+        }
     }
 
     const isHidden = p.hidden === true;
     const hiddenClass = isHidden ? 'is-hidden' : '';
-    const isTableWidget = ['sparkline_table', 'status_table', 'history_table', 'table_viewer'].includes(p.type);
+    const isTableWidget = ['sparkline_table', 'status_table', 'history_table', 'table_viewer', 'device_info'].includes(p.type);
     const cardMinH = isTableWidget ? '' : (p.height ? `min-height:${p.height}px;` : '');
     const cardHeight = isTableWidget ? 'height:auto;' : 'height:100%;';
     const bodyPadding = isTableWidget ? 'padding:10px;' : 'padding:10px;';
@@ -3723,7 +3788,7 @@ function refreshCurrentNodeData() {
                 activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
             }
 
-            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table', 'sparkline_table'].includes(p.type)) {
+            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table', 'sparkline_table', 'device_info'].includes(p.type)) {
                 wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             } else {
                 if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
@@ -4209,7 +4274,7 @@ function toggleTypeFields() {
     if (document.getElementById('wrap_show_time')) document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_show_yaxis')) document.getElementById('wrap_show_yaxis').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_force_100')) document.getElementById('wrap_force_100').style.display = isChart ? 'flex' : 'none';
-    if (document.getElementById('wrap_show_status_dot')) document.getElementById('wrap_show_status_dot').style.display = (type === 'text' || isChart) ? 'flex' : 'none';
+    if (document.getElementById('wrap_show_status_dot')) document.getElementById('wrap_show_status_dot').style.display = (type === 'text' || type === 'device_info' || isChart) ? 'flex' : 'none';
     const wrapChartColors = document.getElementById('wrap_chart_colors');
     if (wrapChartColors) {
         wrapChartColors.style.display = isChart ? 'block' : 'none';
@@ -4227,7 +4292,7 @@ function toggleTypeFields() {
         document.getElementById('p_chart_font_size').disabled = !isChart;
     }
 
-    const isTable = (type === 'status_table' || type === 'history_table' || type === 'table_viewer' || type === 'sparkline_table');
+    const isTable = (type === 'status_table' || type === 'history_table' || type === 'table_viewer' || type === 'sparkline_table' || type === 'device_info');
     const wrapLimit = document.getElementById('wrap_row_limit');
     if (wrapLimit) {
         wrapLimit.style.opacity = isTable ? '1' : '0.3';
@@ -4248,6 +4313,11 @@ function toggleTypeFields() {
             wrapFontOptions.style.display = 'flex';
             lblFontSize.innerText = 'Table Font Size (px)';
             lblFontWeight.innerText = 'Table Font Weight';
+            document.getElementById('p_font_size').placeholder = '12';
+        } else if (type === 'device_info') {
+            wrapFontOptions.style.display = 'flex';
+            lblFontSize.innerText = 'Row Font Size (px)';
+            lblFontWeight.innerText = 'Value Font Weight';
             document.getElementById('p_font_size').placeholder = '12';
         } else if (type === 'status_heatmap' || type === 'heatmap') {
             wrapFontOptions.style.display = 'flex';
@@ -4349,6 +4419,16 @@ const VISUAL_TYPE_CATALOG = {
         desc: 'Displays status text (e.g., UP, ESTABLISHED, ACTIVE) or large numbers with a status dot indicator, font size, and flexible background color.',
         bestFor: 'BGP Peer Status, Service State (UP/DOWN), Cluster Active Role',
         render: () => `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:250px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; box-shadow:0 1px 3px rgba(0,0,0,0.02);"><div style="font-size:9px; font-weight:700; color:#64748b; letter-spacing:0.5px;">BGP PEER STATUS</div><div style="font-size:22px; font-weight:800; color:#10b981; margin:2px 0;">ESTABLISHED</div><div style="display:flex; align-items:center; gap:4px; font-size:10px; color:#64748b;"><span style="width:6px; height:6px; background:#10b981; border-radius:50%; display:inline-block;"></span> Uptime: 45 days 12 hrs</div></div>`
+    },
+    'device_info': {
+        title: 'Device Info / Key-Value List',
+        group: 'kpi',
+        badge: 'Property & Spec Sheet',
+        badgeColor: '#e0f2fe',
+        badgeTextColor: '#0369a1',
+        desc: 'Displays matching modules in a clean property list (1 row per module: module name on left, metric value and unit on right). Perfect for server specifications, hardware inventory, and system info cards.',
+        bestFor: 'Device Information Card, Server Specs & Inventory, Multi-Attribute Overview',
+        render: () => `<div style="width:100%; max-width:280px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; font-size:8px;"><div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; border-bottom:1px solid #f1f5f9;"><span style="color:#64748b; font-weight:600;">Hostname</span><span style="font-weight:700; color:#0f172a;">SRV-SIPD-APP01</span></div><div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; border-bottom:1px solid #f1f5f9;"><span style="color:#64748b; font-weight:600;">IP</span><span style="font-weight:700; color:#0f172a;">10.10.20.15</span></div><div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; border-bottom:1px solid #f1f5f9;"><span style="color:#64748b; font-weight:600;">OS</span><span style="font-weight:700; color:#0f172a;">Ubuntu 22.04 LTS</span></div><div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; border-bottom:1px solid #f1f5f9;"><span style="color:#64748b; font-weight:600;">CPU</span><span style="font-weight:700; color:#0f172a;">2 x Xeon Silver</span></div><div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px;"><span style="color:#64748b; font-weight:600;">Memori</span><span style="font-weight:700; color:#0f172a;">256 GB</span></div></div>`
     },
     'heatmap': {
         title: 'History Heatmap Blocks',
@@ -4661,8 +4741,8 @@ function openPanelEdit(id) {
     if (document.getElementById('p_heatmap_custom_text')) document.getElementById('p_heatmap_custom_text').value = p.heatmap_custom_text || '';
     document.getElementById('p_row_limit').value = p.row_limit || 200;
     document.getElementById('p_chart_font_size').value = p.chart_font_size || 10;
-    document.getElementById('p_font_size').value = p.font_size || (p.type === 'table_viewer' ? 11 : 32);
-    document.getElementById('p_font_weight').value = p.font_weight || (p.type === 'table_viewer' ? '400' : '700');
+    document.getElementById('p_font_size').value = p.font_size || (['table_viewer', 'device_info'].includes(p.type) ? 12 : 32);
+    document.getElementById('p_font_weight').value = p.font_weight || (['table_viewer', 'device_info'].includes(p.type) ? '600' : '700');
     if (document.getElementById('p_value_calc')) document.getElementById('p_value_calc').value = p.value_calc || 'current';
     document.getElementById('p_stat_bg_color').value = p.stat_bg_color || '#ffffff';
     document.getElementById('p_stat_bg_color_hex').value = p.stat_bg_color || '';
