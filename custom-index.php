@@ -112,7 +112,7 @@ $history_override = $config_data['history_override'];
 
 // Ensure critical system files/dirs are ALWAYS excluded
 $sys_dirs = ['.', '..', '.git'];
-$sys_files = ['custom-index.php'];
+$sys_files = ['custom-index.php', 'index.php'];
 $active_exclude_dirs = array_unique(array_merge($config_data['exclude_dirs'], $sys_dirs));
 $active_exclude_files = array_unique(array_merge($config_data['exclude_files'], $sys_files));
 
