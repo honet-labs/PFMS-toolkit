@@ -193,8 +193,18 @@ if ($api === 'export') {
                 global $custom_pdos;
                 $active_pdo = ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null);
                 if ($active_pdo !== null) {
-                    $stG = $active_pdo->prepare("SELECT id_agente FROM tagente WHERE id_grupo = ? AND disabled = 0");
-                    $stG->execute([$groupParsed['id']]);
+                    $targetGroups = get_all_child_groups($active_pdo, $groupParsed['id']);
+                    $inPlaceholders = implode(',', array_fill(0, count($targetGroups), '?'));
+                    $hasSecGroup = false;
+                    try { $active_pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSecGroup = true; } catch(Throwable $e) {}
+
+                    if ($hasSecGroup) {
+                        $stG = $active_pdo->prepare("SELECT DISTINCT a.id_agente FROM tagente a LEFT JOIN tagente_secondary_group sg ON a.id_agente = sg.id_agente WHERE (a.id_grupo IN ($inPlaceholders) OR sg.id_grupo IN ($inPlaceholders)) AND a.disabled = 0");
+                        $stG->execute(array_merge($targetGroups, $targetGroups));
+                    } else {
+                        $stG = $active_pdo->prepare("SELECT id_agente FROM tagente WHERE id_grupo IN ($inPlaceholders) AND disabled = 0");
+                        $stG->execute($targetGroups);
+                    }
                     while($rowG = $stG->fetch(PDO::FETCH_COLUMN)) {
                         $agent_ids_raw[] = get_node_uuid($node) . ':' . $rowG;
                     }
@@ -422,13 +432,13 @@ if ($api === 'groups') {
     if (ob_get_length()) ob_clean(); header('Content-Type: application/json; charset=utf-8');
     $dropdown = [['id' => '0', 'name' => '-- Select Target Group --']];
     
-    try {
-        $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
-        while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
-            $dropdown[] = ['id' => get_node_uuid('primary') . ':' . $g['id'], 'name' => '[Primary] ' . pretty_text($g['name'])]; 
-        }
-    } catch (Throwable $e) {}
+    // 1. Primary DB groups (Hierarchical Tree)
+    $primary_groups = get_hierarchical_groups($pdo, get_node_uuid('primary'), '');
+    foreach ($primary_groups as $pg) {
+        $dropdown[] = ['id' => $pg['id'], 'name' => $pg['name'], 'path' => $pg['path']];
+    }
     
+    // 2. Custom DB groups (Hierarchical Tree for remote nodes)
     global $custom_pdos, $custom_connections;
     if (!empty($custom_pdos)) {
         foreach ($custom_pdos as $cid => $cpdo) {
@@ -437,12 +447,10 @@ if ($api === 'groups') {
                 if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
             }
             if (empty($cname)) $cname = $cid;
-            try {
-                $stmt = $cpdo->query("SELECT id_grupo AS id, nombre AS name FROM tgrupo ORDER BY name ASC");
-                while($g = $stmt->fetch(PDO::FETCH_ASSOC)) { 
-                    $dropdown[] = ['id' => get_node_uuid($cid) . ':' . $g['id'], 'name' => '[' . $cname . '] ' . pretty_text($g['name'])]; 
-                }
-            } catch (Throwable $e) {}
+            $custom_groups = get_hierarchical_groups($cpdo, get_node_uuid($cid), $cname);
+            foreach ($custom_groups as $cg) {
+                $dropdown[] = ['id' => $cg['id'], 'name' => $cg['name'], 'path' => $cg['path']];
+            }
         }
     }
     echo json_encode($dropdown); exit;
@@ -484,36 +492,28 @@ if ($api === 'agents') {
         }
         
         try {
-            $sql = "SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0";
-            $params = [];
-            if ($info['group_id'] > 0) {
-                $targetGroups = [$info['group_id']];
-                try {
-                    $stmtAllGroups = $active_pdo->query("SELECT id_grupo, parent FROM tgrupo");
-                    if ($stmtAllGroups) {
-                        $allGroups = $stmtAllGroups->fetchAll(PDO::FETCH_ASSOC);
-                        if (!function_exists('traffic_get_child_groups')) {
-                            function traffic_get_child_groups($parentId, $allGroups) {
-                                $children = [$parentId];
-                                foreach ($allGroups as $g) {
-                                    if ($g['parent'] == $parentId && $g['id_grupo'] != $parentId) {
-                                        $children = array_merge($children, traffic_get_child_groups($g['id_grupo'], $allGroups));
-                                    }
-                                }
-                                return array_unique($children);
-                            }
-                        }
-                        $targetGroups = traffic_get_child_groups($info['group_id'], $allGroups);
-                    }
-                } catch (Throwable $e) {}
-
+            if ($info['group_id'] === 0) {
+                $stmt = $active_pdo->query("SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 ORDER BY alias ASC");
+            } else {
+                $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
                 $inPlaceholders = implode(',', array_fill(0, count($targetGroups), '?'));
-                $sql .= " AND id_grupo IN ($inPlaceholders)";
-                $params = array_merge($params, $targetGroups);
+                $hasSecGroup = false;
+                try { $active_pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSecGroup = true; } catch(Throwable $e) {}
+
+                if ($hasSecGroup) {
+                    $sql = "SELECT DISTINCT a.id_agente AS id, a.alias 
+                            FROM tagente a 
+                            LEFT JOIN tagente_secondary_group sg ON a.id_agente = sg.id_agente 
+                            WHERE a.disabled = 0 AND (a.id_grupo IN ($inPlaceholders) OR sg.id_grupo IN ($inPlaceholders)) 
+                            ORDER BY a.alias ASC";
+                    $stmt = $active_pdo->prepare($sql);
+                    $stmt->execute(array_merge($targetGroups, $targetGroups));
+                } else {
+                    $sql = "SELECT id_agente AS id, alias FROM tagente WHERE disabled = 0 AND id_grupo IN ($inPlaceholders) ORDER BY alias ASC";
+                    $stmt = $active_pdo->prepare($sql);
+                    $stmt->execute($targetGroups);
+                }
             }
-            $sql .= " ORDER BY alias ASC";
-            $stmt = $active_pdo->prepare($sql);
-            $stmt->execute($params);
             while ($a = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $list[] = [
                     'id' => get_node_uuid($node) . ':' . $a['id'],
@@ -628,32 +628,20 @@ if ($api === 'data') {
                         WHERE am.disabled = 0 AND a.disabled = 0";
 
                 if ($info['group_id'] > 0) {
-                    $targetGroups = [$info['group_id']];
-                    try {
-                        $stmtAllGroups = $active_pdo->query("SELECT id_grupo, parent FROM tgrupo");
-                        if ($stmtAllGroups) {
-                            $allGroups = $stmtAllGroups->fetchAll(PDO::FETCH_ASSOC);
-                            if (!function_exists('traffic_get_child_groups')) {
-                                function traffic_get_child_groups($parentId, $allGroups) {
-                                    $children = [$parentId];
-                                    foreach ($allGroups as $g) {
-                                        if ($g['parent'] == $parentId && $g['id_grupo'] != $parentId) {
-                                            $children = array_merge($children, traffic_get_child_groups($g['id_grupo'], $allGroups));
-                                        }
-                                    }
-                                    return array_unique($children);
-                                }
-                            }
-                            $targetGroups = traffic_get_child_groups($info['group_id'], $allGroups);
-                        }
-                    } catch (Throwable $e) {}
-
+                    $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
                     $inG = [];
                     foreach ($targetGroups as $idx => $tgId) {
                         $inG[] = ":gid{$idx}";
                         $params[":gid{$idx}"] = $tgId;
                     }
-                    $sql .= " AND a.id_grupo IN (" . implode(',', $inG) . ")";
+                    $inPlaceholders = implode(',', $inG);
+                    $hasSecGroup = false;
+                    try { $active_pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSecGroup = true; } catch(Throwable $e) {}
+                    if ($hasSecGroup) {
+                        $sql .= " AND (a.id_grupo IN ($inPlaceholders) OR EXISTS (SELECT 1 FROM tagente_secondary_group sg WHERE sg.id_agente = a.id_agente AND sg.id_grupo IN ($inPlaceholders)))";
+                    } else {
+                        $sql .= " AND a.id_grupo IN ($inPlaceholders)";
+                    }
                 }
                 if ($info['agent_id'] > 0) { $sql .= " AND a.id_agente = :aid"; $params[':aid'] = $info['agent_id']; }
 

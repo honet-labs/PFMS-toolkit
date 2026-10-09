@@ -463,6 +463,153 @@ function parse_node_ids($prefixed_ids_str) {
     return $ids_by_node;
 }
 
+if (!function_exists('get_all_child_groups')) {
+    /**
+     * Recursively retrieve all child group IDs for a given parent group ID in Pandora FMS.
+     * Includes the parent group ID itself in the returned array.
+     * Safe against circular parent references.
+     *
+     * @param PDO $pdo Active PDO connection
+     * @param int|string $parentId Parent group ID (e.g. 5, or 'primary:5')
+     * @return array List of integer group IDs
+     */
+    function get_all_child_groups($pdo, $parentId): array {
+        if (!($pdo instanceof PDO)) {
+            $parsed = parse_node_id($parentId);
+            return $parsed['id'] > 0 ? [(int)$parsed['id']] : [];
+        }
+
+        $parsed = parse_node_id($parentId);
+        $gid = (int)$parsed['id'];
+        if ($gid <= 0) {
+            return [];
+        }
+
+        try {
+            $stmt = $pdo->query("SELECT id_grupo, parent FROM tgrupo");
+            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            if (empty($rows)) {
+                return [$gid];
+            }
+
+            $children_map = [];
+            foreach ($rows as $r) {
+                $p = (int)($r['parent'] ?? 0);
+                $g = (int)($r['id_grupo'] ?? 0);
+                if ($g > 0 && $g !== $p) {
+                    $children_map[$p][] = $g;
+                }
+            }
+
+            $result = [$gid];
+            $visited = [$gid => true];
+            $queue = [$gid];
+
+            while (!empty($queue)) {
+                $curr = array_shift($queue);
+                if (!empty($children_map[$curr])) {
+                    foreach ($children_map[$curr] as $childId) {
+                        if (!isset($visited[$childId])) {
+                            $visited[$childId] = true;
+                            $result[] = $childId;
+                            $queue[] = $childId;
+                        }
+                    }
+                }
+            }
+
+            return array_values(array_unique($result));
+        } catch (Throwable $e) {
+            return [$gid];
+        }
+    }
+}
+
+if (!function_exists('get_hierarchical_groups')) {
+    /**
+     * Build an indented hierarchical group tree for select dropdowns.
+     *
+     * @param PDO $pdo
+     * @param string $prefix_id Node prefix (e.g. 'primary' or custom connection id)
+     * @param string $node_label Optional prefix label in option text
+     * @return array
+     */
+    function get_hierarchical_groups(PDO $pdo, string $prefix_id = 'primary', string $node_label = ''): array {
+        try {
+            $stmt = $pdo->query("SELECT id_grupo AS id, nombre AS name, parent FROM tgrupo ORDER BY nombre ASC");
+            $all = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            if (empty($all)) return [];
+
+            $by_parent = [];
+            foreach ($all as $g) {
+                $p = (int)($g['parent'] ?? 0);
+                $by_parent[$p][] = $g;
+            }
+
+            foreach ($by_parent as $p => &$children) {
+                usort($children, function($a, $b) {
+                    return strcasecmp($a['name'], $b['name']);
+                });
+            }
+            unset($children);
+
+            $result = [];
+            $traverse = function(int $parent_id, int $depth, string $path_accum) use (&$traverse, &$result, &$by_parent, $prefix_id, $node_label) {
+                if (!isset($by_parent[$parent_id])) return;
+
+                foreach ($by_parent[$parent_id] as $g) {
+                    $gid = (int)$g['id'];
+                    $clean_name = pretty_text($g['name']);
+                    $current_path = $path_accum ? ($path_accum . ' / ' . $clean_name) : $clean_name;
+
+                    $indent = '';
+                    if ($depth > 0) {
+                        $indent = str_repeat("    ", $depth - 1) . "└─ ";
+                    }
+
+                    $displayName = $indent . $clean_name;
+                    if (!empty($node_label)) {
+                        $displayName = '[' . $node_label . '] ' . $displayName;
+                    }
+
+                    $result[] = [
+                        'id' => $prefix_id . ':' . $gid,
+                        'name' => $displayName,
+                        'path' => $current_path,
+                        'depth' => $depth,
+                        'raw_id' => $gid
+                    ];
+
+                    $traverse($gid, $depth + 1, $current_path);
+                }
+            };
+
+            $traverse(0, 0, '');
+
+            $seen_ids = array_column($result, 'raw_id');
+            foreach ($all as $g) {
+                $gid = (int)$g['id'];
+                if (!in_array($gid, $seen_ids, true)) {
+                    $clean_name = pretty_text($g['name']);
+                    $displayName = $clean_name;
+                    if (!empty($node_label)) $displayName = '[' . $node_label . '] ' . $displayName;
+                    $result[] = [
+                        'id' => $prefix_id . ':' . $gid,
+                        'name' => $displayName,
+                        'path' => $clean_name,
+                        'depth' => 0,
+                        'raw_id' => $gid
+                    ];
+                }
+            }
+
+            return $result;
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+}
+
 function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $limit = 5000, $order = 'DESC') {
     $parsed = parse_node_id($id_mod);
     $node = $parsed['node'];

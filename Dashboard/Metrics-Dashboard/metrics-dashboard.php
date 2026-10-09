@@ -226,6 +226,8 @@ if ($api === 'search_agents' && $db_status) {
     $q = trim($_GET['q'] ?? '');
     $selected_ids_str = trim($_GET['selected_ids'] ?? '');
     $selected_ids = $selected_ids_str !== '' ? explode(',', $selected_ids_str) : [];
+    $groupIdRaw = $_GET['group_id'] ?? '0';
+    $groupParsed = parse_node_id($groupIdRaw);
     
     $agents = [];
     $limit = 100;
@@ -244,76 +246,82 @@ if ($api === 'search_agents' && $db_status) {
             }
         }
     }
-    
-    // 1. Fetch Primary DB agents
-    try {
-        $where_clauses = ["disabled = 0"];
-        $params = [];
-        
-        $term_conds = [];
-        if ($q !== '') {
-            $term_conds[] = "alias LIKE ?";
-            $params[] = "%$q%";
-        }
-        if (!empty($primary_sel_ids)) {
-            $placeholders = implode(',', array_fill(0, count($primary_sel_ids), '?'));
-            $term_conds[] = "id_agente IN ($placeholders)";
-            foreach ($primary_sel_ids as $pid) $params[] = $pid;
-        }
-        
-        if (!empty($term_conds)) {
-            $where_clauses[] = "(" . implode(" OR ", $term_conds) . ")";
-        }
-        
-        $where = "WHERE " . implode(" AND ", $where_clauses);
-        
-        $sql = "SELECT id_agente AS id, alias FROM tagente $where ORDER BY alias ASC LIMIT $limit";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        while($a = $stmt->fetch()) {
-            $agents[] = ['id' => 'primary:' . $a['id'], 'alias' => '[Primary] ' . pretty_text($a['alias'])];
-        }
-    } catch (Throwable $e) {}
-    
-    // 2. Custom DB agents
+
     global $custom_pdos, $custom_connections;
-    if (!empty($custom_pdos)) {
-        foreach ($custom_pdos as $cid => $cpdo) {
-            $cname = '';
-            foreach ($custom_connections as $cc) {
-                if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
+    $target_nodes = [];
+    if ($groupParsed['id'] > 0) {
+        $target_nodes[$groupParsed['node']] = [
+            'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
+            'group_id' => $groupParsed['id']
+        ];
+    } else {
+        $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = ['pdo' => $cpdo, 'group_id' => 0];
             }
-            if (empty($cname)) $cname = $cid;
-            try {
-                $where_clauses = ["disabled = 0"];
-                $params = [];
-                
-                $term_conds = [];
-                if ($q !== '') {
-                    $term_conds[] = "alias LIKE ?";
-                    $params[] = "%$q%";
-                }
-                $c_sel = $custom_sel_ids[$cid] ?? [];
-                if (!empty($c_sel)) {
-                    $placeholders = implode(',', array_fill(0, count($c_sel), '?'));
-                    $term_conds[] = "id_agente IN ($placeholders)";
-                    foreach ($c_sel as $csid) $params[] = $csid;
-                }
-                
-                if (!empty($term_conds)) {
-                    $where_clauses[] = "(" . implode(" OR ", $term_conds) . ")";
-                }
-                
-                $where = "WHERE " . implode(" AND ", $where_clauses);
-                
-                $sql = "SELECT id_agente AS id, alias FROM tagente $where ORDER BY alias ASC LIMIT $limit";
-                $stmt = $cpdo->prepare($sql);
-                $stmt->execute($params);
-                while($a = $stmt->fetch()) {
-                    $agents[] = ['id' => $cid . ':' . $a['id'], 'alias' => '[' . $cname . '] ' . pretty_text($a['alias'])];
-                }
-            } catch (Throwable $e) {}
         }
+    }
+
+    foreach ($target_nodes as $node => $info) {
+        $active_pdo = $info['pdo'];
+        if ($active_pdo === null) continue;
+
+        $node_label = '';
+        if ($node !== 'primary') {
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
+            }
+            if (empty($node_label)) $node_label = '[' . $node . '] ';
+        } else {
+            $node_label = '[Primary] ';
+        }
+
+        try {
+            $where_clauses = ["a.disabled = 0"];
+            $params = [];
+
+            if ($info['group_id'] > 0) {
+                $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
+                $inStr = implode(',', array_fill(0, count($targetGroups), '?'));
+                $hasSec = false;
+                try { $active_pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSec = true; } catch(Throwable $e) {}
+                if ($hasSec) {
+                    $where_clauses[] = "(a.id_grupo IN ($inStr) OR sg.id_grupo IN ($inStr))";
+                    $params = array_merge($params, $targetGroups, $targetGroups);
+                } else {
+                    $where_clauses[] = "a.id_grupo IN ($inStr)";
+                    $params = array_merge($params, $targetGroups);
+                }
+            }
+
+            $term_conds = [];
+            if ($q !== '') {
+                $term_conds[] = "a.alias LIKE ?";
+                $params[] = "%$q%";
+            }
+
+            $sel = ($node === 'primary') ? $primary_sel_ids : ($custom_sel_ids[$node] ?? []);
+            if (!empty($sel)) {
+                $placeholders = implode(',', array_fill(0, count($sel), '?'));
+                $term_conds[] = "a.id_agente IN ($placeholders)";
+                foreach ($sel as $sid) $params[] = $sid;
+            }
+
+            if (!empty($term_conds)) {
+                $where_clauses[] = "(" . implode(" OR ", $term_conds) . ")";
+            }
+
+            $where = "WHERE " . implode(" AND ", $where_clauses);
+            $joinSec = ($info['group_id'] > 0 && !empty($hasSec)) ? "LEFT JOIN tagente_secondary_group sg ON a.id_agente = sg.id_agente" : "";
+
+            $sql = "SELECT DISTINCT a.id_agente AS id, a.alias FROM tagente a $joinSec $where ORDER BY a.alias ASC LIMIT $limit";
+            $stmt = $active_pdo->prepare($sql);
+            $stmt->execute($params);
+            while ($a = $stmt->fetch()) {
+                $agents[] = ['id' => $node . ':' . $a['id'], 'alias' => $node_label . pretty_text($a['alias'])];
+            }
+        } catch (Throwable $e) {}
     }
     
     $unique_agents = [];
@@ -343,21 +351,17 @@ if ($api === 'module_list' && $db_status) {
             $whereClause = "AND id_agente IN ($placeholders)";
             foreach ($agentIds as $id) { $params[] = $id; }
         } elseif ($gId > 0) {
-            $stmtAllGroups = $db_pdo->query("SELECT id_grupo, parent FROM tgrupo");
-            $allGroups = $stmtAllGroups->fetchAll();
-            $getChildGroupsLocal = function($parentId, $allGroups) use (&$getChildGroupsLocal) {
-                $children = [$parentId];
-                foreach ($allGroups as $g) {
-                    if ($g['parent'] == $parentId) {
-                        $children = array_merge($children, $getChildGroupsLocal($g['id_grupo'], $allGroups));
-                    }
-                }
-                return array_unique($children);
-            };
-            $targetGroups = $getChildGroupsLocal($gId, $allGroups);
+            $targetGroups = get_all_child_groups($db_pdo, $gId);
             $placeholders = implode(',', array_fill(0, count($targetGroups), '?'));
-            $whereClause = "AND id_agente IN (SELECT id_agente FROM tagente WHERE id_grupo IN ($placeholders) AND disabled = 0)";
-            foreach ($targetGroups as $tg) { $params[] = $tg; }
+            $hasSec = false;
+            try { $db_pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSec = true; } catch(Throwable $e) {}
+            if ($hasSec) {
+                $whereClause = "AND id_agente IN (SELECT DISTINCT a.id_agente FROM tagente a LEFT JOIN tagente_secondary_group sg ON a.id_agente = sg.id_agente WHERE (a.id_grupo IN ($placeholders) OR sg.id_grupo IN ($placeholders)) AND a.disabled = 0)";
+                $params = array_merge($targetGroups, $targetGroups);
+            } else {
+                $whereClause = "AND id_agente IN (SELECT id_agente FROM tagente WHERE id_grupo IN ($placeholders) AND disabled = 0)";
+                $params = $targetGroups;
+            }
         }
         
         $sql = "SELECT DISTINCT nombre FROM tagente_modulo WHERE disabled = 0 $whereClause ORDER BY nombre ASC";
@@ -570,22 +574,18 @@ if ($api === 'card_data' && $db_status) {
                 $whereClause = "AND a.id_agente IN (" . implode(',', array_fill(0, count($info['agent_ids']), '?')) . ")";
                 foreach ($info['agent_ids'] as $id) { $node_params[] = $id; }
             } elseif ($info['group_id'] > 0) {
-                $stmtAllGroups = $active_pdo->query("SELECT id_grupo, parent FROM tgrupo");
-                $allGroups = $stmtAllGroups->fetchAll();
-                if (!function_exists('getChildGroupsLocal2')) {
-                    function getChildGroupsLocal2($parentId, $allGroups) { 
-                        $children = [$parentId]; 
-                        foreach ($allGroups as $g) { 
-                            if ($g['parent'] == $parentId) { 
-                                $children = array_merge($children, getChildGroupsLocal2($g['id_grupo'], $allGroups)); 
-                            } 
-                        } 
-                        return array_unique($children); 
-                    }
+                $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
+                $placeholders = implode(',', array_fill(0, count($targetGroups), '?'));
+                $hasSec = false;
+                try { $active_pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSec = true; } catch(Throwable $e) {}
+                if ($hasSec) {
+                    $whereClause = "AND (a.id_grupo IN ($placeholders) OR EXISTS (SELECT 1 FROM tagente_secondary_group sg WHERE sg.id_agente = a.id_agente AND sg.id_grupo IN ($placeholders)))";
+                    foreach ($targetGroups as $tg) { $node_params[] = $tg; }
+                    foreach ($targetGroups as $tg) { $node_params[] = $tg; }
+                } else {
+                    $whereClause = "AND a.id_grupo IN ($placeholders)";
+                    foreach ($targetGroups as $tg) { $node_params[] = $tg; }
                 }
-                $targetGroups = getChildGroupsLocal2($info['group_id'], $allGroups);
-                $whereClause = "AND a.id_grupo IN (" . implode(',', array_fill(0, count($targetGroups), '?')) . ")";
-                foreach ($targetGroups as $tg) { $node_params[] = $tg; }
             } else {
                 try {
                     $recent_stmt = $active_pdo->query("SELECT id_agente FROM tagente WHERE disabled = 0 ORDER BY id_agente DESC LIMIT 50");
@@ -789,22 +789,18 @@ if ($api === 'status_details' && $db_status) {
                 $whereClause = "AND a.id_agente IN (" . implode(',', array_fill(0, count($info['agent_ids']), '?')) . ")";
                 foreach ($info['agent_ids'] as $id) { $node_params[] = $id; }
             } elseif ($info['group_id'] > 0) {
-                $stmtAllGroups = $active_pdo->query("SELECT id_grupo, parent FROM tgrupo");
-                $allGroups = $stmtAllGroups->fetchAll();
-                if (!function_exists('getChildGroupsLocal3')) {
-                    function getChildGroupsLocal3($parentId, $allGroups) { 
-                        $children = [$parentId]; 
-                        foreach ($allGroups as $g) { 
-                            if ($g['parent'] == $parentId) { 
-                                $children = array_merge($children, getChildGroupsLocal3($g['id_grupo'], $allGroups)); 
-                            } 
-                        } 
-                        return array_unique($children); 
-                    }
+                $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
+                $placeholders = implode(',', array_fill(0, count($targetGroups), '?'));
+                $hasSec = false;
+                try { $active_pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSec = true; } catch(Throwable $e) {}
+                if ($hasSec) {
+                    $whereClause = "AND (a.id_grupo IN ($placeholders) OR EXISTS (SELECT 1 FROM tagente_secondary_group sg WHERE sg.id_agente = a.id_agente AND sg.id_grupo IN ($placeholders)))";
+                    foreach ($targetGroups as $tg) { $node_params[] = $tg; }
+                    foreach ($targetGroups as $tg) { $node_params[] = $tg; }
+                } else {
+                    $whereClause = "AND a.id_grupo IN ($placeholders)";
+                    foreach ($targetGroups as $tg) { $node_params[] = $tg; }
                 }
-                $targetGroups = getChildGroupsLocal3($info['group_id'], $allGroups);
-                $whereClause = "AND a.id_grupo IN (" . implode(',', array_fill(0, count($targetGroups), '?')) . ")";
-                foreach ($targetGroups as $tg) { $node_params[] = $tg; }
             }
 
             $sql = "SELECT a.id_agente, a.alias AS agent_alias, g.nombre AS group_name, a.direccion AS ip_address, 
@@ -1454,8 +1450,8 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         </div>
 
         <div class="form-group"><label>Filter By Group</label><select id="b_group" class="form-control-fix" onchange="toggleManualSelector(); refreshBuilderModuleList();"></select></div>
-        <div id="manual_selector_box" class="form-group" style="display:none;">
-            <label>Select Agents (Unlimited)</label>
+        <div id="manual_selector_box" class="form-group">
+            <label>Select Agents (Optional - leave unselected for all in group)</label>
             <div style="border:1px solid #dce1e5; border-radius:6px; background:#fff;">
                 <div style="padding:10px; background:#f8f9fa; border-bottom:1px solid #eee; display:flex; align-items:center; gap:8px; justify-content:space-between;">
                     <div style="display:flex; align-items:center; gap:8px; flex:1;">
@@ -2585,12 +2581,17 @@ function runTimerLogic() {
 }
 
 function loadGroups() { fetch('?api=groups').then(r=>r.json()).then(data => { const sel = document.getElementById('b_group'); data.forEach(g => sel.add(new Option(g.name, g.id))); }); }
-function toggleManualSelector() { document.getElementById('manual_selector_box').style.display = (document.getElementById('b_group').value === '0') ? 'block' : 'none'; }
+function toggleManualSelector() { 
+    const box = document.getElementById('manual_selector_box');
+    if (box) box.style.display = 'block';
+    loadAgentsForBuilder('');
+}
 async function loadAgentsForBuilder(query) {
     const list = document.getElementById('agent_checkbox_list');
     list.innerHTML = '<div style="padding:15px; text-align:center; color:#7f8c8d;">Searching agents...</div>';
+    const curGroup = document.getElementById('b_group') ? document.getElementById('b_group').value : '0';
     try {
-        const res = await fetch('?api=search_agents&q=' + encodeURIComponent(query) + '&selected_ids=' + encodeURIComponent(selectedIds.join(',')));
+        const res = await fetch('?api=search_agents&q=' + encodeURIComponent(query) + '&group_id=' + encodeURIComponent(curGroup) + '&selected_ids=' + encodeURIComponent(selectedIds.join(',')));
         fullAgentsList = await res.json();
         renderAgentDropdown();
     } catch(e) {

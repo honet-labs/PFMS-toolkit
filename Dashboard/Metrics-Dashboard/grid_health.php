@@ -123,50 +123,75 @@ if ($api === 'get_master') {
 if ($api === 'search_agents' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
     $q = trim($_GET['q'] ?? '');
+    $groupIdRaw = $_GET['group_id'] ?? '0';
+    $groupParsed = parse_node_id($groupIdRaw);
     
     $agents = [];
     $limit = 100;
-    
-    // Primary DB agents
-    try {
-        $where = "WHERE disabled = 0";
-        $params = [];
-        if ($q !== '') {
-            $where .= " AND alias LIKE ?";
-            $params[] = "%$q%";
-        }
-        $sql = "SELECT id_agente AS id, alias FROM tagente $where ORDER BY alias ASC LIMIT $limit";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        while($a = $stmt->fetch()) {
-            $agents[] = ['id' => 'primary:' . $a['id'], 'alias' => pretty_text($a['alias'])];
-        }
-    } catch (Throwable $e) {}
-    
-    // Custom DB agents
+
     global $custom_pdos, $custom_connections;
-    if (!empty($custom_pdos) && count($agents) < $limit) {
-        foreach ($custom_pdos as $cid => $cpdo) {
-            $cname = '';
-            foreach ($custom_connections as $cc) {
-                if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
+    $target_nodes = [];
+    if ($groupParsed['id'] > 0) {
+        $target_nodes[$groupParsed['node']] = [
+            'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
+            'group_id' => $groupParsed['id']
+        ];
+    } else {
+        $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0];
+        if (!empty($custom_pdos)) {
+            foreach ($custom_pdos as $cid => $cpdo) {
+                $target_nodes[$cid] = ['pdo' => $cpdo, 'group_id' => 0];
             }
-            if (empty($cname)) $cname = $cid;
-            try {
-                $where = "WHERE disabled = 0";
-                $params = [];
-                if ($q !== '') {
-                    $where .= " AND alias LIKE ?";
-                    $params[] = "%$q%";
-                }
-                $sql = "SELECT id_agente AS id, alias FROM tagente $where ORDER BY alias ASC LIMIT " . ($limit - count($agents));
-                $stmt = $cpdo->prepare($sql);
-                $stmt->execute($params);
-                while($a = $stmt->fetch()) {
-                    $agents[] = ['id' => $cid . ':' . $a['id'], 'alias' => '[' . $cname . '] ' . pretty_text($a['alias'])];
-                }
-            } catch (Throwable $e) {}
         }
+    }
+
+    foreach ($target_nodes as $node => $info) {
+        $active_pdo = $info['pdo'];
+        if ($active_pdo === null) continue;
+
+        $node_label = '';
+        if ($node !== 'primary') {
+            foreach ($custom_connections as $cc) {
+                if ($cc['id'] === $node) { $node_label = '[' . $cc['name'] . '] '; break; }
+            }
+            if (empty($node_label)) $node_label = '[' . $node . '] ';
+        } else {
+            $node_label = '';
+        }
+
+        try {
+            $where_clauses = ["a.disabled = 0"];
+            $params = [];
+
+            if ($info['group_id'] > 0) {
+                $targetGroups = get_all_child_groups($active_pdo, $info['group_id']);
+                $inStr = implode(',', array_fill(0, count($targetGroups), '?'));
+                $hasSec = false;
+                try { $active_pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSec = true; } catch(Throwable $e) {}
+                if ($hasSec) {
+                    $where_clauses[] = "(a.id_grupo IN ($inStr) OR sg.id_grupo IN ($inStr))";
+                    $params = array_merge($params, $targetGroups, $targetGroups);
+                } else {
+                    $where_clauses[] = "a.id_grupo IN ($inStr)";
+                    $params = array_merge($params, $targetGroups);
+                }
+            }
+
+            if ($q !== '') {
+                $where_clauses[] = "a.alias LIKE ?";
+                $params[] = "%$q%";
+            }
+
+            $where = "WHERE " . implode(" AND ", $where_clauses);
+            $joinSec = ($info['group_id'] > 0 && !empty($hasSec)) ? "LEFT JOIN tagente_secondary_group sg ON a.id_agente = sg.id_agente" : "";
+
+            $sql = "SELECT DISTINCT a.id_agente AS id, a.alias FROM tagente a $joinSec $where ORDER BY a.alias ASC LIMIT " . ($limit - count($agents));
+            $stmt = $active_pdo->prepare($sql);
+            $stmt->execute($params);
+            while ($a = $stmt->fetch()) {
+                $agents[] = ['id' => $node . ':' . $a['id'], 'alias' => $node_label . pretty_text($a['alias'])];
+            }
+        } catch (Throwable $e) {}
     }
     
     echo json_encode(['agents' => $agents]); exit;
@@ -175,15 +200,13 @@ if ($api === 'get_resources' && $db_status) {
     ob_clean(); header('Content-Type: application/json');
     $groups = [];
     
-    // Primary DB groups
-    try {
-        $primary_groups = $pdo->query("SELECT id_grupo as id, nombre as name FROM tgrupo ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($primary_groups as $g) {
-            $groups[] = ['id' => 'primary:' . $g['id'], 'name' => '[Primary] ' . pretty_text($g['name'])];
-        }
-    } catch (Exception $e) {}
+    // 1. Primary DB groups (Hierarchical Tree)
+    $primary_groups = get_hierarchical_groups($pdo, 'primary', '');
+    foreach ($primary_groups as $pg) {
+        $groups[] = ['id' => $pg['id'], 'name' => $pg['name'], 'path' => $pg['path']];
+    }
     
-    // Custom DB groups
+    // 2. Custom DB groups (Hierarchical Tree for remote nodes)
     global $custom_pdos, $custom_connections;
     if (!empty($custom_pdos)) {
         foreach ($custom_pdos as $cid => $cpdo) {
@@ -192,13 +215,10 @@ if ($api === 'get_resources' && $db_status) {
                 if ($cc['id'] === $cid) { $cname = $cc['name']; break; }
             }
             if (empty($cname)) $cname = $cid;
-            
-            try {
-                $custom_groups = $cpdo->query("SELECT id_grupo as id, nombre as name FROM tgrupo ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($custom_groups as $g) {
-                    $groups[] = ['id' => $cid . ':' . $g['id'], 'name' => '[' . $cname . '] ' . pretty_text($g['name'])];
-                }
-            } catch (Exception $e) {}
+            $custom_groups = get_hierarchical_groups($cpdo, $cid, $cname);
+            foreach ($custom_groups as $cg) {
+                $groups[] = ['id' => $cg['id'], 'name' => $cg['name'], 'path' => $cg['path']];
+            }
         }
     }
     

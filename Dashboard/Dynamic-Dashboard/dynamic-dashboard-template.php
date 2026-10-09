@@ -1952,7 +1952,7 @@ function openDashMetaModal(isEdit = false) {
         const d = masterDashboards.find(x => x.id === currentDashId);
         document.getElementById('dashMetaTitle').innerText = 'Edit Dashboard Settings';
         document.getElementById('m_dash_title').value = d.title;
-        document.getElementById('m_default_group').value = d.default_group || 0;
+        document.getElementById('m_default_group').value = d.default_group || '0';
     } else {
         document.getElementById('dashMetaTitle').innerText = 'Create New Dashboard';
         document.getElementById('m_dash_title').value = '';
@@ -1965,7 +1965,7 @@ function closeDashMetaModal() { document.getElementById('dashMetaModal').style.d
 
 function saveDashboardMeta() {
     const title = document.getElementById('m_dash_title').value || 'New Dashboard';
-    const grp = parseInt(document.getElementById('m_default_group').value);
+    const grp = document.getElementById('m_default_group').value || '0';
     
     if (document.getElementById('dashMetaTitle').innerText.includes('Edit') && currentDashId) {
         masterDashboards = masterDashboards.map(d => {
@@ -1991,7 +1991,7 @@ function deleteDashboard(id) {
 
 function saveCurrentDashboard() {
     if(!currentDashId) return;
-    const currentGroup = parseInt(document.getElementById('top_group').value);
+    const currentGroup = document.getElementById('top_group').value || '0';
     const currentAgent = document.getElementById('top_agent').value;
     const currentAgentName = document.getElementById('agent_search_input').value; 
     masterDashboards = masterDashboards.map(d => {
@@ -2131,7 +2131,7 @@ function openDashboard(id, initGroupId = null, initAgentId = null) {
         document.getElementById('pageMainTitle').innerText = d.title;
     }
     
-    const targetGroup = initGroupId !== null ? initGroupId : (d.default_group || 0);
+    const targetGroup = initGroupId !== null ? String(initGroupId) : String(d.default_group || '0');
     const targetAgent = initAgentId !== null ? initAgentId : (d.default_agent || null);
 
     if(document.getElementById('top_group')) document.getElementById('top_group').value = targetGroup;
@@ -2215,12 +2215,12 @@ function onGroupChange(autoSelectAgentId = null) {
             return;
         }
         currentAgentList = nodes || [];
-        if (autoSelectAgentId && currentAgentList.some(n => n.id == autoSelectAgentId)) {
-            const selNode = currentAgentList.find(n => n.id == autoSelectAgentId);
+        if (autoSelectAgentId && currentAgentList.some(n => String(n.id) === String(autoSelectAgentId))) {
+            const selNode = currentAgentList.find(n => String(n.id) === String(autoSelectAgentId));
             selectAgent(selNode.id, selNode.alias, true);
         } else {
             searchInput.value = '';
-            document.getElementById('top_agent').value = 0;
+            document.getElementById('top_agent').value = '0';
             forceRefresh(); 
         }
         updateURLState(currentDashId, groupId, document.getElementById('top_agent').value);

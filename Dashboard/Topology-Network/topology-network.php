@@ -1227,6 +1227,18 @@ if (!empty($api)) {
         try {
             $ipCol = get_agent_ip_col($pdo);
 
+            $hasSec = false;
+            try { $pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSec = true; } catch(Throwable $e) {}
+            $sec_groups = [];
+            if ($hasSec) {
+                $st_sec = $pdo->query("SELECT id_agente, id_grupo FROM tagente_secondary_group");
+                if ($st_sec) {
+                    while ($r = $st_sec->fetch(PDO::FETCH_ASSOC)) {
+                        $sec_groups[(int)$r['id_agente']][] = (int)$r['id_grupo'];
+                    }
+                }
+            }
+
             $sql = "SELECT a.id_agente, a.nombre, a.alias, a.$ipCol AS ip, 
                            os.name AS os, os.icon_name AS os_icon, a.id_grupo, a.id_parent, 
                            COALESCE(g.nombre, 'Unknown') AS group_name
@@ -1241,13 +1253,15 @@ if (!empty($api)) {
             foreach ($agents as $a) {
                 $role = TopologyDeviceClassifier::classifyAgent($a);
                 $icon_url = TopologyDeviceClassifier::getIconUrl($PANDORA_BASE_URL, $a, $role);
+                $aid = (int)$a['id_agente'];
                 $list[] = [
-                    'id' => (int)$a['id_agente'],
+                    'id' => $aid,
                     'name' => pretty_text($a['alias'] ?: $a['nombre']),
                     'raw_name' => pretty_text($a['nombre']),
                     'ip' => pretty_text($a['ip'] ?: '-'),
                     'role' => $role,
                     'group_id' => (int)$a['id_grupo'],
+                    'secondary_group_ids' => $sec_groups[$aid] ?? [],
                     'group_name' => pretty_text($a['group_name']),
                     'os' => pretty_text($a['os'] ?: 'Unknown'),
                     'icon_url' => $icon_url
@@ -1422,21 +1436,7 @@ if (!empty($api)) {
             // Expand sub-groups recursively if group_id is given
             $target_group_ids = [];
             if ($group_id !== null && $group_id > 0) {
-                $st_all_g = $pdo->query("SELECT id_grupo, parent FROM tgrupo");
-                $g_rows = $st_all_g ? $st_all_g->fetchAll(PDO::FETCH_ASSOC) : [];
-                $g_map = [];
-                foreach ($g_rows as $r) {
-                    $g_map[(int)$r['parent']][] = (int)$r['id_grupo'];
-                }
-                $expandGroups = function($gid) use (&$expandGroups, &$g_map, &$target_group_ids) {
-                    $target_group_ids[] = $gid;
-                    if (!empty($g_map[$gid])) {
-                        foreach ($g_map[$gid] as $child) {
-                            $expandGroups($child);
-                        }
-                    }
-                };
-                $expandGroups($group_id);
+                $target_group_ids = get_all_child_groups($pdo, $group_id);
             }
 
             // Safe Query on tagente
@@ -1456,8 +1456,15 @@ if (!empty($api)) {
                 $params = array_merge($params, $device_ids);
             } elseif (!empty($target_group_ids)) {
                 $in_placeholders = implode(',', array_fill(0, count($target_group_ids), '?'));
-                $sql .= " AND a.id_grupo IN ($in_placeholders)";
-                $params = array_merge($params, $target_group_ids);
+                $hasSec = false;
+                try { $pdo->query("SELECT 1 FROM tagente_secondary_group LIMIT 1"); $hasSec = true; } catch(Throwable $e) {}
+                if ($hasSec) {
+                    $sql .= " AND (a.id_grupo IN ($in_placeholders) OR EXISTS (SELECT 1 FROM tagente_secondary_group sg WHERE sg.id_agente = a.id_agente AND sg.id_grupo IN ($in_placeholders)))";
+                    $params = array_merge($params, $target_group_ids, $target_group_ids);
+                } else {
+                    $sql .= " AND a.id_grupo IN ($in_placeholders)";
+                    $params = array_merge($params, $target_group_ids);
+                }
             }
 
             if (!empty($search)) {
@@ -5441,6 +5448,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         const openAddDevicesModal = openAddNodeModal;
         const closeAddDevicesModal = closeAddNodeModal;
 
+        let addNodeGroupsData = [];
+
         async function loadGroupsForAddNode() {
             const selectEl = document.getElementById('addNodeGroupSelect');
             if (!selectEl || selectEl.options.length > 1) return;
@@ -5448,6 +5457,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 const res = await fetch(getApiUrl('get_groups'));
                 const data = await res.json();
                 if (data.ok && Array.isArray(data.groups)) {
+                    addNodeGroupsData = data.groups;
                     let html = '<option value="">All Groups</option>';
                     data.groups.forEach(g => {
                         html += `<option value="${g.id}">${escapeHtml(g.display_name || g.name)}</option>`;
@@ -5455,6 +5465,33 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     selectEl.innerHTML = html;
                 }
             } catch (e) {}
+        }
+
+        function getAddNodeSubgroupIds(parentId) {
+            const rootId = parseInt(parentId);
+            if (isNaN(rootId) || rootId <= 0) return null;
+            const res = new Set([rootId]);
+            if (!Array.isArray(addNodeGroupsData) || addNodeGroupsData.length === 0) return res;
+
+            const childrenMap = new Map();
+            addNodeGroupsData.forEach(g => {
+                const p = parseInt(g.parent) || 0;
+                if (!childrenMap.has(p)) childrenMap.set(p, []);
+                childrenMap.get(p).push(parseInt(g.id));
+            });
+
+            const queue = [rootId];
+            while (queue.length > 0) {
+                const curr = queue.shift();
+                const children = childrenMap.get(curr) || [];
+                for (const c of children) {
+                    if (!res.has(c)) {
+                        res.add(c);
+                        queue.push(c);
+                    }
+                }
+            }
+            return res;
         }
 
         function onAddNodeSearch(val) {
@@ -5480,10 +5517,16 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const pageBtns = document.getElementById('addNodePageButtons');
             if (!tbody) return;
 
+            const targetGroupIds = addNodeSelectedGroupId ? getAddNodeSubgroupIds(addNodeSelectedGroupId) : null;
+
             // Filter agents
             const filtered = availableAgents.filter(a => {
-                if (addNodeSelectedGroupId) {
-                    if (String(a.group_id) !== String(addNodeSelectedGroupId)) return false;
+                if (targetGroupIds) {
+                    const primaryGid = parseInt(a.group_id);
+                    const secGids = Array.isArray(a.secondary_group_ids) ? a.secondary_group_ids.map(Number) : [];
+                    const matchesPrimary = targetGroupIds.has(primaryGid);
+                    const matchesSecondary = secGids.some(gid => targetGroupIds.has(gid));
+                    if (!matchesPrimary && !matchesSecondary) return false;
                 }
                 if (addNodeSearchQuery) {
                     const matchName = (a.name || '').toLowerCase().includes(addNodeSearchQuery);
