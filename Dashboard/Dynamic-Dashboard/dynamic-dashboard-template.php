@@ -1365,7 +1365,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                     <input type="checkbox" id="p_use_raw" style="margin-right:8px; width:16px; height:16px;"> Use Raw Value
                 </label>
                 <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;" id="wrap_show_status_dot">
-                    <input type="checkbox" id="p_show_status_dot" checked style="margin-right:8px; width:16px; height:16px;"> Show Status Indicator (Dot)
+                    <input type="checkbox" id="p_show_status_dot" checked style="margin-right:8px; width:16px; height:16px;"> Show Status Indicator (Circle / Dot)
                 </label>
                 <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;" id="wrap_show_time">
                     <input type="checkbox" id="p_show_time" checked style="margin-right:8px; width:16px; height:16px;"> Show Chart Time
@@ -2683,11 +2683,13 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     } 
     else if (p.type === 'single_value') {
         const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[moduleData.status] || '#95a5a6';
+        const showSvDot = (p.show_status_dot === true);
+        const svDotHtml = showSvDot ? `<span class="status-dot ${bgClass}" style="width:10px; height:10px; margin-right:6px; display:inline-block; border-radius:50%; vertical-align:middle;"></span>` : '';
         contentHtml = `
         <div style="height: 100%; width: 100%; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;">
             <div style="padding: 10px 10px 0 10px; z-index: 2;">
                 <div style="font-size: ${fs}px; font-weight: ${fw}; color: ${color}; line-height: 1.1; display: flex; align-items: baseline; gap: 4px;">
-                    <span>${valText}</span>
+                    ${svDotHtml}<span>${valText}</span>
                     <span style="font-size: ${Math.round(fs * 0.45)}px; font-weight: normal; color: #64748b;">${moduleData.unit}</span>
                 </div>
                 ${summaryHtml}
@@ -2917,9 +2919,10 @@ function generateSummaryPanelHtml(p, modules) {
                                 } else {
                                     agentLinkHtml = `<span style="color:#334155; font-weight:600;">${m.agent_name}</span>`;
                                 }
+                                const dotHtml = (p.show_status_dot !== false) ? `<span class="status-dot ${bgClass}" style="margin:0; width:8px; height:8px;"></span>` : '';
                                 rowHtml += `<td>
                                     <div style="display:flex; align-items:center; gap:8px;">
-                                        <span class="status-dot ${bgClass}" style="margin:0; width:8px; height:8px;"></span>
+                                        ${dotHtml}
                                         ${agentLinkHtml}
                                     </div>
                                 </td>`;
@@ -3377,7 +3380,7 @@ function generateSummaryPanelHtml(p, modules) {
                                     </td>
                                     <td style="padding:8px 12px; vertical-align:middle; white-space:nowrap;">
                                         <div style="display:flex; align-items:center; gap:6px;">
-                                            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${it.statusColor}; box-shadow:0 0 0 2px ${it.statusColor}28; flex-shrink:0;" title="${escapeHtml(it.statusLabel || '')}"></span>
+                                            ${(p.show_status_dot !== false) ? `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${it.statusColor}; box-shadow:0 0 0 2px ${it.statusColor}28; flex-shrink:0;" title="${escapeHtml(it.statusLabel || '')}"></span>` : ''}
                                             <span style="font-weight:700; color:#0f172a; font-size:${tableFs}px;">${escapeHtml(it.displayVal)}</span>
                                         </div>
                                     </td>
@@ -4283,7 +4286,8 @@ function toggleTypeFields() {
     if (document.getElementById('wrap_show_time')) document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_show_yaxis')) document.getElementById('wrap_show_yaxis').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_force_100')) document.getElementById('wrap_force_100').style.display = isChart ? 'flex' : 'none';
-    if (document.getElementById('wrap_show_status_dot')) document.getElementById('wrap_show_status_dot').style.display = (type === 'text' || type === 'device_info' || isChart) ? 'flex' : 'none';
+    const typesWithDot = ['text', 'device_info', 'single_value', 'status_table', 'sparkline_table', 'line', 'area', 'bar'];
+    if (document.getElementById('wrap_show_status_dot')) document.getElementById('wrap_show_status_dot').style.display = typesWithDot.includes(type) ? 'flex' : 'none';
     const wrapChartColors = document.getElementById('wrap_chart_colors');
     if (wrapChartColors) {
         wrapChartColors.style.display = isChart ? 'block' : 'none';
@@ -4759,7 +4763,9 @@ function openPanelEdit(id) {
     document.getElementById('p_stat_font_color_hex').value = p.stat_font_color || '';
     document.getElementById('p_show_module').checked = p.show_module !== false;
     document.getElementById('p_use_raw').checked = p.use_raw || false;
-    if (document.getElementById('p_show_status_dot')) document.getElementById('p_show_status_dot').checked = p.show_status_dot !== false;
+    if (document.getElementById('p_show_status_dot')) {
+        document.getElementById('p_show_status_dot').checked = (p.type === 'single_value') ? (p.show_status_dot === true) : (p.show_status_dot !== false);
+    }
     document.getElementById('p_auto_convert_traffic').checked = p.auto_convert_traffic !== false;
     document.getElementById('p_force_100').checked = p.force_100 || false;
     document.getElementById('p_show_time').checked = p.show_time !== false;
