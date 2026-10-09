@@ -675,6 +675,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         #panelsGrid { 
             display: grid; 
             grid-template-columns: repeat(12, 1fr); 
+            grid-auto-flow: dense;
             grid-auto-rows: 5px; 
             row-gap: 15px; 
             column-gap: 15px; 
@@ -1101,6 +1102,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             }
             #panelsGrid {
                 grid-template-columns: repeat(12, 1fr) !important;
+                grid-auto-flow: dense !important;
                 row-gap: 15px !important;
                 column-gap: 15px !important;
                 grid-auto-rows: auto !important;
@@ -2765,6 +2767,9 @@ function initPanelResize(e, panelId) {
         currentHeight = newHeight;
 
         wrapper.style.setProperty('grid-column', `span ${newSpan}`, 'important');
+        const gapVal = 15;
+        const rowSpan = Math.ceil((newHeight + gapVal) / (5 + gapVal));
+        wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
         wrapper.querySelectorAll('.panel-card').forEach(c => {
             c.style.minHeight = `${newHeight}px`;
         });
@@ -2806,6 +2811,7 @@ function initPanelResize(e, panelId) {
             panel.width = String(currentSpan);
             panel.height = currentHeight;
             markUnsaved();
+            resizeAllGridItems();
             setTimeout(() => {
                 forceRefresh();
             }, 60);
@@ -2815,6 +2821,9 @@ function initPanelResize(e, panelId) {
     function onKeyDown(evt) {
         if (evt.key === 'Escape') {
             wrapper.style.setProperty('grid-column', `span ${startSpan}`, 'important');
+            const gapVal = 15;
+            const rowSpan = Math.ceil((startHeight + gapVal) / (5 + gapVal));
+            wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
             wrapper.querySelectorAll('.panel-card').forEach(c => {
                 c.style.minHeight = `${startHeight}px`;
             });
