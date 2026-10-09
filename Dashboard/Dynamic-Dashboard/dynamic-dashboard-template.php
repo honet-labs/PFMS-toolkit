@@ -727,6 +727,57 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .icon-btn:hover { color: #0b1a26; background: rgba(0,0,0,0.03); }
         .icon-btn .material-symbols-outlined { font-size: 15px !important; }
 
+        .panel-resize-handle {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 20px;
+            height: 20px;
+            cursor: nwse-resize;
+            display: flex;
+            align-items: flex-end;
+            justify-content: flex-end;
+            padding: 0 3px 3px 0;
+            z-index: 15;
+            opacity: 0.3;
+            transition: opacity 0.2s, transform 0.15s ease;
+            user-select: none;
+            touch-action: none;
+        }
+        .panel-card:hover .panel-resize-handle {
+            opacity: 0.75;
+        }
+        .panel-resize-handle:hover {
+            opacity: 1 !important;
+            transform: scale(1.15);
+        }
+        .panel-resize-handle svg path {
+            stroke: #94a3b8;
+            transition: stroke 0.2s;
+        }
+        .panel-resize-handle:hover svg path {
+            stroke: #0284c7;
+        }
+        .panel-rule-wrapper.is-resizing {
+            z-index: 50 !important;
+        }
+        .panel-rule-wrapper.is-resizing .panel-card {
+            outline: 2px dashed #0284c7 !important;
+            outline-offset: -2px;
+            box-shadow: 0 8px 24px rgba(2, 132, 199, 0.2) !important;
+        }
+        body.panel-resizing-active,
+        body.panel-resizing-active * {
+            cursor: nwse-resize !important;
+            user-select: none !important;
+        }
+        body.panel-resizing-active iframe,
+        body.panel-resizing-active canvas,
+        body.panel-resizing-active svg,
+        body.panel-resizing-active .table-scroll-wrapper {
+            pointer-events: none !important;
+        }
+
         .val-big { font-size: 32px; font-weight: 700; color: #0b1a26; line-height: 1.1; white-space: normal; word-break: break-word; text-align: center; display: inline-block; width: auto; }
         .val-unit { font-size: 14px !important; font-weight: 500 !important; color: #64748b; margin-left: 3px;}
         .mod-subtitle { font-size: 11px !important; color: #64748b; font-weight: 500 !important; margin-top: 8px; text-align: center; line-height:1.3; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2504,6 +2555,151 @@ function renderPanelsGrid() {
     setTimeout(resizeAllGridItems, 100);
 }
 
+function initPanelResize(e, panelId) {
+    if (IS_STANDALONE) return;
+    if (e.type === 'mousedown' && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const currentDash = masterDashboards.find(d => d.id === currentDashId);
+    if (!currentDash) return;
+    const panel = currentDash.panels.find(p => p.id === panelId);
+    if (!panel) return;
+
+    const wrapper = document.getElementById(`wrapper_p_${panelId}`);
+    if (!wrapper) return;
+    const grid = document.getElementById('panelsGrid');
+    if (!grid) return;
+
+    const isTouch = e.type === 'touchstart';
+    const getClientPos = (evt) => {
+        if (evt.touches && evt.touches.length > 0) {
+            return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
+        }
+        return { x: evt.clientX, y: evt.clientY };
+    };
+
+    const initialPos = getClientPos(e);
+    const startX = initialPos.x;
+    const startY = initialPos.y;
+
+    const gridRect = grid.getBoundingClientRect();
+    const gridStyle = window.getComputedStyle(grid);
+    const gap = parseFloat(gridStyle.columnGap) || 15;
+    const singleColWidth = (gridRect.width - (11 * gap)) / 12;
+    const colStep = singleColWidth + gap;
+
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const startWidth = wrapperRect.width;
+    const startHeight = parseInt(panel.height) || Math.round(wrapperRect.height) || 200;
+    const startSpan = Math.max(1, Math.min(12, parseInt(panel.width) || 12));
+
+    let currentSpan = startSpan;
+    let currentHeight = startHeight;
+
+    let tip = document.getElementById('panel_resize_tooltip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'panel_resize_tooltip';
+        tip.style.cssText = 'position:fixed; z-index:999999; background:rgba(15,23,42,0.92); color:#fff; font-size:11px; font-weight:600; padding:6px 12px; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; border:1px solid rgba(255,255,255,0.15); display:none; transform:translate(14px, 14px); font-family:inherit; white-space:nowrap;';
+        document.body.appendChild(tip);
+    }
+    tip.style.display = 'block';
+    tip.style.left = `${startX}px`;
+    tip.style.top = `${startY}px`;
+    tip.innerHTML = `<span style="color:#38bdf8;">Width:</span> Span ${startSpan} (${Math.round((startSpan / 12) * 100)}%) &nbsp;&bull;&nbsp; <span style="color:#38bdf8;">Height:</span> ${startHeight}px`;
+
+    wrapper.classList.add('is-resizing');
+    document.body.classList.add('panel-resizing-active');
+
+    let rafId = null;
+
+    function onPointerMove(evt) {
+        evt.preventDefault();
+        const pos = getClientPos(evt);
+        const deltaX = pos.x - startX;
+        const deltaY = pos.y - startY;
+
+        const targetWidth = startWidth + deltaX;
+        let newSpan = Math.round((targetWidth + gap) / colStep);
+        newSpan = Math.max(1, Math.min(12, newSpan));
+
+        let newHeight = Math.round(startHeight + deltaY);
+        newHeight = Math.max(80, Math.min(1500, newHeight));
+
+        currentSpan = newSpan;
+        currentHeight = newHeight;
+
+        wrapper.style.setProperty('grid-column', `span ${newSpan}`, 'important');
+        wrapper.querySelectorAll('.panel-card').forEach(c => {
+            c.style.minHeight = `${newHeight}px`;
+        });
+        wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
+            cw.style.minHeight = `${Math.max(160, newHeight - 35)}px`;
+        });
+
+        tip.style.left = `${pos.x}px`;
+        tip.style.top = `${pos.y}px`;
+        tip.innerHTML = `<span style="color:#38bdf8;">Width:</span> Span ${newSpan} (${Math.round((newSpan / 12) * 100)}%) &nbsp;&bull;&nbsp; <span style="color:#38bdf8;">Height:</span> ${newHeight}px`;
+
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+            wrapper.querySelectorAll('[id^="chart_"]').forEach(el => {
+                const inst = (typeof echarts !== 'undefined') ? echarts.getInstanceByDom(el) : null;
+                if (inst) inst.resize();
+            });
+        });
+    }
+
+    function onPointerUp(evt) {
+        if (isTouch) {
+            window.removeEventListener('touchmove', onPointerMove);
+            window.removeEventListener('touchend', onPointerUp);
+            window.removeEventListener('touchcancel', onPointerUp);
+        } else {
+            window.removeEventListener('mousemove', onPointerMove);
+            window.removeEventListener('mouseup', onPointerUp);
+        }
+        window.removeEventListener('keydown', onKeyDown);
+
+        if (rafId) cancelAnimationFrame(rafId);
+        if (tip) tip.style.display = 'none';
+        wrapper.classList.remove('is-resizing');
+        document.body.classList.remove('panel-resizing-active');
+
+        if (currentSpan !== startSpan || currentHeight !== startHeight) {
+            panel.width = String(currentSpan);
+            panel.height = currentHeight;
+            markUnsaved();
+            setTimeout(() => {
+                forceRefresh();
+            }, 60);
+        }
+    }
+
+    function onKeyDown(evt) {
+        if (evt.key === 'Escape') {
+            wrapper.style.setProperty('grid-column', `span ${startSpan}`, 'important');
+            wrapper.querySelectorAll('.panel-card').forEach(c => {
+                c.style.minHeight = `${startHeight}px`;
+            });
+            currentSpan = startSpan;
+            currentHeight = startHeight;
+            onPointerUp(evt);
+        }
+    }
+
+    if (isTouch) {
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('touchend', onPointerUp);
+        window.addEventListener('touchcancel', onPointerUp);
+    } else {
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
+    }
+    window.addEventListener('keydown', onKeyDown);
+}
+
 function toggleHiddenVisibility() {
     showHiddenPanels = !showHiddenPanels;
     const btn = document.getElementById('btnToggleHidden');
@@ -2783,7 +2979,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                     </iframe>
                 </div>`;
             } else {
-                chartHtml = `<div class="chart-wrapper" style="min-height:${chartH}px; display:flex; flex-direction:column;"><div id="chart_${uniqueId}" style="width:100%; height:260px; min-height:200px;"></div><div id="chart_legend_${uniqueId}" class="chart-html-legend" style="display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; max-height:75px; overflow-y:auto; padding:4px 2px; margin-top:4px; border-top:1px solid #f1f5f9;"></div></div>`;
+                chartHtml = `<div class="chart-wrapper" style="min-height:${chartH}px; display:flex; flex-direction:column; flex-grow:1;"><div id="chart_${uniqueId}" style="width:100%; height:${chartH}px; min-height:180px; flex-grow:1;"></div><div id="chart_legend_${uniqueId}" class="chart-html-legend" style="display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; max-height:75px; overflow-y:auto; padding:4px 2px; margin-top:4px; border-top:1px solid #f1f5f9;"></div></div>`;
             }
 
             contentHtml = `<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">${modNameHtml}${statusHtml}</div>${chartHtml}`;
@@ -2808,7 +3004,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         displayTitle = displayTitle.replace(new RegExp(`\\s*[\\(\\[]?${valCalc}[\\)\\]]?\\s*$`, 'i'), '').trim();
     }
 
-    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;"><h6 class="panel-title" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:4px; max-width:100%;"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:2px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span><span>${displayTitle}</span>${badgeHtml}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div></div>`;
+    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;"><h6 class="panel-title" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:4px; max-width:100%;"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:2px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span><span>${displayTitle}</span>${badgeHtml}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div>${!IS_STANDALONE ? `<div class="panel-resize-handle" data-panel-id="${p.id}" title="Drag to resize panel (Width & Height)" onmousedown="initPanelResize(event, '${p.id}')" ontouchstart="initPanelResize(event, '${p.id}')"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/></svg></div>` : ''}</div>`;
 }
 
 function generateSummaryPanelHtml(p, modules) {
@@ -3464,18 +3660,24 @@ function generateSummaryPanelHtml(p, modules) {
     const isHidden = p.hidden === true;
     const hiddenClass = isHidden ? 'is-hidden' : '';
     const isTableWidget = ['sparkline_table', 'status_table', 'history_table', 'table_viewer', 'device_info'].includes(p.type);
-    const cardMinH = isTableWidget ? '' : (p.height ? `min-height:${p.height}px;` : '');
+    const cardMinH = p.height ? `min-height:${p.height}px;` : '';
     const cardHeight = isTableWidget ? 'height:auto;' : 'height:100%;';
     const bodyPadding = isTableWidget ? 'padding:10px;' : 'padding:10px;';
-    const bodyFlex = isTableWidget ? 'flex-grow:0;' : '';
+    const bodyFlex = isTableWidget ? 'flex-grow:1;' : '';
 
     return `
         <div class="panel-card ${hiddenClass}" style="${cardHeight} ${cardMinH} margin:0;">
             <div class="panel-header">
-                <div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; color:#b5c1c9; vertical-align:middle; margin-right:4px;" title="Drag">drag_indicator</span> ${p.title}</h6></div>
+                <div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; color:#b5c1c9; vertical-align:middle; margin-right:4px;" title="Drag to reorder">drag_indicator</span> ${p.title}</h6></div>
                 ${controlsHtml}
             </div>
             <div class="panel-body" style="align-items:stretch; justify-content:flex-start; ${bodyPadding} ${bodyFlex}">${content}</div>
+            ${!IS_STANDALONE ? `
+            <div class="panel-resize-handle" data-panel-id="${p.id}" title="Drag to resize panel (Width & Height)" onmousedown="initPanelResize(event, '${p.id}')" ontouchstart="initPanelResize(event, '${p.id}')">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </div>` : ''}
         </div>`;
 }
 
