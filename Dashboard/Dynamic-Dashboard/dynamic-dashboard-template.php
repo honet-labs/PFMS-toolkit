@@ -716,13 +716,144 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .drag-handle:hover { color: #004d40; }
         .drag-handle:active { cursor: grabbing; color: #004d40; }
 
-        .panel-card { background-color: #ffffff; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); border: 1px solid #e0e4e8; display:flex; flex-direction:column; position: relative; height: auto; width: 100%; min-width: 0; overflow: hidden; margin: 0; }
-        .panel-header { padding: 6px 6px 6px 10px; border-bottom: 1px solid #f0f3f5; display: flex; justify-content: space-between; align-items: flex-start; background: #fafbfc; min-height: 34px; gap: 4px; }
-        .panel-title { font-size: 10px !important; font-weight: 600 !important; color: #4a5568 !important; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; white-space: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; flex: 1; min-width: 0; }
+        .panel-card { 
+            background-color: #ffffff; 
+            border-radius: 6px; 
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05); 
+            border: 1px solid #e0e4e8; 
+            display:flex; 
+            flex-direction:column; 
+            position: relative; 
+            height: auto; 
+            width: 100%; 
+            min-width: 0; 
+            overflow: visible; 
+            margin: 0; 
+            container-type: inline-size;
+            container-name: panelcard;
+        }
+        .panel-header { 
+            padding: 5px 8px; 
+            border-bottom: 1px solid #f0f3f5; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            background: #fafbfc; 
+            min-height: 32px; 
+            gap: 4px; 
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            position: relative;
+            z-index: 5;
+        }
+        .panel-title { 
+            font-size: 10px !important; 
+            font-weight: 600 !important; 
+            color: #4a5568 !important; 
+            margin: 0; 
+            text-transform: uppercase; 
+            letter-spacing: 0.5px; 
+            white-space: normal; 
+            overflow: hidden; 
+            line-height: 1.25; 
+            flex: 1; 
+            min-width: 0; 
+            word-break: break-word;
+        }
         .panel-body { padding: 12px; flex-grow:1; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; position: relative; min-width: 0; }
         
-        .panel-controls { display: flex; gap: 1px; opacity: 0.2; transition: 0.2s; flex-shrink: 0; margin-top: -1px; margin-left: auto; }
-        .panel-card:hover .panel-controls { opacity: 1; }
+        .panel-controls { 
+            display: flex; 
+            align-items: center; 
+            gap: 1px; 
+            opacity: 0.35; 
+            transition: opacity 0.2s; 
+            flex-shrink: 0; 
+            margin-left: auto; 
+        }
+        .panel-card:hover .panel-controls,
+        .panel-controls:hover,
+        .panel-controls.menu-open { 
+            opacity: 1 !important; 
+        }
+        .panel-controls-full {
+            display: flex;
+            align-items: center;
+            gap: 1px;
+        }
+        .panel-controls-compact {
+            display: none;
+            position: relative;
+            align-items: center;
+        }
+
+        /* Container Query for Narrow Cards */
+        @container panelcard (max-width: 250px) {
+            .panel-controls-full { display: none !important; }
+            .panel-controls-compact { display: flex !important; }
+            .panel-header { padding: 4px 6px; min-height: 28px; }
+            .panel-title { font-size: 9px !important; line-height: 1.2; }
+            .drag-handle { font-size: 14px !important; margin-right: 2px !important; }
+        }
+        /* Fallback class for compact headers */
+        .panel-card.is-compact-header .panel-controls-full { display: none !important; }
+        .panel-card.is-compact-header .panel-controls-compact { display: flex !important; }
+        .panel-card.is-compact-header .panel-header { padding: 4px 6px; min-height: 28px; }
+        .panel-card.is-compact-header .panel-title { font-size: 9px !important; line-height: 1.2; }
+        .panel-card.is-compact-header .drag-handle { font-size: 14px !important; margin-right: 2px !important; }
+
+        .panel-dropdown-menu {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 4px);
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.14), 0 2px 4px rgba(15, 23, 42, 0.06);
+            min-width: 125px;
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            padding: 4px 0;
+            animation: fadeInMenu 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .panel-dropdown-menu.show {
+            display: flex;
+        }
+        .panel-dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 500;
+            color: #334155;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            user-select: none;
+            white-space: nowrap;
+        }
+        .panel-dropdown-item:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+        .panel-dropdown-item.text-danger {
+            color: #dc2626;
+        }
+        .panel-dropdown-item.text-danger:hover {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        .panel-dropdown-divider {
+            height: 1px;
+            background: #f1f5f9;
+            margin: 3px 0;
+        }
+        @keyframes fadeInMenu {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         .icon-btn { background: none; border: none; padding: 0; width: 22px; height: 22px; cursor: pointer; color: #b5c1c9; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
         .icon-btn:hover { color: #0b1a26; background: rgba(0,0,0,0.03); }
         .icon-btn .material-symbols-outlined { font-size: 15px !important; }
@@ -2552,7 +2683,10 @@ function renderPanelsGrid() {
             }
         });
     }
-    setTimeout(resizeAllGridItems, 100);
+    setTimeout(() => {
+        resizeAllGridItems();
+        updateCompactHeaders();
+    }, 100);
 }
 
 function initPanelResize(e, panelId) {
@@ -2637,6 +2771,7 @@ function initPanelResize(e, panelId) {
         wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
             cw.style.minHeight = `${Math.max(160, newHeight - 35)}px`;
         });
+        updateCompactHeaders();
 
         tip.style.left = `${pos.x}px`;
         tip.style.top = `${pos.y}px`;
@@ -2723,14 +2858,85 @@ function getPanelControlsHtml(p, moduleId = null) {
     const hideIcon = isHidden ? 'visibility' : 'visibility_off';
     const hideTitle = isHidden ? 'Show' : 'Hide';
     const hideTarget = (moduleId !== null && moduleId !== undefined) ? `'${p.id}', '${moduleId}'` : `'${p.id}'`;
+    const safeModId = moduleId !== null && moduleId !== undefined ? String(moduleId).replace(/[^a-zA-Z0-9_]/g, '_') : 'main';
+    const uniqueMenuId = `pmenu_${p.id}_${safeModId}`;
+
     return `
         <div class="panel-controls">
-            <button class="icon-btn" onclick="quickTogglePanelHidden(${hideTarget})" title="${hideTitle}"><span class="material-symbols-outlined">${hideIcon}</span></button>
-            <button class="icon-btn" onclick="duplicatePanel('${p.id}')" title="Duplicate"><span class="material-symbols-outlined">content_copy</span></button>
-            <button class="icon-btn" onclick="openPanelEdit('${p.id}')" title="Settings"><span class="material-symbols-outlined">edit</span></button>
-            <button class="icon-btn" onclick="deletePanel('${p.id}')" title="Delete"><span class="material-symbols-outlined" style="color:#e74c3c;">delete</span></button>
+            <div class="panel-controls-full">
+                <button class="icon-btn" onclick="quickTogglePanelHidden(${hideTarget})" title="${hideTitle}"><span class="material-symbols-outlined">${hideIcon}</span></button>
+                <button class="icon-btn" onclick="duplicatePanel('${p.id}')" title="Duplicate"><span class="material-symbols-outlined">content_copy</span></button>
+                <button class="icon-btn" onclick="openPanelEdit('${p.id}')" title="Settings"><span class="material-symbols-outlined">edit</span></button>
+                <button class="icon-btn" onclick="deletePanel('${p.id}')" title="Delete"><span class="material-symbols-outlined" style="color:#e74c3c;">delete</span></button>
+            </div>
+            <div class="panel-controls-compact">
+                <button class="icon-btn" onclick="togglePanelMenu(event, '${uniqueMenuId}')" title="More Actions">
+                    <span class="material-symbols-outlined" style="font-size:16px!important;">more_vert</span>
+                </button>
+                <div class="panel-dropdown-menu" id="${uniqueMenuId}">
+                    <div class="panel-dropdown-item" onclick="quickTogglePanelHidden(${hideTarget}); closeAllPanelMenus();">
+                        <span class="material-symbols-outlined" style="font-size:15px; color:#64748b;">${hideIcon}</span>
+                        <span>${hideTitle}</span>
+                    </div>
+                    <div class="panel-dropdown-item" onclick="duplicatePanel('${p.id}'); closeAllPanelMenus();">
+                        <span class="material-symbols-outlined" style="font-size:15px; color:#64748b;">content_copy</span>
+                        <span>Duplicate</span>
+                    </div>
+                    <div class="panel-dropdown-item" onclick="openPanelEdit('${p.id}'); closeAllPanelMenus();">
+                        <span class="material-symbols-outlined" style="font-size:15px; color:#64748b;">edit</span>
+                        <span>Settings</span>
+                    </div>
+                    <div class="panel-dropdown-divider"></div>
+                    <div class="panel-dropdown-item text-danger" onclick="deletePanel('${p.id}'); closeAllPanelMenus();">
+                        <span class="material-symbols-outlined" style="font-size:15px; color:#e74c3c;">delete</span>
+                        <span>Delete</span>
+                    </div>
+                </div>
+            </div>
         </div>`;
 }
+
+function togglePanelMenu(e, menuId) {
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    const menu = document.getElementById(menuId);
+    if (!menu) return;
+    const isShown = menu.classList.contains('show');
+    closeAllPanelMenus();
+    if (!isShown) {
+        menu.classList.add('show');
+        const parentControls = menu.closest('.panel-controls');
+        if (parentControls) parentControls.classList.add('menu-open');
+    }
+}
+
+function closeAllPanelMenus() {
+    document.querySelectorAll('.panel-dropdown-menu.show').forEach(m => {
+        m.classList.remove('show');
+    });
+    document.querySelectorAll('.panel-controls.menu-open').forEach(c => {
+        c.classList.remove('menu-open');
+    });
+}
+
+function updateCompactHeaders() {
+    document.querySelectorAll('.panel-card').forEach(card => {
+        if (card.offsetWidth > 0 && card.offsetWidth <= 250) {
+            card.classList.add('is-compact-header');
+        } else {
+            card.classList.remove('is-compact-header');
+        }
+    });
+}
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.panel-controls-compact')) {
+        closeAllPanelMenus();
+    }
+});
+window.addEventListener('resize', updateCompactHeaders);
 
 function formatSmartValue(val, useRaw) {
     if (val === null || val === undefined || val === '') return 'N/A';
@@ -3004,7 +3210,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         displayTitle = displayTitle.replace(new RegExp(`\\s*[\\(\\[]?${valCalc}[\\)\\]]?\\s*$`, 'i'), '').trim();
     }
 
-    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;"><h6 class="panel-title" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:4px; max-width:100%;"><span class="material-symbols-outlined drag-handle" style="font-size:16px; cursor:grab; margin-right:2px; color:#b5c1c9; vertical-align:middle;" title="Drag to reorder">drag_indicator</span><span>${displayTitle}</span>${badgeHtml}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div>${!IS_STANDALONE ? `<div class="panel-resize-handle" data-panel-id="${p.id}" title="Drag to resize panel (Width & Height)" onmousedown="initPanelResize(event, '${p.id}')" ontouchstart="initPanelResize(event, '${p.id}')"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/></svg></div>` : ''}</div>`;
+    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;"><h6 class="panel-title" title="${escapeHtml(displayTitle)}" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:3px; max-width:100%;"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; margin-right:2px; color:#b5c1c9; vertical-align:middle; flex-shrink:0;" title="Drag to reorder">drag_indicator</span><span style="overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word;">${escapeHtml(displayTitle)}</span>${badgeHtml}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div>${!IS_STANDALONE ? `<div class="panel-resize-handle" data-panel-id="${p.id}" title="Drag to resize panel (Width & Height)" onmousedown="initPanelResize(event, '${p.id}')" ontouchstart="initPanelResize(event, '${p.id}')"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/></svg></div>` : ''}</div>`;
 }
 
 function generateSummaryPanelHtml(p, modules) {
@@ -3668,7 +3874,12 @@ function generateSummaryPanelHtml(p, modules) {
     return `
         <div class="panel-card ${hiddenClass}" style="${cardHeight} ${cardMinH} margin:0;">
             <div class="panel-header">
-                <div><h6 class="panel-title"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; color:#b5c1c9; vertical-align:middle; margin-right:4px;" title="Drag to reorder">drag_indicator</span> ${p.title}</h6></div>
+                <div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;">
+                    <h6 class="panel-title" title="${escapeHtml(p.title)}" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:3px; max-width:100%;">
+                        <span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; color:#b5c1c9; vertical-align:middle; margin-right:2px; flex-shrink:0;" title="Drag to reorder">drag_indicator</span>
+                        <span style="overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word;">${escapeHtml(p.title)}</span>
+                    </h6>
+                </div>
                 ${controlsHtml}
             </div>
             <div class="panel-body" style="align-items:stretch; justify-content:flex-start; ${bodyPadding} ${bodyFlex}">${content}</div>
