@@ -2657,8 +2657,10 @@ function renderPanelsGrid() {
         wrapper.style.setProperty('grid-column', `span ${wValue}`, 'important');
         
         const minH = parseInt(p.height) || 200;
+        const rowSpan = Math.ceil((minH + 15) / (5 + 15));
+        wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
         const hiddenClass = p.hidden ? 'is-hidden' : '';
-        wrapper.innerHTML = `<div class="panel-card ${hiddenClass}" style="min-height:${minH}px;"><div class="loading-overlay" id="load_${p.id}"><div class="spinner"></div></div></div>`;
+        wrapper.innerHTML = `<div class="panel-card ${hiddenClass}" style="height:100%; min-height:${minH}px;"><div class="loading-overlay" id="load_${p.id}"><div class="spinner"></div></div></div>`;
         grid.appendChild(wrapper);
     });
 
@@ -2778,9 +2780,16 @@ function initPanelResize(e, panelId) {
         wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
         wrapper.querySelectorAll('.panel-card').forEach(c => {
             c.style.minHeight = `${newHeight}px`;
+            c.style.height = '100%';
         });
         wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
             cw.style.minHeight = `${Math.max(160, newHeight - 35)}px`;
+        });
+        wrapper.querySelectorAll('.device-info-list').forEach(dl => {
+            dl.style.maxHeight = `${Math.max(100, newHeight - 60)}px`;
+        });
+        wrapper.querySelectorAll('.table-responsive, .sparkline-table-wrap').forEach(tw => {
+            tw.style.maxHeight = `${Math.max(120, newHeight - 90)}px`;
         });
         updateCompactHeaders();
 
@@ -2817,10 +2826,32 @@ function initPanelResize(e, panelId) {
             panel.width = String(currentSpan);
             panel.height = currentHeight;
             markUnsaved();
+
+            wrapper.style.setProperty('grid-column', `span ${currentSpan}`, 'important');
+            const gapVal = 15;
+            const rowSpan = Math.ceil((currentHeight + gapVal) / (5 + gapVal));
+            wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
+            wrapper.querySelectorAll('.panel-card').forEach(c => {
+                c.style.minHeight = `${currentHeight}px`;
+                c.style.height = '100%';
+            });
+            wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
+                cw.style.minHeight = `${Math.max(160, currentHeight - 35)}px`;
+            });
+            wrapper.querySelectorAll('.device-info-list').forEach(dl => {
+                dl.style.maxHeight = `${Math.max(100, currentHeight - 60)}px`;
+            });
+            wrapper.querySelectorAll('.table-responsive, .sparkline-table-wrap').forEach(tw => {
+                tw.style.maxHeight = `${Math.max(120, currentHeight - 90)}px`;
+            });
+
             resizeAllGridItems();
-            setTimeout(() => {
-                forceRefresh();
-            }, 60);
+
+            wrapper.querySelectorAll('[id^="chart_"]').forEach(el => {
+                const inst = (typeof echarts !== 'undefined') ? echarts.getInstanceByDom(el) : null;
+                if (inst) inst.resize();
+            });
+            updateCompactHeaders();
         }
     }
 
@@ -3880,11 +3911,11 @@ function generateSummaryPanelHtml(p, modules) {
 
     const isHidden = p.hidden === true;
     const hiddenClass = isHidden ? 'is-hidden' : '';
-    const isTableWidget = ['sparkline_table', 'status_table', 'history_table', 'table_viewer', 'device_info'].includes(p.type);
-    const cardMinH = isTableWidget ? '' : (p.height ? `min-height:${p.height}px;` : '');
-    const cardHeight = isTableWidget ? 'height:auto;' : 'height:100%;';
-    const bodyPadding = isTableWidget ? 'padding:10px;' : 'padding:10px;';
-    const bodyFlex = isTableWidget ? 'flex-grow:1;' : '';
+    const panelH = (p.height && parseInt(p.height) > 0) ? parseInt(p.height) : 0;
+    const cardMinH = panelH > 0 ? `min-height:${panelH}px;` : '';
+    const cardHeight = 'height:100%;';
+    const bodyPadding = 'padding:10px;';
+    const bodyFlex = 'flex-grow:1;';
 
     return `
         <div class="panel-card ${hiddenClass}" style="${cardHeight} ${cardMinH} margin:0;">
@@ -5809,14 +5840,28 @@ function resizeGridItem(item) {
     const cards = item.querySelectorAll('.panel-card');
     if (!cards || cards.length === 0) return;
 
+    const pId = item.getAttribute('data-id');
+    const currentDash = (typeof masterDashboards !== 'undefined' && typeof currentDashId !== 'undefined')
+        ? masterDashboards.find(d => d.id === currentDashId) : null;
+    const panel = currentDash?.panels?.find(p => p.id === pId);
+    const targetMinH = (panel && panel.height) ? parseInt(panel.height) : 0;
+
     // Reset styles temporarily to measure true unconstrained content height
     item.style.gridRowEnd = 'auto';
-    cards.forEach(c => { c.style.height = 'auto'; c.style.flex = 'none'; });
+    cards.forEach(c => { 
+        c.style.height = 'auto'; 
+        c.style.flex = 'none'; 
+        if (targetMinH > 0) c.style.minHeight = `${targetMinH}px`;
+    });
 
-    const contentHeight = item.scrollHeight;
+    const contentHeight = Math.max(item.scrollHeight, targetMinH);
     const rowSpan = Math.ceil((contentHeight + rowGap) / (rowHeight + rowGap));
     item.style.gridRowEnd = "span " + Math.max(1, rowSpan);
-    cards.forEach(c => { c.style.height = '100%'; c.style.flex = '1'; });
+    cards.forEach(c => { 
+        c.style.height = '100%'; 
+        c.style.flex = '1'; 
+        if (targetMinH > 0) c.style.minHeight = `${targetMinH}px`;
+    });
 }
 
 function resizeAllGridItems() {
