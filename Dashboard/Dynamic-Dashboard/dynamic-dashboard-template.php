@@ -691,8 +691,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             transition: opacity 0.2s, transform 0.2s; 
             background: transparent;
             min-width: 100px;
+            min-height: 0;
+            height: 100%;
         }
-        .panel-rule-wrapper .panel-card { flex: 1; margin-bottom: 0; }
+        .panel-rule-wrapper .panel-card { flex: 1 1 0%; margin-bottom: 0; min-height: 0; }
         
         .panel-rule-wrapper.dragging { opacity: 0.4; transform: scale(0.98); }
         .panel-rule-wrapper.drag-over { border: 2px dashed #004d40; border-radius: 8px; padding: 4px; }
@@ -702,15 +704,15 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         }
         @media (max-width: 1200px) {
             #panelsGrid { grid-template-columns: repeat(8, 1fr); row-gap: 10px; column-gap: 10px; }
-            .panel-rule-wrapper { grid-column: span var(--span-tablet, 4); }
+            .panel-rule-wrapper { grid-column: span min(var(--panel-span, 8), 8) !important; }
         }
         @media (max-width: 768px) {
             #panelsGrid { grid-template-columns: repeat(4, 1fr); row-gap: 8px; column-gap: 8px; }
-            .panel-rule-wrapper { grid-column: span var(--span-mobile, 4); }
+            .panel-rule-wrapper { grid-column: span min(var(--panel-span, 4), 4) !important; }
         }
         @media (max-width: 480px) {
             #panelsGrid { grid-template-columns: 1fr; }
-            .panel-rule-wrapper { grid-column: span 1; }
+            .panel-rule-wrapper { grid-column: span 1 !important; }
         }
         
         .drag-handle { cursor: grab; color: #b5c1c9; margin-right: 8px; font-size: 18px !important; transition:0.2s;}
@@ -725,9 +727,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             display:flex; 
             flex-direction:column; 
             position: relative; 
-            height: auto; 
+            height: 100%; 
             width: 100%; 
             min-width: 0; 
+            min-height: 0;
             overflow: visible; 
             margin: 0; 
             container-type: inline-size;
@@ -761,7 +764,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             min-width: 0; 
             word-break: break-word;
         }
-        .panel-body { padding: 12px; flex-grow:1; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; position: relative; min-width: 0; }
+        .panel-body { padding: 12px; flex: 1 1 0%; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
         
         .panel-controls { 
             display: flex; 
@@ -983,11 +986,14 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             width: 100%; 
             max-width: 100%; 
             overflow-x: auto; 
+            overflow-y: auto;
+            flex: 1 1 0%;
+            min-height: 0;
             margin-top: 5px; 
             border: 1px solid #e2e8f0; 
             border-radius: 6px; 
         }
-        .table-wrap-dyn::-webkit-scrollbar { height: 6px; }
+        .table-wrap-dyn::-webkit-scrollbar { width: 6px; height: 6px; }
         .table-wrap-dyn::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 
         .mini-stats-row { display: flex; gap: 12px; width: 100%; flex-wrap: wrap; margin-bottom: 5px;}
@@ -2654,7 +2660,8 @@ function renderPanelsGrid() {
         wrapper.setAttribute('data-id', p.id);
         
         const wValue = parseInt(p.width) || 12;
-        wrapper.style.setProperty('grid-column', `span ${wValue}`, 'important');
+        wrapper.style.setProperty('--panel-span', wValue);
+        wrapper.style.gridColumn = `span ${wValue}`;
         
         const minH = parseInt(p.height) || 200;
         const rowSpan = Math.ceil((minH + 15) / (5 + 15));
@@ -2774,13 +2781,15 @@ function initPanelResize(e, panelId) {
         currentSpan = newSpan;
         currentHeight = newHeight;
 
-        wrapper.style.setProperty('grid-column', `span ${newSpan}`, 'important');
+        wrapper.style.setProperty('--panel-span', newSpan);
+        wrapper.style.gridColumn = `span ${newSpan}`;
         const gapVal = 15;
         const rowSpan = Math.ceil((newHeight + gapVal) / (5 + gapVal));
         wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
         wrapper.querySelectorAll('.panel-card').forEach(c => {
             c.style.minHeight = `${newHeight}px`;
-            c.style.height = '100%';
+            c.style.maxHeight = `${newHeight}px`;
+            c.style.height = `${newHeight}px`;
         });
         wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
             cw.style.minHeight = `${Math.max(160, newHeight - 35)}px`;
@@ -2793,7 +2802,8 @@ function initPanelResize(e, panelId) {
         });
         wrapper.querySelectorAll('.table-scroll-wrapper, .sparkline-table-wrap, .status-table-wrap, .device-info-list').forEach(sw => {
             sw.style.maxHeight = 'none';
-            sw.style.flex = '1';
+            sw.style.flex = '1 1 0%';
+            sw.style.minHeight = '0';
         });
         updateCompactHeaders();
 
@@ -2831,12 +2841,14 @@ function initPanelResize(e, panelId) {
             panel.height = currentHeight;
             markUnsaved();
 
-            wrapper.style.setProperty('grid-column', `span ${currentSpan}`, 'important');
+            wrapper.style.setProperty('--panel-span', currentSpan);
+            wrapper.style.gridColumn = `span ${currentSpan}`;
             const gapVal = 15;
             const rowSpan = Math.ceil((currentHeight + gapVal) / (5 + gapVal));
             wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
             wrapper.querySelectorAll('.panel-card').forEach(c => {
                 c.style.minHeight = `${currentHeight}px`;
+                c.style.maxHeight = 'none';
                 c.style.height = '100%';
             });
             wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
@@ -2850,7 +2862,8 @@ function initPanelResize(e, panelId) {
             });
             wrapper.querySelectorAll('.table-scroll-wrapper, .sparkline-table-wrap, .status-table-wrap, .device-info-list').forEach(sw => {
                 sw.style.maxHeight = 'none';
-                sw.style.flex = '1';
+                sw.style.flex = '1 1 0%';
+                sw.style.minHeight = '0';
             });
 
             resizeAllGridItems();
@@ -2865,12 +2878,15 @@ function initPanelResize(e, panelId) {
 
     function onKeyDown(evt) {
         if (evt.key === 'Escape') {
-            wrapper.style.setProperty('grid-column', `span ${startSpan}`, 'important');
+            wrapper.style.setProperty('--panel-span', startSpan);
+            wrapper.style.gridColumn = `span ${startSpan}`;
             const gapVal = 15;
             const rowSpan = Math.ceil((startHeight + gapVal) / (5 + gapVal));
             wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
             wrapper.querySelectorAll('.panel-card').forEach(c => {
                 c.style.minHeight = `${startHeight}px`;
+                c.style.maxHeight = 'none';
+                c.style.height = '100%';
             });
             currentSpan = startSpan;
             currentHeight = startHeight;
@@ -3168,15 +3184,15 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         const tableFs = parseInt(p.font_size) || 11;
         const tableFw = p.font_weight || '400';
         contentHtml = `
-            <div class="table-viewer-card-wrap" style="height:100%; display:flex; flex-direction:column; gap:10px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:4px;">
+            <div class="table-viewer-card-wrap" style="height:100%; display:flex; flex-direction:column; gap:10px; flex:1 1 0%; min-height:0; overflow:hidden;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:4px; flex-shrink:0;">
                     <div style="font-size:10px; color:#7f8c8d;">Last Updated: ${moduleData.last_contact ? new Date(moduleData.last_contact * 1000).toLocaleString() : '-'}</div>
                     <div class="search-box" style="width: 180px; position:relative;">
                         <input type="text" placeholder="Filter table..." class="form-control-fix" style="font-size:11px; padding: 4px 8px 4px 26px; height:24px; border-radius:4px; border: 1px solid #cbd5e1;" oninput="filterCardTableViewer('${uniqueId}', this.value)">
                         <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:14px; color:#94a3b8; line-height:1;">search</span>
                     </div>
                 </div>
-                <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex:1; min-height:100px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff;">
+                <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex:1 1 0%; min-height:0; border: 1px solid #e2e8f0; border-radius:6px; background:#fff;">
                     <table class="table-pfms" id="table_${uniqueId}" style="margin:0; font-size:${tableFs}px; font-weight:${tableFw}; width:100%;">
                         <thead id="thead_${uniqueId}"></thead>
                         <tbody id="tbody_${uniqueId}"></tbody>
@@ -3629,8 +3645,8 @@ function generateSummaryPanelHtml(p, modules) {
             }
 
             content = `
-                <div class="status-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1; min-height:0;">
-                    <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex:1; min-height:100px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
+                <div class="status-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1 1 0%; min-height:0; overflow:hidden;">
+                    <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex:1 1 0%; min-height:0; border: 1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
                     <table class="table-pfms" style="margin:0; font-size:11px; width:100%;">
                         <thead>
                             <tr style="position:sticky; top:0; background:#f8fafc; z-index:2; box-shadow: 0 1px 0 #e2e8f0;">
@@ -3801,7 +3817,7 @@ function generateSummaryPanelHtml(p, modules) {
             content = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:160px; color:#bdc3c7; font-size:11px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">query_stats</span>No data matched</div>`;
         } else {
             content = `
-            <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1; min-height:0;">
+            <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1 1 0%; min-height:0; overflow:hidden;">
                 ${!hideSearch ? `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px; flex-shrink:0;">
                     <div style="font-size:10px; color:#94a3b8; font-weight:500;">Top ${Math.min(limit, totalItems)} of ${totalItems} Items</div>
@@ -3810,7 +3826,7 @@ function generateSummaryPanelHtml(p, modules) {
                         <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
                     </div>
                 </div>` : ''}
-                <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex:1; min-height:100px; border:1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
+                <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex:1 1 0%; min-height:0; border:1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
                     <table class="sparkline-table" style="font-size:${tableFs}px; width:100%; border-collapse:collapse; margin:0;">
                         <thead>
                             <tr style="position:sticky; top:0; background:#f8fafc; z-index:2; border-bottom:1px solid #e2e8f0;">
@@ -3881,7 +3897,7 @@ function generateSummaryPanelHtml(p, modules) {
             </div>`;
         } else {
             content = `
-            <div class="device-info-list" style="width:100%; height:100%; flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column;">
+            <div class="device-info-list" style="width:100%; height:100%; flex:1 1 0%; min-height:0; overflow-y:auto; display:flex; flex-direction:column;">
                 ${displayModules.map((m, idx) => {
                     let rawVal = m.current;
                     let valText = formatSmartValue(rawVal, p.use_raw);
@@ -3917,7 +3933,7 @@ function generateSummaryPanelHtml(p, modules) {
     const cardMinH = panelH > 0 ? `min-height:${panelH}px;` : '';
     const cardHeight = 'height:100%;';
     const bodyPadding = 'padding:10px;';
-    const bodyFlex = 'flex-grow:1;';
+    const bodyFlex = 'flex: 1 1 0%; min-height: 0; overflow: hidden;';
 
     return `
         <div class="panel-card ${hiddenClass}" style="${cardHeight} ${cardMinH} margin:0;">
@@ -5848,21 +5864,32 @@ function resizeGridItem(item) {
     const panel = currentDash?.panels?.find(p => p.id === pId);
     const targetMinH = (panel && panel.height) ? parseInt(panel.height) : 0;
 
-    // Reset styles temporarily to measure true unconstrained content height
+    if (targetMinH > 0) {
+        const rowSpan = Math.ceil((targetMinH + rowGap) / (rowHeight + rowGap));
+        item.style.gridRowEnd = "span " + Math.max(1, rowSpan);
+        cards.forEach(c => { 
+            c.style.height = '100%'; 
+            c.style.minHeight = `${targetMinH}px`;
+            c.style.maxHeight = 'none';
+            c.style.flex = '1'; 
+        });
+        return;
+    }
+
+    // Reset styles temporarily to measure true unconstrained content height for auto-height panels
     item.style.gridRowEnd = 'auto';
     cards.forEach(c => { 
         c.style.height = 'auto'; 
+        c.style.maxHeight = 'none';
         c.style.flex = 'none'; 
-        if (targetMinH > 0) c.style.minHeight = `${targetMinH}px`;
     });
 
-    const contentHeight = Math.max(item.scrollHeight, targetMinH);
+    const contentHeight = item.scrollHeight;
     const rowSpan = Math.ceil((contentHeight + rowGap) / (rowHeight + rowGap));
     item.style.gridRowEnd = "span " + Math.max(1, rowSpan);
     cards.forEach(c => { 
         c.style.height = '100%'; 
         c.style.flex = '1'; 
-        if (targetMinH > 0) c.style.minHeight = `${targetMinH}px`;
     });
 }
 
