@@ -2784,12 +2784,16 @@ function initPanelResize(e, panelId) {
         });
         wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
             cw.style.minHeight = `${Math.max(160, newHeight - 35)}px`;
+            cw.style.height = '100%';
         });
-        wrapper.querySelectorAll('.device-info-list').forEach(dl => {
-            dl.style.maxHeight = `${Math.max(100, newHeight - 60)}px`;
+        wrapper.querySelectorAll('[id^="chart_"]').forEach(el => {
+            el.style.height = `${Math.max(160, newHeight - 75)}px`;
+            const inst = (typeof echarts !== 'undefined') ? echarts.getInstanceByDom(el) : null;
+            if (inst) inst.resize();
         });
-        wrapper.querySelectorAll('.table-responsive, .sparkline-table-wrap').forEach(tw => {
-            tw.style.maxHeight = `${Math.max(120, newHeight - 90)}px`;
+        wrapper.querySelectorAll('.table-scroll-wrapper, .sparkline-table-wrap, .status-table-wrap, .device-info-list').forEach(sw => {
+            sw.style.maxHeight = 'none';
+            sw.style.flex = '1';
         });
         updateCompactHeaders();
 
@@ -2837,12 +2841,16 @@ function initPanelResize(e, panelId) {
             });
             wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
                 cw.style.minHeight = `${Math.max(160, currentHeight - 35)}px`;
+                cw.style.height = '100%';
             });
-            wrapper.querySelectorAll('.device-info-list').forEach(dl => {
-                dl.style.maxHeight = `${Math.max(100, currentHeight - 60)}px`;
+            wrapper.querySelectorAll('[id^="chart_"]').forEach(el => {
+                el.style.height = `${Math.max(160, currentHeight - 75)}px`;
+                const inst = (typeof echarts !== 'undefined') ? echarts.getInstanceByDom(el) : null;
+                if (inst) inst.resize();
             });
-            wrapper.querySelectorAll('.table-responsive, .sparkline-table-wrap').forEach(tw => {
-                tw.style.maxHeight = `${Math.max(120, currentHeight - 90)}px`;
+            wrapper.querySelectorAll('.table-scroll-wrapper, .sparkline-table-wrap, .status-table-wrap, .device-info-list').forEach(sw => {
+                sw.style.maxHeight = 'none';
+                sw.style.flex = '1';
             });
 
             resizeAllGridItems();
@@ -3168,7 +3176,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                         <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:14px; color:#94a3b8; line-height:1;">search</span>
                     </div>
                 </div>
-                <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex-grow:1; max-height:${chartH}px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff;">
+                <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex:1; min-height:100px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff;">
                     <table class="table-pfms" id="table_${uniqueId}" style="margin:0; font-size:${tableFs}px; font-weight:${tableFw}; width:100%;">
                         <thead id="thead_${uniqueId}"></thead>
                         <tbody id="tbody_${uniqueId}"></tbody>
@@ -3609,7 +3617,7 @@ function generateSummaryPanelHtml(p, modules) {
             let paginationHtml = '';
             if (totalPages > 1) {
                 paginationHtml = `
-                    <div class="pagination-container-dyn" style="display:flex; justify-content:space-between; align-items:center; padding:10px 15px; border-top:1px solid #f0f3f5; font-size:11px; color:#64748b; background:#fff; margin-top:8px;">
+                    <div class="pagination-container-dyn" style="display:flex; justify-content:space-between; align-items:center; padding:10px 15px; border-top:1px solid #f0f3f5; font-size:11px; color:#64748b; background:#fff; margin-top:auto; flex-shrink:0;">
                         <div>Showing ${startIdx + 1} to ${endIdx} of ${totalItems} Entries</div>
                         <div style="display:flex; gap:10px;">
                             <button class="pagination-btn-dyn" style="padding:4px 8px; border:1px solid #dce1e5; border-radius:4px; background:#fff; cursor:pointer; font-size:11px; color:#475569;" ${actualPage === 1 ? 'disabled style="opacity:0.5; cursor:default;"' : `onclick="changeTablePage('${p.id}', ${actualPage - 1})"`}>Prev</button>
@@ -3621,7 +3629,8 @@ function generateSummaryPanelHtml(p, modules) {
             }
 
             content = `
-                <div class="table-scroll-wrapper" style="${tableHeightStyle} border: 1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
+                <div class="status-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1; min-height:0;">
+                    <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex:1; min-height:100px; border: 1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
                     <table class="table-pfms" style="margin:0; font-size:11px; width:100%;">
                         <thead>
                             <tr style="position:sticky; top:0; background:#f8fafc; z-index:2; box-shadow: 0 1px 0 #e2e8f0;">
@@ -3765,7 +3774,6 @@ function generateSummaryPanelHtml(p, modules) {
         const paginatedItems = items.slice(startIdx, startIdx + limit);
 
         const tableFs = parseInt(p.font_size) || 12;
-        const tableH = p.height ? `max-height: ${Math.max(160, parseInt(p.height) - 90)}px;` : 'max-height: 400px;';
 
         const getSortIndicator = (col) => {
             if (currentSort.col === col) {
@@ -3779,7 +3787,7 @@ function generateSummaryPanelHtml(p, modules) {
         let paginationHtml = '';
         if (totalPages > 1) {
             paginationHtml = `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px 0 4px; font-size:11px; color:#64748b; background:transparent;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px 0 4px; font-size:11px; color:#64748b; background:transparent; flex-shrink:0; margin-top:auto;">
                 <div>Showing ${startIdx + 1} to ${Math.min(startIdx + limit, totalItems)} of ${totalItems}</div>
                 <div style="display:flex; gap:6px;">
                     <button class="btn-pfms btn-outline-pfms" style="padding:2px 8px; font-size:10px;" ${currentPage <= 1 ? 'disabled' : ''} onclick="window.tableCurrentPages['${p.id}'] = ${currentPage - 1}; forceRefresh();">Prev</button>
@@ -3793,19 +3801,19 @@ function generateSummaryPanelHtml(p, modules) {
             content = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:160px; color:#bdc3c7; font-size:11px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">query_stats</span>No data matched</div>`;
         } else {
             content = `
-            <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:auto;">
+            <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1; min-height:0;">
                 ${!hideSearch ? `
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px; flex-shrink:0;">
                     <div style="font-size:10px; color:#94a3b8; font-weight:500;">Top ${Math.min(limit, totalItems)} of ${totalItems} Items</div>
                     <div style="position:relative; width:180px;">
                         <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.sparklineTableSearch[p.id] || '')}" oninput="window.sparklineTableSearch['${p.id}'] = this.value; window.tableCurrentPages['${p.id}'] = 1; forceRefresh();">
                         <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
                     </div>
                 </div>` : ''}
-                <div style="overflow-x:auto; overflow-y:auto; ${tableH} border:1px solid #e2e8f0; border-radius:6px; background:#fff;">
+                <div class="table-scroll-wrapper" style="overflow-x:auto; overflow-y:auto; flex:1; min-height:100px; border:1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%;">
                     <table class="sparkline-table" style="font-size:${tableFs}px; width:100%; border-collapse:collapse; margin:0;">
                         <thead>
-                            <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                            <tr style="position:sticky; top:0; background:#f8fafc; z-index:2; border-bottom:1px solid #e2e8f0;">
                                 <th style="text-align:left; padding:8px 12px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'agent');">Agent ${getSortIndicator('agent')}</th>
                                 <th style="text-align:left; padding:8px 12px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'module');">Module Name ${getSortIndicator('module')}</th>
                                 <th style="text-align:left; padding:8px 12px; width:110px; cursor:pointer;" onclick="toggleSparklineSort('${p.id}', 'val');">Value ${getSortIndicator('val')}</th>
@@ -3866,12 +3874,6 @@ function generateSummaryPanelHtml(p, modules) {
 
         const distinctAgents = new Set(modules.map(m => m.agent_name).filter(Boolean));
         const showAgentBadge = distinctAgents.size > 1;
-
-        let maxHStyle = '';
-        if (p.height && parseInt(p.height) > 0) {
-            maxHStyle = `max-height: ${Math.max(100, parseInt(p.height) - 60)}px; overflow-y: auto;`;
-        }
-
         if (displayModules.length === 0) {
             content = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:120px; color:#94a3b8; font-size:11px;">
                 <span class="material-symbols-outlined" style="font-size:24px; margin-bottom:4px; color:#cbd5e1;">info</span>
@@ -3879,7 +3881,7 @@ function generateSummaryPanelHtml(p, modules) {
             </div>`;
         } else {
             content = `
-            <div class="device-info-list" style="width:100%; ${maxHStyle} display:flex; flex-direction:column;">
+            <div class="device-info-list" style="width:100%; height:100%; flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column;">
                 ${displayModules.map((m, idx) => {
                     let rawVal = m.current;
                     let valText = formatSmartValue(rawVal, p.use_raw);
