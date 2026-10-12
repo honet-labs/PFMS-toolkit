@@ -917,7 +917,8 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .val-unit { font-size: 14px !important; font-weight: 500 !important; color: #64748b; margin-left: 3px;}
         .mod-subtitle { font-size: 11px !important; color: #64748b; font-weight: 500 !important; margin-top: 8px; text-align: center; line-height:1.3; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; flex-shrink: 0;}
-        .chart-wrapper { width: 100%; position: relative; margin-top: 10px; display: flex; justify-content: center; align-items: center; min-width: 0;}
+        .chart-wrapper { width: 100%; height: 100%; position: relative; margin-top: 2px; display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; min-width: 0; overflow: hidden; }
+        .chart-html-legend { flex-shrink: 0; max-height: 85px; overflow-y: auto; padding: 4px 24px 2px 2px; }
         .gauge-text { position: absolute; top: 75%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; width: 90%; }
         .gauge-val { font-size: 24px !important; font-weight: 700 !important; color: #0b1a26; line-height: 1; }
         .gauge-minmax { font-size: 10px !important; color: #95a5a6; margin-top: 4px; font-weight: normal;}
@@ -2792,11 +2793,14 @@ function initPanelResize(e, panelId) {
             c.style.height = `${newHeight}px`;
         });
         wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
-            cw.style.minHeight = `${Math.max(160, newHeight - 35)}px`;
+            cw.style.minHeight = '0';
             cw.style.height = '100%';
+            cw.style.flex = '1 1 0%';
         });
         wrapper.querySelectorAll('[id^="chart_"]').forEach(el => {
-            el.style.height = `${Math.max(160, newHeight - 75)}px`;
+            el.style.minHeight = '80px';
+            el.style.height = '100%';
+            el.style.flex = '1 1 0%';
             const inst = (typeof echarts !== 'undefined') ? echarts.getInstanceByDom(el) : null;
             if (inst) inst.resize();
         });
@@ -2852,11 +2856,14 @@ function initPanelResize(e, panelId) {
                 c.style.height = '100%';
             });
             wrapper.querySelectorAll('.chart-wrapper').forEach(cw => {
-                cw.style.minHeight = `${Math.max(160, currentHeight - 35)}px`;
+                cw.style.minHeight = '0';
                 cw.style.height = '100%';
+                cw.style.flex = '1 1 0%';
             });
             wrapper.querySelectorAll('[id^="chart_"]').forEach(el => {
-                el.style.height = `${Math.max(160, currentHeight - 75)}px`;
+                el.style.minHeight = '80px';
+                el.style.height = '100%';
+                el.style.flex = '1 1 0%';
                 const inst = (typeof echarts !== 'undefined') ? echarts.getInstanceByDom(el) : null;
                 if (inst) inst.resize();
             });
@@ -3255,7 +3262,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                     </iframe>
                 </div>`;
             } else {
-                chartHtml = `<div class="chart-wrapper" style="min-height:${chartH}px; display:flex; flex-direction:column; flex-grow:1;"><div id="chart_${uniqueId}" style="width:100%; height:${chartH}px; min-height:180px; flex-grow:1;"></div><div id="chart_legend_${uniqueId}" class="chart-html-legend" style="display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; max-height:75px; overflow-y:auto; padding:4px 2px; margin-top:4px; border-top:1px solid #f1f5f9;"></div></div>`;
+                chartHtml = `<div class="chart-wrapper" style="width:100%; height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column; margin-top:2px; overflow:hidden;"><div id="chart_${uniqueId}" style="width:100%; height:100%; flex:1 1 0%; min-height:80px;"></div><div id="chart_legend_${uniqueId}" class="chart-html-legend" style="display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; max-height:85px; overflow-y:auto; padding:4px 24px 2px 2px; margin-top:4px; border-top:1px solid #f1f5f9; flex-shrink:0;"></div></div>`;
             }
 
             contentHtml = `<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">${modNameHtml}${statusHtml}</div>${chartHtml}`;
