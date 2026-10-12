@@ -765,6 +765,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             word-break: break-word;
         }
         .panel-body { padding: 12px; flex: 1 1 0%; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+        .panel-body.is-single-value { padding: 8px 12px 6px 12px; }
         
         .panel-controls { 
             display: flex; 
@@ -2797,8 +2798,9 @@ function initPanelResize(e, panelId) {
             cw.style.height = '100%';
             cw.style.flex = '1 1 0%';
         });
+        const isSingleVal = (panel.type === 'single_value');
         wrapper.querySelectorAll('[id^="chart_"]').forEach(el => {
-            el.style.minHeight = '80px';
+            el.style.minHeight = isSingleVal ? '0' : '80px';
             el.style.height = '100%';
             el.style.flex = '1 1 0%';
             const inst = (typeof echarts !== 'undefined') ? echarts.getInstanceByDom(el) : null;
@@ -2860,8 +2862,9 @@ function initPanelResize(e, panelId) {
                 cw.style.height = '100%';
                 cw.style.flex = '1 1 0%';
             });
+            const isSingleVal = (panel.type === 'single_value');
             wrapper.querySelectorAll('[id^="chart_"]').forEach(el => {
-                el.style.minHeight = '80px';
+                el.style.minHeight = isSingleVal ? '0' : '80px';
                 el.style.height = '100%';
                 el.style.flex = '1 1 0%';
                 const inst = (typeof echarts !== 'undefined') ? echarts.getInstanceByDom(el) : null;
@@ -3165,22 +3168,22 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         const showSvDot = (p.show_status_dot === true);
         const svDotHtml = showSvDot ? `<span class="status-dot ${bgClass}" style="width:10px; height:10px; margin-right:6px; display:inline-block; border-radius:50%; vertical-align:middle;"></span>` : '';
         contentHtml = `
-        <div style="height: 100%; width: 100%; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;">
-            <div style="padding: 10px 10px 0 10px; z-index: 2;">
+        <div class="single-value-card-inner" style="height: 100%; width: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative;">
+            <div style="flex-shrink: 0; z-index: 2; padding: 0 0 2px 0;">
                 <div style="font-size: ${fs}px; font-weight: ${fw}; color: ${color}; line-height: 1.1; display: flex; align-items: baseline; gap: 4px;">
                     ${svDotHtml}<span>${valText}</span>
                     <span style="font-size: ${Math.round(fs * 0.45)}px; font-weight: normal; color: #64748b;">${moduleData.unit}</span>
                 </div>
                 ${summaryHtml}
             </div>
-            <!-- Relative positioned ECharts Sparkline container -->
-            <div id="chart_${uniqueId}" style="flex: 1; min-height: 60px; width: 100%; cursor: pointer;" onclick="openNativeModuleDetailModal('${moduleData.id}', '${(moduleData.agent_name + ' - ' + moduleData.module_name).replace(/'/g, "\\'")}')"></div>
+            <!-- Relative positioned ECharts Sparkline container: fills available height without overflowing -->
+            <div id="chart_${uniqueId}" style="flex: 1 1 0%; min-height: 0; width: 100%; cursor: pointer;" onclick="openNativeModuleDetailModal('${moduleData.id}', '${(moduleData.agent_name + ' - ' + moduleData.module_name).replace(/'/g, "\\'")}')"></div>
             
             ${showMod ? `
-            <div style="padding: 10px 10px 8px 10px; font-size: 11px; font-weight: 500; color: #64748b; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; z-index: 2;">
+            <div style="flex-shrink: 0; padding-top: 4px; font-size: 11px; font-weight: 500; color: #64748b; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; z-index: 2;">
                 ${moduleData.module_name}
             </div>
-            ` : '<div style="height: 5px;"></div>'}
+            ` : ''}
         </div>
         `;
     }
@@ -3287,7 +3290,8 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         displayTitle = displayTitle.replace(new RegExp(`\\s*[\\(\\[]?${valCalc}[\\)\\]]?\\s*$`, 'i'), '').trim();
     }
 
-    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;"><h6 class="panel-title" title="${escapeHtml(displayTitle)}" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:3px; max-width:100%;"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; margin-right:2px; color:#b5c1c9; vertical-align:middle; flex-shrink:0;" title="Drag to reorder">drag_indicator</span><span style="overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word;">${escapeHtml(displayTitle)}</span>${badgeHtml}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body">${contentHtml}</div>${!IS_STANDALONE ? `<div class="panel-resize-handle" data-panel-id="${p.id}" title="Drag to resize panel (Width & Height)" onmousedown="initPanelResize(event, '${p.id}')" ontouchstart="initPanelResize(event, '${p.id}')"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/></svg></div>` : ''}</div>`;
+    const bodyExtraClass = (p.type === 'single_value') ? ' is-single-value' : '';
+    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;"><h6 class="panel-title" title="${escapeHtml(displayTitle)}" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:3px; max-width:100%;"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; margin-right:2px; color:#b5c1c9; vertical-align:middle; flex-shrink:0;" title="Drag to reorder">drag_indicator</span><span style="overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word;">${escapeHtml(displayTitle)}</span>${badgeHtml}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body${bodyExtraClass}">${contentHtml}</div>${!IS_STANDALONE ? `<div class="panel-resize-handle" data-panel-id="${p.id}" title="Drag to resize panel (Width & Height)" onmousedown="initPanelResize(event, '${p.id}')" ontouchstart="initPanelResize(event, '${p.id}')"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/></svg></div>` : ''}</div>`;
 }
 
 function generateSummaryPanelHtml(p, modules) {
@@ -4561,9 +4565,9 @@ function refreshCurrentNodeData() {
                         if (p.type === 'single_value') {
                             if (history && history.length > 0) {
                                 chartInstances[uniqueId].setOption({
-                                    grid: { left: 0, right: 0, top: 0, bottom: 0 },
+                                    grid: { left: 2, right: 2, top: 4, bottom: 4 },
                                     xAxis: { type: 'category', boundaryGap: false, data: history.map(h=>h.lbl), show: false },
-                                    yAxis: { type: 'value', show: false },
+                                    yAxis: { type: 'value', show: false, scale: false },
                                     series: [{
                                         type: 'line',
                                         data: history.map(h=>h.val),
@@ -4581,6 +4585,11 @@ function refreshCurrentNodeData() {
                                         lineStyle: { width: 1.5, color: color }
                                     }]
                                 });
+                                setTimeout(() => {
+                                    if (chartInstances[uniqueId] && typeof chartInstances[uniqueId].resize === 'function') {
+                                        chartInstances[uniqueId].resize();
+                                    }
+                                }, 50);
                             }
                         } else if (p.type === 'gauge') {
                             let curVal = parseFloat(m.current);
