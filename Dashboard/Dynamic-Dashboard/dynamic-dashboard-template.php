@@ -476,14 +476,45 @@ if ($api === 'bulk_panel_data') {
                     if ($is_wildcard) {
                         $modulesFound[] = $mod;
                     } else if ($mType === 'exact') {
-                        if ($mod_norm === $sub_kw_norm) {
+                        $clean_nombre = pretty_text($mod['nombre']);
+                        if ($mod_norm === $sub_kw_norm || strcasecmp($clean_nombre, $trimmed) === 0) {
                             $modulesFound[] = $mod;
                         }
                     } else {
-                        // Contains/Regex logic
+                        // Contains / Keyword matching (supports colons, underscores, spaces, and punctuation)
                         $clean_nombre = pretty_text($mod['nombre']);
-                        $fuzzy_regex = '/' . str_replace(' ', '.*', preg_quote($trimmed, '/')) . '/i';
-                        if (preg_match($fuzzy_regex, $clean_nombre) || $mod_norm === $sub_kw_norm) {
+                        $is_match = false;
+
+                        // 1. Exact match (case-insensitive & normalized)
+                        if ($mod_norm === $sub_kw_norm || strcasecmp($clean_nombre, $trimmed) === 0) {
+                            $is_match = true;
+                        }
+                        // 2. Direct substring search on normalized strings (e.g. "_Database:SizeMB" or "SizeMB" in "DB_CSE_Database:SizeMB")
+                        elseif ($sub_kw_norm !== '' && strpos($mod_norm, $sub_kw_norm) !== false) {
+                            $is_match = true;
+                        }
+                        // 3. Direct substring search on clean names (case-insensitive)
+                        elseif ($trimmed !== '' && stripos($clean_nombre, $trimmed) !== false) {
+                            $is_match = true;
+                        }
+                        // 4. Substring search ignoring punctuation/symbols (e.g. spaces instead of colons/underscores)
+                        else {
+                            $mod_alphanumeric = preg_replace('/[^a-z0-9]/', '', $mod_norm);
+                            $kw_alphanumeric = preg_replace('/[^a-z0-9]/', '', $sub_kw_norm);
+                            if ($kw_alphanumeric !== '' && strpos($mod_alphanumeric, $kw_alphanumeric) !== false) {
+                                $is_match = true;
+                            }
+                            // 5. Fuzzy regex matching on clean and normalized strings
+                            else {
+                                $fuzzy_regex = '/' . str_replace(' ', '.*', preg_quote($trimmed, '/')) . '/i';
+                                $fuzzy_norm_regex = '/' . str_replace(' ', '.*', preg_quote($sub_kw_norm, '/')) . '/i';
+                                if (@preg_match($fuzzy_regex, $clean_nombre) || @preg_match($fuzzy_norm_regex, $mod_norm)) {
+                                    $is_match = true;
+                                }
+                            }
+                        }
+
+                        if ($is_match) {
                             $modulesFound[] = $mod;
                         }
                     }

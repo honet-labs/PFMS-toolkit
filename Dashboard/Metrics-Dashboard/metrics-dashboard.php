@@ -565,8 +565,17 @@ if ($api === 'card_data' && $db_status) {
                     }
                 }
             } else {
-                $matchClause = "m.nombre LIKE ?";
-                $node_params[] = '%' . str_replace(' ', '%', $keyword) . '%';
+                $kwList = array_filter(array_map('trim', explode(',', $keyword)));
+                if (empty($kwList)) {
+                    $matchClause = "1=1";
+                } else {
+                    $likeParts = [];
+                    foreach ($kwList as $kwItem) {
+                        $likeParts[] = "m.nombre LIKE ?";
+                        $node_params[] = '%' . str_replace(' ', '%', $kwItem) . '%';
+                    }
+                    $matchClause = '(' . implode(' OR ', $likeParts) . ')';
+                }
             }
 
             $whereClause = "";
@@ -780,8 +789,17 @@ if ($api === 'status_details' && $db_status) {
                     }
                 }
             } else {
-                $matchClause = "m.nombre LIKE ?";
-                $node_params[] = '%' . str_replace(' ', '%', $keyword) . '%';
+                $kwList = array_filter(array_map('trim', explode(',', $keyword)));
+                if (empty($kwList)) {
+                    $matchClause = "1=1";
+                } else {
+                    $likeParts = [];
+                    foreach ($kwList as $kwItem) {
+                        $likeParts[] = "m.nombre LIKE ?";
+                        $node_params[] = '%' . str_replace(' ', '%', $kwItem) . '%';
+                    }
+                    $matchClause = '(' . implode(' OR ', $likeParts) . ')';
+                }
             }
 
             $whereClause = "";
@@ -882,8 +900,17 @@ if ($api === 'export_data' && $db_status) {
                     }
                 }
             } else {
-                $matchClause = "m.nombre LIKE ?";
-                $params[] = '%' . str_replace(' ', '%', $keyword) . '%';
+                $kwList = array_filter(array_map('trim', explode(',', $keyword)));
+                if (empty($kwList)) {
+                    $matchClause = "1=1";
+                } else {
+                    $likeParts = [];
+                    foreach ($kwList as $kwItem) {
+                        $likeParts[] = "m.nombre LIKE ?";
+                        $params[] = '%' . str_replace(' ', '%', $kwItem) . '%';
+                    }
+                    $matchClause = '(' . implode(' OR ', $likeParts) . ')';
+                }
             }
 
             $placeholders = implode(',', array_fill(0, count($aids), '?'));
