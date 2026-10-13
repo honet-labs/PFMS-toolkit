@@ -680,7 +680,7 @@ if ($api === 'card_data' && $db_status) {
         // For charts / history queries, sort deterministically by agent alias and module name
         // This guarantees the exact same subset of modules is selected on every refresh,
         // preventing wild color shifts and module bouncing due to minor SNMP timestamp variations.
-        $isChart = (isset($_GET['history']) && $_GET['history'] === '1') || (isset($_GET['view_type']) && in_array($_GET['view_type'], ['line', 'area', 'bar', 'history_table', 'single_value', 'sparkline_table']));
+        $isChart = (isset($_GET['history']) && $_GET['history'] === '1') || (isset($_GET['view_type']) && in_array($_GET['view_type'], ['line', 'area', 'bar', 'history_table', 'single_value', 'sparkline_table', 'status_timeline']));
         if ($isChart) {
             if (isset($_GET['view_type']) && $_GET['view_type'] === 'sparkline_table') {
                 // Sort by highest value descending by default for sparkline table leaderboard
@@ -712,7 +712,7 @@ if ($api === 'card_data' && $db_status) {
             $historyLimit = (isset($_GET['chart_limit']) && (int)$_GET['chart_limit'] > 0) ? (int)$_GET['chart_limit'] : 25;
             if (isset($_GET['view_type']) && $_GET['view_type'] === 'single_value') {
                 $historyLimit = 1;
-            } elseif (isset($_GET['view_type']) && $_GET['view_type'] === 'sparkline_table') {
+            } elseif (isset($_GET['view_type']) && in_array($_GET['view_type'], ['sparkline_table', 'status_timeline'])) {
                 $historyLimit = (isset($_GET['limit']) && (int)$_GET['limit'] > 0) ? (int)$_GET['limit'] : count($tableData);
             }
             $slicedTableData = array_slice($tableData, 0, $historyLimit);
@@ -1109,6 +1109,16 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .sparkline-table thead th:hover { color: #0284c7 !important; background-color: #f1f5f9 !important; }
         .sparkline-table tbody td { border-bottom: 1px solid #f1f5f9; padding: 10px 14px !important; vertical-align: middle !important; }
         .sparkline-table tbody tr:hover td { background-color: #f8fafc !important; }
+        .status-timeline-block {
+            transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+        }
+        .status-timeline-block:hover {
+            transform: scaleY(1.22) scaleX(1.08);
+            filter: brightness(1.25);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 5;
+            position: relative;
+        }
 
         .node-wrap { display: inline-flex; align-items: center; gap: 8px; line-height: 1; vertical-align: middle; }
         .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; position: relative; top: -1px; }
@@ -1324,6 +1334,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 <option value="table">Table View (Detailed)</option>
                 <option value="history_table">History Table View</option>
                 <option value="sparkline_table">Sparkline Table (Trend Over Time)</option>
+                <option value="status_timeline">Status Timeline (Uptime Blocks)</option>
                 <option value="single_value">Single Value Card (Sparkline)</option>
                 <option value="heatmap">Heatmap View (Grid Summary)</option>
                 <option value="cards">Cards Status View (Stats Only)</option>
@@ -2720,12 +2731,12 @@ function renderGrid() {
             div.ondragend = (e) => handleDragEnd(e);
         }
 
-        let searchBtn = ['cards', 'pie', 'donut', 'line', 'area', 'bar'].includes(c.view_type) ? '' : `
+        let searchBtn = ['cards', 'pie', 'donut', 'line', 'area', 'bar', 'status_timeline'].includes(c.view_type) ? '' : `
             <input type="text" id="search_inp_${c.id}" class="search-input-header" placeholder="Filter..." onkeyup="filterTableRows('${c.id}')">
             <button class="icon-btn-card" onclick="toggleSearchInput('${c.id}')" title="Search"><span class="material-symbols-outlined">search</span></button>
         `;
 
-        let timeRangeBtn = ['line', 'area', 'bar'].includes(c.view_type) ? `
+        let timeRangeBtn = ['line', 'area', 'bar', 'sparkline_table', 'status_timeline'].includes(c.view_type) ? `
             <button class="icon-btn-card" onclick="openTimeRangeMenu(event, '${c.id}')" title="Time Range"><span class="material-symbols-outlined">schedule</span></button>
         ` : '';
 
@@ -2746,7 +2757,7 @@ function renderGrid() {
             div.style.minHeight = c.height + 'px';
         }
 
-        const showStatsStyle = (c.view_type !== 'cards' && (c.show_stats === 0 || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer', 'sparkline_table'].includes(c.view_type))) ? 'display: none !important;' : '';
+        const showStatsStyle = (c.view_type !== 'cards' && (c.show_stats === 0 || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer', 'sparkline_table', 'status_timeline'].includes(c.view_type))) ? 'display: none !important;' : '';
         const visStats = Array.isArray(c.visible_stats) && c.visible_stats.length > 0 
             ? c.visible_stats 
             : ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'];
@@ -2792,7 +2803,7 @@ function renderGrid() {
 
 function fetchCardData(card) {
     const matchType = card.match_type || 'contains';
-    const isChart = ['line', 'area', 'bar', 'history_table', 'single_value', 'sparkline_table'].includes(card.view_type);
+    const isChart = ['line', 'area', 'bar', 'history_table', 'single_value', 'sparkline_table', 'status_timeline'].includes(card.view_type);
     const range = card.time_range || 86400;
     let url = `?api=card_data&group_id=${card.group_id}&keyword=${encodeURIComponent(card.keyword)}&limit=${card.limit}&manual_ids=${card.manual_ids || ''}&match_type=${matchType}&chart_limit=${card.chart_limit || 0}&view_type=${card.view_type || ''}`;
     if (isChart) {
@@ -2829,6 +2840,9 @@ function fetchCardData(card) {
         } else if (card.view_type === 'sparkline_table') {
             container.style.display = 'block';
             renderSparklineTableWidget(card.id, res.table || [], res.history || []);
+        } else if (card.view_type === 'status_timeline') {
+            container.style.display = 'block';
+            renderStatusTimelineWidget(card.id, res.table || [], res.history || []);
         } else {
             container.style.display = 'block';
             renderTablePage(card.id);
@@ -3621,6 +3635,380 @@ function changeMetricsSparklinePage(cardId, delta) {
     if (store) renderSparklineTableWidget(cardId, store.table, store.history);
 }
 
+function renderStatusTimelineWidget(cardId, tableData, historyData) {
+    const container = document.getElementById(`content_view_${cardId}`);
+    if (!container) return;
+
+    if (!tableData || tableData.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:30px; color:#7f8c8d; font-weight: normal; border:1px solid #e0e4e8; border-radius:6px;">No data found.</div>';
+        return;
+    }
+
+    window.metricsTimelineStores = window.metricsTimelineStores || {};
+    window.metricsTimelineStores[cardId] = { table: tableData, history: historyData };
+
+    const card = dashboardCards.find(c => c.id === cardId);
+    if (!card) return;
+
+    const historyMap = {};
+    if (historyData && Array.isArray(historyData)) {
+        historyData.forEach(h => {
+            const mId = String(h.id_mod);
+            if (!historyMap[mId]) historyMap[mId] = [];
+            historyMap[mId].push(h);
+        });
+    }
+
+    const autoConvert = (card.auto_convert_traffic !== undefined)
+        ? (card.auto_convert_traffic === true || card.auto_convert_traffic === 1 || card.auto_convert_traffic === '1' || card.auto_convert_traffic === 'true')
+        : true;
+
+    const range = card.time_range || 86400;
+    let startTs, endTs;
+    if (range === 'custom' && card.custom_start_ts && card.custom_end_ts) {
+        startTs = parseInt(card.custom_start_ts);
+        endTs = parseInt(card.custom_end_ts);
+    } else {
+        endTs = Math.floor(Date.now() / 1000);
+        startTs = endTs - (parseInt(range) || 86400);
+    }
+    const rangeSec = Math.max(60, endTs - startTs);
+
+    const numBlocks = 30;
+    const bucketSec = Math.max(1, rangeSec / numBlocks);
+
+    const formatTimeTick = (ts) => {
+        const d = new Date(ts * 1000);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        if (rangeSec > 86400) {
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            return `${dd}/${mo} ${hh}:${mm}`;
+        }
+        return `${hh}:${mm}`;
+    };
+
+    const formatFullTime = (ts) => {
+        const d = new Date(ts * 1000);
+        const yyyy = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        return `${yyyy}-${mo}-${dd} ${hh}:${mm}:${ss}`;
+    };
+
+    const numLabels = 7;
+    let labelTicks = [];
+    for (let i = 0; i < numLabels; i++) {
+        const tickTs = startTs + (i / (numLabels - 1)) * rangeSec;
+        labelTicks.push(formatTimeTick(tickTs));
+    }
+
+    window.metricsTimelineSearch = window.metricsTimelineSearch || {};
+    const searchKw = (window.metricsTimelineSearch[cardId] || '').toLowerCase().trim();
+    let displayModules = tableData;
+    if (searchKw) {
+        displayModules = displayModules.filter(m => 
+            (m.agent_alias || '').toLowerCase().includes(searchKw) ||
+            (m.agent_name || '').toLowerCase().includes(searchKw) ||
+            (m.ip_address || '').toLowerCase().includes(searchKw) ||
+            (m.module_name || '').toLowerCase().includes(searchKw)
+        );
+    }
+
+    const limit = parseInt(card.limit) || 10;
+    const totalItems = displayModules.length;
+    const totalPages = Math.ceil(totalItems / limit) || 1;
+    window.metricsTimelinePages = window.metricsTimelinePages || {};
+    const currentPage = Math.min(Math.max(1, window.metricsTimelinePages[cardId] || 1), totalPages);
+    window.metricsTimelinePages[cardId] = currentPage;
+
+    const startIdx = (currentPage - 1) * limit;
+    const paginated = (tableData.length === 1) ? displayModules : displayModules.slice(startIdx, startIdx + limit);
+
+    const cardsHtml = paginated.map(m => {
+        const mId = String(m.id_agente_modulo);
+        const hist = historyMap[mId] || [];
+        const isTraffic = (typeof isTrafficMetric === 'function') ? isTrafficMetric(m.module_name, m.unit, card.title) : false;
+        const isByte = (isTraffic && typeof isByteTrafficMetric === 'function') ? isByteTrafficMetric(m.module_name, m.unit, card.title) : false;
+
+        let curValNum = parseFloat(String(m.current_value).replace(',', '.'));
+        let curNumeric = isNaN(curValNum) ? 0 : curValNum;
+        let curDisplayVal = '';
+        if (card.lbl_1 && (m.current_value == 1 || String(m.current_value) === '1' || String(m.current_value) === '1.0')) curDisplayVal = card.lbl_1;
+        else if (card.lbl_0 && (m.current_value == 0 || String(m.current_value) === '0' || String(m.current_value) === '0.0')) curDisplayVal = card.lbl_0;
+        else if (isTraffic && autoConvert) curDisplayVal = formatBitsRate(isByte ? curNumeric * 8 : curNumeric);
+        else if (card.use_raw) curDisplayVal = (curNumeric % 1 === 0 ? curNumeric : curNumeric.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+        else curDisplayVal = formatHumanMetric(curNumeric, m.unit, false, m.module_name, card.title);
+
+        const curEval = evaluateModuleThresholdStatus(m, curNumeric, m.module_name, m.unit, card.title);
+
+        const sortedHist = [...hist].sort((a, b) => ((a.utimestamp || a.ts || 0) - (b.utimestamp || b.ts || 0)));
+
+        let blocksHtml = '';
+        let lastVal = (sortedHist.length > 0 && sortedHist[0].val !== undefined) ? sortedHist[0].val : m.current_value;
+        let lastTs = (sortedHist.length > 0 && (sortedHist[0].utimestamp || sortedHist[0].ts)) ? (sortedHist[0].utimestamp || sortedHist[0].ts) : (m.last_contact || startTs);
+
+        for (let b = 0; b < numBlocks; b++) {
+            const bStart = startTs + b * bucketSec;
+            const bEnd = bStart + bucketSec;
+            const bCenter = bStart + bucketSec / 2;
+
+            const bucketPoints = sortedHist.filter(h => {
+                const hts = h.utimestamp || h.ts || 0;
+                return (hts >= bStart && hts < bEnd);
+            });
+
+            let blockStatus = 0;
+            let blockVal = lastVal;
+            let blockTs = bCenter;
+
+            if (bucketPoints.length > 0) {
+                let worstStatus = 0;
+                let worstPoint = bucketPoints[bucketPoints.length - 1];
+                for (const pt of bucketPoints) {
+                    const ptNum = parseFloat(String(pt.val).replace(',', '.'));
+                    const ptEval = evaluateModuleThresholdStatus(m, isNaN(ptNum) ? 0 : ptNum, m.module_name, m.unit, card.title);
+                    if (ptEval.status === 1) {
+                        worstStatus = 1;
+                        worstPoint = pt;
+                        break;
+                    } else if (ptEval.status === 2 && worstStatus !== 1) {
+                        worstStatus = 2;
+                        worstPoint = pt;
+                    } else if (worstStatus === 0 && ptEval.status !== 0) {
+                        worstStatus = ptEval.status;
+                        worstPoint = pt;
+                    }
+                }
+                blockStatus = worstStatus;
+                blockVal = worstPoint.val;
+                blockTs = worstPoint.utimestamp || worstPoint.ts || bCenter;
+                lastVal = blockVal;
+                lastTs = blockTs;
+            } else {
+                const priorPoints = sortedHist.filter(h => (h.utimestamp || h.ts || 0) < bStart);
+                if (priorPoints.length > 0) {
+                    const prior = priorPoints[priorPoints.length - 1];
+                    const priorNum = parseFloat(String(prior.val).replace(',', '.'));
+                    const priorEval = evaluateModuleThresholdStatus(m, isNaN(priorNum) ? 0 : priorNum, m.module_name, m.unit, card.title);
+                    blockStatus = priorEval.status;
+                    blockVal = prior.val;
+                    blockTs = prior.utimestamp || prior.ts || bCenter;
+                } else if (sortedHist.length === 0) {
+                    blockStatus = curEval.status;
+                    blockVal = m.current_value;
+                    blockTs = m.last_contact || bCenter;
+                } else {
+                    blockStatus = 4;
+                    blockVal = 'N/A';
+                    blockTs = bCenter;
+                }
+            }
+
+            let blockColor = '#22c55e';
+            let statusLabel = 'NORMAL';
+            if (blockStatus === 1) { blockColor = '#ef4444'; statusLabel = 'CRITICAL'; }
+            else if (blockStatus === 2) { blockColor = '#f59e0b'; statusLabel = 'WARNING'; }
+            else if (blockStatus === 4) { blockColor = '#3b82f6'; statusLabel = 'NOT INIT'; }
+            else if (blockStatus === 3 || blockVal === 'N/A' || blockVal === null || blockVal === undefined) { blockColor = '#94a3b8'; statusLabel = 'UNKNOWN'; }
+
+            let valNum = parseFloat(String(blockVal).replace(',', '.'));
+            let blockDisplayVal = '';
+            if (card.lbl_1 && (blockVal == 1 || String(blockVal) === '1' || String(blockVal) === '1.0')) blockDisplayVal = card.lbl_1;
+            else if (card.lbl_0 && (blockVal == 0 || String(blockVal) === '0' || String(blockVal) === '0.0')) blockDisplayVal = card.lbl_0;
+            else if (isTraffic && autoConvert && !isNaN(valNum)) blockDisplayVal = formatBitsRate(isByte ? valNum * 8 : valNum);
+            else if (card.use_raw && !isNaN(valNum)) blockDisplayVal = (valNum % 1 === 0 ? valNum : valNum.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+            else if (!isNaN(valNum)) blockDisplayVal = formatHumanMetric(valNum, m.unit, false, m.module_name, card.title);
+            else blockDisplayVal = String(blockVal || 'N/A');
+
+            const safeAgent = escapeHtml(m.agent_alias || m.agent_name || m.ip_address || 'Agent');
+            const safeMod = escapeHtml(m.module_name || 'Module');
+            const safeVal = escapeHtml(blockDisplayVal);
+            const safeTs = escapeHtml(formatFullTime(blockTs));
+
+            blocksHtml += `<div class="status-timeline-block" 
+                style="flex:1; min-width:4px; height:24px; border-radius:4px; background:${blockColor}; cursor:pointer;"
+                data-ts="${safeTs}"
+                data-agent="${safeAgent}"
+                data-mod="${safeMod}"
+                data-status="${statusLabel}"
+                data-status-color="${blockColor}"
+                data-val="${safeVal}"
+                onmouseenter="showTimelineBlockTooltip(this, event)"
+                onmousemove="moveTimelineBlockTooltip(event)"
+                onmouseleave="hideTimelineBlockTooltip()"
+                onclick="openNativeModuleDetailModal('${m.id_agente_modulo}', '${((m.agent_alias || m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')"
+            ></div>`;
+        }
+
+        const agentTitle = (m.agent_alias || m.agent_name || 'Agent') + (m.ip_address && m.ip_address !== m.agent_alias && m.ip_address !== m.agent_name ? ` (${m.ip_address})` : '');
+
+        if (tableData.length === 1) {
+            return `
+            <div class="status-timeline-single" style="width:100%; display:flex; flex-direction:column; justify-content:center; padding:12px 6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden;">
+                        <span style="font-weight:700; color:#0284c7; font-size:12px;">${escapeHtml(agentTitle)}</span>
+                        <span style="color:#cbd5e1;">•</span>
+                        <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="openNativeModuleDetailModal('${m.id_agente_modulo}', '${((m.agent_alias || m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                        <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28;"></span>
+                        <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(curDisplayVal)}</span>
+                    </div>
+                </div>
+                <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:26px; align-items:stretch;">
+                    ${blocksHtml}
+                </div>
+                <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:6px; padding:0 2px; user-select:none;">
+                    ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
+                </div>
+            </div>`;
+        }
+
+        return `
+        <div class="status-timeline-item" style="padding:10px 12px; border-bottom:1px solid #f1f5f9; display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
+                    <span style="font-weight:700; color:#0284c7; font-size:11px; flex-shrink:0;">${escapeHtml(agentTitle)}</span>
+                    <span style="color:#cbd5e1;">•</span>
+                    <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="openNativeModuleDetailModal('${m.id_agente_modulo}', '${((m.agent_alias || m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                    <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28;"></span>
+                    <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(curDisplayVal)}</span>
+                </div>
+            </div>
+            <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:24px; align-items:stretch;">
+                ${blocksHtml}
+            </div>
+            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:6px; padding:0 2px; user-select:none;">
+                ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
+            </div>
+        </div>`;
+    }).join('');
+
+    let paginationHtml = '';
+    if (totalPages > 1 && tableData.length > 1) {
+        paginationHtml = `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px 0 4px; font-size:11px; color:#64748b; background:transparent; flex-shrink:0; margin-top:auto;">
+            <div>Showing ${startIdx + 1} to ${Math.min(startIdx + limit, totalItems)} of ${totalItems}</div>
+            <div style="display:flex; gap:6px;">
+                <button class="btn-pfms btn-outline-pfms" style="padding:2px 8px; font-size:10px;" ${currentPage <= 1 ? 'disabled' : ''} onclick="window.metricsTimelinePages['${cardId}'] = ${currentPage - 1}; const s = window.metricsTimelineStores['${cardId}']; if(s) renderStatusTimelineWidget('${cardId}', s.table, s.history);">Prev</button>
+                <span style="padding:2px 6px;">Page ${currentPage} of ${totalPages}</span>
+                <button class="btn-pfms btn-outline-pfms" style="padding:2px 8px; font-size:10px;" ${currentPage >= totalPages ? 'disabled' : ''} onclick="window.metricsTimelinePages['${cardId}'] = ${currentPage + 1}; const s = window.metricsTimelineStores['${cardId}']; if(s) renderStatusTimelineWidget('${cardId}', s.table, s.history);">Next</button>
+            </div>
+        </div>`;
+    }
+
+    const hideSearch = (card.hide_search_bar === true || card.hide_search_bar === 1 || card.hide_search_bar === '1' || card.hide_search_bar === 'true');
+
+    if (tableData.length === 1) {
+        container.innerHTML = `<div class="status-timeline-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:center;">${cardsHtml}</div>`;
+        return;
+    }
+
+    container.innerHTML = `
+    <div class="status-timeline-wrapper" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1 1 0%; min-height:0; overflow:hidden;">
+        ${!hideSearch && totalItems > 1 ? `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-shrink:0;">
+            <div style="font-size:10px; color:#94a3b8; font-weight:500;">Showing ${Math.min(limit, totalItems)} of ${totalItems} Nodes</div>
+            <div style="position:relative; width:180px;">
+                <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.metricsTimelineSearch[cardId] || '')}" oninput="window.metricsTimelineSearch['${cardId}'] = this.value; window.metricsTimelinePages['${cardId}'] = 1; const s = window.metricsTimelineStores['${cardId}']; if(s) renderStatusTimelineWidget('${cardId}', s.table, s.history);">
+                <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
+            </div>
+        </div>` : ''}
+        <div style="overflow-y:auto; overflow-x:hidden; flex:1 1 0%; min-height:0; width:100%; padding-right:2px;">
+            ${cardsHtml}
+        </div>
+        ${paginationHtml}
+    </div>`;
+}
+
+function showTimelineBlockTooltip(el, e) {
+    let tip = document.getElementById('statusTimelineTooltip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'statusTimelineTooltip';
+        tip.style.position = 'fixed';
+        tip.style.display = 'none';
+        tip.style.pointerEvents = 'none';
+        tip.style.zIndex = '999999';
+        tip.style.background = '#0f172a';
+        tip.style.color = '#f8fafc';
+        tip.style.borderRadius = '8px';
+        tip.style.padding = '10px 14px';
+        tip.style.boxShadow = '0 10px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.4)';
+        tip.style.border = '1px solid rgba(255,255,255,0.15)';
+        tip.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        tip.style.fontSize = '11px';
+        tip.style.lineHeight = '1.4';
+        tip.style.minWidth = '220px';
+        tip.style.maxWidth = '340px';
+        tip.style.transition = 'opacity 0.1s ease';
+        document.body.appendChild(tip);
+    }
+
+    const ts = el.getAttribute('data-ts') || '';
+    const agent = el.getAttribute('data-agent') || '';
+    const mod = el.getAttribute('data-mod') || '';
+    const status = el.getAttribute('data-status') || '';
+    const color = el.getAttribute('data-status-color') || '#22c55e';
+    const val = el.getAttribute('data-val') || '';
+
+    tip.innerHTML = `
+        <div style="display:flex; align-items:center; gap:6px; font-weight:600; color:#94a3b8; font-size:11px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:8px;">
+            <span class="material-symbols-outlined" style="font-size:14px; color:#38bdf8;">schedule</span>
+            <span>${escapeHtml(ts)}</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:5px;">
+            <div style="display:flex; justify-content:space-between; gap:12px;">
+                <span style="color:#94a3b8;">Nama Agent:</span>
+                <span style="font-weight:600; color:#38bdf8; text-align:right; word-break:break-word;">${escapeHtml(agent)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; gap:12px;">
+                <span style="color:#94a3b8;">Nama Module:</span>
+                <span style="font-weight:600; color:#ffffff; text-align:right; word-break:break-word;">${escapeHtml(mod)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <span style="color:#94a3b8;">Status Module:</span>
+                <span style="background:${color}; color:#fff; padding:1px 8px; border-radius:10px; font-size:10px; font-weight:700;">${escapeHtml(status)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <span style="color:#94a3b8;">Value Module:</span>
+                <span style="font-weight:700; color:#34d399; font-size:12px; text-align:right;">${escapeHtml(val)}</span>
+            </div>
+        </div>
+    `;
+    tip.style.display = 'block';
+    moveTimelineBlockTooltip(e);
+}
+
+function moveTimelineBlockTooltip(e) {
+    const tip = document.getElementById('statusTimelineTooltip');
+    if (!tip || tip.style.display === 'none') return;
+    const tipWidth = tip.offsetWidth || 220;
+    const tipHeight = tip.offsetHeight || 120;
+    let x = e.clientX - (tipWidth / 2);
+    let y = e.clientY - tipHeight - 12;
+
+    if (x < 10) x = 10;
+    if (x + tipWidth > window.innerWidth - 10) x = window.innerWidth - tipWidth - 10;
+    if (y < 10) y = e.clientY + 20;
+
+    tip.style.left = `${x}px`;
+    tip.style.top = `${y}px`;
+}
+
+function hideTimelineBlockTooltip() {
+    const tip = document.getElementById('statusTimelineTooltip');
+    if (tip) tip.style.display = 'none';
+}
+
 function generateSparklineSvg(history, options = {}) {
     if (!history || !Array.isArray(history) || history.length < 2) {
         return '<div style="color:#94a3b8; font-size:10px; font-style:italic; padding:4px 0;">No trend data</div>';
@@ -4132,7 +4520,7 @@ function toggleViewTypeOptions() {
 
     const wrapSparkline = document.getElementById('wrap_sparkline_options');
     if (wrapSparkline) {
-        wrapSparkline.style.display = (vt === 'sparkline_table') ? 'block' : 'none';
+        wrapSparkline.style.display = (vt === 'sparkline_table' || vt === 'status_timeline') ? 'block' : 'none';
     }
 
     if (wrapColumns) {

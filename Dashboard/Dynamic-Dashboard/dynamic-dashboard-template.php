@@ -545,7 +545,7 @@ if ($api === 'bulk_panel_data') {
             $moduleResults = [];
             foreach($modulesFound as $mod) {
                 $mod_id = $mod['id_agente_modulo'];
-                if (in_array($pType, ['line', 'area', 'bar', 'heatmap', 'history_table', 'single_value', 'text', 'gauge', 'sparkline_table'])) {
+                if (in_array($pType, ['line', 'area', 'bar', 'heatmap', 'history_table', 'single_value', 'text', 'gauge', 'sparkline_table', 'status_timeline'])) {
                     $raw_hist = get_module_history_data($active_pdo, $active_history_pdo, $mod_id, $start, $end, 2000, 'DESC');
                     $history = [];
                     foreach ($raw_hist as $row) {
@@ -1038,6 +1038,9 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .sparkline-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
         .sparkline-table tr:hover td { background: #f8fafc; }
 
+        .status-timeline-block { border-radius: 4px; transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease; cursor: pointer; }
+        .status-timeline-block:hover { transform: scaleY(1.2) scaleX(1.05); filter: brightness(1.15); box-shadow: 0 4px 10px rgba(0,0,0,0.25); z-index: 10; position: relative; }
+
         .table-wrap-dyn { 
             width: 100%; 
             max-width: 100%; 
@@ -1452,6 +1455,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                         <option value="heatmap">History Heatmap Blocks</option>
                         <option value="history_table">History Table View</option>
                         <option value="sparkline_table">Sparkline Table (Trend Over Time)</option>
+                        <option value="status_timeline">Status Timeline (Uptime Blocks)</option>
                         <option value="status_table">Table View (Current Status)</option>
                         <option value="status_heatmap">Heatmap View (Current Status)</option>
                         <option value="status_stats">Stats Cards (Current Status)</option>
@@ -2880,7 +2884,7 @@ function initPanelResize(e, panelId) {
 
     const wrapperRect = wrapper.getBoundingClientRect();
     const startWidth = wrapperRect.width;
-    const isTableType = ['sparkline_table', 'status_table', 'history_table', 'table_viewer', 'device_info'].includes(panel.type);
+    const isTableType = ['sparkline_table', 'status_table', 'history_table', 'table_viewer', 'device_info', 'status_timeline'].includes(panel.type);
     const startHeight = isTableType ? Math.round(wrapperRect.height) : (parseInt(panel.height) || Math.round(wrapperRect.height) || 200);
     const startSpan = Math.max(1, Math.min(12, parseInt(panel.width) || 12));
 
@@ -3374,6 +3378,9 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                 return `<div class="heat-block" style="background:${color};" title="${h.lbl}: ${h.val}"></div>`;
             }).join('')}</div>`;
         }
+    }
+    else if (p.type === 'status_timeline') {
+        contentHtml = renderStatusTimelineContent(p, [moduleData]);
     }
     else {
         const history = moduleData.history || [];
@@ -4028,6 +4035,8 @@ function generateSummaryPanelHtml(p, modules) {
                 ${paginationHtml}
             </div>`;
         }
+    } else if (p.type === 'status_timeline') {
+        content = renderStatusTimelineContent(p, modules);
     } else if (p.type === 'device_info') {
         const itemFs = parseInt(p.font_size) || 12;
         const itemFw = p.font_weight || '600';
@@ -4430,7 +4439,7 @@ function refreshCurrentNodeData() {
                 activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
             }
 
-            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table', 'sparkline_table', 'device_info'].includes(p.type)) {
+            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table', 'sparkline_table', 'device_info', 'status_timeline'].includes(p.type)) {
                 wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             } else {
                 if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
@@ -4892,14 +4901,14 @@ function toggleTypeFields() {
 
     const wrapSparklineOptions = document.getElementById('wrap_sparkline_options');
     if (wrapSparklineOptions) {
-        wrapSparklineOptions.style.display = (type === 'sparkline_table') ? 'block' : 'none';
+        wrapSparklineOptions.style.display = (type === 'sparkline_table' || type === 'status_timeline') ? 'block' : 'none';
     }
 
     const isChart = ['line','area','bar'].includes(type);
     if (document.getElementById('wrap_show_time')) document.getElementById('wrap_show_time').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_show_yaxis')) document.getElementById('wrap_show_yaxis').style.display = isChart ? 'flex' : 'none';
     if (document.getElementById('wrap_force_100')) document.getElementById('wrap_force_100').style.display = isChart ? 'flex' : 'none';
-    const typesWithDot = ['text', 'device_info', 'single_value', 'status_table', 'sparkline_table', 'line', 'area', 'bar'];
+    const typesWithDot = ['text', 'device_info', 'single_value', 'status_table', 'sparkline_table', 'status_timeline', 'line', 'area', 'bar'];
     if (document.getElementById('wrap_show_status_dot')) document.getElementById('wrap_show_status_dot').style.display = typesWithDot.includes(type) ? 'flex' : 'none';
     const wrapChartColors = document.getElementById('wrap_chart_colors');
     if (wrapChartColors) {
@@ -4918,7 +4927,7 @@ function toggleTypeFields() {
         document.getElementById('p_chart_font_size').disabled = !isChart;
     }
 
-    const isTable = (type === 'status_table' || type === 'history_table' || type === 'table_viewer' || type === 'sparkline_table' || type === 'device_info');
+    const isTable = (type === 'status_table' || type === 'history_table' || type === 'table_viewer' || type === 'sparkline_table' || type === 'device_info' || type === 'status_timeline');
     const wrapLimit = document.getElementById('wrap_row_limit');
     if (wrapLimit) {
         wrapLimit.style.opacity = isTable ? '1' : '0.3';
@@ -5085,6 +5094,16 @@ const VISUAL_TYPE_CATALOG = {
         desc: 'Multi-node intelligent table where each row includes a 24-hour mini sparkline chart to detect anomalies instantly.',
         bestFor: 'Multi-Node Monitoring, Compact Overview + Trend Graph',
         render: () => `<table style="width:100%; max-width:280px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Node / Target</th><th style="padding:2px 4px; text-align:right;">Current</th><th style="padding:2px 4px; text-align:center;">Trend (24h)</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">RT-CORE-01</td><td style="padding:2px 4px; text-align:right; font-weight:600;">145 Mbps</td><td style="padding:1px 4px; text-align:center;"><svg width="55" height="14"><path d="M 2 11 Q 15 2 28 7 T 53 3" fill="none" stroke="#2563eb" stroke-width="1.8"/></svg></td></tr><tr><td style="padding:2px 4px; font-weight:600;">SW-DIST-02</td><td style="padding:2px 4px; text-align:right; font-weight:600;">64 Mbps</td><td style="padding:1px 4px; text-align:center;"><svg width="55" height="14"><path d="M 2 4 Q 18 13 32 5 T 53 2" fill="none" stroke="#10b981" stroke-width="1.8"/></svg></td></tr></tbody></table>`
+    },
+    'status_timeline': {
+        title: 'Status Timeline (Uptime Blocks)',
+        group: 'status',
+        badge: 'Uptime / SLA Timeline',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Horizontal rounded timeline blocks showing uptime/status history over time with interactive tooltips showing timestamp, agent, module, status, and value.',
+        bestFor: 'SLA Tracking, Server Uptime Monitoring, Status Over Time, Anomaly Tracking',
+        render: () => `<div style="width:100%; max-width:280px; padding:6px 0;"><div style="display:flex; gap:2px; height:18px;">${Array.from({length: 24}).map((_, i) => `<div style="flex:1; border-radius:3px; background:${i === 16 ? '#ef4444' : (i === 11 ? '#f59e0b' : '#22c55e')};"></div>`).join('')}</div><div style="display:flex; justify-content:space-between; font-size:7px; color:#64748b; margin-top:3px;"><span>12:56</span><span>16:56</span><span>20:56</span><span>00:56</span><span>04:56</span><span>08:56</span><span>12:56</span></div></div>`
     },
     'status_table': {
         title: 'Table View (Current Status)',
@@ -6569,6 +6588,352 @@ function generateSparklineSvg(history, options = {}) {
             <circle cx="${lastC.x}" cy="${lastC.y}" r="2" fill="${strokeColor}" />
         </svg>
     </div>`;
+}
+
+function renderStatusTimelineContent(p, modules) {
+    if (!modules || modules.length === 0) {
+        return `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:160px; color:#bdc3c7; font-size:11px;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">history</span>No data matched</div>`;
+    }
+
+    let tr = { start: Math.floor(Date.now() / 1000) - 86400, end: Math.floor(Date.now() / 1000) };
+    if (typeof getTimeRange === 'function') {
+        try { tr = getTimeRange(); } catch(e) {}
+    }
+    const startTs = tr.start || (tr.end - 86400);
+    const endTs = tr.end || Math.floor(Date.now() / 1000);
+    const rangeSec = Math.max(60, endTs - startTs);
+
+    const numBlocks = 30;
+    const bucketSec = Math.max(1, rangeSec / numBlocks);
+
+    const formatTimeTick = (ts) => {
+        const d = new Date(ts * 1000);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        if (rangeSec > 86400) {
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            return `${dd}/${mo} ${hh}:${mm}`;
+        }
+        return `${hh}:${mm}`;
+    };
+
+    const formatFullTime = (ts) => {
+        const d = new Date(ts * 1000);
+        const yyyy = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        return `${yyyy}-${mo}-${dd} ${hh}:${mm}:${ss}`;
+    };
+
+    const numLabels = 7;
+    let labelTicks = [];
+    for (let i = 0; i < numLabels; i++) {
+        const tickTs = startTs + (i / (numLabels - 1)) * rangeSec;
+        labelTicks.push(formatTimeTick(tickTs));
+    }
+
+    window.timelineSearch = window.timelineSearch || {};
+    const searchKw = (window.timelineSearch[p.id] || '').toLowerCase().trim();
+    let displayModules = modules;
+    if (searchKw) {
+        displayModules = displayModules.filter(m => 
+            (m.agent_name || '').toLowerCase().includes(searchKw) ||
+            (m.ip_address || '').toLowerCase().includes(searchKw) ||
+            (m.module_name || '').toLowerCase().includes(searchKw)
+        );
+    }
+
+    const limit = parseInt(p.row_limit) || 10;
+    const totalItems = displayModules.length;
+    const totalPages = Math.ceil(totalItems / limit) || 1;
+    window.timelinePages = window.timelinePages || {};
+    const currentPage = Math.min(Math.max(1, window.timelinePages[p.id] || 1), totalPages);
+    window.timelinePages[p.id] = currentPage;
+
+    const startIdx = (currentPage - 1) * limit;
+    const paginated = (modules.length === 1) ? displayModules : displayModules.slice(startIdx, startIdx + limit);
+
+    const autoConvert = (p.auto_convert_traffic !== undefined)
+        ? (p.auto_convert_traffic === true || p.auto_convert_traffic === 1 || p.auto_convert_traffic === '1' || p.auto_convert_traffic === 'true')
+        : true;
+
+    const cardsHtml = paginated.map(m => {
+        const hist = m.history || [];
+        const isTraffic = (typeof isTrafficMetric === 'function') ? isTrafficMetric(m.module_name, m.unit, p.title) : false;
+        const isByte = (isTraffic && typeof isByteTrafficMetric === 'function') ? isByteTrafficMetric(m.module_name, m.unit, p.title) : false;
+
+        let curValNum = parseFloat(String(m.current).replace(',', '.'));
+        let curNumeric = isNaN(curValNum) ? 0 : curValNum;
+        let curDisplayVal = '';
+        if (p.lbl_1 && (m.current == 1 || String(m.current) === '1')) curDisplayVal = p.lbl_1;
+        else if (p.lbl_0 && (m.current == 0 || String(m.current) === '0')) curDisplayVal = p.lbl_0;
+        else if (isTraffic && autoConvert) curDisplayVal = formatBitsRate(isByte ? curNumeric * 8 : curNumeric);
+        else if (p.use_raw) curDisplayVal = (curNumeric % 1 === 0 ? curNumeric : curNumeric.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+        else curDisplayVal = formatHumanMetric(curNumeric, m.unit, false, m.module_name, p.title);
+
+        const curEval = evaluateModuleThresholdStatus(m, curNumeric, m.module_name, m.unit, p.title);
+
+        const sortedHist = [...hist].sort((a, b) => (a.ts || 0) - (b.ts || 0));
+
+        let blocksHtml = '';
+        let lastVal = (sortedHist.length > 0 && sortedHist[0].val !== undefined) ? sortedHist[0].val : m.current;
+        let lastTs = (sortedHist.length > 0 && sortedHist[0].ts) ? sortedHist[0].ts : (m.last_contact || startTs);
+
+        for (let b = 0; b < numBlocks; b++) {
+            const bStart = startTs + b * bucketSec;
+            const bEnd = bStart + bucketSec;
+            const bCenter = bStart + bucketSec / 2;
+
+            const bucketPoints = sortedHist.filter(h => (h.ts >= bStart && h.ts < bEnd));
+
+            let blockStatus = 0;
+            let blockVal = lastVal;
+            let blockTs = bCenter;
+
+            if (bucketPoints.length > 0) {
+                let worstStatus = 0;
+                let worstPoint = bucketPoints[bucketPoints.length - 1];
+                for (const pt of bucketPoints) {
+                    const ptNum = parseFloat(String(pt.val).replace(',', '.'));
+                    const ptEval = evaluateModuleThresholdStatus(m, isNaN(ptNum) ? 0 : ptNum, m.module_name, m.unit, p.title);
+                    if (ptEval.status === 1) {
+                        worstStatus = 1;
+                        worstPoint = pt;
+                        break;
+                    } else if (ptEval.status === 2 && worstStatus !== 1) {
+                        worstStatus = 2;
+                        worstPoint = pt;
+                    } else if (worstStatus === 0 && ptEval.status !== 0) {
+                        worstStatus = ptEval.status;
+                        worstPoint = pt;
+                    }
+                }
+                blockStatus = worstStatus;
+                blockVal = worstPoint.val;
+                blockTs = worstPoint.ts;
+                lastVal = blockVal;
+                lastTs = blockTs;
+            } else {
+                const priorPoints = sortedHist.filter(h => h.ts < bStart);
+                if (priorPoints.length > 0) {
+                    const prior = priorPoints[priorPoints.length - 1];
+                    const priorNum = parseFloat(String(prior.val).replace(',', '.'));
+                    const priorEval = evaluateModuleThresholdStatus(m, isNaN(priorNum) ? 0 : priorNum, m.module_name, m.unit, p.title);
+                    blockStatus = priorEval.status;
+                    blockVal = prior.val;
+                    blockTs = prior.ts;
+                } else if (sortedHist.length === 0) {
+                    blockStatus = curEval.status;
+                    blockVal = m.current;
+                    blockTs = m.last_contact || bCenter;
+                } else {
+                    blockStatus = 4;
+                    blockVal = 'N/A';
+                    blockTs = bCenter;
+                }
+            }
+
+            let blockColor = '#22c55e';
+            let statusLabel = 'NORMAL';
+            if (blockStatus === 1) { blockColor = '#ef4444'; statusLabel = 'CRITICAL'; }
+            else if (blockStatus === 2) { blockColor = '#f59e0b'; statusLabel = 'WARNING'; }
+            else if (blockStatus === 4) { blockColor = '#3b82f6'; statusLabel = 'NOT INIT'; }
+            else if (blockStatus === 3 || blockVal === 'N/A' || blockVal === null || blockVal === undefined) { blockColor = '#94a3b8'; statusLabel = 'UNKNOWN'; }
+
+            let valNum = parseFloat(String(blockVal).replace(',', '.'));
+            let blockDisplayVal = '';
+            if (p.lbl_1 && (blockVal == 1 || String(blockVal) === '1')) blockDisplayVal = p.lbl_1;
+            else if (p.lbl_0 && (blockVal == 0 || String(blockVal) === '0')) blockDisplayVal = p.lbl_0;
+            else if (isTraffic && autoConvert && !isNaN(valNum)) blockDisplayVal = formatBitsRate(isByte ? valNum * 8 : valNum);
+            else if (p.use_raw && !isNaN(valNum)) blockDisplayVal = (valNum % 1 === 0 ? valNum : valNum.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+            else if (!isNaN(valNum)) blockDisplayVal = formatHumanMetric(valNum, m.unit, false, m.module_name, p.title);
+            else blockDisplayVal = String(blockVal || 'N/A');
+
+            const safeAgent = escapeHtml(m.agent_name || m.ip_address || 'Node');
+            const safeMod = escapeHtml(m.module_name || 'Module');
+            const safeVal = escapeHtml(blockDisplayVal);
+            const safeTs = escapeHtml(formatFullTime(blockTs));
+
+            blocksHtml += `<div class="status-timeline-block" 
+                style="flex:1; min-width:4px; height:24px; border-radius:4px; background:${blockColor}; cursor:pointer;"
+                data-ts="${safeTs}"
+                data-agent="${safeAgent}"
+                data-mod="${safeMod}"
+                data-status="${statusLabel}"
+                data-status-color="${blockColor}"
+                data-val="${safeVal}"
+                onmouseenter="showTimelineBlockTooltip(this, event)"
+                onmousemove="moveTimelineBlockTooltip(event)"
+                onmouseleave="hideTimelineBlockTooltip()"
+                onclick="openNativeModuleDetailModal('${m.id}', '${((m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')"
+            ></div>`;
+        }
+
+        const agentTitle = m.agent_name ? `${m.agent_name}${m.ip_address && m.ip_address !== m.agent_name ? ' (' + m.ip_address + ')' : ''}` : (m.ip_address || 'Node');
+
+        if (modules.length === 1) {
+            return `
+            <div class="status-timeline-single" style="width:100%; display:flex; flex-direction:column; justify-content:center; padding:12px 6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden;">
+                        <span style="font-weight:700; color:#0284c7; font-size:12px;">${escapeHtml(agentTitle)}</span>
+                        <span style="color:#cbd5e1;">•</span>
+                        <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(m.module_name)}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                        <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28;"></span>
+                        <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(curDisplayVal)}</span>
+                    </div>
+                </div>
+                <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:26px; align-items:stretch;">
+                    ${blocksHtml}
+                </div>
+                <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:6px; padding:0 2px; user-select:none;">
+                    ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
+                </div>
+            </div>`;
+        }
+
+        return `
+        <div class="status-timeline-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:12px;">
+                <div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden;">
+                    <span style="font-weight:700; color:#0284c7; font-size:12px; white-space:nowrap;">${escapeHtml(agentTitle)}</span>
+                    <span style="color:#cbd5e1; font-size:12px;">•</span>
+                    <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="openNativeModuleDetailModal('${m.id}', '${((m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                    <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28;"></span>
+                    <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(curDisplayVal)}</span>
+                </div>
+            </div>
+            <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:24px; align-items:stretch;">
+                ${blocksHtml}
+            </div>
+            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:6px; padding:0 2px; user-select:none;">
+                ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
+            </div>
+        </div>`;
+    }).join('');
+
+    let paginationHtml = '';
+    if (totalPages > 1 && modules.length > 1) {
+        paginationHtml = `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px 0 4px; font-size:11px; color:#64748b; background:transparent; flex-shrink:0; margin-top:auto;">
+            <div>Showing ${startIdx + 1} to ${Math.min(startIdx + limit, totalItems)} of ${totalItems}</div>
+            <div style="display:flex; gap:6px;">
+                <button class="btn-pfms btn-outline-pfms" style="padding:2px 8px; font-size:10px;" ${currentPage <= 1 ? 'disabled' : ''} onclick="window.timelinePages['${p.id}'] = ${currentPage - 1}; forceRefresh();">Prev</button>
+                <span style="padding:2px 6px;">Page ${currentPage} of ${totalPages}</span>
+                <button class="btn-pfms btn-outline-pfms" style="padding:2px 8px; font-size:10px;" ${currentPage >= totalPages ? 'disabled' : ''} onclick="window.timelinePages['${p.id}'] = ${currentPage + 1}; forceRefresh();">Next</button>
+            </div>
+        </div>`;
+    }
+
+    const hideSearch = (p.hide_search_bar === true || p.hide_search_bar === 1 || p.hide_search_bar === '1' || p.hide_search_bar === 'true');
+
+    if (modules.length === 1) {
+        return `<div class="status-timeline-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:center;">${cardsHtml}</div>`;
+    }
+
+    return `
+    <div class="status-timeline-wrapper" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1 1 0%; min-height:0; overflow:hidden;">
+        ${!hideSearch && totalItems > 1 ? `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-shrink:0;">
+            <div style="font-size:10px; color:#94a3b8; font-weight:500;">Showing ${Math.min(limit, totalItems)} of ${totalItems} Nodes</div>
+            <div style="position:relative; width:180px;">
+                <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.timelineSearch[p.id] || '')}" oninput="window.timelineSearch['${p.id}'] = this.value; window.timelinePages['${p.id}'] = 1; forceRefresh();">
+                <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
+            </div>
+        </div>` : ''}
+        <div style="overflow-y:auto; overflow-x:hidden; flex:1 1 0%; min-height:0; width:100%; padding-right:2px;">
+            ${cardsHtml}
+        </div>
+        ${paginationHtml}
+    </div>`;
+}
+
+function showTimelineBlockTooltip(el, e) {
+    let tip = document.getElementById('statusTimelineTooltip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'statusTimelineTooltip';
+        tip.style.position = 'fixed';
+        tip.style.display = 'none';
+        tip.style.pointerEvents = 'none';
+        tip.style.zIndex = '999999';
+        tip.style.background = '#0f172a';
+        tip.style.color = '#f8fafc';
+        tip.style.borderRadius = '8px';
+        tip.style.padding = '10px 14px';
+        tip.style.boxShadow = '0 10px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.4)';
+        tip.style.border = '1px solid rgba(255,255,255,0.15)';
+        tip.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        tip.style.fontSize = '11px';
+        tip.style.lineHeight = '1.4';
+        tip.style.minWidth = '220px';
+        tip.style.maxWidth = '340px';
+        tip.style.transition = 'opacity 0.1s ease';
+        document.body.appendChild(tip);
+    }
+
+    const ts = el.getAttribute('data-ts') || '';
+    const agent = el.getAttribute('data-agent') || '';
+    const mod = el.getAttribute('data-mod') || '';
+    const status = el.getAttribute('data-status') || '';
+    const color = el.getAttribute('data-status-color') || '#22c55e';
+    const val = el.getAttribute('data-val') || '';
+
+    tip.innerHTML = `
+        <div style="display:flex; align-items:center; gap:6px; font-weight:600; color:#94a3b8; font-size:11px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:8px;">
+            <span class="material-symbols-outlined" style="font-size:14px; color:#38bdf8;">schedule</span>
+            <span>${escapeHtml(ts)}</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:5px;">
+            <div style="display:flex; justify-content:space-between; gap:12px;">
+                <span style="color:#94a3b8;">Nama Agent:</span>
+                <span style="font-weight:600; color:#38bdf8; text-align:right; word-break:break-word;">${escapeHtml(agent)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; gap:12px;">
+                <span style="color:#94a3b8;">Nama Module:</span>
+                <span style="font-weight:600; color:#ffffff; text-align:right; word-break:break-word;">${escapeHtml(mod)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <span style="color:#94a3b8;">Status Module:</span>
+                <span style="background:${color}; color:#fff; padding:1px 8px; border-radius:10px; font-size:10px; font-weight:700;">${escapeHtml(status)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <span style="color:#94a3b8;">Value Module:</span>
+                <span style="font-weight:700; color:#34d399; font-size:12px; text-align:right;">${escapeHtml(val)}</span>
+            </div>
+        </div>
+    `;
+    tip.style.display = 'block';
+    moveTimelineBlockTooltip(e);
+}
+
+function moveTimelineBlockTooltip(e) {
+    const tip = document.getElementById('statusTimelineTooltip');
+    if (!tip || tip.style.display === 'none') return;
+    const tipWidth = tip.offsetWidth || 220;
+    const tipHeight = tip.offsetHeight || 120;
+    let x = e.clientX - (tipWidth / 2);
+    let y = e.clientY - tipHeight - 12;
+
+    if (x < 10) x = 10;
+    if (x + tipWidth > window.innerWidth - 10) x = window.innerWidth - tipWidth - 10;
+    if (y < 10) y = e.clientY + 20;
+
+    tip.style.left = `${x}px`;
+    tip.style.top = `${y}px`;
+}
+
+function hideTimelineBlockTooltip() {
+    const tip = document.getElementById('statusTimelineTooltip');
+    if (tip) tip.style.display = 'none';
 }
 
 </script>
