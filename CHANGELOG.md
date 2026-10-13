@@ -2,6 +2,17 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.5] - 2026-10-13 (Explorer & Tools - Material Symbols Icon Font & Asset Resolution Fix)
+### Fixed
+- **Perbaikan Pemuatan Icon Material Symbols & Aset Vendor di Netflow Explorer & Tools:**
+  - Memperbaiki kegagalan muat icon pada halaman Netflow Explorer dan sejumlah sub-modul tools di mana ligatur font tampil sebagai teks mentah (seperti `add_box`, `restart_alt`, `analytics`, `account_tree`, `list_alt`, `share`, `info`, `search`).
+  - Mengubah referensi asset dari path statis yang mengasumsikan `/panel/vendor/` menjadi multi-layer resolution:
+    1. **Direct Relative Path Fallback** (`../../vendor/fonts/fonts.css`, `../../vendor/bootstrap/...`, `../../vendor/chartjs/plotly-2.35.2.min.js`) yang dijamin selalu berhasil di lingkungan intranet / offline tanpa akses internet.
+    2. **Dynamic Vendor Path Resolution** yang secara otomatis mendeteksi URL dasar instalasi Pandora Console dan direktori modul toolkit (`pfms-toolkit`).
+    3. **Google Fonts CDN Fallback** non-blocking untuk performa maksimal di lingkungan dengan koneksi internet.
+  - Menambahkan deklarasi lokal `@font-face` untuk font `Inter` dan `Material Symbols Outlined` langsung di `<style>` guna mencegah FOIT/FOUT.
+  - Memperbaiki CSS `.material-symbols-outlined` dengan `text-transform: none !important;` agar teks judul bertransformasi huruf kapital (`text-transform: uppercase`) tidak merusak pencocokan ligatur icon case-sensitive (seperti `ACCOUNT_TREE` yang seharusnya `account_tree`).
+
 ## [2.11.4] - 2026-10-08 (Dashboard - Sparkline Table Dedicated Module Column & Clean Bottom Spacing)
 ### Fixed
 - **Pemisahan Kolom Module Name & Agent pada Widget Sparkline Table Trend:**

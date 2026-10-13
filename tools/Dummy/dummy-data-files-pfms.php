@@ -109,12 +109,21 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     <title><?= h($page_title) ?></title>
     <link rel="icon" href="<?= h($PANDORA_BASE_URL) ?>/images/pandora.ico" type="image/x-icon">
     
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <!-- 1. Offline Local Fallback Relative to File -->
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 2. Dynamic Server Base Path Fallbacks -->
+    <link href="<?= htmlspecialchars($vendor_url ?? "../../vendor") ?>/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url ?? "../../vendor") ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 3. Google Fonts CDN Fallback -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" media="print" onload="this.media='all'">
+
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; background-color: #f4f6f8; margin: 0; padding: 0; }
         * { box-sizing: border-box; }
-        .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; line-height: 1; }
+        .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; line-height: 1; text-transform: none !important; }
 
         /* Standalone Mode Handling */
         <?php if ($isStandalone): ?>

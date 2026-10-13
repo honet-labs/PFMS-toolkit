@@ -11,6 +11,25 @@ $formatted_array = array_map(function($p) {
 }, $path_array);
 $dynamic_breadcrumb = implode(' / ', $formatted_array);
 
+// Dynamic Vendor Path Resolution
+$script_dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+$PANDORA_BASE_URL = '/pandora_console';
+$PANEL_DIR_NAME = 'custom';
+$TOOLKIT_DIR_NAME = 'pfms-toolkit';
+
+if (preg_match('#^(/.*?)/(custom|customize)/([^/]+)#', $script_dir, $m)) {
+    $PANDORA_BASE_URL = rtrim($m[1], '/');
+    $PANEL_DIR_NAME = $m[2];
+    $TOOLKIT_DIR_NAME = $m[3];
+} elseif (preg_match('#^/(custom|customize)/([^/]+)#', $script_dir, $m)) {
+    $PANDORA_BASE_URL = '';
+    $PANEL_DIR_NAME = $m[1];
+    $TOOLKIT_DIR_NAME = $m[2];
+}
+
+$TOOLKIT_BASE_PATH = rtrim(($PANDORA_BASE_URL ?: '') . '/' . $PANEL_DIR_NAME . '/' . $TOOLKIT_DIR_NAME, '/');
+$vendor_url = $TOOLKIT_BASE_PATH . '/vendor';
+
 // =====================================================================
 
 $json_files = [
@@ -63,20 +82,85 @@ if ($action === 'save' && array_key_exists($db, $json_files)) {
     <link rel="icon" href="/pandora_console/images/pandora.ico" type="image/x-icon">
     
     
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" />
+    <!-- 1. Offline Local Fallback Relative to File -->
+    <link href="../../vendor/fonts/fonts.css" rel="stylesheet">
+    <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="../../vendor/jsoneditor/jsoneditor.min.css" rel="stylesheet">
+    <script src="../../vendor/jsoneditor/jsoneditor.min.js"></script>
 
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/jsoneditor/jsoneditor.min.css" rel="stylesheet">
-    <script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/jsoneditor/jsoneditor.min.js"></script>
+    <!-- 2. Dynamic Server Base Path Fallbacks -->
+    <link href="<?= htmlspecialchars($vendor_url) ?>/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url) ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url) ?>/jsoneditor/jsoneditor.min.css" rel="stylesheet">
+    <script src="<?= htmlspecialchars($vendor_url) ?>/jsoneditor/jsoneditor.min.js"></script>
+
+    <!-- 3. Google Fonts CDN Fallback -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" media="print" onload="this.media='all'">
 
     <style>
+        /* Fallback local font-face declarations to guarantee rendering */
+        @font-face {
+            font-family: 'Inter';
+            font-style: normal;
+            font-weight: 100 900;
+            font-display: swap;
+            src: url('../../vendor/fonts/Inter-Variable.woff2') format('woff2');
+        }
+        @font-face {
+            font-family: 'Material Symbols Outlined';
+            font-style: normal;
+            font-weight: normal;
+            font-display: swap;
+            src: url('../../vendor/fonts/MaterialSymbolsOutlined.woff2') format('woff2'),
+                 url('../../vendor/fonts/material-symbols-outlined.ttf') format('truetype');
+        }
+        @font-face {
+            font-family: 'Material Symbols Outlined';
+            font-style: normal;
+            font-weight: 400;
+            font-display: swap;
+            src: url('../../vendor/fonts/MaterialSymbolsOutlined.woff2') format('woff2'),
+                 url('../../vendor/fonts/material-symbols-outlined.ttf') format('truetype');
+        }
+        @font-face {
+            font-family: 'Material Symbols Outlined';
+            font-style: normal;
+            font-weight: 100 700;
+            font-display: swap;
+            src: url('../../vendor/fonts/MaterialSymbolsOutlined.woff2') format('woff2'),
+                 url('../../vendor/fonts/material-symbols-outlined.ttf') format('truetype');
+        }
+
         /* Base Global Styling */
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
         body { background-color: #f4f6f8; margin: 0; padding: 0; }
 
         /* MATERIAL SYMBOLS FIX */
-        .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-weight: normal !important; font-style: normal !important; font-size: 18px !important; line-height: 1 !important; display: inline-block; vertical-align: middle; color: inherit !important; }
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined' !important;
+            font-weight: normal !important;
+            font-style: normal !important;
+            font-size: 18px !important;
+            line-height: 1 !important;
+            letter-spacing: normal;
+            text-transform: none !important;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            font-feature-settings: 'liga' 1;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            vertical-align: middle;
+            color: inherit !important;
+            user-select: none;
+        }
+
+        button .material-symbols-outlined,
+        a .material-symbols-outlined {
+            text-transform: none !important;
+        }
 
         /* NAVBAR 1: GLOBAL TOP HEADER */
         .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; position: relative; z-index: 10; }
@@ -270,7 +354,8 @@ if ($action === 'save' && array_key_exists($db, $json_files)) {
     </div>
 </div>
 
-<script src="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="../../vendor/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="<?= htmlspecialchars($vendor_url) ?>/bootstrap/bootstrap.bundle.min.js"></script>
 <script>
     let editor;
     let currentDb = 'postgresql';

@@ -1836,7 +1836,7 @@ try {
 } catch (\Throwable $e) {}
 
 $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / TOOLS / SNMP EXPLORER";
-$vendor_url = $pandora_base . '/custom/panel/vendor';
+$vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '../../vendor';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1850,8 +1850,8 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
     <link href="../../vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
 
     <!-- 2. Dynamic Server Base Path Fallbacks -->
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/fonts/fonts.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars($PANDORA_BASE_URL ?? "/pandora_console") ?>/<?= htmlspecialchars($PANEL_DIR_NAME ?? "custom") ?>/panel/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url) ?>/fonts/fonts.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars($vendor_url) ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
 
     <!-- 3. High-res Google Fonts CDN Fallback (Inter & Material Symbols, Non-Blocking) -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" media="print" onload="this.media='all'">
@@ -1864,6 +1864,22 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             font-weight: 100 900;
             font-display: swap;
             src: url('../../vendor/fonts/Inter-Variable.woff2') format('woff2');
+        }
+        @font-face {
+            font-family: 'Material Symbols Outlined';
+            font-style: normal;
+            font-weight: normal;
+            font-display: swap;
+            src: url('../../vendor/fonts/MaterialSymbolsOutlined.woff2') format('woff2'),
+                 url('../../vendor/fonts/material-symbols-outlined.ttf') format('truetype');
+        }
+        @font-face {
+            font-family: 'Material Symbols Outlined';
+            font-style: normal;
+            font-weight: 400;
+            font-display: swap;
+            src: url('../../vendor/fonts/MaterialSymbolsOutlined.woff2') format('woff2'),
+                 url('../../vendor/fonts/material-symbols-outlined.ttf') format('truetype');
         }
         @font-face {
             font-family: 'Material Symbols Outlined';
@@ -1922,7 +1938,7 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             font-size: 18px;
             line-height: 1 !important;
             letter-spacing: normal;
-            text-transform: none;
+            text-transform: none !important;
             display: inline-block;
             white-space: nowrap;
             word-wrap: normal;
@@ -1931,6 +1947,17 @@ $vendor_url = $pandora_base . '/custom/panel/vendor';
             font-feature-settings: 'liga' 1;
             -webkit-font-feature-settings: 'liga';
             -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            user-select: none;
+        }
+
+        /* Prevent parent uppercase styling from altering ligature strings */
+        .card-header-clean .material-symbols-outlined,
+        .page-title .material-symbols-outlined,
+        .tab-btn .material-symbols-outlined,
+        button .material-symbols-outlined,
+        a .material-symbols-outlined {
+            text-transform: none !important;
         }
 
         /* Standard Header Section matching Inventory Agent & PFMS-Toolkit PRD */

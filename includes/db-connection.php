@@ -1502,8 +1502,7 @@ function render_pfms_access_denied(string $user_id, string $pandora_base = '/pan
 
     $profiles = ($pdo && !empty($user_id)) ? get_user_pandora_profiles($pdo, $user_id) : [];
     $hasProfiles = !empty($profiles);
-    $profileText = $hasProfiles ? implode(', ', array_map('htmlspecialchars', $profiles)) : 'Standard User (No Profile Assigned)';
-    $vendor_url = rtrim($pandora_base, '/') . '/custom/panel/vendor';
+    $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : (rtrim($pandora_base, '/') . '/' . $PANEL_DIR_NAME . '/' . $TOOLKIT_DIR_NAME . '/vendor');
     $login_url = rtrim($pandora_base, '/') . '/index.php';
     ?>
     <!DOCTYPE html>
@@ -1512,6 +1511,9 @@ function render_pfms_access_denied(string $user_id, string $pandora_base = '/pan
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>403 Access Denied - PFMS Toolkit</title>
+        <link rel="stylesheet" href="vendor/fonts/fonts.css">
+        <link rel="stylesheet" href="../vendor/fonts/fonts.css">
+        <link rel="stylesheet" href="../../vendor/fonts/fonts.css">
         <link rel="stylesheet" href="<?= htmlspecialchars($vendor_url) ?>/fonts/fonts.css">
         <style>
             :root {
