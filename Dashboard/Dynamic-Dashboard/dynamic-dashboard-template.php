@@ -545,7 +545,7 @@ if ($api === 'bulk_panel_data') {
                 $moduleResults[] = [
                     'id' => $parsed['node'] . ':' . $mod_id,
                     'module_name' => pretty_text($mod['nombre']),
-                    'current' => $cur_val !== null ? $cur_val : 'N/A',
+                    'current' => $cur_val !== null ? (string)$cur_val : 'N/A',
                     'status' => (int)$mod['estado'],
                     'last_contact' => (int)$mod['last_contact'],
                     'unit' => pretty_text($mod['unit']),
@@ -4337,7 +4337,8 @@ function refreshCurrentNodeData() {
         chartInstances = {};
 
         targetPanels.forEach(p => {
-            const wrapper = document.getElementById(`wrapper_p_${p.id}`);
+            try {
+                const wrapper = document.getElementById(`wrapper_p_${p.id}`);
             if(!wrapper) return;
             
             const panelData = dataMap[p.id];
@@ -4603,7 +4604,11 @@ function refreshCurrentNodeData() {
                     const uniqueId = `${p.id}_${m.id}`;
                     if (p.type === 'table_viewer') {
                         const agentLabel = `${m.agent_name || ''}/${m.agent_db_name || ''}`;
-                        renderSingleModuleTableViewer(uniqueId, m.current || '', agentLabel, p.row_limit);
+                        try {
+                            renderSingleModuleTableViewer(uniqueId, String(m.current != null ? m.current : ''), agentLabel, p.row_limit);
+                        } catch (tvErr) {
+                            console.error("table_viewer render error:", tvErr);
+                        }
                         return;
                     }
                     if (p.type === 'history_table') {
@@ -4774,7 +4779,12 @@ function refreshCurrentNodeData() {
                     } catch(e) { console.error("Chart build error:", e); }
                 });
             }
-        });
+        } catch (pErr) {
+            console.error(`Error rendering panel ${p.id}:`, pErr);
+            const wrapper = document.getElementById(`wrapper_p_${p.id}`);
+            if (wrapper) wrapper.innerHTML = `<div class="panel-card"><div class="panel-body" style="color:#e74c3c; font-size:11px;">Error rendering panel: ${escapeHtml(pErr.message)}</div></div>`;
+        }
+    });
         setTimeout(() => {
             resizeAllGridItems();
             updateCompactHeaders();
@@ -6195,7 +6205,8 @@ function showLongValuePopup(moduleName, agentName, fullValue) {
 window.tableViewerData = window.tableViewerData || {};
 
 function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel, rowLimit = 200) {
-    const lines = rawText.split(/\r?\n/).filter(l => l.trim() !== '');
+    const textStr = String(rawText != null ? rawText : '');
+    const lines = textStr.split(/\r?\n/).filter(l => l.trim() !== '');
     const thead = document.getElementById(`thead_${uniqueId}`);
     const tbody = document.getElementById(`tbody_${uniqueId}`);
     const rawEl = document.getElementById(`raw_${uniqueId}`);
@@ -6270,7 +6281,7 @@ function renderSingleModuleTableViewer(uniqueId, rawText, agentLabel, rowLimit =
 
         thead.innerHTML = '';
         tbody.innerHTML = '';
-        rawEl.innerText = rawText;
+        rawEl.innerText = textStr;
         rawEl.classList.remove('d-none');
         window.tableViewerData[uniqueId] = [];
         const wrapper = rawEl.closest('.table-viewer-card-wrap');
@@ -6363,8 +6374,8 @@ function filterCardTableViewer(uniqueId, keyword) {
 }
 
 function escapeHtml(unsafe) {
-    if (!unsafe) return '';
-    return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
 function toggleDynamicEchartsLegend(uniqueId, el) {
