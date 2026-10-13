@@ -861,6 +861,33 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .panel-card.is-compact-header .panel-title { font-size: 9px !important; line-height: 1.2; }
         .panel-card.is-compact-header .drag-handle { font-size: 14px !important; margin-right: 2px !important; }
 
+        .panel-rule-wrapper.menu-active,
+        .panel-rule-wrapper:has(.panel-dropdown-menu.show) {
+            z-index: 9999 !important;
+            position: relative !important;
+        }
+        .panel-card.menu-active,
+        .panel-card:has(.panel-dropdown-menu.show) {
+            z-index: 9999 !important;
+            position: relative !important;
+        }
+        .panel-header.menu-active,
+        .panel-header:has(.panel-dropdown-menu.show) {
+            z-index: 9999 !important;
+            position: relative !important;
+        }
+        .panel-controls.menu-open,
+        .panel-controls:has(.panel-dropdown-menu.show) {
+            opacity: 1 !important;
+            z-index: 10000 !important;
+            position: relative !important;
+        }
+        .panel-controls-compact.menu-open,
+        .panel-controls-compact:has(.panel-dropdown-menu.show) {
+            z-index: 10001 !important;
+            position: relative !important;
+        }
+
         .panel-dropdown-menu {
             position: absolute;
             right: 0;
@@ -868,9 +895,9 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             background: #ffffff;
             border: 1px solid #e2e8f0;
             border-radius: 6px;
-            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.14), 0 2px 4px rgba(15, 23, 42, 0.06);
-            min-width: 125px;
-            z-index: 1000;
+            box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.2), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+            min-width: 130px;
+            z-index: 10002 !important;
             display: none;
             flex-direction: column;
             padding: 4px 0;
@@ -3133,17 +3160,43 @@ function togglePanelMenu(e, menuId) {
     closeAllPanelMenus();
     if (!isShown) {
         menu.classList.add('show');
+
+        // Dynamic viewport bounds check: flip up if overflowing viewport bottom
+        menu.style.top = 'calc(100% + 4px)';
+        menu.style.bottom = 'auto';
+        const rect = menu.getBoundingClientRect();
+        if (rect.bottom > (window.innerHeight || document.documentElement.clientHeight) - 10) {
+            menu.style.top = 'auto';
+            menu.style.bottom = 'calc(100% + 4px)';
+        }
+
+        const parentControlsCompact = menu.closest('.panel-controls-compact');
+        if (parentControlsCompact) parentControlsCompact.classList.add('menu-open');
         const parentControls = menu.closest('.panel-controls');
         if (parentControls) parentControls.classList.add('menu-open');
+        const parentHeader = menu.closest('.panel-header');
+        if (parentHeader) parentHeader.classList.add('menu-active');
+        const parentCard = menu.closest('.panel-card');
+        if (parentCard) parentCard.classList.add('menu-active');
+        const parentWrapper = menu.closest('.panel-rule-wrapper');
+        if (parentWrapper) parentWrapper.classList.add('menu-active');
     }
 }
 
 function closeAllPanelMenus() {
     document.querySelectorAll('.panel-dropdown-menu.show').forEach(m => {
         m.classList.remove('show');
+        m.style.top = '';
+        m.style.bottom = '';
+    });
+    document.querySelectorAll('.panel-controls-compact.menu-open').forEach(c => {
+        c.classList.remove('menu-open');
     });
     document.querySelectorAll('.panel-controls.menu-open').forEach(c => {
         c.classList.remove('menu-open');
+    });
+    document.querySelectorAll('.menu-active').forEach(el => {
+        el.classList.remove('menu-active');
     });
 }
 
@@ -3160,6 +3213,11 @@ function updateCompactHeaders() {
 
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.panel-controls-compact')) {
+        closeAllPanelMenus();
+    }
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
         closeAllPanelMenus();
     }
 });
