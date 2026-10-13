@@ -94,7 +94,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'fetch_module') {
         $stmtName = $pdo->prepare("SELECT m.nombre as module_name, a.nombre as agent_name, a.alias as agent_alias FROM tagente_modulo m JOIN tagente a ON m.id_agente = a.id_agente WHERE m.id_agente_modulo = ?");
         $stmtName->execute([$module_id]);
         $modInfo = $stmtName->fetch(PDO::FETCH_ASSOC);
-        $modName = $modInfo ? $modInfo['agent_name'] . ' -> ' . $modInfo['module_name'] : "Module $module_id";
+        $agentDisplayName = $modInfo ? pretty_text($modInfo['agent_alias'] ?: $modInfo['agent_name']) : '';
+        $modCleanName = $modInfo ? pretty_text($modInfo['module_name']) : "Module $module_id";
+        $modName = $modInfo ? ($agentDisplayName . ' -> ' . $modCleanName) : "Module $module_id";
 
         $stmt = $pdo->prepare("SELECT datos, utimestamp FROM tagente_datos_string WHERE id_agente_modulo = ? ORDER BY utimestamp DESC LIMIT 1");
         $stmt->execute([$module_id]);
@@ -104,8 +106,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'fetch_module') {
             echo json_encode([
                 'ok' => true, 
                 'module_name' => $modName,
-                'agent_name' => $modInfo ? $modInfo['agent_name'] : '',
-                'agent_alias' => $modInfo ? $modInfo['agent_alias'] : '',
+                'agent_name' => $modInfo ? pretty_text($modInfo['agent_name']) : '',
+                'agent_alias' => $modInfo ? pretty_text($modInfo['agent_alias']) : '',
                 'timestamp' => date('Y-m-d H:i:s', $data['utimestamp']),
                 'raw_data' => $data['datos']
             ]);

@@ -32,9 +32,23 @@ if (!function_exists('h')) {
 }
 if (!function_exists('pretty_text')) {
     function pretty_text($s) {
-        if ($s === null) return '';
-        $decoded = html_entity_decode((string)$s, ENT_QUOTES, 'UTF-8');
-        return str_replace('&#x20;', ' ', $decoded);
+        if ($s === null || $s === '') return '';
+        $text = (string)$s;
+        $text = str_replace(
+            ['&#x20;', '&#X20;', '&#32;', '&nbsp;', '&#160;', '&amp;#x20;', '&amp;#32;', '#@20;', '&#x2d;', '&#x2D;', '&#45;', '&#x3a;', '&#x3A;', '&#58;'],
+            [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '-', '-', '-', ':', ':', ':'],
+            $text
+        );
+        for ($i = 0; $i < 3; $i++) {
+            if (strpos($text, '&') === false) break;
+            $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+        $text = str_replace(
+            ['&#x20;', '&#X20;', '&#32;', '&nbsp;', '&#160;', '&amp;#x20;', '&amp;#32;', '#@20;', '&#x2d;', '&#x2D;', '&#45;', '&#x3a;', '&#x3A;', '&#58;'],
+            [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '-', '-', '-', ':', ':', ':'],
+            $text
+        );
+        return trim(preg_replace('/\s+/', ' ', $text));
     }
 }
 if (!function_exists('timeAgo')) {
@@ -645,6 +659,8 @@ if ($api === 'card_data' && $db_status) {
                     $row['id_agente_modulo'] = $node . ':' . $row['id_agente_modulo'];
                     
                     $row['agent_alias'] = pretty_text($row['agent_alias']);
+                    $row['agent_name'] = pretty_text($row['agent_name']);
+                    $row['ip_address'] = pretty_text($row['ip_address']);
                     $row['group_name'] = pretty_text($row['group_name']);
                     $row['module_name'] = pretty_text($row['module_name']);
                     $row['time_ago'] = timeAgo($row['timestamp']);
@@ -3432,8 +3448,8 @@ function renderSparklineTableWidget(cardId, tableData, historyData) {
         }
 
         const agentIp = (m.ip_address && m.ip_address !== 'N/A' && m.ip_address !== '127.0.0.1') ? m.ip_address : '';
-        const agentName = m.agent_alias || m.agent_name || agentIp || 'Node';
-        const moduleName = m.module_name || 'Module';
+        const agentName = cleanPandoraText(m.agent_alias || m.agent_name || agentIp || 'Node');
+        const moduleName = cleanPandoraText(m.module_name || 'Module');
 
         const statusEval = evaluateModuleThresholdStatus(m, numericVal, m.module_name, m.unit, card.title);
         const statusColor = statusEval.color;
@@ -5739,9 +5755,30 @@ function filterCardTableViewer(uniqueId, keyword) {
     renderTableViewerRows(uniqueId, filtered);
 }
 
+function cleanPandoraText(str) {
+    if (str === null || str === undefined) return '';
+    let s = String(str);
+    if (s.indexOf('&') !== -1 || s.indexOf('#@20;') !== -1) {
+        s = s.replace(/&amp;#x20;/gi, ' ')
+             .replace(/&amp;#32;/g, ' ')
+             .replace(/&#x20;/gi, ' ')
+             .replace(/&#X20;/g, ' ')
+             .replace(/&#32;/g, ' ')
+             .replace(/&nbsp;/gi, ' ')
+             .replace(/&#160;/g, ' ')
+             .replace(/#@20;/g, ' ')
+             .replace(/&#x2d;/gi, '-')
+             .replace(/&#45;/g, '-')
+             .replace(/&#x3a;/gi, ':')
+             .replace(/&#58;/g, ':');
+    }
+    return s.replace(/\s+/g, ' ');
+}
+
 function escapeHtml(unsafe) {
-    if (!unsafe) return '';
-    return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    if (unsafe === null || unsafe === undefined) return '';
+    let s = cleanPandoraText(unsafe);
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
 </script>

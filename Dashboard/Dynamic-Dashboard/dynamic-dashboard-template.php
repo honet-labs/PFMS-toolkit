@@ -453,6 +453,13 @@ if ($api === 'bulk_panel_data') {
                                 WHERE m.id_agente = ? AND m.disabled = 0");
         $stAll->execute([$parsed['id']]);
         $allModules = $stAll->fetchAll();
+        foreach ($allModules as &$modRow) {
+            $modRow['agent_name'] = pretty_text($modRow['agent_name']);
+            $modRow['agent_db_name'] = pretty_text($modRow['agent_db_name']);
+            $modRow['group_name'] = pretty_text($modRow['group_name']);
+            $modRow['ip_address'] = pretty_text($modRow['ip_address']);
+        }
+        unset($modRow);
 
         $results = [];
 
@@ -586,11 +593,11 @@ if ($api === 'bulk_panel_data') {
                     'max_warning' => $mod['max_warning'] ?? null,
                     'min_critical' => $mod['min_critical'] ?? null,
                     'max_critical' => $mod['max_critical'] ?? null,
-                    'agent_name' => $mod['agent_name'],
-                    'agent_db_name' => $mod['agent_db_name'],
+                    'agent_name' => pretty_text($mod['agent_name']),
+                    'agent_db_name' => pretty_text($mod['agent_db_name']),
                     'agent_id' => $parsed['node'] . ':' . $mod['id_agente'],
-                    'ip_address' => $mod['ip_address'],
-                    'group_name' => $mod['group_name'],
+                    'ip_address' => pretty_text($mod['ip_address']),
+                    'group_name' => pretty_text($mod['group_name']),
                     'history' => $history
                 ];
             }
@@ -3541,9 +3548,9 @@ function generateSummaryPanelHtml(p, modules) {
                                 let agentLinkHtml = '';
                                 if (isPrimary) {
                                     const rawAgentId = String(m.agent_id).split(':')[1] || m.agent_id;
-                                    agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" style="color:#1976d2; font-weight:600; text-decoration:none;">${m.agent_name}</a>`;
+                                    agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" style="color:#1976d2; font-weight:600; text-decoration:none;">${escapeHtml(m.agent_name)}</a>`;
                                 } else {
-                                    agentLinkHtml = `<span style="color:#334155; font-weight:600;">${m.agent_name}</span>`;
+                                    agentLinkHtml = `<span style="color:#334155; font-weight:600;">${escapeHtml(m.agent_name)}</span>`;
                                 }
                                 const dotHtml = (p.show_status_dot !== false) ? `<span class="status-dot ${bgClass}" style="margin:0; width:8px; height:8px;"></span>` : '';
                                 rowHtml += `<td>
@@ -3554,15 +3561,15 @@ function generateSummaryPanelHtml(p, modules) {
                                 </td>`;
                             }
                             if (visibleCols.includes('group')) {
-                                rowHtml += `<td>${m.group_name}</td>`;
+                                rowHtml += `<td>${escapeHtml(m.group_name)}</td>`;
                             }
                             if (visibleCols.includes('ip')) {
-                                rowHtml += `<td><code style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:monospace; color:#e74c3c;">${m.ip_address || '-'}</code></td>`;
+                                rowHtml += `<td><code style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:monospace; color:#e74c3c;">${escapeHtml(m.ip_address || '-')}</code></td>`;
                             }
                             if (visibleCols.includes('module')) {
                                 let lastContactStr = m.last_contact ? new Date(m.last_contact * 1000).toLocaleString('id-ID', {hour12:false}) : 'Awaiting';
                                 rowHtml += `<td>
-                                    <div style="font-weight:500; color:#0b1a26; margin-bottom:2px; word-break: break-word;">${m.module_name}</div>
+                                    <div style="font-weight:500; color:#0b1a26; margin-bottom:2px; word-break: break-word;">${escapeHtml(m.module_name)}</div>
                                     <div style="font-size:10px; color:#7f8c8d;">Update: ${lastContactStr}</div>
                                 </td>`;
                             }
@@ -3712,8 +3719,8 @@ function generateSummaryPanelHtml(p, modules) {
                 combinedHistory.push({
                     ts: h.ts,
                     lbl: h.lbl,
-                    agent_name: m.agent_name || '',
-                    module_name: m.module_name || '',
+                    agent_name: cleanPandoraText(m.agent_name || ''),
+                    module_name: cleanPandoraText(m.module_name || ''),
                     val: h.val,
                     numericVal: numericVal,
                     bitVal: bitVal,
@@ -3821,9 +3828,9 @@ function generateSummaryPanelHtml(p, modules) {
                         <tbody>
                             ${paginatedHistory.map(h => `
                                 <tr>
-                                    <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${h.lbl}</td>
-                                    <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.agent_name}</td>
-                                    <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${h.module_name}</td>
+                                    <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${escapeHtml(h.lbl)}</td>
+                                    <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${escapeHtml(h.agent_name)}</td>
+                                    <td style="padding:8px 12px; color:#475569; border-bottom:1px solid #f1f5f9; font-weight:500;">${escapeHtml(h.module_name)}</td>
                                     <td style="padding:8px 12px; text-align:right; font-weight:600; color:#0f172a; border-bottom:1px solid #f1f5f9; white-space:nowrap;">${h.displayVal}</td>
                                 </tr>
                             `).join('')}
@@ -3869,8 +3876,8 @@ function generateSummaryPanelHtml(p, modules) {
             }
 
             const agentIp = (m.ip_address && m.ip_address !== 'N/A' && m.ip_address !== '127.0.0.1') ? m.ip_address : '';
-            const agentName = m.agent_name || agentIp || 'Node';
-            const moduleName = m.module_name || 'Module';
+            const agentName = cleanPandoraText(m.agent_name || agentIp || 'Node');
+            const moduleName = cleanPandoraText(m.module_name || 'Module');
 
             const statusEval = evaluateModuleThresholdStatus(m, numericVal, m.module_name, m.unit, p.title);
             const statusColor = statusEval.color;
@@ -5623,23 +5630,23 @@ function showStatusDetails(panelId, statusFilter, statusLabel) {
 
         let agentLinkHtml = '';
         if (rawAgentId && rawAgentId != '0' && rawAgentId !== 'undefined') {
-            agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="color:#1976d2 !important; font-weight:600 !important; text-decoration:none; cursor:pointer; white-space:nowrap;">${m.agent_name}</a>`;
+            agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="color:#1976d2 !important; font-weight:600 !important; text-decoration:none; cursor:pointer; white-space:nowrap;">${escapeHtml(m.agent_name)}</a>`;
         } else {
-            agentLinkHtml = `<span style="color:#334155; font-weight:600; white-space:nowrap;">${m.agent_name}</span>`;
+            agentLinkHtml = `<span style="color:#334155; font-weight:600; white-space:nowrap;">${escapeHtml(m.agent_name)}</span>`;
         }
 
         let moduleLinkHtml = '';
         if (rawModId && rawModId != '0' && rawModId !== 'undefined') {
-            moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link" style="color:#0b1a26 !important; font-weight:500 !important; text-decoration:none; cursor:pointer;">${m.module_name}</a>`;
+            moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link" style="color:#0b1a26 !important; font-weight:500 !important; text-decoration:none; cursor:pointer;">${escapeHtml(m.module_name)}</a>`;
         } else {
-            moduleLinkHtml = `<span style="font-weight:500;">${m.module_name}</span>`;
+            moduleLinkHtml = `<span style="font-weight:500;">${escapeHtml(m.module_name)}</span>`;
         }
 
         return `
             <tr>
                 <td>${agentLinkHtml}</td>
-                <td style="white-space:nowrap;">${m.group_name}</td>
-                <td style="color:#e74c3c; white-space:nowrap;">${m.ip_address}</td>
+                <td style="white-space:nowrap;">${escapeHtml(m.group_name)}</td>
+                <td style="color:#e74c3c; white-space:nowrap;">${escapeHtml(m.ip_address)}</td>
                 <td>${moduleLinkHtml}</td>
                 <td style="font-weight:600; white-space:nowrap;">${valHtml}</td>
                 <td style="white-space:nowrap;"><span class="status-pill-dyn ${bgClass}">${statusLbl}</span></td>
@@ -6431,9 +6438,30 @@ function filterCardTableViewer(uniqueId, keyword) {
     renderTableViewerRows(uniqueId, filtered);
 }
 
+function cleanPandoraText(str) {
+    if (str === null || str === undefined) return '';
+    let s = String(str);
+    if (s.indexOf('&') !== -1 || s.indexOf('#@20;') !== -1) {
+        s = s.replace(/&amp;#x20;/gi, ' ')
+             .replace(/&amp;#32;/g, ' ')
+             .replace(/&#x20;/gi, ' ')
+             .replace(/&#X20;/g, ' ')
+             .replace(/&#32;/g, ' ')
+             .replace(/&nbsp;/gi, ' ')
+             .replace(/&#160;/g, ' ')
+             .replace(/#@20;/g, ' ')
+             .replace(/&#x2d;/gi, '-')
+             .replace(/&#45;/g, '-')
+             .replace(/&#x3a;/gi, ':')
+             .replace(/&#58;/g, ':');
+    }
+    return s.replace(/\s+/g, ' ');
+}
+
 function escapeHtml(unsafe) {
     if (unsafe === null || unsafe === undefined) return '';
-    return String(unsafe).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    let s = cleanPandoraText(unsafe);
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
 function toggleDynamicEchartsLegend(uniqueId, el) {
