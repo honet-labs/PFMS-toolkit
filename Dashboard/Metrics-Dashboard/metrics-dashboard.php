@@ -1535,6 +1535,17 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             </div>
         </div>
 
+        <div style="display:flex; gap:10px; margin-top:5px; margin-bottom:15px; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e4e8;" id="wrap_value_labels">
+            <div class="form-group" style="flex:1; margin-bottom:0;">
+                <label style="color:#4a5568; font-size:10px; font-weight: 600!important; text-transform:uppercase;">Label for Value 1 (UP)</label>
+                <input type="text" id="b_lbl_1" class="form-control-fix" placeholder="e.g. UP" style="margin-bottom:0;">
+            </div>
+            <div class="form-group" style="flex:1; margin-bottom:0;">
+                <label style="color:#4a5568; font-size:10px; font-weight: 600!important; text-transform:uppercase;">Label for Value 0 (DOWN)</label>
+                <input type="text" id="b_lbl_0" class="form-control-fix" placeholder="e.g. DOWN" style="margin-bottom:0;">
+            </div>
+        </div>
+
         <div class="form-group" style="margin-bottom: 12px;">
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;">
                 <input type="checkbox" id="b_auto_convert_traffic" checked style="width:16px; height:16px; margin:0;"> Auto-Convert Traffic to bps / Kbps / Mbps / Gbps (On/Off)
@@ -2887,7 +2898,14 @@ function renderTablePage(cardId) {
         pageData.forEach(r => {
             const sObj = getStatusObj(r.estado);
             let unitStr = r.unit ? ` ${r.unit}` : '';
-            const cleanVal = formatValue(r.current_value, r.unit, card.use_raw, r.module_name, card.title);
+            let cleanVal = formatValue(r.current_value, r.unit, card.use_raw, r.module_name, card.title);
+            if (card.lbl_1 && (r.current_value == 1 || String(r.current_value) === '1' || String(r.current_value) === '1.0')) {
+                cleanVal = card.lbl_1;
+                unitStr = '';
+            } else if (card.lbl_0 && (r.current_value == 0 || String(r.current_value) === '0' || String(r.current_value) === '0.0')) {
+                cleanVal = card.lbl_0;
+                unitStr = '';
+            }
 
             let label = r.module_name;
             if (textType === 'agent') {
@@ -2978,8 +2996,18 @@ function renderTablePage(cardId) {
                 </td>`;
             }
             if (visibleCols.includes('status')) {
-                const rawValStr = String(r.current_value || '');
-                const cleanValStr = String(formatValue(r.current_value, r.unit, card.use_raw, r.module_name, card.title) ?? '');
+                const rawValStr = String(r.current_value != null ? r.current_value : '');
+                let cleanValStr = String(formatValue(r.current_value, r.unit, card.use_raw, r.module_name, card.title) ?? '');
+                let isCustomLabel = false;
+                if (card.lbl_1 && (r.current_value == 1 || rawValStr === '1' || rawValStr === '1.0' || rawValStr === '1.00')) {
+                    cleanValStr = card.lbl_1;
+                    isCustomLabel = true;
+                } else if (card.lbl_0 && (r.current_value == 0 || rawValStr === '0' || rawValStr === '0.0' || rawValStr === '0.00')) {
+                    cleanValStr = card.lbl_0;
+                    isCustomLabel = true;
+                }
+                const displayUnit = isCustomLabel ? '' : unitStr;
+
                 if (cleanValStr.length > 45 || cleanValStr.includes('|') || cleanValStr.includes('\n')) {
                     rowHtml += `<td style="text-align:center; white-space: nowrap;">
                         <button class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important; cursor:pointer; font-weight:600; display:inline-block; border-radius:4px; transition: opacity 0.2s; white-space: nowrap; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;" 
@@ -2991,7 +3019,7 @@ function renderTablePage(cardId) {
                 } else {
                     rowHtml += `<td style="text-align:center; white-space: nowrap;">
                         <div class="status-pill ${sObj.color}" style="color:#fff!important; border:none; padding: 6px 12px; font-size:${Math.round(tableFs*0.8)}px!important; white-space: nowrap; display: inline-block; font-family: 'Inter', system-ui, -apple-system, sans-serif !important;">
-                            ${cleanValStr}${unitStr}
+                            ${cleanValStr}${displayUnit}
                         </div>
                     </td>`;
                 }
@@ -3079,7 +3107,11 @@ function renderHistoryTableWidget(cardId, tableData, historyData) {
             const bitVal = (effectiveTraffic && isByte) ? (numericVal * 8) : numericVal;
 
             let displayVal = '';
-            if (effectiveTraffic) {
+            if (card.lbl_1 && (h.val == 1 || numericVal === 1 || String(h.val) === '1' || String(h.val) === '1.0')) {
+                displayVal = card.lbl_1;
+            } else if (card.lbl_0 && (h.val == 0 || numericVal === 0 || String(h.val) === '0' || String(h.val) === '0.0')) {
+                displayVal = card.lbl_0;
+            } else if (effectiveTraffic) {
                 displayVal = formatBitsRate(bitVal);
             } else if (card.use_raw) {
                 displayVal = (numericVal % 1 === 0 ? numericVal : numericVal.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
@@ -3360,7 +3392,11 @@ function renderSparklineTableWidget(cardId, tableData, historyData) {
         const bitVal = (effectiveTraffic && isByte) ? (numericVal * 8) : numericVal;
 
         let displayVal = '';
-        if (effectiveTraffic) {
+        if (card.lbl_1 && (numericVal === 1 || m.current_value == 1 || String(m.current_value) === '1' || String(m.current_value) === '1.0')) {
+            displayVal = card.lbl_1;
+        } else if (card.lbl_0 && (numericVal === 0 || m.current_value == 0 || String(m.current_value) === '0' || String(m.current_value) === '0.0')) {
+            displayVal = card.lbl_0;
+        } else if (effectiveTraffic) {
             displayVal = formatBitsRate(bitVal);
         } else if (card.use_raw) {
             displayVal = (numericVal % 1 === 0 ? numericVal : numericVal.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
@@ -4125,6 +4161,8 @@ async function openBuilder() {
     document.getElementById('b_stat_bg_color_hex').value = '';
     document.getElementById('b_stat_font_color').value = '#334155';
     document.getElementById('b_stat_font_color_hex').value = '';
+    if (document.getElementById('b_lbl_1')) document.getElementById('b_lbl_1').value = '';
+    if (document.getElementById('b_lbl_0')) document.getElementById('b_lbl_0').value = '';
     if (document.getElementById('b_auto_convert_traffic')) document.getElementById('b_auto_convert_traffic').checked = true;
     if (document.getElementById('b_show_module_name')) document.getElementById('b_show_module_name').value = '1';
     if (document.getElementById('b_value_calc')) document.getElementById('b_value_calc').value = 'current';
@@ -4178,6 +4216,8 @@ async function openEdit(id) {
     document.getElementById('b_stat_bg_color_hex').value = c.stat_bg_color || '';
     document.getElementById('b_stat_font_color').value = c.stat_font_color || '#334155';
     document.getElementById('b_stat_font_color_hex').value = c.stat_font_color || '';
+    if (document.getElementById('b_lbl_1')) document.getElementById('b_lbl_1').value = c.lbl_1 || '';
+    if (document.getElementById('b_lbl_0')) document.getElementById('b_lbl_0').value = c.lbl_0 || '';
 
     const activeCols = c.visible_columns || ['agent', 'group', 'ip', 'module', 'status', 'history', 'threshold'];
     document.querySelectorAll('.col-visibility-chk').forEach(el => {
@@ -4292,6 +4332,8 @@ function saveWidget() {
         height: parseInt(document.getElementById('b_height').value) || '',
         stat_bg_color: document.getElementById('b_stat_bg_color_hex').value.trim(),
         stat_font_color: document.getElementById('b_stat_font_color_hex').value.trim(),
+        lbl_1: document.getElementById('b_lbl_1') ? document.getElementById('b_lbl_1').value.trim() : '',
+        lbl_0: document.getElementById('b_lbl_0') ? document.getElementById('b_lbl_0').value.trim() : '',
         auto_convert_traffic: autoConvertTraffic,
         use_raw: document.getElementById('b_use_raw').checked,
         chart_limit: document.getElementById('b_chart_limit').value,
@@ -4808,7 +4850,12 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             </div>`;
         }
 
-        const valDisplay = formatHumanMetric(rawDisplay, m.unit, autoConvert);
+        let valDisplay = formatHumanMetric(rawDisplay, m.unit, autoConvert);
+        if (card.lbl_1 && (rawDisplay == 1 || rawDisplay === '1' || rawDisplay === 1.0 || String(rawDisplay) === '1.0')) {
+            valDisplay = card.lbl_1;
+        } else if (card.lbl_0 && (rawDisplay == 0 || rawDisplay === '0' || rawDisplay === 0.0 || String(rawDisplay) === '0.0')) {
+            valDisplay = card.lbl_0;
+        }
         const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[m.estado] || '#95a5a6';
         const showText = card.show_module_name !== 0;
         

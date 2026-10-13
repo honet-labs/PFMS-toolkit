@@ -3479,8 +3479,16 @@ function generateSummaryPanelHtml(p, modules) {
                     <tbody>
                         ${displayModules.map(m => {
                             const bgClass = {0:'bg-green', 1:'bg-red', 2:'bg-yellow', 4:'bg-blue'}[m.status] || 'bg-gray';
-                            const statusLbl = {0:'UP', 1:'CRITICAL', 2:'WARNING', 4:'NOT INIT'}[m.status] || 'UNKNOWN';
-                            const cleanVal = formatSmartValue(m.current, p.use_raw);
+                            const rawValStr = String(m.current || '');
+                            let cleanVal = formatSmartValue(m.current, p.use_raw);
+                            let isConverted = false;
+                            if (p.lbl_1 && (m.current == 1 || rawValStr === '1' || rawValStr === '1.0' || rawValStr === '1.00')) {
+                                cleanVal = p.lbl_1;
+                                isConverted = true;
+                            } else if (p.lbl_0 && (m.current == 0 || rawValStr === '0' || rawValStr === '0.0' || rawValStr === '0.00')) {
+                                cleanVal = p.lbl_0;
+                                isConverted = true;
+                            }
                             
                             let rowHtml = '<tr>';
                             if (visibleCols.includes('agent')) {
@@ -3527,7 +3535,7 @@ function generateSummaryPanelHtml(p, modules) {
                                 } else {
                                     rowHtml += `<td style="text-align:center;">
                                         <span class="status-pill-dyn ${bgClass}" style="color:#fff!important; border:none; padding: 4px 10px; font-weight:600; display:inline-block; border-radius:4px; font-size:11px; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis;">
-                                            ${cleanVal} ${m.unit}
+                                            ${cleanVal}${isConverted ? '' : (m.unit ? ' ' + m.unit : '')}
                                         </span>
                                     </td>`;
                                 }
