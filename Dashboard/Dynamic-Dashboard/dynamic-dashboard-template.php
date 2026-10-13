@@ -579,9 +579,9 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
     <link href="<?= h($vendor_url) ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
     <script src="<?= h($vendor_url) ?>/echarts/echarts.min.js"></script>
     <script src="<?= h($vendor_url) ?>/html2canvas/html2canvas.min.js"></script>
-    <style>
-        body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; }
-        body { background-color: #f4f6f8; margin: 0; padding: 0; }
+        html, body { min-height: 100vh; height: 100%; }
+        body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; background-color: #f4f6f8; margin: 0; padding: 0; display: flex; flex-direction: column; } 
+        * { box-sizing: border-box; }
         .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-size: 18px !important; vertical-align: middle; line-height: 1; }
 
         /* V4.8 STANDALONE UI OVERRIDES */
@@ -670,7 +670,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .btn-icon-only { background: transparent; color:#7f8c8d; border:none; height:32px; width:32px; border-radius:4px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;}
         .btn-icon-only:hover { background: #e0e4e8; color: #0b1a26; }
         
-        .main-content { padding: 20px 25px; max-width: 1800px; margin: 0 auto; overflow-x: hidden; }
+        #view_detail { flex: 1 1 0%; display: flex; flex-direction: column; min-height: calc(100vh - 120px); width: 100%; }
+        #view_detail.d-none { display: none !important; }
+        
+        .main-content { padding: 20px 25px; max-width: 1800px; margin: 0 auto; width: 100%; flex: 1 1 0%; display: flex; flex-direction: column; min-height: calc(100vh - 180px); }
         
         #panelsGrid { 
             display: grid; 
@@ -682,6 +685,8 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             align-items: start; 
             align-content: start;
             width: 100%;
+            flex: 1 1 0%;
+            min-height: calc(100vh - 220px);
         } 
         
         .panel-rule-wrapper { 
@@ -792,8 +797,8 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             align-items: center;
         }
 
-        /* Container Query for Narrow Cards */
-        @container panelcard (max-width: 250px) {
+        /* Container Query for Narrow Cards (Breakpoint broadened to 320px for responsive compact hamburger) */
+        @container panelcard (max-width: 320px) {
             .panel-controls-full { display: none !important; }
             .panel-controls-compact { display: flex !important; }
             .panel-header { padding: 4px 6px; min-height: 28px; }
@@ -3003,7 +3008,8 @@ function closeAllPanelMenus() {
 
 function updateCompactHeaders() {
     document.querySelectorAll('.panel-card').forEach(card => {
-        if (card.offsetWidth > 0 && card.offsetWidth <= 250) {
+        const width = card.offsetWidth;
+        if (width > 0 && width <= 320) {
             card.classList.add('is-compact-header');
         } else {
             card.classList.remove('is-compact-header');
@@ -4728,7 +4734,10 @@ function refreshCurrentNodeData() {
                 });
             }
         });
-        setTimeout(resizeAllGridItems, 250); 
+        setTimeout(() => {
+            resizeAllGridItems();
+            updateCompactHeaders();
+        }, 250); 
     })
     .catch(err => {
         console.error("Refresh Error:", err);
