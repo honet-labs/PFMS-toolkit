@@ -2003,9 +2003,9 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                                 if (u === '%') return value.toFixed(0) + '%';
                                 if (u === 'ms') return value.toFixed(0) + ' ms';
                                 if (u === 'dBm') return value.toFixed(1) + ' dBm';
-                                if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (u ? ' G' + u : 'G');
-                                if (value >= 1000000) return (value / 1000000).toFixed(1) + (u ? ' M' + u : 'M');
-                                if (value >= 1000) return (value / 1000).toFixed(1) + (u ? ' k' + u : 'k');
+                                if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (u ? ' B ' + u : ' B');
+                                if (value >= 1000000) return (value / 1000000).toFixed(1) + (u ? ' M ' + u : ' M');
+                                if (value >= 1000) return (value / 1000).toFixed(1) + (u ? ' K ' + u : ' K');
                                 return value + (u ? ' ' + u : '');
                             }
                         } 
@@ -2017,7 +2017,8 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                         itemStyle: { color: '#004d40' },
                         areaStyle: { opacity: 0.2, color: '#004d40' },
                         smooth: true,
-                        showSymbol: false,
+                        showSymbol: dataset.length <= 1,
+                        symbolSize: dataset.length <= 1 ? 6 : 3,
                         connectNulls: true,
                         lineStyle: { width: 2 }
                     }]
@@ -5095,9 +5096,9 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                             if (commonUnit === '%') return value.toFixed(0) + '%';
                             if (commonUnit === 'ms') return value.toFixed(0) + ' ms';
                             if (commonUnit === 'dBm') return value.toFixed(1) + ' dBm';
-                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (commonUnit ? ' G' + commonUnit : 'G');
-                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (commonUnit ? ' M' + commonUnit : 'M');
-                            if (value >= 1000) return (value / 1000).toFixed(1) + (commonUnit ? ' k' + commonUnit : 'k');
+                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (commonUnit ? ' B ' + commonUnit : ' B');
+                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (commonUnit ? ' M ' + commonUnit : ' M');
+                            if (value >= 1000) return (value / 1000).toFixed(1) + (commonUnit ? ' K ' + commonUnit : ' K');
                             return value + (commonUnit ? ' ' + commonUnit : '');
                         }
                     } 
@@ -5222,9 +5223,9 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                             if (commonUnit === '%') return value.toFixed(0) + '%';
                             if (commonUnit === 'ms') return value.toFixed(0) + ' ms';
                             if (commonUnit === 'dBm') return value.toFixed(1) + ' dBm';
-                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (commonUnit ? ' G' + commonUnit : 'G');
-                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (commonUnit ? ' M' + commonUnit : 'M');
-                            if (value >= 1000) return (value / 1000).toFixed(1) + (commonUnit ? ' k' + commonUnit : 'k');
+                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + (commonUnit ? ' B ' + commonUnit : ' B');
+                            if (value >= 1000000) return (value / 1000000).toFixed(1) + (commonUnit ? ' M ' + commonUnit : ' M');
+                            if (value >= 1000) return (value / 1000).toFixed(1) + (commonUnit ? ' K ' + commonUnit : ' K');
                             return value + (commonUnit ? ' ' + commonUnit : '');
                         }
                     } 

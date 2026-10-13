@@ -1998,6 +1998,79 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true, moduleName =
     return unit ? `${formatted} ${unit}` : formatted;
 }
 
+function formatChartAxisLabel(value, unitStr = '', isTraffic = false, useRaw = false) {
+    if (value === null || value === undefined || isNaN(value)) return '';
+    const val = parseFloat(value);
+    if (isNaN(val)) return value;
+    if (useRaw) {
+        const formatted = (val % 1 === 0) ? val.toString() : Number(val.toFixed(2)).toString();
+        return `${formatted}${unitStr ? ' ' + unitStr : ''}`;
+    }
+
+    const u = (unitStr || '').trim();
+    const uLow = u.toLowerCase();
+
+    // 1. Bitrate / Network Traffic
+    const isTrafficUnit = isTraffic || uLow.includes('bps') || uLow.includes('bit') || uLow.includes('b/s') || uLow.includes('octet');
+    if (isTrafficUnit) {
+        const abs = Math.abs(val);
+        if (abs >= 1000000000) return (val / 1000000000).toFixed(1) + ' Gbps';
+        if (abs >= 1000000) return (val / 1000000).toFixed(1) + ' Mbps';
+        if (abs >= 1000) return (val / 1000).toFixed(1) + ' Kbps';
+        return val.toFixed(0) + ' bps';
+    }
+
+    // 2. Explicit Traffic Bitrate units
+    if (uLow === 'kbps' || uLow === 'mbps' || uLow === 'gbps') {
+        const formatted = (val % 1 === 0) ? val : parseFloat(val.toFixed(1));
+        return `${formatted} ${u}`;
+    }
+
+    // 3. Storage / Memory (bytes, B)
+    if (uLow === 'bytes' || uLow === 'b') {
+        const abs = Math.abs(val);
+        if (abs >= 1073741824) return (val / 1073741824).toFixed(1) + ' GB';
+        if (abs >= 1048576) return (val / 1048576).toFixed(1) + ' MB';
+        if (abs >= 1024) return (val / 1024).toFixed(1) + ' KB';
+        return val.toFixed(0) + ' B';
+    }
+
+    // 4. Percentage
+    if (u === '%') {
+        return (Number.isInteger(val) ? val : parseFloat(val.toFixed(1))) + '%';
+    }
+
+    // 5. Latency / Time
+    if (uLow === 'ms' || uLow === 's') {
+        return (Number.isInteger(val) ? val : parseFloat(val.toFixed(1))) + ' ' + u;
+    }
+
+    // 6. Optical / dBm
+    if (uLow === 'dbm') {
+        return parseFloat(val.toFixed(1)) + ' dBm';
+    }
+
+    // 7. General Numbers / Counts / Counters (Tuples, Packets, Queries, Hits, etc.)
+    // Gunakan 'B' (Billion / Miliar) untuk 10^9, 'M' (Million) untuk 10^6, 'K' (Thousand) untuk 10^3
+    // Hindari 'G' agar tidak disalahartikan sebagai Gigabyte
+    const abs = Math.abs(val);
+    if (abs >= 1000000000) {
+        const numPart = (val / 1000000000).toFixed(1);
+        return u ? `${numPart} B ${u}` : `${numPart} B`;
+    }
+    if (abs >= 1000000) {
+        const numPart = (val / 1000000).toFixed(1);
+        return u ? `${numPart} M ${u}` : `${numPart} M`;
+    }
+    if (abs >= 1000) {
+        const numPart = (val / 1000).toFixed(1);
+        return u ? `${numPart} K ${u}` : `${numPart} K`;
+    }
+
+    const formatted = Number.isInteger(val) ? val : parseFloat(val.toFixed(2));
+    return u ? `${formatted} ${u}` : `${formatted}`;
+}
+
 // V4.8 IS_STANDALONE FLAG
 const IS_STANDALONE = <?= $isStandalone ? 'true' : 'false' ?>;
 const IS_MODAL_ONLY = <?= $isModalOnly ? 'true' : 'false' ?>;
@@ -4425,7 +4498,8 @@ function refreshCurrentNodeData() {
                             itemStyle: { color: color },
                             areaStyle: p.type === 'area' ? { opacity: 0.15, color: color } : undefined,
                             smooth: true,
-                            showSymbol: false,
+                            showSymbol: uniqueTimestamps.length <= 1,
+                            symbolSize: uniqueTimestamps.length <= 1 ? 6 : 3,
                             connectNulls: true,
                             lineStyle: { width: p.type === 'bar' ? 0 : 2 }
                         };
@@ -4497,30 +4571,7 @@ function refreshCurrentNodeData() {
                                     fontSize: Math.max(8, chartFs - 2), 
                                     color: '#64748b',
                                     formatter: function(value) {
-                                        if (p.use_raw) {
-                                            const rawVal = parseFloat(value);
-                                            const formatted = isNaN(rawVal) ? value : ((rawVal % 1 === 0) ? rawVal.toString() : Number(rawVal.toFixed(2)).toString());
-                                            return `${formatted}${commonUnit ? ' ' + commonUnit : ''}`;
-                                        }
-                                        const u = (commonUnit || '').toLowerCase();
-                                        if (u === 'kbps' || u === 'mbps' || u === 'gbps') {
-                                            const formatted = (value % 1 === 0) ? value : parseFloat(value.toFixed(1));
-                                            return `${formatted} ${commonUnit}`;
-                                        }
-                                        const isTrafficUnit = cardIsTraffic || u.includes('byte') || u.includes('b/s') || u.includes('octet') || (u === 'bps' || u === 'bit');
-                                        if (isTrafficUnit) {
-                                            if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
-                                            if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
-                                            if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
-                                            return value.toFixed(0) + ' bps';
-                                        }
-                                        if (commonUnit === '%') return (Number.isInteger(value) ? value : parseFloat(value.toFixed(1))) + '%';
-                                        if (commonUnit === 'ms') return (Number.isInteger(value) ? value : parseFloat(value.toFixed(1))) + ' ms';
-                                        if (commonUnit === 'dBm') return parseFloat(value.toFixed(1)) + ' dBm';
-                                        if (Math.abs(value) >= 1000000000) return (value / 1000000000).toFixed(1) + (commonUnit ? ' G' + commonUnit : 'G');
-                                        if (Math.abs(value) >= 1000000) return (value / 1000000).toFixed(1) + (commonUnit ? ' M' + commonUnit : 'M');
-                                        if (Math.abs(value) >= 1000) return (value / 1000).toFixed(1) + (commonUnit ? ' k' + commonUnit : 'k');
-                                        return (Number.isInteger(value) ? value : parseFloat(value.toFixed(2))) + (commonUnit ? ' ' + commonUnit : '');
+                                        return formatChartAxisLabel(value, commonUnit, cardIsTraffic, p.use_raw);
                                     }
                                 } 
                             },
@@ -4674,32 +4725,7 @@ function refreshCurrentNodeData() {
                                         fontSize: Math.max(8, chartFs - 2),
                                         color: '#64748b',
                                         formatter: function(value) {
-                                            if (p.use_raw) {
-                                                const rawVal = parseFloat(value);
-                                                const formatted = isNaN(rawVal) ? value : ((rawVal % 1 === 0) ? rawVal.toString() : Number(rawVal.toFixed(2)).toString());
-                                                return `${formatted}${unitStr ? ' ' + unitStr : ''}`;
-                                            }
-                                            const u = unitStr.toLowerCase();
-                                            if (u === 'kbps' || u === 'mbps' || u === 'gbps') {
-                                                const formatted = (value % 1 === 0) ? value : parseFloat(value.toFixed(1));
-                                                return `${formatted} ${unitStr}`;
-                                            }
-                                            const isTrafficUnit = isModTraffic || u.includes('byte') || u.includes('b/s') || u.includes('octet') || (u === 'bps' || u === 'bit');
-                                            if (isTrafficUnit) {
-                                                if (value >= 1000000000) return (value / 1000000000).toFixed(1) + ' Gbps';
-                                                if (value >= 1000000) return (value / 1000000).toFixed(1) + ' Mbps';
-                                                if (value >= 1000) return (value / 1000).toFixed(1) + ' Kbps';
-                                                return value.toFixed(0) + ' bps';
-                                            }
-                                            if (unitStr === '%' || (isPct && !isModTraffic)) {
-                                                return (Number.isInteger(value) ? value : parseFloat(value.toFixed(1))) + '%';
-                                            }
-                                            if (unitStr === 'ms') return (Number.isInteger(value) ? value : parseFloat(value.toFixed(1))) + ' ms';
-                                            if (unitStr === 'dBm') return parseFloat(value.toFixed(1)) + ' dBm';
-                                            if (Math.abs(value) >= 1000000000) return (value / 1000000000).toFixed(1) + (unitStr ? ' G' + unitStr : 'G');
-                                            if (Math.abs(value) >= 1000000) return (value / 1000000).toFixed(1) + (unitStr ? ' M' + unitStr : 'M');
-                                            if (Math.abs(value) >= 1000) return (value / 1000).toFixed(1) + (unitStr ? ' k' + unitStr : 'k');
-                                            return (Number.isInteger(value) ? value : parseFloat(value.toFixed(2))) + (unitStr ? ' ' + unitStr : '');
+                                            return formatChartAxisLabel(value, unitStr, isModTraffic, p.use_raw);
                                         }
                                     }
                                 },
@@ -4709,7 +4735,11 @@ function refreshCurrentNodeData() {
                                     data: singleChartData,
                                     itemStyle: { color: color },
                                     areaStyle: p.type === 'area' ? { opacity: 0.15, color: color } : undefined,
-                                    smooth: true, showSymbol: false, connectNulls: true, lineStyle: { width: p.type === 'bar' ? 0 : 2 }
+                                    smooth: true, 
+                                    showSymbol: (history || []).length <= 1,
+                                    symbolSize: (history || []).length <= 1 ? 6 : 3,
+                                    connectNulls: true, 
+                                    lineStyle: { width: p.type === 'bar' ? 0 : 2 }
                                 }]
                             });
 
@@ -5743,7 +5773,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         document.getElementById('nativeModuleDetailCount').innerText = `${data.length} rows`;
         
         if (data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:30px; color:#64748b;">No history data found in the selected range.</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:30px; color:#64748b;"><div style="font-weight:600; margin-bottom:4px;">No history data found in the selected range.</div><div style="font-size:11px; color:#94a3b8;">If this module has not received new data recently (e.g. stale agent), try selecting <b>Last 7d</b> or a custom date range.</div></td></tr>';
             return;
         }
         
@@ -5814,7 +5844,13 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                         type: 'value', 
                         max: isDetailPct ? 100 : null,
                         splitLine: { lineStyle: { color: '#f1f5f9' } }, 
-                        axisLabel: { fontSize: 10, color: '#64748b' } 
+                        axisLabel: { 
+                            fontSize: 10, 
+                            color: '#64748b',
+                            formatter: function (val) {
+                                return formatChartAxisLabel(val, unit.trim(), isTrafficMetric(title, unit, title), false);
+                            }
+                        } 
                     },
                     dataZoom: [{
                         type: 'inside',
@@ -5828,7 +5864,8 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                         itemStyle: { color: '#004d40' },
                         areaStyle: { opacity: 0.2, color: '#004d40' },
                         smooth: true,
-                        showSymbol: false,
+                        showSymbol: dataset.length <= 1,
+                        symbolSize: dataset.length <= 1 ? 6 : 3,
                         connectNulls: true,
                         lineStyle: { width: 2 }
                     }]
