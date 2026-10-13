@@ -521,6 +521,16 @@ if ($api === 'bulk_panel_data') {
                 }
 
                 $cur_val = $mod['current_val'];
+                if (!empty($history)) {
+                    $last_point = end($history);
+                    if ($last_point && isset($last_point['val']) && $last_point['val'] !== null && $last_point['val'] !== '') {
+                        if (empty($mod['last_contact']) || (int)$last_point['ts'] >= (int)$mod['last_contact']) {
+                            $cur_val = $last_point['val'];
+                            $mod['last_contact'] = (int)$last_point['ts'];
+                        }
+                    }
+                }
+
                 if ($cur_val !== null && is_numeric($cur_val)) {
                     $u_trim = trim($mod['unit'] ?? '');
                     $n_trim = strtolower(trim($mod['nombre'] ?? ''));

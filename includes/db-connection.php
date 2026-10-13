@@ -624,6 +624,8 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     // 1. Determine the specific table for this module to optimize query performance (Numeric/String/Inc)
     $target_table = null;
     $mod_meta = null;
+    $is_inc = false;
+    $is_string = false;
     try {
         $stType = $active_pdo->prepare("SELECT m.id_tipo_modulo, t.name, m.min, m.max, m.unit, m.nombre FROM tagente_modulo m JOIN ttipo_modulo t ON m.id_tipo_modulo = t.id_tipo_modulo WHERE m.id_agente_modulo = ?");
         $stType->execute([$id_mod]);
@@ -633,12 +635,15 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
             $typeId = (int)$row['id_tipo_modulo'];
             $typeName = strtolower((string)$row['name']);
             
-            if (in_array($typeId, [3, 12]) || strpos($typeName, 'string') !== false) {
+            $is_string = (in_array($typeId, [3, 12]) || strpos($typeName, 'string') !== false);
+            $is_inc = (in_array($typeId, [2, 4, 10, 14]) || strpos($typeName, 'inc') !== false);
+
+            if ($is_string) {
                 $target_table = 'tagente_datos_string';
+            } elseif ($is_inc) {
+                // In Pandora FMS, raw counter history for incremental modules is stored in tagente_datos_inc
+                $target_table = 'tagente_datos_inc';
             } else {
-                // In Pandora FMS, computed rates for incremental modules as well as numeric values 
-                // are stored in tagente_datos. tagente_datos_inc only holds the current raw counter 
-                // and should not be used for historical charts.
                 $target_table = 'tagente_datos';
             }
         }
@@ -649,7 +654,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     // Determine validity bounds to filter out corrupted outliers / glitch values
     $min_bound = null;
     $max_bound = null;
-    if ($mod_meta && $target_table === 'tagente_datos') {
+    if ($mod_meta && in_array($target_table, ['tagente_datos', 'tagente_datos_inc'])) {
         $raw_unit = trim($mod_meta['unit'] ?? '');
         $raw_nombre = strtolower(trim($mod_meta['nombre'] ?? ''));
         $mod_min = isset($mod_meta['min']) ? (float)$mod_meta['min'] : 0.0;
@@ -675,6 +680,16 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     $historyData = [];
     $activeData = [];
 
+    $query_table_fn = function($pdo_inst, $tbl) use ($id_mod, $start, $end, $limit) {
+        try {
+            $st = $pdo_inst->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
+            $st->execute([$id_mod, $start, $end]);
+            return $st->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            return [];
+        }
+    };
+
     // 2. Query history database first (if connection exists)
     $all_history_pdos = [];
     if ($node === 'primary') {
@@ -687,52 +702,29 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
 
     foreach ($all_history_pdos as $h_pdo) {
         if ($target_table !== null) {
-            try {
-                $stmtHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
-                $stmtHist->execute([$id_mod, $start, $end]);
-                $res = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
-                if (!empty($res)) {
-                    $historyData = array_merge($historyData, $res);
-                }
-                
-                // FALLBACK: If query succeeded but returned 0 rows, and we didn't query tagente_datos originally,
-                // try tagente_datos since Pandora FMS can archive all types of history data there
-                if (empty($res) && $target_table !== 'tagente_datos') {
-                    $stmtHist2 = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
-                    $stmtHist2->execute([$id_mod, $start, $end]);
-                    $res2 = $stmtHist2->fetchAll(PDO::FETCH_ASSOC);
-                    if (!empty($res2)) {
-                        $historyData = array_merge($historyData, $res2);
-                    }
-                }
-            } catch (Throwable $e) {
-                // If it fails (e.g., table doesn't exist in history DB), fall back to tagente_datos
-                if ($target_table !== 'tagente_datos') {
-                    try {
-                        $stmtHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
-                        $stmtHist->execute([$id_mod, $start, $end]);
-                        $res = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
-                        if (!empty($res)) {
-                            $historyData = array_merge($historyData, $res);
-                        }
-                    } catch (Throwable $e2) {
-                        error_log("Historical fallback query to tagente_datos failed: " . $e2->getMessage());
-                    }
+            $res = $query_table_fn($h_pdo, $target_table);
+            if (!empty($res)) {
+                $historyData = array_merge($historyData, $res);
+            }
+            
+            // Fallback for incremental/numeric: check partner table if primary returned 0 rows
+            if (empty($res)) {
+                if ($target_table === 'tagente_datos_inc') {
+                    $res2 = $query_table_fn($h_pdo, 'tagente_datos');
+                    if (!empty($res2)) $historyData = array_merge($historyData, $res2);
+                } elseif ($target_table === 'tagente_datos') {
+                    $res2 = $query_table_fn($h_pdo, 'tagente_datos_inc');
+                    if (!empty($res2)) $historyData = array_merge($historyData, $res2);
                 }
             }
         } else {
             // Fallback to querying all tables individually if type is undetermined
-            $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
+            $tables = ['tagente_datos_inc', 'tagente_datos', 'tagente_datos_string'];
             foreach ($tables as $tbl) {
-                try {
-                    $stmtHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
-                    $stmtHist->execute([$id_mod, $start, $end]);
-                    $res = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
-                    if (!empty($res)) {
-                        $historyData = array_merge($historyData, $res);
-                    }
-                } catch (Throwable $e) {
-                    // Ignore missing tables
+                $res = $query_table_fn($h_pdo, $tbl);
+                if (!empty($res)) {
+                    $historyData = array_merge($historyData, $res);
+                    break;
                 }
             }
         }
@@ -740,20 +732,35 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
 
     // 3. Query active database
     if ($target_table !== null) {
-        try {
-            $stmt = $active_pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ? ORDER BY utimestamp DESC LIMIT " . (int)$limit);
-            $stmt->execute([$id_mod, $start, $end]);
-            $activeData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Throwable $e) {
-            error_log("Active DB query for $target_table failed: " . $e->getMessage());
+        $activeData = $query_table_fn($active_pdo, $target_table);
+        
+        // Smart fallback / comparison for numeric / incremental tables:
+        if ($target_table === 'tagente_datos_inc') {
+            if (empty($activeData)) {
+                $activeData = $query_table_fn($active_pdo, 'tagente_datos');
+            }
+        } elseif ($target_table === 'tagente_datos') {
+            if (empty($activeData)) {
+                $activeData = $query_table_fn($active_pdo, 'tagente_datos_inc');
+            } else {
+                // If tagente_datos only returned stale points, check if tagente_datos_inc has more recent/complete data
+                $partnerData = $query_table_fn($active_pdo, 'tagente_datos_inc');
+                if (!empty($partnerData)) {
+                    $latestActive = (int)($activeData[0]['ts'] ?? 0);
+                    $latestPartner = (int)($partnerData[0]['ts'] ?? 0);
+                    if ($latestPartner > $latestActive || count($partnerData) > count($activeData)) {
+                        $activeData = $partnerData;
+                    }
+                }
+            }
         }
     } else {
         // Fallback to UNION query if type is undetermined
-        $query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+        $query = "SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
+                  UNION ALL
+                  SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
                   UNION ALL
                   SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
-                  UNION ALL
-                  SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp BETWEEN ? AND ?
                   ORDER BY ts DESC LIMIT " . (int)$limit;
         try {
             $stmt = $active_pdo->prepare($query);
@@ -766,35 +773,33 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
 
     // 4. Query last value before start to prevent empty charts for static modules
     $preData = null;
-    if ($target_table !== null) {
-        try {
-            $stmtLookback = $active_pdo->prepare("SELECT utimestamp as ts, datos FROM `$target_table` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY utimestamp DESC LIMIT 1");
-            $stmtLookback->execute([$id_mod, $start]);
-            $preData = $stmtLookback->fetch(PDO::FETCH_ASSOC);
-        } catch (Throwable $e) {
-            error_log("Active DB lookback query error: " . $e->getMessage());
-        }
+    $lookback_tables = [];
+    if ($target_table === 'tagente_datos_inc') {
+        $lookback_tables = ['tagente_datos_inc', 'tagente_datos'];
+    } elseif ($target_table === 'tagente_datos') {
+        $lookback_tables = ['tagente_datos', 'tagente_datos_inc'];
+    } elseif ($target_table === 'tagente_datos_string') {
+        $lookback_tables = ['tagente_datos_string'];
     } else {
-        $lookback_query = "SELECT utimestamp as ts, datos FROM tagente_datos WHERE id_agente_modulo = ? AND utimestamp < ?
-                           UNION ALL
-                           SELECT utimestamp as ts, datos FROM tagente_datos_string WHERE id_agente_modulo = ? AND utimestamp < ?
-                           UNION ALL
-                           SELECT utimestamp as ts, datos FROM tagente_datos_inc WHERE id_agente_modulo = ? AND utimestamp < ?
-                           ORDER BY ts DESC LIMIT 1";
+        $lookback_tables = ['tagente_datos_inc', 'tagente_datos', 'tagente_datos_string'];
+    }
+
+    foreach ($lookback_tables as $tbl) {
         try {
-            $stmtLookback = $active_pdo->prepare($lookback_query);
-            $stmtLookback->execute([$id_mod, $start, $id_mod, $start, $id_mod, $start]);
-            $preData = $stmtLookback->fetch(PDO::FETCH_ASSOC);
-        } catch (Throwable $e) {
-            error_log("Active DB lookback query error: " . $e->getMessage());
-        }
+            $stmtLookback = $active_pdo->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY utimestamp DESC LIMIT 1");
+            $stmtLookback->execute([$id_mod, $start]);
+            $row = $stmtLookback->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $preData = $row;
+                break;
+            }
+        } catch (Throwable $e) {}
     }
 
     if (!$preData && !empty($all_history_pdos)) {
-        $tables = ['tagente_datos', 'tagente_datos_string', 'tagente_datos_inc'];
         $best_ts = 0;
         foreach ($all_history_pdos as $h_pdo) {
-            foreach ($tables as $tbl) {
+            foreach ($lookback_tables as $tbl) {
                 try {
                     $stmtLookbackHist = $h_pdo->prepare("SELECT utimestamp as ts, datos FROM `$tbl` WHERE id_agente_modulo = ? AND utimestamp < ? ORDER BY utimestamp DESC LIMIT 1");
                     $stmtLookbackHist->execute([$id_mod, $start]);
@@ -803,9 +808,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
                         $best_ts = (int)$row['ts'];
                         $preData = $row;
                     }
-                } catch (Throwable $e) {
-                    // Ignore if table does not exist
-                }
+                } catch (Throwable $e) {}
             }
         }
     }
@@ -813,7 +816,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     if ($preData) {
         $pNum = is_numeric($preData['datos']) ? (float)$preData['datos'] : null;
         $pValid = true;
-        if ($target_table === 'tagente_datos' && $pNum !== null) {
+        if (in_array($target_table, ['tagente_datos', 'tagente_datos_inc']) && $pNum !== null) {
             if ($max_bound !== null && $pNum > $max_bound) $pValid = false;
             if ($min_bound !== null && $pNum < $min_bound) $pValid = false;
         }
@@ -829,7 +832,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     // Deduplicate by timestamp and discard corrupted outliers outside module thresholds
     $unique = [];
     foreach ($merged as $item) {
-        if ($target_table === 'tagente_datos' && is_numeric($item['datos'])) {
+        if (in_array($target_table, ['tagente_datos', 'tagente_datos_inc']) && is_numeric($item['datos'])) {
             $num = (float)$item['datos'];
             if ($max_bound !== null && $num > $max_bound) {
                 continue; // Discard outlier above max / 100%
