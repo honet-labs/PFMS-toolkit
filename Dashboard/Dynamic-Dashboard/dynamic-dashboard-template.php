@@ -2213,13 +2213,28 @@ function markSaved() {
 }
 
 function saveConfigToServer(callback, quiet = false) {
-    fetch(getApiUrl('save_config'), { method:'POST', body:JSON.stringify(masterDashboards), headers: {'X-CSRF-TOKEN': '<?= $csrf_token ?>'} })
+    return fetch(getApiUrl('save_config'), {
+        method: 'POST',
+        body: JSON.stringify(masterDashboards),
+        headers: { 'X-CSRF-TOKEN': '<?= $csrf_token ?>' }
+    })
     .then(r => r.json())
     .then(res => {
-        if(!res.ok) alert(`SAVE FAILED!\nReason: ${res.error?.message || res.error || 'Unknown Error'}\nTarget: ${res.file || 'File permission issue'}`);
-        else if(callback) callback();
+        if (!res.ok) {
+            console.error("Save config error:", res);
+            if (!quiet) alert(`SAVE FAILED!\nReason: ${res.error?.message || res.error || 'Unknown Error'}\nTarget: ${res.file || 'File permission issue'}`);
+            return false;
+        } else {
+            markSaved();
+            if (callback) callback();
+            return true;
+        }
     })
-    .catch(e => { if(!quiet) alert("Failed to connect to server."); });
+    .catch(e => {
+        console.error("Save config network error:", e);
+        if (!quiet) alert("Failed to connect to server.");
+        return false;
+    });
 }
 
 function updateURLState(dashId = null, groupId = null, agentId = null) {
@@ -2412,7 +2427,7 @@ function saveDashboardMeta() {
         });
         closeDashMetaModal();
         openDashboard(currentDashId);
-        markUnsaved();
+        saveConfigToServer(null, true);
     } else {
         const newDash = { id: 'dash_' + Date.now(), title: title, default_group: grp, refresh_rate: 60, panels: [] };
         masterDashboards.push(newDash);
@@ -2780,8 +2795,8 @@ function renderPanelsGrid() {
                 });
                 
                 currentDash.panels = newOrder;
-                markUnsaved();
                 forceRefresh();
+                saveConfigToServer(null, true);
             }
         });
     }
@@ -2934,7 +2949,7 @@ function initPanelResize(e, panelId) {
         if (currentSpan !== startSpan || currentHeight !== startHeight) {
             panel.width = String(currentSpan);
             panel.height = currentHeight;
-            markUnsaved();
+            saveConfigToServer(null, true);
 
             wrapper.style.setProperty('--panel-span', currentSpan);
             wrapper.style.gridColumn = `span ${currentSpan}`;
@@ -3403,11 +3418,10 @@ function generateSummaryPanelHtml(p, modules) {
         const valFs = p.font_size ? `font-size: ${p.font_size}px !important;` : '';
         const valFw = p.font_weight ? `font-weight: ${p.font_weight} !important;` : '';
         const lblFs = p.font_size ? `font-size: ${Math.max(8, Math.round(p.font_size * 0.4))}px !important;` : '';
-        const cardMinH = p.height ? `min-height: ${Math.max(50, parseInt(p.height) - 70)}px;` : '';
-        const statCardStyle = `${statBg} ${cardMinH} ${p.height ? 'display:flex; flex-direction:column; justify-content:center; align-items:center;' : ''}`;
+        const statCardStyle = `${statBg} min-height: 42px; min-width: 65px; flex: 1 1 0%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 4px 6px; box-sizing: border-box;`;
 
         content = `
-            <div class="mini-stats-row">
+            <div class="mini-stats-row" style="height: 100%; display: flex; flex-wrap: wrap; align-content: stretch; gap: 8px; margin: 0; box-sizing: border-box;">
                 <div class="mini-stat st-black" style="${statCardStyle}" onclick="showStatusDetails('${p.id}', -1, 'TOTAL')">
                     <div class="mini-stat-val" style="${statValColor || 'color:#333;'} ${valFs} ${valFw}">${stats.total}</div>
                     <div class="mini-stat-label" style="${statLblColor} ${lblFs}">TOTAL</div>
@@ -5418,7 +5432,12 @@ function applyPanel() {
     };
     if (editingPanelId) dash.panels = dash.panels.map(x => x.id === editingPanelId ? p : x);
     else dash.panels.push(p);
-    closePanelModal(); markUnsaved(); renderPanelsGrid(); forceRefresh(); 
+    closePanelModal();
+    renderPanelsGrid();
+    forceRefresh();
+    saveConfigToServer(() => {
+        markSaved();
+    }, true);
 }
 
 function quickTogglePanelHidden(id, moduleId = null) {
@@ -5437,9 +5456,9 @@ function quickTogglePanelHidden(id, moduleId = null) {
         } else {
             p.hidden = true;
         }
-        markUnsaved();
         renderPanelsGrid();
         forceRefresh();
+        saveConfigToServer(null, true);
     }
 }
 
@@ -5453,9 +5472,9 @@ function duplicatePanel(id) {
     newP.title = newP.title + ' (Copy)';
     
     dash.panels.push(newP);
-    markUnsaved();
     renderPanelsGrid();
     forceRefresh();
+    saveConfigToServer(null, true);
 }
 
 function deletePanel(id) {

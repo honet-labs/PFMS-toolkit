@@ -2713,8 +2713,8 @@ function renderGrid() {
         const statLblColor = c.stat_font_color ? `color: ${c.stat_font_color} !important; opacity: 0.75;` : '';
         const statFs = c.stat_font_size ? `font-size: ${c.stat_font_size}px !important;` : '';
         const statLblFs = c.stat_font_size ? `font-size: ${Math.max(8, Math.round(c.stat_font_size * 0.4))}px !important;` : '';
-        const statMinH = (c.height) ? `min-height: ${Math.max(50, parseInt(c.height) - 80)}px;` : '';
-        const statCardStyle = `${statBg} ${statMinH} ${c.height ? 'display:flex; flex-direction:column; justify-content:center; align-items:center;' : ''}`;
+        const statMinH = c.height ? 'min-height: 42px;' : '';
+        const statCardStyle = `${statBg} ${statMinH} ${c.height ? 'display:flex; flex-direction:column; justify-content:center; align-items:center; flex:1 1 0%; min-width:75px; padding:4px 6px; box-sizing:border-box;' : ''}`;
 
         let statsHtml = '';
         if (visStats.includes('total')) {
@@ -2738,7 +2738,7 @@ function renderGrid() {
 
         div.innerHTML = `<div class="dashboard-card-header"><div><h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="color:#004d40;">analytics</span> ${c.title}</h5><div style="font-size:10px; color:#7f8c8d; font-weight: normal;"><span id="meta_up_${c.id}">Awaiting...</span> <span id="meta_timer_${c.id}"></span></div></div>${acts}</div>
         <div class="dashboard-card-body">
-            <div class="mini-stats-row" style="${showStatsStyle}">
+            <div class="mini-stats-row" style="${showStatsStyle} ${c.view_type === 'cards' && c.height ? 'height:100%; display:flex; flex-wrap:wrap; align-content:stretch; gap:8px; margin:0; box-sizing:border-box;' : ''}">
                 ${statsHtml}
             </div>
             <div id="content_view_${c.id}"></div>
