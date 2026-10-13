@@ -4292,9 +4292,10 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         function refreshCurrentTopology(manual = false) {
             if (activeDashId) {
-                loadTopologyData(activeDashId, null, !manual);
+                const hasExistingGraph = !!(cy && cy.elements().length > 0);
+                loadTopologyData(activeDashId, null, hasExistingGraph ? true : !manual);
                 if (manual) {
-                    showToast('Memperbarui data node & link status...', 'info');
+                    showToast('Memperbarui live status node & link...', 'info');
                     if (autoRefreshSeconds > 0) {
                         secondsRemaining = autoRefreshSeconds;
                         updateCountdownDisplay();
@@ -5313,9 +5314,14 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 }, 200);
             });
 
-            // Listen for node drag events to highlight Save Positions button
+            // Listen for node drag events to highlight Save Positions button and auto-save
+            let dragSaveDebounceTimer = null;
             cy.on('dragfree', 'node', function() {
                 markPositionsModified();
+                if (dragSaveDebounceTimer) clearTimeout(dragSaveDebounceTimer);
+                dragSaveDebounceTimer = setTimeout(() => {
+                    saveCurrentNodePositions(true /* silent auto-save */);
+                }, 1200);
             });
 
             // Listen for user zoom / pan viewport events to highlight Save Positions button
@@ -5736,12 +5742,49 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 return;
             }
 
+            // 1. Capture current node positions so existing nodes never lose position!
+            const positions = {};
+            if (cy && cy.nodes().length > 0) {
+                cy.nodes().forEach(node => {
+                    const pos = node.position();
+                    if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+                        positions[node.id()] = {
+                            x: Math.round(pos.x * 100) / 100,
+                            y: Math.round(pos.y * 100) / 100
+                        };
+                    }
+                });
+            } else if (currentDash && currentDash.node_positions) {
+                Object.assign(positions, currentDash.node_positions);
+            }
+
+            // 2. Compute non-overlapping smart positions in the active viewport for newly added agents
+            const pan = (cy && typeof cy.pan === 'function') ? cy.pan() : { x: 0, y: 0 };
+            const zoom = (cy && typeof cy.zoom === 'function' && cy.zoom() > 0) ? cy.zoom() : 1;
+            const vpW = (cy && typeof cy.width === 'function') ? cy.width() : 800;
+            const vpH = (cy && typeof cy.height === 'function') ? cy.height() : 600;
+            const centerX = (-pan.x + vpW / 2) / zoom;
+            const centerY = (-pan.y + vpH / 2) / zoom;
+
+            newPicked.forEach((id, idx) => {
+                const nodeId = 'agent-' + id;
+                if (!positions[nodeId]) {
+                    const col = idx % 4;
+                    const row = Math.floor(idx / 4);
+                    positions[nodeId] = {
+                        x: Math.round(centerX + (col - 1.5) * 140),
+                        y: Math.round(centerY + (row + 0.5) * 120)
+                    };
+                }
+            });
+
             const btn = document.getElementById('btnAddAgentNodeSubmit');
             btn.disabled = true;
             const origHtml = btn.innerHTML;
             btn.innerHTML = '<span class="material-symbols-outlined spin-icon">progress_activity</span> Adding agents...';
 
             try {
+                // Save devices
                 const res = await fetch(getApiUrl('save_dashboard_devices'), {
                     method: 'POST',
                     headers: {
@@ -5759,7 +5802,32 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     if (currentDash) {
                         currentDash.device_ids = currentList;
                         currentDash.node_count = currentList.length;
+                        currentDash.node_positions = positions;
+                        currentDash.layout = 'preset';
                     }
+                    if (rawTopologyData && rawTopologyData.dashboard) {
+                        rawTopologyData.dashboard.node_positions = positions;
+                        rawTopologyData.dashboard.layout = 'preset';
+                    }
+
+                    // Save positions to backend so new nodes and existing nodes are permanently locked
+                    try {
+                        await fetch(getApiUrl('save_node_positions'), {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': CSRF_TOKEN
+                            },
+                            body: JSON.stringify({
+                                csrf_token: CSRF_TOKEN,
+                                dashboard_id: activeDashId,
+                                positions: positions,
+                                zoom: Math.round(zoom * 10000) / 10000,
+                                pan: { x: Math.round(pan.x * 100) / 100, y: Math.round(pan.y * 100) / 100 }
+                            })
+                        });
+                    } catch (e) {}
+
                     closeAddNodeModal();
                     showToast(`${addedCount} agent node${addedCount > 1 ? 's' : ''} added to topology`, 'success');
                     loadTopologyData(activeDashId);
@@ -6447,9 +6515,9 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             cy.layout(layoutOptions).run();
         }
 
-        async function saveCurrentNodePositions() {
+        async function saveCurrentNodePositions(silent = false) {
             if (!cy || !activeDashId) {
-                showToast('No active dashboard selected', 'warning');
+                if (!silent) showToast('No active dashboard selected', 'warning');
                 return;
             }
 
@@ -6457,9 +6525,11 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             const icon = document.getElementById('savePositionsIcon');
             const label = document.getElementById('savePositionsLabel');
 
-            if (btn) btn.disabled = true;
-            if (icon) icon.innerText = 'sync';
-            if (label) label.innerText = 'Saving...';
+            if (!silent) {
+                if (btn) btn.disabled = true;
+                if (icon) icon.innerText = 'sync';
+                if (label) label.innerText = 'Saving...';
+            }
 
             const positions = {};
             cy.nodes().forEach(node => {
@@ -6503,7 +6573,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         btn.disabled = false;
                     }
                     if (icon) icon.innerText = 'check';
-                    if (label) label.innerText = 'Saved!';
+                    if (label) label.innerText = silent ? 'Auto-Saved' : 'Saved!';
 
                     // Update in-memory state
                     const cur = allDashboards.find(d => d.id === activeDashId);
@@ -6528,19 +6598,25 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         if (label) label.innerText = 'Save Positions';
                     }, 2000);
 
-                    showToast(data.msg || 'Node layout positions & viewport zoom saved successfully!', 'success');
+                    if (!silent) {
+                        showToast(data.msg || 'Node layout positions & viewport zoom saved successfully!', 'success');
+                    }
                 } else {
                     if (btn) btn.disabled = false;
                     if (icon) icon.innerText = 'save';
                     if (label) label.innerText = 'Save Positions *';
-                    showToast((data && data.msg) || 'Failed to save node layout positions', 'error');
+                    if (!silent) {
+                        showToast((data && data.msg) || 'Failed to save node layout positions', 'error');
+                    }
                 }
             } catch (err) {
                 console.error('Error saving node positions:', err);
                 if (btn) btn.disabled = false;
                 if (icon) icon.innerText = 'save';
                 if (label) label.innerText = 'Save Positions *';
-                showToast('Network error while saving node positions: ' + err.message, 'error');
+                if (!silent) {
+                    showToast('Network error while saving node positions: ' + err.message, 'error');
+                }
             }
         }
 

@@ -4160,7 +4160,7 @@ function generateSummaryPanelHtml(p, modules) {
     const panelH = (p.height && parseInt(p.height) > 0) ? parseInt(p.height) : 0;
     const cardMinH = panelH > 0 ? `min-height:${panelH}px;` : '';
     const cardHeight = 'height:100%;';
-    const bodyPadding = 'padding:10px;';
+    const bodyPadding = (p.type === 'status_timeline') ? 'padding:6px 10px 8px 10px;' : ((p.type === 'single_value') ? 'padding:8px 12px 6px 12px;' : 'padding:10px;');
     const bodyFlex = 'flex: 1 1 0%; min-height: 0; overflow: hidden;';
 
     return `
@@ -5276,6 +5276,11 @@ function selectVisualTypeFromGallery(type) {
         toggleTypeFields();
         toggleChartEngine();
         updateVisualTypePreview();
+        const heightInput = document.getElementById('p_height');
+        if (heightInput && (!heightInput.value || heightInput.value === '200' || heightInput.value === '180')) {
+            if (type === 'status_timeline') heightInput.value = '120';
+            else if (type === 'single_value') heightInput.value = '110';
+        }
     }
     closeVisualGalleryModal();
 }
@@ -6835,8 +6840,8 @@ function renderStatusTimelineContent(p, modules) {
 
         if (modules.length === 1) {
             return `
-            <div class="status-timeline-single" style="width:100%; display:flex; flex-direction:column; justify-content:center; padding:12px 6px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:10px;">
+            <div class="status-timeline-single" style="width:100%; display:flex; flex-direction:column; justify-content:flex-start; padding:2px 2px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
                     <div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden;">
                         <span style="font-weight:700; color:#0284c7; font-size:12px;">${escapeHtml(agentTitle)}</span>
                         <span style="color:#cbd5e1;">•</span>
@@ -6850,15 +6855,15 @@ function renderStatusTimelineContent(p, modules) {
                 <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:26px; align-items:stretch;">
                     ${blocksHtml}
                 </div>
-                <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:6px; padding:0 2px; user-select:none;">
+                <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:4px; padding:0 2px; user-select:none;">
                     ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
                 </div>
             </div>`;
         }
 
         return `
-        <div class="status-timeline-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:12px;">
+        <div class="status-timeline-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px; margin-bottom:8px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
                 <div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden;">
                     <span style="font-weight:700; color:#0284c7; font-size:12px; white-space:nowrap;">${escapeHtml(agentTitle)}</span>
                     <span style="color:#cbd5e1; font-size:12px;">•</span>
@@ -6872,7 +6877,7 @@ function renderStatusTimelineContent(p, modules) {
             <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:24px; align-items:stretch;">
                 ${blocksHtml}
             </div>
-            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:6px; padding:0 2px; user-select:none;">
+            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:4px; padding:0 2px; user-select:none;">
                 ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
             </div>
         </div>`;
@@ -6894,7 +6899,7 @@ function renderStatusTimelineContent(p, modules) {
     const hideSearch = (p.hide_search_bar === true || p.hide_search_bar === 1 || p.hide_search_bar === '1' || p.hide_search_bar === 'true');
 
     if (modules.length === 1) {
-        return `<div class="status-timeline-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:center;">${cardsHtml}</div>`;
+        return `<div class="status-timeline-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:flex-start; padding:2px 0;">${cardsHtml}</div>`;
     }
 
     return `

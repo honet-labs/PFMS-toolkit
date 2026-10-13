@@ -2790,12 +2790,15 @@ function renderGrid() {
             statsHtml += `<div class="mini-stat st-border-blue" style="${statCardStyle}" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" style="${statValColor} ${statFs}" id="st_not_init_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor} ${statLblFs}">NOT INIT</div></div>`;
         }
 
+        const bodyPaddingStyle = (c.view_type === 'status_timeline') ? 'padding: 10px 14px 12px 14px; gap: 8px;' : ((c.view_type === 'sparkline_table') ? 'padding: 12px 16px;' : '');
+        const contentFlexStyle = (c.height || IS_STANDALONE) ? 'height:100%; width:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column;' : '';
+
         div.innerHTML = `<div class="dashboard-card-header"><div><h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="color:#004d40;">analytics</span> ${c.title}</h5><div style="font-size:10px; color:#7f8c8d; font-weight: normal;"><span id="meta_up_${c.id}">Awaiting...</span> <span id="meta_timer_${c.id}"></span></div></div>${acts}</div>
-        <div class="dashboard-card-body">
+        <div class="dashboard-card-body" style="${bodyPaddingStyle}">
             <div class="mini-stats-row" style="${showStatsStyle} ${c.view_type === 'cards' && c.height ? 'height:100%; display:flex; flex-wrap:wrap; align-content:stretch; gap:8px; margin:0; box-sizing:border-box;' : ''}">
                 ${statsHtml}
             </div>
-            <div id="content_view_${c.id}"></div>
+            <div id="content_view_${c.id}" style="${contentFlexStyle}"></div>
         </div>`;
         grid.appendChild(div);
     });
@@ -3550,7 +3553,7 @@ function renderSparklineTableWidget(cardId, tableData, historyData) {
     let paginationHtml = '';
     if (totalPages > 1) {
         paginationHtml = `
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:8px 4px 0 4px; font-size:11px; color:#64748b;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:8px 4px 0 4px; font-size:11px; color:#64748b; margin-top:auto; flex-shrink:0;">
             <div>Showing ${startIdx + 1} to ${endIdx} of ${totalItems} Metrics</div>
             <div style="display:flex; gap:6px;">
                 <button class="pagination-btn" ${currentPage === 1 ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''} onclick="changeMetricsSparklinePage('${cardId}', -1)">Prev</button>
@@ -3560,21 +3563,28 @@ function renderSparklineTableWidget(cardId, tableData, historyData) {
         </div>`;
     }
 
-    const maxTableH = card.height ? `max-height:${Math.max(160, parseInt(card.height) - 90)}px;` : 'max-height:420px;';
+    if (IS_STANDALONE || card.height) {
+        container.style.height = '100%';
+        container.style.width = '100%';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.flex = '1 1 0%';
+        container.style.minHeight = '0';
+    }
 
     container.innerHTML = `
-    <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:auto; padding:0;">
+    <div class="sparkline-table-wrap" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1 1 0%; min-height:0; overflow:hidden; padding:0;">
         ${!hideSearch ? `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-shrink:0;">
             <div style="font-size:11px; color:#94a3b8; font-weight:500;">Top ${Math.min(pageSize, totalItems)} of ${totalItems} Items</div>
             <div style="position:relative; width:180px;">
                 <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.metricsSparklineSearch[cardId] || '')}" oninput="window.metricsSparklineSearch['${cardId}'] = this.value; window.metricsSparklinePages['${cardId}'] = 1; renderSparklineTableWidget('${cardId}', window.metricsSparklineStores['${cardId}'].table, window.metricsSparklineStores['${cardId}'].history);">
                 <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
             </div>
         </div>` : ''}
-        <div style="overflow-x:auto; overflow-y:auto; ${maxTableH} border:1px solid #e2e8f0; border-radius:6px; background:#fff;">
+        <div style="overflow-x:auto; overflow-y:auto; flex:1 1 0%; min-height:0; border:1px solid #e2e8f0; border-radius:6px; background:#fff; width:100%; ${(!IS_STANDALONE && !card.height) ? 'max-height:450px;' : ''}">
             <table class="sparkline-table" style="font-size:12px; width:100%; border-collapse:collapse; margin:0;">
-                <thead>
+                <thead style="position:sticky; top:0; z-index:2; background:#f8fafc; border-bottom:1px solid #e2e8f0;">
                     <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
                         <th style="text-align:left; padding:8px 12px; cursor:pointer;" onclick="toggleMetricsSparklineSort('${cardId}', 'agent');">Agent ${getSortIndicator('agent')}</th>
                         <th style="text-align:left; padding:8px 12px; cursor:pointer;" onclick="toggleMetricsSparklineSort('${cardId}', 'module');">Module Name ${getSortIndicator('module')}</th>
@@ -3849,8 +3859,8 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
 
         if (tableData.length === 1) {
             return `
-            <div class="status-timeline-single" style="width:100%; display:flex; flex-direction:column; justify-content:center; padding:12px 6px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:10px;">
+            <div class="status-timeline-single" style="width:100%; display:flex; flex-direction:column; justify-content:flex-start; padding:2px 2px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
                     <div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden;">
                         <span style="font-weight:700; color:#0284c7; font-size:12px;">${escapeHtml(agentTitle)}</span>
                         <span style="color:#cbd5e1;">•</span>
@@ -3864,14 +3874,14 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
                 <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:26px; align-items:stretch;">
                     ${blocksHtml}
                 </div>
-                <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:6px; padding:0 2px; user-select:none;">
+                <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:4px; padding:0 2px; user-select:none;">
                     ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
                 </div>
             </div>`;
         }
 
         return `
-        <div class="status-timeline-item" style="padding:10px 12px; border-bottom:1px solid #f1f5f9; display:flex; flex-direction:column; gap:6px;">
+        <div class="status-timeline-item" style="padding:6px 10px; border-bottom:1px solid #f1f5f9; display:flex; flex-direction:column; gap:4px;">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
                     <span style="font-weight:700; color:#0284c7; font-size:11px; flex-shrink:0;">${escapeHtml(agentTitle)}</span>
@@ -3886,7 +3896,7 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
             <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:24px; align-items:stretch;">
                 ${blocksHtml}
             </div>
-            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:6px; padding:0 2px; user-select:none;">
+            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:4px; padding:0 2px; user-select:none;">
                 ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
             </div>
         </div>`;
@@ -3908,7 +3918,7 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
     const hideSearch = (card.hide_search_bar === true || card.hide_search_bar === 1 || card.hide_search_bar === '1' || card.hide_search_bar === 'true');
 
     if (tableData.length === 1) {
-        container.innerHTML = `<div class="status-timeline-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:center;">${cardsHtml}</div>`;
+        container.innerHTML = `<div class="status-timeline-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:flex-start; padding:2px 0;">${cardsHtml}</div>`;
         return;
     }
 
