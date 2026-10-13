@@ -579,6 +579,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
     <link href="<?= h($vendor_url) ?>/bootstrap/bootstrap.min.css" rel="stylesheet">
     <script src="<?= h($vendor_url) ?>/echarts/echarts.min.js"></script>
     <script src="<?= h($vendor_url) ?>/html2canvas/html2canvas.min.js"></script>
+    <style>
         html, body { min-height: 100vh; height: 100%; }
         body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #334155; font-size: 14px; -webkit-font-smoothing: antialiased; background-color: #f4f6f8; margin: 0; padding: 0; display: flex; flex-direction: column; } 
         * { box-sizing: border-box; }
