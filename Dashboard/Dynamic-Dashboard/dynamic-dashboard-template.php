@@ -6802,6 +6802,25 @@ function renderStatusTimelineContent(p, modules) {
         return `${yyyy}-${mo}-${dd} ${hh}:${mm}:${ss}`;
     };
 
+    const formatBlockPeriod = (bStartTs, bEndTs) => {
+        const d1 = new Date(bStartTs * 1000);
+        const d2 = new Date(bEndTs * 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        
+        const d1Date = `${pad(d1.getDate())}/${pad(d1.getMonth() + 1)}`;
+        const d1Time = `${pad(d1.getHours())}:${pad(d1.getMinutes())}`;
+        const d2Date = `${pad(d2.getDate())}/${pad(d2.getMonth() + 1)}`;
+        const d2Time = `${pad(d2.getHours())}:${pad(d2.getMinutes())}`;
+        
+        if (d1.getFullYear() !== d2.getFullYear()) {
+            return `${d1Date}/${d1.getFullYear()} ${d1Time} – ${d2Date}/${d2.getFullYear()} ${d2Time}`;
+        }
+        if (d1Date === d2Date) {
+            return `${d1Date}/${d1.getFullYear()} ${d1Time} – ${d2Time}`;
+        }
+        return `${d1Date} ${d1Time} – ${d2Date} ${d2Time}`;
+    };
+
     const numLabels = 7;
     let labelTicks = [];
     for (let i = 0; i < numLabels; i++) {
@@ -6862,15 +6881,17 @@ function renderStatusTimelineContent(p, modules) {
         let lastTs = (sortedHist.length > 0 && sortedHist[0].ts) ? sortedHist[0].ts : (m.last_contact || startTs);
 
         for (let b = 0; b < numBlocks; b++) {
-            const bStart = startTs + b * bucketSec;
-            const bEnd = bStart + bucketSec;
-            const bCenter = bStart + bucketSec / 2;
+            const bStart = Math.floor(startTs + b * bucketSec);
+            const bEnd = Math.floor((b === numBlocks - 1) ? endTs : (startTs + (b + 1) * bucketSec));
+            const bCenter = Math.floor(bStart + (bEnd - bStart) / 2);
+            const periodText = formatBlockPeriod(bStart, bEnd);
 
             const bucketPoints = sortedHist.filter(h => (h.ts >= bStart && h.ts < bEnd));
 
             let blockStatus = 0;
             let blockVal = lastVal;
             let blockTs = bCenter;
+            let dataNote = '';
 
             if (bucketPoints.length > 0) {
                 let worstStatus = 0;
@@ -6893,6 +6914,7 @@ function renderStatusTimelineContent(p, modules) {
                 blockStatus = worstStatus;
                 blockVal = worstPoint.val;
                 blockTs = worstPoint.ts;
+                dataNote = 'Data Event Tercatat';
                 lastVal = blockVal;
                 lastTs = blockTs;
             } else {
@@ -6904,14 +6926,17 @@ function renderStatusTimelineContent(p, modules) {
                     blockStatus = priorEval.status;
                     blockVal = prior.val;
                     blockTs = prior.ts;
+                    dataNote = 'Status stabil berlanjut';
                 } else if (sortedHist.length === 0) {
                     blockStatus = curEval.status;
                     blockVal = m.current;
                     blockTs = m.last_contact || bCenter;
+                    dataNote = 'Status data saat ini';
                 } else {
                     blockStatus = 4;
                     blockVal = 'N/A';
                     blockTs = bCenter;
+                    dataNote = 'Belum ada data';
                 }
             }
 
@@ -6934,11 +6959,16 @@ function renderStatusTimelineContent(p, modules) {
             const safeAgent = escapeHtml(m.agent_name || m.ip_address || 'Node');
             const safeMod = escapeHtml(m.module_name || 'Module');
             const safeVal = escapeHtml(blockDisplayVal);
-            const safeTs = escapeHtml(formatFullTime(blockTs));
+            const safePeriod = escapeHtml(periodText);
+            const safeDataTs = escapeHtml(formatFullTime(blockTs));
+            const safeNote = escapeHtml(dataNote);
 
             blocksHtml += `<div class="status-timeline-block" 
                 style="flex:1; min-width:2px; height:100%; border-radius:3px; background:${blockColor}; cursor:pointer;"
-                data-ts="${safeTs}"
+                data-period="${safePeriod}"
+                data-ts="${safePeriod}"
+                data-point-ts="${safeDataTs}"
+                data-data-note="${safeNote}"
                 data-agent="${safeAgent}"
                 data-mod="${safeMod}"
                 data-status="${statusLabel}"
@@ -7066,17 +7096,28 @@ function showTimelineBlockTooltip(el, e) {
         document.body.appendChild(tip);
     }
 
-    const ts = el.getAttribute('data-ts') || '';
+    const period = el.getAttribute('data-period') || el.getAttribute('data-ts') || '';
+    const pointTs = el.getAttribute('data-point-ts') || '';
+    const dataNote = el.getAttribute('data-data-note') || '';
     const agent = el.getAttribute('data-agent') || '';
     const mod = el.getAttribute('data-mod') || '';
     const status = el.getAttribute('data-status') || '';
     const color = el.getAttribute('data-status-color') || '#22c55e';
     const val = el.getAttribute('data-val') || '';
 
+    const dataTimeRow = pointTs ? `
+        <div style="display:flex; justify-content:space-between; gap:12px; margin-top:2px;">
+            <span style="color:#94a3b8;">Waktu Data:</span>
+            <div style="text-align:right;">
+                <span style="color:#cbd5e1; font-weight:600;">${escapeHtml(pointTs)}</span>
+                ${dataNote ? `<div style="color:#64748b; font-size:10px;">(${escapeHtml(dataNote)})</div>` : ''}
+            </div>
+        </div>` : '';
+
     tip.innerHTML = `
-        <div style="display:flex; align-items:center; gap:6px; font-weight:600; color:#94a3b8; font-size:11px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:8px;">
-            <span class="material-symbols-outlined" style="font-size:14px; color:#38bdf8;">schedule</span>
-            <span>${escapeHtml(ts)}</span>
+        <div style="display:flex; align-items:center; gap:6px; font-weight:600; color:#ffffff; font-size:11px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:8px;">
+            <span class="material-symbols-outlined" style="font-size:15px; color:#38bdf8;">calendar_month</span>
+            <span>Periode: ${escapeHtml(period)}</span>
         </div>
         <div style="display:flex; flex-direction:column; gap:5px;">
             <div style="display:flex; justify-content:space-between; gap:12px;">
@@ -7095,6 +7136,7 @@ function showTimelineBlockTooltip(el, e) {
                 <span style="color:#94a3b8;">Value Module:</span>
                 <span style="font-weight:700; color:#34d399; font-size:12px; text-align:right;">${escapeHtml(val)}</span>
             </div>
+            ${dataTimeRow}
         </div>
     `;
     tip.style.display = 'block';

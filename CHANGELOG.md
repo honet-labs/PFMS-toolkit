@@ -2,6 +2,21 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.12] - 2026-10-14 (Dashboard - Status Timeline Block Period Window & Contextual Timestamp Tooltip)
+### Fixed & Enhanced
+- **Resolusi Periode Waktu Unik per Balok Status Timeline (`Periode Blok: [bStart] – [bEnd]`):**
+  - Mengatasi kebingungan di mana setiap kotak/balok pada Status Timeline (Uptime Blocks) menampilkan timestamp yang sama persis saat di-hover (misalnya `2026-10-13 17:58:14`) ketika time range diubah ke rentang yang lebih panjang (seperti Last 7 Days / Last 30 Days).
+  - Akar penyebab: Tiap baris timeline dibagi rata ke dalam 30 balok waktu (*time buckets*). Ketika sebuah sensor/modul berstatus normal/stabil tanpa perubahan status selama berhari-hari, Pandora FMS tidak mencatat entri event baru di database pada setiap interval balok. Sistem sebelumnya mewarisi timestamp dari event status terakhir (`prior.ts`) sebagai atribut `data-ts` untuk seluruh balok berikutnya, sehingga tooltip menampilkan waktu identik pada banyak balok berturut-turut.
+  - Memperbaiki penentuan rentang waktu dengan menambahkan fungsi `formatBlockPeriod`: setiap balok kini menampilkan rentang waktu jendelanya sendiri secara unik dan kronologis (`Periode: DD/MM/YYYY HH:MM – HH:MM` atau `DD/MM HH:MM – DD/MM HH:MM`).
+- **Penyempurnaan Tooltip Status Timeline dengan Informasi Kontekstual yang Jelas:**
+  - Header tooltip kini menampilkan ikon kalender dan **rentang periode waktu aktif balok** (`Periode: 13/10 12:20 – 17:58`).
+  - Menambahkan baris detail **"Waktu Data:"** yang menampilkan waktu pencatatan data riil dari database (`2026-10-13 17:58:14`) disertai keterangan status yang transparan:
+    - `(Data Event Tercatat)`: bila ada titik log data riil yang terekam persis di dalam jendela balok tersebut.
+    - `(Status stabil berlanjut)`: bila status sensor berlanjut stabil tanpa perubahan status dari titik pembacaan sebelumnya.
+    - `(Status data saat ini)`: bila menggunakan pembacaan kontak terakhir sensor.
+    - `(Belum ada data)`: bila modul belum diinisialisasi atau data belum tersedia pada rentang waktu tersebut.
+  - Diimplementasikan secara konsisten di **Metrics Dashboard** (`metrics-dashboard.php`) dan **Dynamic Dashboard** (`dynamic-dashboard-template.php`).
+
 ## [2.11.11] - 2026-10-14 (Dashboard - Custom Chart Font Size, Pie Radius Size & Embed Sync)
 ### Fixed & Added
 - **Pemberlakuan Penuh Ukuran Font Kustom (`Chart Font Size`) pada Diagram Pie & Donut:**
