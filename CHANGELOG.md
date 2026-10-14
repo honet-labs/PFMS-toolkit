@@ -2,8 +2,11 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
-## [2.11.6] - 2026-10-14 (Metrics Dashboard - Show/Hide Status Cards & Dynamic Dashboard Sync)
+## [2.11.6] - 2026-10-14 (Metrics Dashboard - Visual Type Library & Dynamic Dashboard Sync)
 ### Added & Fixed
+- **Integrasi Visual Type Library & Interactive Preview Gallery (Sinkron dengan Dynamic Dashboard):**
+  - Menambahkan kartu **Interactive Visual Type Preview** tepat di bawah dropdown Style View pada modal Edit/Build Widget yang menampilkan pratinjau mockup visual SVG dinamis, lencana kategori, deskripsi fungsi, dan rekomendasi (*Best For*) secara langsung (*live update*).
+  - Menghadirkan modal **Visual Type Catalog & Preview / All Types Gallery** yang menampilkan galeri visual interaktif untuk seluruh 13 tipe visual lengkap dengan tab filter kategori (*All, Charts & Time-Series, Status & Real-Time Grids, Single Value & Timeline, Tables & Snapshots*) dan tombol aksi *"Select"* untuk memilih tipe visual langsung dari galeri katalog seperti di Dynamic Dashboard.
 - **Sinkronisasi Visual Type & Opsi Show/Hide Status Cards pada Pie & Donut Chart:**
   - Menyelaraskan visual type pada Metrics Dashboard dengan Dynamic Dashboard, di mana style view **Pie Chart (Current Status)** dan **Donut Chart (Current Status)** secara *default* hanya menampilkan grafik diagram lingkaran tanpa baris kartu status di atasnya.
   - Menghadirkan opsi pemilihan visibilitas kartu status ("Show Status Cards (UP, Critical, etc.)") pada modal Edit/Build Widget ketika Style View yang dipilih adalah Pie Chart atau Donut Chart.

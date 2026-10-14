@@ -1215,8 +1215,49 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .radio-btn-group label { display: flex; align-items: center; gap: 5px; font-size: 13px !important; text-transform: none !important; color: #0b1a26 !important; cursor: pointer; font-weight: normal !important; margin-bottom: 0 !important;}
         .radio-btn-group input { width: 16px; height: 16px; margin: 0; cursor: pointer;}
         
-        .modal-header-custom { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-        .modal-footer-custom { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
+        /* Visual Type Preview & Gallery Styles (Synced with Dynamic Dashboard) */
+        .vtp-tab-btn {
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #475569;
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .vtp-tab-btn:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+        .vtp-tab-btn.active {
+            background: #004d40;
+            border-color: #004d40;
+            color: #ffffff;
+            box-shadow: 0 1px 3px rgba(0, 77, 64, 0.25);
+        }
+        .vtp-gallery-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: all 0.15s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        }
+        .vtp-gallery-card:hover {
+            transform: translateY(-2px);
+            border-color: #004d40;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.06) !important;
+        }
+        .vtp-gallery-card.is-active {
+            border: 2px solid #004d40 !important;
+            background: #f0fdf4 !important;
+        }
     </style>
 </head>
 <body class="<?= $isStandalone ? 'is-standalone-view' : '' ?>">
@@ -1330,7 +1371,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
 
         <div class="form-group">
             <label>Style View</label>
-            <select id="b_view_type" class="form-control-fix" onchange="toggleViewTypeOptions()">
+            <select id="b_view_type" class="form-control-fix" onchange="toggleViewTypeOptions(); updateVisualTypePreview();">
                 <option value="table">Table View (Current Status)</option>
                 <option value="history_table">History Table View</option>
                 <option value="sparkline_table">Sparkline Table (Trend Over Time)</option>
@@ -1345,6 +1386,26 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 <option value="bar">Bar Chart (Value Comparison)</option>
                 <option value="table_viewer">View Snapshot Module</option>
             </select>
+        </div>
+
+        <!-- Interactive Visual Type Preview Card (Synced with Dynamic Dashboard) -->
+        <div id="visual_type_preview_container" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:12px; transition:all 0.2s ease;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="material-symbols-outlined" style="font-size:16px; color:#004d40;">visibility</span>
+                    <span style="font-size:11px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:0.5px;">Visual Type Preview</span>
+                    <span id="vtp_badge" style="font-size:10px; font-weight:600; padding:2px 8px; border-radius:12px; background:#e0f2fe; color:#0369a1;">Status & Real-Time</span>
+                </div>
+                <button type="button" onclick="openVisualGalleryModal()" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; padding:3px 8px; font-size:11px; font-weight:600; color:#334155; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.03);" title="Browse all visual type previews">
+                    <span class="material-symbols-outlined" style="font-size:14px; color:#004d40;">dashboard_customize</span> All Types Gallery
+                </button>
+            </div>
+            <div id="vtp_mockup_area" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:10px; display:flex; align-items:center; justify-content:center; min-height:105px; box-shadow:inset 0 1px 2px rgba(0,0,0,0.02);">
+                <!-- Dynamic mockup SVG rendered here -->
+            </div>
+            <div id="vtp_description" style="margin-top:8px; font-size:11px; color:#64748b; line-height:1.45;">
+                <!-- Description & recommendation -->
+            </div>
         </div>
 
         <div class="form-group" id="wrap_chart_options" style="display:none;">
@@ -1768,6 +1829,38 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
 <div class="toast-popup" id="toastPopup">
     <span class="material-symbols-outlined" style="font-size:18px; color:#10b981;">check_circle</span>
     <span id="toastMsg">Copied to clipboard!</span>
+</div>
+
+<!-- Visual Gallery Modal (Visual Type Catalog & Preview - Synced with Dynamic Dashboard) -->
+<div class="modal-overlay" id="visualGalleryModal" style="display:none; z-index:99999;">
+    <div class="modal-box" style="width:95%; max-width:1150px; max-height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+        <div style="padding:16px 20px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; background:#fafbfc;">
+            <div>
+                <h4 style="margin:0; font-size:16px; color:#0b1a26; font-weight:700; display:flex; align-items:center; gap:8px;">
+                    <span class="material-symbols-outlined" style="color:#004d40;">dashboard_customize</span> Visual Type Catalog & Preview
+                </h4>
+                <p style="margin:4px 0 0; font-size:11px; color:#64748b;">Browse visual previews and choose the most suitable chart or table type for your monitoring needs.</p>
+            </div>
+            <span class="material-symbols-outlined" style="cursor:pointer; font-size:22px; color:#64748b;" onclick="closeVisualGalleryModal()">close</span>
+        </div>
+        
+        <!-- Filter Tabs -->
+        <div style="padding:8px 20px; background:#ffffff; border-bottom:1px solid #f1f5f9; display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="vtp-tab-btn active" onclick="setVisualGalleryFilter('all', this)">All (13)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('timeseries', this)">Charts & Time-Series (3)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('status', this)">Status & Real-Time Grids (5)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('kpi', this)">Single Value & Timeline (2)</button>
+            <button type="button" class="vtp-tab-btn" onclick="setVisualGalleryFilter('table', this)">Tables & Snapshots (3)</button>
+        </div>
+
+        <div class="modal-body-scroll" style="padding:16px 20px; background:#f8fafc; overflow-y:auto; flex:1;">
+            <div id="vtp_gallery_grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:14px;"></div>
+        </div>
+
+        <div style="padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; background:#fafbfc;">
+            <button type="button" class="btn-secondary-custom" onclick="closeVisualGalleryModal()">Close</button>
+        </div>
+    </div>
 </div>
 
 <?php if ($isStandalone): ?>
@@ -4559,6 +4652,240 @@ function toggleViewTypeOptions() {
         if (wrapShowStats) wrapShowStats.style.display = 'none';
         if (wrapVisibleStats) wrapVisibleStats.style.display = 'none';
     }
+
+    if (typeof updateVisualTypePreview === 'function') {
+        updateVisualTypePreview();
+    }
+}
+
+// =========================================================================
+// VISUAL TYPE PREVIEW & INTERACTIVE GALLERY ENGINE (SYNCED WITH DYNAMIC DASHBOARD)
+// =========================================================================
+const VISUAL_TYPE_CATALOG = {
+    'table': {
+        title: 'Table View (Current Status)',
+        group: 'status',
+        badge: 'Real-Time Data Table',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Real-time status table of all matching nodes/modules with device name, IP address, current value, and status badges.',
+        bestFor: 'Inventory Module Status List, Router/Switch Interface Summary',
+        render: () => `<table style="width:100%; max-width:280px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Device</th><th style="padding:2px 4px; text-align:left;">Module</th><th style="padding:2px 4px; text-align:center;">Status</th><th style="padding:2px 4px; text-align:right;">Val</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">SRV-WEB-01</td><td style="padding:2px 4px; color:#64748b;">CPU Load</td><td style="padding:2px 4px; text-align:center;"><span style="background:#d1fae5; color:#047857; font-weight:700; padding:1px 3px; border-radius:2px;">OK</span></td><td style="padding:2px 4px; text-align:right; font-weight:600;">24 %</td></tr><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">SRV-DB-01</td><td style="padding:2px 4px; color:#64748b;">Disk C:</td><td style="padding:2px 4px; text-align:center;"><span style="background:#fef3c7; color:#b45309; font-weight:700; padding:1px 3px; border-radius:2px;">WARN</span></td><td style="padding:2px 4px; text-align:right; font-weight:600;">88 %</td></tr><tr><td style="padding:2px 4px; font-weight:600;">SW-EDGE-01</td><td style="padding:2px 4px; color:#64748b;">Ping</td><td style="padding:2px 4px; text-align:center;"><span style="background:#fee2e2; color:#b91c1c; font-weight:700; padding:1px 3px; border-radius:2px;">CRIT</span></td><td style="padding:2px 4px; text-align:right; font-weight:600;">0 ms</td></tr></tbody></table>`
+    },
+    'history_table': {
+        title: 'History Table View',
+        group: 'table',
+        badge: 'Log History Table',
+        badgeColor: '#f1f5f9',
+        badgeTextColor: '#475569',
+        desc: 'Structured tabular log of historical data by timestamp, useful for auditing, log lookups, or incident tracking.',
+        bestFor: 'Event Audit Trail, Sensor History Log, Metric Recap',
+        render: () => `<table style="width:100%; max-width:270px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Timestamp</th><th style="padding:2px 4px; text-align:right;">Value</th><th style="padding:2px 4px; text-align:center;">State</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; color:#64748b;">2026-10-09 14:35</td><td style="padding:2px 4px; text-align:right; font-weight:600;">45.2 Mbps</td><td style="padding:2px 4px; text-align:center;"><span style="background:#d1fae5; color:#047857; font-weight:700; padding:1px 3px; border-radius:2px;">OK</span></td></tr><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; color:#64748b;">2026-10-09 14:30</td><td style="padding:2px 4px; text-align:right; font-weight:600;">42.8 Mbps</td><td style="padding:2px 4px; text-align:center;"><span style="background:#d1fae5; color:#047857; font-weight:700; padding:1px 3px; border-radius:2px;">OK</span></td></tr><tr><td style="padding:2px 4px; color:#64748b;">2026-10-09 14:25</td><td style="padding:2px 4px; text-align:right; font-weight:600;">85.1 Mbps</td><td style="padding:2px 4px; text-align:center;"><span style="background:#fef3c7; color:#b45309; font-weight:700; padding:1px 3px; border-radius:2px;">WARN</span></td></tr></tbody></table>`
+    },
+    'sparkline_table': {
+        title: 'Sparkline Table (Trend Over Time)',
+        group: 'table',
+        badge: 'Table with Trend',
+        badgeColor: '#ede9fe',
+        badgeTextColor: '#6d28d9',
+        desc: 'Multi-node intelligent table where each row includes a 24-hour mini sparkline chart to detect anomalies instantly.',
+        bestFor: 'Multi-Node Monitoring, Compact Overview + Trend Graph',
+        render: () => `<table style="width:100%; max-width:280px; font-size:8px; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><thead style="background:#f1f5f9; color:#475569; font-weight:700;"><tr style="border-bottom:1px solid #e2e8f0;"><th style="padding:2px 4px; text-align:left;">Node / Target</th><th style="padding:2px 4px; text-align:right;">Current</th><th style="padding:2px 4px; text-align:center;">Trend (24h)</th></tr></thead><tbody><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px; font-weight:600;">RT-CORE-01</td><td style="padding:2px 4px; text-align:right; font-weight:600;">145 Mbps</td><td style="padding:1px 4px; text-align:center;"><svg width="55" height="14"><path d="M 2 11 Q 15 2 28 7 T 53 3" fill="none" stroke="#2563eb" stroke-width="1.8"/></svg></td></tr><tr><td style="padding:2px 4px; font-weight:600;">SW-DIST-02</td><td style="padding:2px 4px; text-align:right; font-weight:600;">64 Mbps</td><td style="padding:1px 4px; text-align:center;"><svg width="55" height="14"><path d="M 2 4 Q 18 13 32 5 T 53 2" fill="none" stroke="#10b981" stroke-width="1.8"/></svg></td></tr></tbody></table>`
+    },
+    'status_timeline': {
+        title: 'Status Timeline (Uptime Blocks)',
+        group: 'kpi',
+        badge: 'Uptime / SLA Timeline',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Horizontal rounded timeline blocks showing uptime/status history over time with interactive tooltips showing timestamp, agent, module, status, and value.',
+        bestFor: 'SLA Tracking, Server Uptime Monitoring, Status Over Time, Anomaly Tracking',
+        render: () => `<div style="width:100%; max-width:280px; padding:6px 0;"><div style="display:flex; gap:2px; height:18px;">${Array.from({length: 24}).map((_, i) => `<div style="flex:1; border-radius:3px; background:${i === 16 ? '#ef4444' : (i === 11 ? '#f59e0b' : '#22c55e')};"></div>`).join('')}</div><div style="display:flex; justify-content:space-between; font-size:7px; color:#64748b; margin-top:3px;"><span>12:56</span><span>16:56</span><span>20:56</span><span>00:56</span><span>04:56</span><span>08:56</span><span>12:56</span></div></div>`
+    },
+    'single_value': {
+        title: 'Single Value Card (Sparkline)',
+        group: 'kpi',
+        badge: 'KPI & Quick Trend',
+        badgeColor: '#dcfce7',
+        badgeTextColor: '#15803d',
+        desc: 'Prominent numeric metric card with status pill badge and a mini sparkline chart to track 24-hour trends at a glance.',
+        bestFor: 'Wallboard Key Metrics, Traffic Out, Ping Latency, Active Users',
+        render: () => `<div style="display:flex; align-items:center; justify-content:space-between; width:100%; max-width:270px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px;"><div style="text-align:left;"><div style="font-size:9px; font-weight:700; color:#64748b; text-transform:uppercase;">WAN Outbound</div><div style="font-size:20px; font-weight:800; color:#0b1a26; line-height:1.2;">142.5 <span style="font-size:11px; font-weight:600; color:#64748b;">Mbps</span></div><div style="font-size:9px; color:#10b981; font-weight:600; margin-top:2px;">▲ +12% vs last hour</div></div><div style="width:70px; height:35px; text-align:right;"><svg viewBox="0 0 70 35" style="width:100%; height:25px;"><path d="M 2 28 Q 18 8 35 20 T 68 5" fill="none" stroke="#10b981" stroke-width="2.2"/><circle cx="68" cy="5" r="2.5" fill="#10b981"/></svg><div style="font-size:8px; font-weight:700; color:#047857; background:#d1fae5; border-radius:3px; padding:1px 4px; display:inline-block;">NORMAL</div></div></div>`
+    },
+    'heatmap': {
+        title: 'Heatmap View (Current Status)',
+        group: 'status',
+        badge: 'Status Grid Matrix',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Color-coded status grid matrix (Green = OK, Yellow = Warn, Red = Crit) to monitor dozens or hundreds of devices on one screen.',
+        bestFor: 'NOC Wallboard, Server Farm Status Grid, Device Health Matrix',
+        render: () => `<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; width:100%; max-width:270px;"><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SRV-01<br><span style="font-size:7px; opacity:0.85;">28%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SRV-02<br><span style="font-size:7px; opacity:0.85;">34%</span></div><div style="background:#f59e0b; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SRV-03<br><span style="font-size:8px; opacity:0.85;">84%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">SW-CORE<br><span style="font-size:7px; opacity:0.85;">12%</span></div><div style="background:#ef4444; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">ROUTER<br><span style="font-size:7px; opacity:0.85;">DOWN</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">FIREWALL<br><span style="font-size:7px; opacity:0.85;">45%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">STORAGE<br><span style="font-size:7px; opacity:0.85;">52%</span></div><div style="background:#10b981; color:#fff; border-radius:3px; padding:4px; text-align:center; font-size:8px; font-weight:600;">DB-MASTER<br><span style="font-size:7px; opacity:0.85;">61%</span></div></div>`
+    },
+    'cards': {
+        title: 'Stats Cards (Current Status)',
+        group: 'status',
+        badge: 'Status Summary',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Real-time aggregate status counter cards (Total OK, Warning, Critical, Unknown) across all matching agents or modules.',
+        bestFor: 'Dashboard Top Counters, Overall Health Summary',
+        render: () => `<div style="display:flex; gap:6px; width:100%; max-width:280px; justify-content:center;"><div style="flex:1; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#065f46;">OK</div><div style="font-size:15px; font-weight:800; color:#047857;">42</div></div><div style="flex:1; background:#fffbeb; border:1px solid #fde68a; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#92400e;">WARN</div><div style="font-size:15px; font-weight:800; color:#b45309;">3</div></div><div style="flex:1; background:#fef2f2; border:1px solid #fecaca; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#991b1b;">CRIT</div><div style="font-size:15px; font-weight:800; color:#b91c1c;">1</div></div><div style="flex:1; background:#f8fafc; border:1px solid #e2e8f0; border-radius:5px; padding:5px 3px; text-align:center;"><div style="font-size:8px; font-weight:700; color:#475569;">UNKN</div><div style="font-size:15px; font-weight:800; color:#64748b;">0</div></div></div>`
+    },
+    'pie': {
+        title: 'Pie Chart (Current Status)',
+        group: 'status',
+        badge: 'Proportion Distribution',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Full circular pie chart showing status proportion ratios (percentage OK vs Warning vs Critical).',
+        bestFor: 'System Health Ratio, Global Status Distribution',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><g transform="translate(80, 42)"><circle r="36" fill="#10b981"/><path d="M 0 0 L 0 -36 A 36 36 0 0 1 34 11 Z" fill="#f59e0b"/><path d="M 0 0 L 34 11 A 36 36 0 0 1 20 30 Z" fill="#ef4444"/><circle r="2" fill="#fff"/></g><g transform="translate(145, 18)"><rect x="0" y="0" width="8" height="8" rx="2" fill="#10b981"/><text x="14" y="8" font-size="9" fill="#334155" font-weight="600">OK (78%)</text><rect x="0" y="16" width="8" height="8" rx="2" fill="#f59e0b"/><text x="14" y="24" font-size="9" fill="#334155" font-weight="600">Warning (16%)</text><rect x="0" y="32" width="8" height="8" rx="2" fill="#ef4444"/><text x="14" y="40" font-size="9" fill="#334155" font-weight="600">Critical (6%)</text></g></svg>`
+    },
+    'donut': {
+        title: 'Donut Chart (Current Status)',
+        group: 'status',
+        badge: 'Ring Distribution',
+        badgeColor: '#ecfdf5',
+        badgeTextColor: '#065f46',
+        desc: 'Modern donut chart with center metric total display, offering a clean and executive visual layout.',
+        bestFor: 'Host / Module Distribution, Executive Dashboard Summary',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><g transform="translate(80, 42)"><circle r="36" fill="none" stroke="#e2e8f0" stroke-width="14"/><circle r="36" fill="none" stroke="#10b981" stroke-width="14" stroke-dasharray="170 226" transform="rotate(-90)"/><circle r="36" fill="none" stroke="#f59e0b" stroke-width="14" stroke-dasharray="35 226" stroke-dashoffset="-170" transform="rotate(-90)"/><circle r="36" fill="none" stroke="#ef4444" stroke-width="14" stroke-dasharray="21 226" stroke-dashoffset="-205" transform="rotate(-90)"/><text x="0" y="3" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">48</text><text x="0" y="14" text-anchor="middle" font-size="6" fill="#64748b">TOTAL</text></g><g transform="translate(145, 18)"><rect x="0" y="0" width="8" height="8" rx="2" fill="#10b981"/><text x="14" y="8" font-size="9" fill="#334155" font-weight="600">OK (38)</text><rect x="0" y="16" width="8" height="8" rx="2" fill="#f59e0b"/><text x="14" y="24" font-size="9" fill="#334155" font-weight="600">Warning (7)</text><rect x="0" y="32" width="8" height="8" rx="2" fill="#ef4444"/><text x="14" y="40" font-size="9" fill="#334155" font-weight="600">Critical (3)</text></g></svg>`
+    },
+    'line': {
+        title: 'Line Chart (Value Comparison)',
+        group: 'timeseries',
+        badge: 'Time-Series History',
+        badgeColor: '#e0f2fe',
+        badgeTextColor: '#0369a1',
+        desc: 'Continuous line chart showing metric fluctuations over time. Ideal for bandwidth traffic, CPU load, memory usage, and analog sensors.',
+        bestFor: 'Interface Bandwidth, CPU Load, Memory, Temperature',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="28" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><text x="4" y="18" font-size="7" fill="#94a3b8">100</text><text x="9" y="48" font-size="7" fill="#94a3b8">50</text><text x="14" y="74" font-size="7" fill="#94a3b8">0</text><path d="M 32 65 Q 65 25 100 48 T 165 18 T 225 42 T 265 15" fill="none" stroke="#2563eb" stroke-width="2.5"/><circle cx="32" cy="65" r="3" fill="#2563eb"/><circle cx="100" cy="48" r="3" fill="#2563eb"/><circle cx="165" cy="18" r="3" fill="#2563eb"/><circle cx="225" cy="42" r="3" fill="#2563eb"/><circle cx="265" cy="15" r="3" fill="#2563eb"/><text x="32" y="82" font-size="8" fill="#94a3b8">00:00</text><text x="145" y="82" font-size="8" fill="#94a3b8">12:00</text><text x="250" y="82" font-size="8" fill="#94a3b8">23:00</text></svg>`
+    },
+    'area': {
+        title: 'Area Chart (Value Comparison)',
+        group: 'timeseries',
+        badge: 'Time-Series History',
+        badgeColor: '#e0f2fe',
+        badgeTextColor: '#0369a1',
+        desc: 'Area chart with smooth shaded gradient under the curve to emphasize cumulative volume and network throughput.',
+        bestFor: 'Network In/Out Traffic, Data Throughput, Total Connections',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0284c7" stop-opacity="0.45"/><stop offset="100%" stop-color="#0284c7" stop-opacity="0.03"/></linearGradient></defs><line x1="28" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="28" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><text x="3" y="18" font-size="7" fill="#94a3b8">100M</text><text x="8" y="48" font-size="7" fill="#94a3b8">50M</text><text x="14" y="74" font-size="7" fill="#94a3b8">0</text><path d="M 32 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14 L 265 72 L 32 72 Z" fill="url(#areaGrad)"/><path d="M 32 68 Q 65 18 105 42 T 175 16 T 235 36 T 265 14" fill="none" stroke="#0284c7" stroke-width="2.5"/><circle cx="175" cy="16" r="3" fill="#0284c7"/><text x="32" y="82" font-size="8" fill="#94a3b8">In: 45 Mbps</text><text x="205" y="82" font-size="8" fill="#0284c7" font-weight="bold">Out: 120 Mbps</text></svg>`
+    },
+    'bar': {
+        title: 'Bar Chart (Value Comparison)',
+        group: 'timeseries',
+        badge: 'Time-Series History',
+        badgeColor: '#e0f2fe',
+        badgeTextColor: '#0369a1',
+        desc: 'Periodic vertical bar chart ideal for discrete intervals and detecting spikes per hour or day.',
+        bestFor: 'Request Count, Error Spikes, Hit Counts, Disk IOPS',
+        render: () => `<svg viewBox="0 0 280 85" style="width:100%; height:85px; display:block;"><line x1="24" y1="72" x2="270" y2="72" stroke="#e2e8f0"/><line x1="24" y1="15" x2="270" y2="15" stroke="#f1f5f9" stroke-dasharray="3"/><line x1="24" y1="45" x2="270" y2="45" stroke="#f1f5f9" stroke-dasharray="3"/><text x="3" y="18" font-size="7" fill="#94a3b8">60</text><text x="3" y="48" font-size="7" fill="#94a3b8">30</text><text x="7" y="74" font-size="7" fill="#94a3b8">0</text><rect x="32" y="38" width="16" height="34" rx="2" fill="#0d9488"/><rect x="62" y="22" width="16" height="50" rx="2" fill="#0d9488"/><rect x="92" y="48" width="16" height="24" rx="2" fill="#0d9488"/><rect x="122" y="15" width="16" height="57" rx="2" fill="#0f766e"/><rect x="152" y="32" width="16" height="40" rx="2" fill="#0d9488"/><rect x="182" y="55" width="16" height="17" rx="2" fill="#0d9488"/><rect x="212" y="28" width="16" height="44" rx="2" fill="#0d9488"/><rect x="242" y="42" width="16" height="30" rx="2" fill="#0d9488"/><text x="32" y="82" font-size="7" fill="#94a3b8">02:00</text><text x="122" y="82" font-size="7" fill="#94a3b8">10:00</text><text x="212" y="82" font-size="7" fill="#94a3b8">18:00</text></svg>`
+    },
+    'table_viewer': {
+        title: 'View Snapshot Module',
+        group: 'table',
+        badge: 'Snapshot / SNMP Table',
+        badgeColor: '#f1f5f9',
+        badgeTextColor: '#475569',
+        desc: 'Structured table viewer tailored for snapshot modules (such as SNMP interface tables, routing tables, or inventory modules).',
+        bestFor: 'SNMP Port Table, Text / CSV Snapshot Modules',
+        render: () => `<div style="width:100%; max-width:280px; background:#fff; border:1px solid #e2e8f0; border-radius:4px; overflow:hidden;"><div style="background:#f8fafc; padding:2px 5px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:7px; font-weight:700; color:#475569;">SNMP INTERFACE TABLE</span><span style="font-size:7px; color:#64748b; background:#e2e8f0; padding:1px 3px; border-radius:2px;">Search 🔍</span></div><table style="width:100%; font-size:7px; border-collapse:collapse;"><tr style="background:#f1f5f9; color:#475569; font-weight:600;"><th style="padding:2px 4px; text-align:left;">ifName</th><th style="padding:2px 4px; text-align:left;">Admin</th><th style="padding:2px 4px; text-align:left;">Oper</th><th style="padding:2px 4px; text-align:right;">Speed</th></tr><tr style="border-bottom:1px solid #f8fafc;"><td style="padding:2px 4px;">Gi0/0/1</td><td style="padding:2px 4px; color:#10b981;">UP</td><td style="padding:2px 4px; color:#10b981;">UP</td><td style="padding:2px 4px; text-align:right;">1 Gbps</td></tr><tr><td style="padding:2px 4px;">Te0/1/0</td><td style="padding:2px 4px; color:#10b981;">UP</td><td style="padding:2px 4px; color:#ef4444;">DOWN</td><td style="padding:2px 4px; text-align:right;">10 Gbps</td></tr></table></div>`
+    }
+};
+
+let currentGalleryFilter = 'all';
+
+function updateVisualTypePreview() {
+    const sel = document.getElementById('b_view_type');
+    const type = sel ? sel.value : 'table';
+    const info = VISUAL_TYPE_CATALOG[type] || VISUAL_TYPE_CATALOG['table'];
+    
+    const badgeEl = document.getElementById('vtp_badge');
+    const mockupEl = document.getElementById('vtp_mockup_area');
+    const descEl = document.getElementById('vtp_description');
+    
+    if (badgeEl) {
+        badgeEl.innerText = info.badge || info.title;
+        badgeEl.style.backgroundColor = info.badgeColor || '#e0f2fe';
+        badgeEl.style.color = info.badgeTextColor || '#0369a1';
+    }
+    if (mockupEl) {
+        mockupEl.innerHTML = info.render();
+    }
+    if (descEl) {
+        descEl.innerHTML = `<strong>${escapeHtml(info.title)}:</strong> ${escapeHtml(info.desc)} <div style="margin-top:3px; font-size:10px; color:#004d40;"><strong>Recommended For:</strong> ${escapeHtml(info.bestFor)}</div>`;
+    }
+}
+
+function openVisualGalleryModal() {
+    currentGalleryFilter = 'all';
+    renderVisualGalleryCards('all');
+    document.querySelectorAll('.vtp-tab-btn').forEach(b => b.classList.remove('active'));
+    const firstTab = document.querySelector('.vtp-tab-btn');
+    if (firstTab) firstTab.classList.add('active');
+    document.getElementById('visualGalleryModal').style.display = 'flex';
+}
+
+function closeVisualGalleryModal() {
+    document.getElementById('visualGalleryModal').style.display = 'none';
+}
+
+function setVisualGalleryFilter(filter, btn) {
+    currentGalleryFilter = filter;
+    document.querySelectorAll('.vtp-tab-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderVisualGalleryCards(filter);
+}
+
+function selectVisualTypeFromGallery(type) {
+    const sel = document.getElementById('b_view_type');
+    if (sel) {
+        sel.value = type;
+        toggleViewTypeOptions();
+        updateVisualTypePreview();
+    }
+    closeVisualGalleryModal();
+}
+
+function renderVisualGalleryCards(filter = 'all') {
+    const grid = document.getElementById('vtp_gallery_grid');
+    if (!grid) return;
+    
+    const currentSelected = document.getElementById('b_view_type') ? document.getElementById('b_view_type').value : '';
+    
+    let html = '';
+    Object.keys(VISUAL_TYPE_CATALOG).forEach(key => {
+        const item = VISUAL_TYPE_CATALOG[key];
+        if (filter !== 'all' && item.group !== filter) return;
+        
+        const isCurrent = (key === currentSelected);
+        const cardClass = isCurrent ? 'vtp-gallery-card is-active' : 'vtp-gallery-card';
+        const btnStyle = isCurrent 
+            ? 'background:#10b981; color:#fff; border:1px solid #10b981; border-radius:4px; font-size:11px; font-weight:600; padding:3px 10px; cursor:pointer;' 
+            : 'background:#ffffff; color:#004d40; border:1px solid #cbd5e1; border-radius:4px; font-size:11px; font-weight:600; padding:3px 10px; cursor:pointer;';
+        
+        html += `
+        <div class="${cardClass}" onclick="selectVisualTypeFromGallery('${key}')">
+            <div>
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <span style="font-weight:700; font-size:12px; color:#0f172a;">${escapeHtml(item.title)}</span>
+                    <span style="font-size:9px; font-weight:600; padding:2px 8px; border-radius:10px; background:${item.badgeColor}; color:${item.badgeTextColor};">${escapeHtml(item.badge)}</span>
+                </div>
+                <div style="background:#f8fafc; border:1px solid #f1f5f9; border-radius:6px; padding:8px; display:flex; align-items:center; justify-content:center; min-height:85px; margin-bottom:8px;">
+                    ${item.render()}
+                </div>
+                <p style="font-size:11px; color:#64748b; line-height:1.4; margin:0 0 6px 0;">${escapeHtml(item.desc)}</p>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; border-top:1px solid #f1f5f9; padding-top:6px; margin-top:6px;">
+                <span style="font-size:10px; color:#004d40; font-weight:600;">Best for: ${escapeHtml(item.bestFor.split(',')[0])}</span>
+                <button type="button" style="${btnStyle}" onclick="event.stopPropagation(); selectVisualTypeFromGallery('${key}')">
+                    ${isCurrent ? '✓ Selected' : 'Select'}
+                </button>
+            </div>
+        </div>`;
+    });
+    grid.innerHTML = html;
 }
 
 function toggleHeatmapCustomSize(type) {
