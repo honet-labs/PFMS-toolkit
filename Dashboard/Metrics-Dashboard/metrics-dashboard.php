@@ -1022,12 +1022,12 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         <?php elseif ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .top-controls { display: none !important; visibility: hidden !important; }
         html, body { height: 100% !important; width: 100% !important; background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
-        .main-content { height: 100% !important; width: 100% !important; max-width: 100% !important; padding: 4px 6px !important; margin: 0 !important; display: flex !important; flex-direction: column !important; box-sizing: border-box !important; }
+        .main-content { height: 100% !important; width: 100% !important; max-width: 100% !important; padding: 2px 4px !important; margin: 0 !important; display: flex !important; flex-direction: column !important; box-sizing: border-box !important; }
         #view_detail { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; }
         .grid-layout { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; margin: 0 !important; }
         .dashboard-card { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; box-shadow: none !important; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; margin: 0 !important; margin-bottom: 0 !important; overflow: hidden !important; }
-        .dashboard-card-header { padding: 8px 12px !important; flex-shrink: 0 !important; }
-        .dashboard-card-body { padding: 6px 8px 8px 8px !important; gap: 0 !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; height: 100% !important; overflow: hidden !important; }
+        .dashboard-card-header { padding: 4px 8px !important; flex-shrink: 0 !important; }
+        .dashboard-card-body { padding: 2px 4px 4px 4px !important; gap: 0 !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; height: 100% !important; overflow: hidden !important; }
         .dashboard-card-body > div[id^="content_view_"] { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; }
         .chart-container { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; }
         .chart-container > div[id^="chart_canvas_"] { flex: 1 1 0% !important; min-height: 0 !important; width: 100% !important; height: 100% !important; }
@@ -3143,7 +3143,7 @@ function renderGrid() {
             statsHtml += `<div class="mini-stat st-border-blue" style="${statCardStyle}" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" style="${statValColor} ${statFs}" id="st_not_init_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor} ${statLblFs}">NOT INIT</div></div>`;
         }
 
-        const bodyPaddingStyle = (c.view_type === 'status_timeline') ? 'padding: 6px 10px 8px 10px; gap: 4px;' : ((c.view_type === 'sparkline_table') ? 'padding: 12px 16px;' : ((isPieOrDonut) ? 'padding: 6px 8px 8px 8px; gap: 0;' : ''));
+        const bodyPaddingStyle = (c.view_type === 'status_timeline') ? 'padding: 6px 10px 8px 10px; gap: 4px;' : ((c.view_type === 'sparkline_table') ? 'padding: 12px 16px;' : ((isPieOrDonut) ? 'padding: 2px 4px 4px 4px; gap: 0;' : ''));
         const cardBodyFlex = (c.height || IS_STANDALONE) ? 'height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column;' : '';
         const contentFlexStyle = (c.height || IS_STANDALONE) ? 'height:100%; width:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column;' : '';
 
@@ -5927,30 +5927,40 @@ function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartF
     const activeStatuses = displayStatuses.filter(s => s.value > 0);
     const hasOnlyOne = (activeStatuses.length <= 1);
 
-    // Responsive or user-customized radius
+    // Responsive or user-customized radius - expanded to eliminate excessive empty margin/padding
     let radius;
     const numSize = parseInt(customChartSize);
     if (!isNaN(numSize) && numSize >= 20 && numSize <= 90) {
         radius = viewType === 'pie' ? `${numSize}%` : [`${Math.round(numSize * 0.54)}%`, `${numSize}%`];
     } else {
-        if (minDim < 170) {
-            radius = viewType === 'pie' ? '48%' : ['24%', '48%'];
-        } else if (minDim < 240) {
-            // Typical Visual Console compact tile (~180px - 220px)
-            radius = viewType === 'pie' ? '52%' : ['28%', '52%'];
-        } else if (minDim < 320) {
-            // Medium tile (~240px - 320px)
-            radius = viewType === 'pie' ? '58%' : ['32%', '58%'];
+        if (hasOnlyOne) {
+            // Single status (e.g. 100% UP) has only 1 bottom label: maximize circle to eliminate wide empty margins!
+            if (minDim < 170) {
+                radius = viewType === 'pie' ? '68%' : ['36%', '68%'];
+            } else if (minDim < 240) {
+                radius = viewType === 'pie' ? '72%' : ['38%', '72%'];
+            } else if (minDim < 320) {
+                radius = viewType === 'pie' ? '75%' : ['40%', '75%'];
+            } else {
+                radius = viewType === 'pie' ? '78%' : ['42%', '78%'];
+            }
         } else {
-            // Spacious (> 320px)
-            radius = viewType === 'pie' ? '64%' : ['36%', '64%'];
+            // Multi-status slices: well-balanced size filling box without wasting margins
+            if (minDim < 170) {
+                radius = viewType === 'pie' ? '56%' : ['28%', '56%'];
+            } else if (minDim < 240) {
+                radius = viewType === 'pie' ? '62%' : ['32%', '62%'];
+            } else if (minDim < 320) {
+                radius = viewType === 'pie' ? '66%' : ['34%', '66%'];
+            } else {
+                radius = viewType === 'pie' ? '70%' : ['36%', '70%'];
+            }
         }
     }
 
     // Font size: strictly honor user-defined chartFontSize!
     const parsedFs = parseInt(chartFontSize);
     let fontSize = (!isNaN(parsedFs) && parsedFs > 0) ? parsedFs : 11;
-    // Only adapt down if user left at default (11)
     if (parsedFs === 11 || isNaN(parsedFs)) {
         if (minDim < 170) fontSize = 9;
         else if (minDim < 240) fontSize = 10;
@@ -5958,9 +5968,22 @@ function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartF
         else fontSize = 11;
     }
 
-    // Dynamic pointer line clearance adapting to font size
-    let line1 = Math.max(16, fontSize + 5);
-    let line2 = Math.max(10, fontSize);
+    // Dynamic pointer line clearance adapting to container size and font size
+    let line1 = 12;
+    let line2 = 10;
+    let lineDist = 4;
+    if (minDim < 200) {
+        line1 = 6;
+        line2 = 6;
+        lineDist = 2;
+    } else if (minDim < 260) {
+        line1 = 8;
+        line2 = 8;
+        lineDist = 2;
+    } else {
+        line1 = Math.max(12, fontSize + 2);
+        line2 = Math.max(10, fontSize);
+    }
 
     const pieData = displayStatuses.map(s => ({
         name: s.label,
@@ -5982,7 +6005,7 @@ function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartF
             name: 'Status',
             type: 'pie',
             radius: radius,
-            center: ['50%', '48%'],
+            center: hasOnlyOne ? ['50%', '46%'] : ['50%', '48%'],
             avoidLabelOverlap: true,
             data: pieData,
             itemStyle: {
@@ -5992,7 +6015,7 @@ function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartF
             label: {
                 show: true,
                 position: 'outside',
-                distanceToLabelLine: 4,
+                distanceToLabelLine: lineDist,
                 color: '#334155',
                 fontSize: fontSize,
                 lineHeight: fontSize + 4,

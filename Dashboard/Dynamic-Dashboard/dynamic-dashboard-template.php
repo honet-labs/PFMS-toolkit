@@ -614,6 +614,7 @@ if ($api === 'bulk_panel_data') {
 
 $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (isset($_GET['s']) && $_GET['s'] == '1');
 $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (isset($_GET['view_modal']) && $_GET['view_modal'] == '1');
+$isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || (isset($_GET['no_header']) && $_GET['no_header'] == '1') || (isset($_GET['header']) && $_GET['header'] == '0');
 ?>
 <!doctype html>
 <html lang="en">
@@ -642,8 +643,15 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         <?php elseif ($isStandalone): ?>
         .pandora-header-top, .pandora-header-bottom, .toolbar-right, .drag-handle, #view_list, #listTopControls { display: none !important; }
         .grafana-toolbar { border-top: 1px solid #dce1e5; margin-top:0 !important;}
-        .main-content { padding: 20px 25px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+        .main-content { padding: 4px 6px !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
         button[onclick="closeDashboard()"], button[onclick="closeDashboard()"] + .toolbar-divider { display: none !important; }
+        <?php if ($isHideHeader): ?>
+        .panel-header, .grafana-toolbar { display: none !important; }
+        .main-content { padding: 0 !important; }
+        .panel-card { border: none !important; margin: 0 !important; box-shadow: none !important; }
+        .panel-body { padding: 2px 4px !important; height: 100% !important; flex: 1 1 0% !important; min-height: 0 !important; }
+        html, body { overflow: hidden !important; }
+        <?php endif; ?>
         <?php endif; ?>
 
         .pandora-header-top { background-color: #ffffff; border-bottom: 1px solid #e0e4e8; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 10; }
@@ -4189,7 +4197,7 @@ function generateSummaryPanelHtml(p, modules) {
     const panelH = (p.height && parseInt(p.height) > 0) ? parseInt(p.height) : 0;
     const cardMinH = panelH > 0 ? `min-height:${panelH}px;` : '';
     const cardHeight = 'height:100%;';
-    const bodyPadding = (p.type === 'status_timeline') ? 'padding:6px 10px 8px 10px;' : ((p.type === 'single_value') ? 'padding:8px 12px 6px 12px;' : 'padding:10px;');
+    const bodyPadding = (p.type === 'status_timeline') ? 'padding:6px 10px 8px 10px;' : ((p.type === 'pie' || p.type === 'donut') ? 'padding:2px 4px 4px 4px;' : ((p.type === 'single_value') ? 'padding:8px 12px 6px 12px;' : 'padding:10px;'));
     const bodyFlex = 'flex: 1 1 0%; min-height: 0; overflow: hidden;';
 
     return `
@@ -4587,20 +4595,35 @@ function refreshCurrentNodeData() {
                             const w = dom.clientWidth || 300;
                             const h = dom.clientHeight || 260;
                             const minDim = Math.min(w, h);
+                            const hasOnlyOne = (finalStatuses.filter(s => s.value > 0).length <= 1);
 
                             let radius;
                             const numSize = parseInt(p.chart_size);
                             if (!isNaN(numSize) && numSize >= 20 && numSize <= 90) {
                                 radius = p.type === 'pie' ? `${numSize}%` : [`${Math.round(numSize * 0.54)}%`, `${numSize}%`];
                             } else {
-                                if (minDim < 170) {
-                                    radius = p.type === 'pie' ? '48%' : ['24%', '48%'];
-                                } else if (minDim < 240) {
-                                    radius = p.type === 'pie' ? '52%' : ['28%', '52%'];
-                                } else if (minDim < 320) {
-                                    radius = p.type === 'pie' ? '58%' : ['32%', '58%'];
+                                if (hasOnlyOne) {
+                                    // Single status (e.g. 100% UP) has only 1 bottom label: maximize circle to eliminate wide empty margins!
+                                    if (minDim < 170) {
+                                        radius = p.type === 'pie' ? '68%' : ['36%', '68%'];
+                                    } else if (minDim < 240) {
+                                        radius = p.type === 'pie' ? '72%' : ['38%', '72%'];
+                                    } else if (minDim < 320) {
+                                        radius = p.type === 'pie' ? '75%' : ['40%', '75%'];
+                                    } else {
+                                        radius = p.type === 'pie' ? '78%' : ['42%', '78%'];
+                                    }
                                 } else {
-                                    radius = p.type === 'pie' ? '64%' : ['36%', '64%'];
+                                    // Multi-status slices: well-balanced size filling box without wasting margins
+                                    if (minDim < 170) {
+                                        radius = p.type === 'pie' ? '56%' : ['28%', '56%'];
+                                    } else if (minDim < 240) {
+                                        radius = p.type === 'pie' ? '62%' : ['32%', '62%'];
+                                    } else if (minDim < 320) {
+                                        radius = p.type === 'pie' ? '66%' : ['34%', '66%'];
+                                    } else {
+                                        radius = p.type === 'pie' ? '70%' : ['36%', '70%'];
+                                    }
                                 }
                             }
 
@@ -4614,8 +4637,21 @@ function refreshCurrentNodeData() {
                                 else fs = 11;
                             }
 
-                            let line1 = Math.max(16, fs + 5);
-                            let line2 = Math.max(10, fs);
+                            let line1 = 12;
+                            let line2 = 10;
+                            let lineDist = 4;
+                            if (minDim < 200) {
+                                line1 = 6;
+                                line2 = 6;
+                                lineDist = 2;
+                            } else if (minDim < 260) {
+                                line1 = 8;
+                                line2 = 8;
+                                lineDist = 2;
+                            } else {
+                                line1 = Math.max(12, fs + 2);
+                                line2 = Math.max(10, fs);
+                            }
 
                             const pieData = finalStatuses.map(s => ({
                                 value: s.value,
@@ -4629,13 +4665,13 @@ function refreshCurrentNodeData() {
                                     name: 'Status',
                                     type: 'pie',
                                     radius: radius,
-                                    center: ['50%', '48%'],
+                                    center: hasOnlyOne ? ['50%', '46%'] : ['50%', '48%'],
                                     avoidLabelOverlap: true,
                                     data: pieData,
                                     label: {
                                         show: true,
                                         position: 'outside',
-                                        distanceToLabelLine: 4,
+                                        distanceToLabelLine: lineDist,
                                         color: '#334155',
                                         fontSize: fs,
                                         lineHeight: fs + 4,

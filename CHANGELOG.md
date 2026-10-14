@@ -2,6 +2,20 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.13] - 2026-10-14 (Dashboard - Eliminate Excessive Margins & Compact Pie/Donut Layout Optimization)
+### Fixed & Enhanced
+- **Pembersihan dan Pemadatan Margin/Padding Berlebih pada Diagram Pie & Donut:**
+  - Mengatasi masalah ruang kosong (*dead whitespace* / margin & padding kanan, atas, bawah, kiri) yang terlalu lebar pada widget Pie Chart dan Donut Chart (terutama saat ditampilkan dalam tile kompak atau di-embed di Visual Console Pandora FMS).
+  - Mengurangi padding kontainer kartu (`.dashboard-card-body`, `.panel-body`) khusus untuk tipe Pie & Donut dari `10px` / `8px` menjadi `2px 4px 4px 4px` agar ruang kanvas diagram terpakai maksimal tanpa margin kosong yang membuang tempat.
+  - Memperbaiki padding halaman standalone (`.main-content`) di mode embed/iframe pada Dynamic Dashboard (`dynamic-dashboard-template.php`) yang sebelumnya bernilai statis `20px 25px`, dipadatkan menjadi `4px 6px` (atau `0px` saat `hide_header=1`).
+- **Skala Radius Adaptif Cerdas Menghilangkan Ruang Kosong Sisi Luar Lingkaran:**
+  - Mengatasi lingkaran diagram yang tampak kecil dan terisolasi di tengah kotak kosong:
+    - **Single Status (100% UP / satu status saja):** Lingkaran kini otomatis membesar hingga radius **`72%` - `78%`** dengan pusat `center: ['50%', '46%']` karena tidak memerlukan ruang label kiri/kanan, sehingga lingkaran diagram mengisi kotak secara proporsional dan elegan dengan label tunggal di bawah.
+    - **Multi Status (misal UP + Critical):** Radius ditingkatkan dari `48%`/`52%` menjadi **`62%` - `70%`**.
+- **Penyesuaian Garis Penunjuk (*Label Line*) Mencegah Pemotongan Teks (*Truncated Label*):**
+  - Mengatasi label status yang terpotong menjadi `Criti...` / `UP 3 (7...`: pada container berukuran sempit (< 260px), panjang garis penunjuk (`labelLine.length` & `length2`) dipadatkan menjadi `8px` (dari sebelumnya 16px + 10px = 26px) serta jarak teks `distanceToLabelLine: 2`. Pengurangan 18px horizontal ini memberikan ruang yang cukup bagi teks label seperti "Critical (25%)" untuk tampil utuh tanpa terpotong oleh batas kanvas.
+  - Diimplementasikan secara konsisten pada **Metrics Dashboard** (`metrics-dashboard.php`) dan **Dynamic Dashboard** (`dynamic-dashboard-template.php`).
+
 ## [2.11.12] - 2026-10-14 (Dashboard - Status Timeline Block Period Window & Contextual Timestamp Tooltip)
 ### Fixed & Enhanced
 - **Resolusi Periode Waktu Unik per Balok Status Timeline (`Periode Blok: [bStart] – [bEnd]`):**
