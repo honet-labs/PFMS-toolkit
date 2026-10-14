@@ -2,6 +2,17 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.9] - 2026-10-14 (Dashboard - Fully Responsive Embed & Sizing for Pie & Donut Charts)
+### Fixed & Enhanced
+- **Responsivitas Penuh Tampilan Embed & Sizing Pie Chart & Donut Chart:**
+  - Mengatasi masalah tampilan Pie Chart dan Donut Chart yang tidak responsif saat di-embed di Visual Console Pandora FMS / iframe standalone (di mana diagram berukuran kaku, tidak otomatis membesar/mengecil saat elemen Visual Console di-resize, dan menyisakan banyak ruang kosong putih).
+  - Memperbaiki `ResizeObserver` yang sebelumnya hanya terpasang pada line/area/bar chart dan terlewat pada pie/donut chart, sehingga kini kanvas pie dan donut chart secara aktif memantau perubahan ukuran container dan otomatis me-resize diagram secara instan (*live dynamic resize*).
+  - Mengimplementasikan perhitungan radius dan garis label adaptif (`getResponsivePieDonutOption`): radius lingkaran menyesuaikan dimensi kotak (`54%` - `68%`) dan panjang garis label (*label line*) mengecil pada container sempit sehingga teks label tidak terpotong (*truncated*) atau berakhiran `Crit...` / `UP (...`.
+  - Memperbaiki duplikasi nilai pada label pie: sebelumnya nilai kuantitas status muncul berulang (`Critical (1)\n1 (25%)`), kini dibersihkan menjadi format yang ringkas, elegan, dan proporsional (`Critical\n1 (25%)` atau `UP\n1 (100%)`).
+  - Menghilangkan batasan tinggi kaku `min-height: 220px;` pada kanvas chart dan `height: calc(100% - 40px)` pada card body saat mode standalone/embed, menggantinya dengan `min-height: 0 !important; flex: 1 1 0% !important; height: 100% !important;` agar kanvas dapat menyesuaikan secara fleksibel ke ukuran kotak visual console mana pun (mulai dari kotak kecil 160px hingga kotak besar).
+  - Mengoptimalkan padding card body untuk pie dan donut chart (`padding: 6px 8px 8px 8px;`) agar ruang visual diagram maksimal dan tidak terbuang oleh padding berlebih.
+  - Menyelaraskan perbaikan responsivitas dan ResizeObserver ini di kedua modul: **Metrics Dashboard** (`metrics-dashboard.php`) dan **Dynamic Dashboard** (`dynamic-dashboard-template.php`).
+
 ## [2.11.8] - 2026-10-14 (Metrics Dashboard - Global Time Range & Auto Refresh HUD Toolbar Sync)
 ### Added & Enhanced
 - **Sinkronisasi Global Time Range & Auto Refresh HUD pada Metrics Dashboard (Setara dengan Dynamic Dashboard):**

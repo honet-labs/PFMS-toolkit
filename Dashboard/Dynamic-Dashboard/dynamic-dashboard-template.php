@@ -3770,10 +3770,11 @@ function generateSummaryPanelHtml(p, modules) {
                 }).join('')}
             </div>`;
     } else if (p.type === 'pie' || p.type === 'donut') {
-        const chartH = Math.max(120, (parseInt(p.height) || 200) - 60);
+        const minH = parseInt(p.height) || 200;
+        const flexStyle = (IS_STANDALONE || (p.height && parseInt(p.height) > 0)) ? 'height:100%; flex:1 1 0%; min-height:0;' : `height:${Math.max(120, minH - 60)}px; min-height:120px;`;
         content = `
-            <div style="position:relative; width:100%; height:${chartH}px; display:flex; justify-content:center; align-items:center;">
-                <div id="chart_${p.id}" style="width:100%; height:100%;"></div>
+            <div style="position:relative; width:100%; ${flexStyle} display:flex; justify-content:center; align-items:center;">
+                <div id="chart_${p.id}" style="width:100%; height:100%; min-height:0;"></div>
             </div>`;
     } else if (p.type === 'history_table') {
         const autoConvert = (p.auto_convert_traffic !== undefined)
@@ -4573,30 +4574,88 @@ function refreshCurrentNodeData() {
                     const activeStatuses = statusMap.filter(s => s.value > 0);
                     const finalStatuses = activeStatuses.length > 0 ? activeStatuses : statusMap;
 
-                    const labels = finalStatuses.map(s => `${s.label} (${s.value})`);
-                    const values = finalStatuses.map(s => s.value);
-                    const bgColors = finalStatuses.map(s => s.color);
-                    const borderColors = finalStatuses.map(s => s.border);
-
                     try {
                         let dom = document.getElementById(`chart_${p.id}`);
                         if (!dom) return;
                         chartInstances[p.id] = echarts.init(dom);
-                        let pieData = labels.map((lbl, i) => ({ value: values[i], name: lbl, itemStyle: { color: bgColors[i] } }));
-                        chartInstances[p.id].setOption({
-                            tooltip: { trigger: 'item', confine: true, appendToBody: true, backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#ffffff', fontSize: 12 }, padding: 10, borderRadius: 6, formatter: '{b} <br/>Count: {c} ({d}%)' },
-                            legend: { type: 'scroll', orient: 'vertical', right: 5, top: 'middle', itemWidth: 10, itemHeight: 10, textStyle: { fontSize: Math.max(9, chartFs - 1) } },
-                            series: [{
-                                type: 'pie',
-                                radius: p.type === 'pie' ? '75%' : ['50%', '75%'],
-                                center: ['40%', '50%'],
-                                data: pieData,
-                                label: { show: true, formatter: '{b}\n{c} ({d}%)', fontSize: chartFs, color: '#334155' },
-                                labelLine: { show: true, length: 10, length2: 5 },
-                                itemStyle: { borderColor: '#fff', borderWidth: 1 }
-                            }]
+                        
+                        function getDynamicPieOption() {
+                            const w = dom.clientWidth || 300;
+                            const h = dom.clientHeight || 260;
+                            const minDim = Math.min(w, h);
+                            let radius = p.type === 'pie' ? '68%' : ['40%', '68%'];
+                            let line1 = 10, line2 = 6, fs = Math.max(9, chartFs);
+                            if (minDim < 170) {
+                                radius = p.type === 'pie' ? '54%' : ['28%', '54%'];
+                                line1 = 4; line2 = 4; fs = 9;
+                            } else if (minDim < 230) {
+                                radius = p.type === 'pie' ? '58%' : ['32%', '58%'];
+                                line1 = 6; line2 = 5; fs = 9;
+                            } else if (minDim < 300) {
+                                radius = p.type === 'pie' ? '62%' : ['36%', '62%'];
+                                line1 = 8; line2 = 6; fs = 10;
+                            }
+
+                            const pieData = finalStatuses.map(s => ({
+                                value: s.value,
+                                name: s.label,
+                                itemStyle: { color: s.color }
+                            }));
+
+                            return {
+                                tooltip: { trigger: 'item', confine: true, appendToBody: true, backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#ffffff', fontSize: 12 }, padding: [6, 10], borderRadius: 6, formatter: '{b}: <b>{c}</b> ({d}%)' },
+                                series: [{
+                                    name: 'Status',
+                                    type: 'pie',
+                                    radius: radius,
+                                    center: ['50%', '50%'],
+                                    avoidLabelOverlap: true,
+                                    data: pieData,
+                                    label: {
+                                        show: true,
+                                        position: 'outside',
+                                        color: '#334155',
+                                        fontSize: fs,
+                                        lineHeight: fs + 3,
+                                        formatter: function(params) {
+                                            const pct = (params.percent !== undefined) ? Math.round(params.percent) : 0;
+                                            let shortName = params.name;
+                                            if (minDim < 240 && shortName === 'UP (Normal)') shortName = 'UP';
+                                            if (minDim < 170) return `${params.value} (${pct}%)`;
+                                            return `${shortName}\n${params.value} (${pct}%)`;
+                                        }
+                                    },
+                                    labelLine: { show: true, length: line1, length2: line2, smooth: 0.2 },
+                                    itemStyle: { borderColor: '#fff', borderWidth: 1.5 }
+                                }]
+                            };
+                        }
+
+                        chartInstances[p.id].setOption(getDynamicPieOption());
+                        setTimeout(() => {
+                            if (chartInstances[p.id] && typeof chartInstances[p.id].resize === 'function') {
+                                chartInstances[p.id].setOption(getDynamicPieOption());
+                                chartInstances[p.id].resize();
+                            }
+                        }, 50);
+
+                        if (window.ResizeObserver) {
+                            if (window._roMap && window._roMap[p.id]) window._roMap[p.id].disconnect();
+                            window._roMap = window._roMap || {};
+                            window._roMap[p.id] = new ResizeObserver(() => {
+                                if (chartInstances[p.id] && typeof chartInstances[p.id].resize === 'function') {
+                                    chartInstances[p.id].setOption(getDynamicPieOption());
+                                    chartInstances[p.id].resize();
+                                }
+                            });
+                            window._roMap[p.id].observe(dom);
+                        }
+                        window.addEventListener('resize', () => {
+                            if (chartInstances[p.id] && typeof chartInstances[p.id].resize === 'function') {
+                                chartInstances[p.id].setOption(getDynamicPieOption());
+                                chartInstances[p.id].resize();
+                            }
                         });
-                        window.addEventListener('resize', () => chartInstances[p.id].resize());
                     } catch(e) { console.error("Pie/Donut ECharts Error:", e); }
                 }
             } else if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {

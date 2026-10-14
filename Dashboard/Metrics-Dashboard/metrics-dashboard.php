@@ -1027,10 +1027,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .grid-layout { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; margin: 0 !important; }
         .dashboard-card { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; box-shadow: none !important; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; margin: 0 !important; margin-bottom: 0 !important; overflow: hidden !important; }
         .dashboard-card-header { padding: 8px 12px !important; flex-shrink: 0 !important; }
-        .dashboard-card-body { padding: 6px 8px 8px 8px !important; gap: 0 !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; height: calc(100% - 40px) !important; overflow: hidden !important; }
+        .dashboard-card-body { padding: 6px 8px 8px 8px !important; gap: 0 !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; height: 100% !important; overflow: hidden !important; }
         .dashboard-card-body > div[id^="content_view_"] { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; }
-        .chart-container { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; padding: 0 !important; margin: 0 !important; }
-        .chart-container > div[id^="chart_canvas_"] { flex: 1 !important; min-height: 120px !important; width: 100% !important; height: 100% !important; }
+        .chart-container { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; }
+        .chart-container > div[id^="chart_canvas_"] { flex: 1 1 0% !important; min-height: 0 !important; width: 100% !important; height: 100% !important; }
         .chart-html-legend { flex-shrink: 0 !important; max-height: 80px !important; overflow-y: auto !important; margin-top: auto !important; }
         .modal-overlay { padding: 6px !important; align-items: stretch !important; }
         .detail-modal-box { width: 100% !important; max-width: 100% !important; height: 100% !important; max-height: 100% !important; border-radius: 6px !important; }
@@ -3140,7 +3140,7 @@ function renderGrid() {
             statsHtml += `<div class="mini-stat st-border-blue" style="${statCardStyle}" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" style="${statValColor} ${statFs}" id="st_not_init_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor} ${statLblFs}">NOT INIT</div></div>`;
         }
 
-        const bodyPaddingStyle = (c.view_type === 'status_timeline') ? 'padding: 6px 10px 8px 10px; gap: 4px;' : ((c.view_type === 'sparkline_table') ? 'padding: 12px 16px;' : '');
+        const bodyPaddingStyle = (c.view_type === 'status_timeline') ? 'padding: 6px 10px 8px 10px; gap: 4px;' : ((c.view_type === 'sparkline_table') ? 'padding: 12px 16px;' : ((isPieOrDonut) ? 'padding: 6px 8px 8px 8px; gap: 0;' : ''));
         const cardBodyFlex = (c.height || IS_STANDALONE) ? 'height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column;' : '';
         const contentFlexStyle = (c.height || IS_STANDALONE) ? 'height:100%; width:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column;' : '';
 
@@ -5867,6 +5867,95 @@ function openTimeRangeMenu(event, cardId) {
     setTimeout(() => document.addEventListener('click', closeListener), 10);
 }
 
+function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize) {
+    const w = (canvasEl && (canvasEl.clientWidth || (canvasEl.getBoundingClientRect && canvasEl.getBoundingClientRect().width))) || 300;
+    const h = (canvasEl && (canvasEl.clientHeight || (canvasEl.getBoundingClientRect && canvasEl.getBoundingClientRect().height))) || 260;
+    const minDim = Math.min(w, h);
+
+    const activeStatuses = displayStatuses.filter(s => s.value > 0);
+    const hasOnlyOne = (activeStatuses.length <= 1);
+
+    // Responsive radius and label lines based on actual container bounds
+    let radius;
+    let line1 = 8;
+    let line2 = 6;
+    let fontSize = Math.max(9, Math.min(12, chartFontSize - 1));
+
+    if (minDim < 170) {
+        radius = viewType === 'pie' ? '54%' : ['28%', '54%'];
+        line1 = 4;
+        line2 = 4;
+        fontSize = 9;
+    } else if (minDim < 230) {
+        radius = viewType === 'pie' ? '58%' : ['32%', '58%'];
+        line1 = 6;
+        line2 = 5;
+        fontSize = 9;
+    } else if (minDim < 300) {
+        radius = viewType === 'pie' ? '62%' : ['36%', '62%'];
+        line1 = 8;
+        line2 = 6;
+        fontSize = 10;
+    } else {
+        radius = viewType === 'pie' ? '68%' : ['40%', '68%'];
+        line1 = 12;
+        line2 = 8;
+        fontSize = Math.max(10, chartFontSize);
+    }
+
+    const pieData = displayStatuses.map(s => ({
+        name: s.label,
+        value: s.value,
+        itemStyle: { color: s.color }
+    }));
+
+    return {
+        tooltip: {
+            trigger: 'item',
+            confine: true,
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            textStyle: { color: '#cbd5e1', fontSize: 12 },
+            padding: [6, 10],
+            borderRadius: 6,
+            formatter: '{b}: <b>{c}</b> ({d}%)'
+        },
+        series: [{
+            name: 'Status',
+            type: 'pie',
+            radius: radius,
+            center: ['50%', '50%'],
+            avoidLabelOverlap: true,
+            data: pieData,
+            itemStyle: {
+                borderColor: '#ffffff',
+                borderWidth: 1.5
+            },
+            label: {
+                show: true,
+                position: 'outside',
+                color: '#334155',
+                fontSize: fontSize,
+                lineHeight: fontSize + 3,
+                formatter: function(params) {
+                    const pct = (params.percent !== undefined) ? Math.round(params.percent) : 0;
+                    let shortName = params.name;
+                    if (minDim < 240 && shortName === 'UP (Normal)') shortName = 'UP';
+                    if (minDim < 170) {
+                        return `${params.value} (${pct}%)`;
+                    }
+                    return `${shortName}\n${params.value} (${pct}%)`;
+                }
+            },
+            labelLine: {
+                show: true,
+                length: line1,
+                length2: line2,
+                smooth: 0.2
+            }
+        }]
+    };
+}
+
 function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, history = []) {
     const container = document.getElementById(`content_view_${cardId}`);
     if (!data || data.length === 0) {
@@ -5992,11 +6081,11 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
     const isStandaloneOrHeight = (card.height || IS_STANDALONE);
     const showStatsHidden = (card.show_stats === 0 || String(card.show_stats) === '0' || card.show_stats === false || (isPieOrDonut && card.show_stats !== 1 && String(card.show_stats) !== '1' && card.show_stats !== true) || (Array.isArray(card.visible_stats) && card.visible_stats.length === 0));
     const containerHeightStyle = isStandaloneOrHeight ? 'height: 100%; flex: 1 1 0%; min-height: 0;' : '';
-    const chartHeightStyle = isStandaloneOrHeight ? 'height: 100%; min-height: 220px; flex: 1 1 0%;' : ((isPieOrDonut && showStatsHidden) ? 'height: 320px; min-height: 260px;' : 'height: 260px; min-height: 220px;');
+    const chartHeightStyle = isStandaloneOrHeight ? 'height: 100%; min-height: 0 !important; flex: 1 1 0%;' : ((isPieOrDonut && showStatsHidden) ? 'height: 320px; min-height: 160px;' : 'height: 260px; min-height: 160px;');
 
     container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; display: flex; flex-direction: column; ${containerHeightStyle}">
         <div id="chart_canvas_${cardId}" style="width: 100%; ${chartHeightStyle}"></div>
-        <div id="chart_legend_${cardId}" class="chart-html-legend" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-height: 80px; overflow-y: auto; padding: 6px 2px 2px 2px; margin-top: 4px; border-top: 1px solid #f1f5f9; flex-shrink: 0;"></div>
+        <div id="chart_legend_${cardId}" class="chart-html-legend" style="display: ${isPieOrDonut ? 'none' : 'flex'}; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-height: 80px; overflow-y: auto; padding: 6px 2px 2px 2px; margin-top: 4px; border-top: 1px solid #f1f5f9; flex-shrink: 0;"></div>
     </div>`;
 
     if (activeCharts[cardId]) {
@@ -6060,31 +6149,18 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
             { label: 'Not Init', value: parseInt(stats.not_init) || 0, color: '#3498db', border: '#2980b9' }
         ];
 
-        const showLegendCount = (card.show_legend_count !== undefined) ? !!card.show_legend_count : true;
         const activeStatuses = statusMap.filter(s => s.value > 0);
         const displayStatuses = activeStatuses.length > 0 ? activeStatuses : statusMap;
 
-        const pieData = displayStatuses.map(s => ({
-            name: showLegendCount ? `${s.label} (${s.value})` : s.label,
-            value: s.value,
-            itemStyle: { color: s.color }
-        }));
+        const canvasEl = document.getElementById(`chart_canvas_${cardId}`);
+        if (!canvasEl) return;
 
-        activeCharts[cardId] = echarts.init(document.getElementById(`chart_canvas_${cardId}`));
-        activeCharts[cardId].setOption({
-            tooltip: { trigger: 'item', backgroundColor: 'rgba(15, 23, 42, 0.95)', textStyle: { color: '#cbd5e1', fontSize: 12 }, padding: 10, borderRadius: 6, formatter: '{b}: {c} ({d}%)' },
-            series: [{
-                name: 'Count',
-                type: 'pie',
-                radius: viewType === 'pie' ? '70%' : ['40%', '70%'],
-                center: ['50%', '50%'],
-                data: pieData,
-                label: { show: true, formatter: '{b}\n{c} ({d}%)', fontSize: Math.max(9, chartFontSize - 1), color: '#475569' },
-                labelLine: { show: true, length: 15, length2: 10 }
-            }]
-        });
+        activeCharts[cardId] = echarts.init(canvasEl);
+        activeCharts[cardId].setOption(getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize));
+
         setTimeout(() => {
             if (activeCharts[cardId] && typeof activeCharts[cardId].resize === 'function') {
+                activeCharts[cardId].setOption(getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize));
                 activeCharts[cardId].resize();
             }
         }, 50);
@@ -6367,18 +6443,33 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 }
             }, 50);
         }
+    }
 
-        if (window.ResizeObserver) {
-            const canvasEl = document.getElementById(`chart_canvas_${cardId}`);
-            if (canvasEl && (!window._roMap || !window._roMap[cardId])) {
-                window._roMap = window._roMap || {};
-                window._roMap[cardId] = new ResizeObserver(() => {
-                    if (activeCharts[cardId] && typeof activeCharts[cardId].resize === 'function') {
-                        activeCharts[cardId].resize();
-                    }
-                });
-                window._roMap[cardId].observe(canvasEl);
+    if (window.ResizeObserver) {
+        const canvasEl = document.getElementById(`chart_canvas_${cardId}`);
+        if (canvasEl) {
+            if (window._roMap && window._roMap[cardId]) {
+                window._roMap[cardId].disconnect();
             }
+            window._roMap = window._roMap || {};
+            window._roMap[cardId] = new ResizeObserver(() => {
+                if (activeCharts[cardId] && typeof activeCharts[cardId].resize === 'function') {
+                    if (viewType === 'pie' || viewType === 'donut') {
+                        const statusMap = [
+                            { label: 'UP (Normal)', value: parseInt(stats.normal) || 0, color: '#2ecc71', border: '#27ae60' },
+                            { label: 'Warning', value: parseInt(stats.warning) || 0, color: '#f1c40f', border: '#f39c12' },
+                            { label: 'Critical', value: parseInt(stats.critical) || 0, color: '#e74c3c', border: '#c0392b' },
+                            { label: 'Unknown', value: parseInt(stats.unknown) || 0, color: '#95a5a6', border: '#7f8c8d' },
+                            { label: 'Not Init', value: parseInt(stats.not_init) || 0, color: '#3498db', border: '#2980b9' }
+                        ];
+                        const activeStatuses = statusMap.filter(s => s.value > 0);
+                        const displayStatuses = activeStatuses.length > 0 ? activeStatuses : statusMap;
+                        activeCharts[cardId].setOption(getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize));
+                    }
+                    activeCharts[cardId].resize();
+                }
+            });
+            window._roMap[cardId].observe(canvasEl);
         }
     }
 }
