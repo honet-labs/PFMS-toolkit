@@ -2,6 +2,15 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.10] - 2026-10-14 (Dashboard - Fix Pie & Donut Chart Label Pointer Collision and Clearance)
+### Fixed
+- **Pembersihan dan Pemisahan Label Menempel pada Pie Chart & Donut Chart:**
+  - Mengatasi masalah label teks (`UP 1 (100%)` / status data) yang menempel atau menabrak tepi lingkaran diagram pie/donut pada panel ringkas (seperti widget Visual Console Pandora FMS).
+  - Memperbaiki akar masalah geometri ECharts di mana panjang segmen garis penunjuk awal (`length` / `line1`) terlalu pendek (4px - 6px) dan memiliki kurva melengkung (`smooth: 0.2`), sehingga total tinggi baris teks (*line height*) menarik teks mundur dan menabrak lingkaran.
+  - Meningkatkan clearance garis penunjuk secara adaptif: `line1` diperpanjang menjadi `14px` - `20px` (minimal 16px untuk tile ringkas), `smooth` diatur ke `false` dengan sudut siku tegas (`minTurnAngle: 90`), serta menambahkan jarak renggang label `distanceToLabelLine: 4`.
+  - Mengoptimalkan proporsi radius (`48%` - `52%` pada tile kompak) dan posisi pusat vertikal (`center: ['50%', '48%']`) untuk memberikan ruang bernapas (*breathing room*) yang lapang di sekeliling lingkaran.
+  - Diterapkan secara konsisten di **Metrics Dashboard** (`metrics-dashboard.php`) dan **Dynamic Dashboard** (`dynamic-dashboard-template.php`).
+
 ## [2.11.9] - 2026-10-14 (Dashboard - Fully Responsive Embed & Sizing for Pie & Donut Charts)
 ### Fixed & Enhanced
 - **Responsivitas Penuh Tampilan Embed & Sizing Pie Chart & Donut Chart:**

@@ -4583,17 +4583,17 @@ function refreshCurrentNodeData() {
                             const w = dom.clientWidth || 300;
                             const h = dom.clientHeight || 260;
                             const minDim = Math.min(w, h);
-                            let radius = p.type === 'pie' ? '68%' : ['40%', '68%'];
-                            let line1 = 10, line2 = 6, fs = Math.max(9, chartFs);
+                            let radius = p.type === 'pie' ? '64%' : ['36%', '64%'];
+                            let line1 = 20, line2 = 14, fs = Math.max(11, chartFs);
                             if (minDim < 170) {
-                                radius = p.type === 'pie' ? '54%' : ['28%', '54%'];
-                                line1 = 4; line2 = 4; fs = 9;
-                            } else if (minDim < 230) {
+                                radius = p.type === 'pie' ? '48%' : ['24%', '48%'];
+                                line1 = 14; line2 = 8; fs = 9;
+                            } else if (minDim < 240) {
+                                radius = p.type === 'pie' ? '52%' : ['28%', '52%'];
+                                line1 = 16; line2 = 10; fs = 10;
+                            } else if (minDim < 320) {
                                 radius = p.type === 'pie' ? '58%' : ['32%', '58%'];
-                                line1 = 6; line2 = 5; fs = 9;
-                            } else if (minDim < 300) {
-                                radius = p.type === 'pie' ? '62%' : ['36%', '62%'];
-                                line1 = 8; line2 = 6; fs = 10;
+                                line1 = 18; line2 = 12; fs = 10;
                             }
 
                             const pieData = finalStatuses.map(s => ({
@@ -4608,15 +4608,16 @@ function refreshCurrentNodeData() {
                                     name: 'Status',
                                     type: 'pie',
                                     radius: radius,
-                                    center: ['50%', '50%'],
+                                    center: ['50%', '48%'],
                                     avoidLabelOverlap: true,
                                     data: pieData,
                                     label: {
                                         show: true,
                                         position: 'outside',
+                                        distanceToLabelLine: 4,
                                         color: '#334155',
                                         fontSize: fs,
-                                        lineHeight: fs + 3,
+                                        lineHeight: fs + 4,
                                         formatter: function(params) {
                                             const pct = (params.percent !== undefined) ? Math.round(params.percent) : 0;
                                             let shortName = params.name;
@@ -4625,7 +4626,7 @@ function refreshCurrentNodeData() {
                                             return `${shortName}\n${params.value} (${pct}%)`;
                                         }
                                     },
-                                    labelLine: { show: true, length: line1, length2: line2, smooth: 0.2 },
+                                    labelLine: { show: true, length: line1, length2: line2, smooth: false, minTurnAngle: 90 },
                                     itemStyle: { borderColor: '#fff', borderWidth: 1.5 }
                                 }]
                             };

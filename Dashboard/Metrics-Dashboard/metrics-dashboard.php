@@ -5875,32 +5875,36 @@ function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartF
     const activeStatuses = displayStatuses.filter(s => s.value > 0);
     const hasOnlyOne = (activeStatuses.length <= 1);
 
-    // Responsive radius and label lines based on actual container bounds
+    // Responsive radius and label lines
+    // Ensure line1 has adequate clearance (>=14px) so text never touches or overlaps the circle perimeter
     let radius;
-    let line1 = 8;
-    let line2 = 6;
+    let line1 = 16;
+    let line2 = 10;
     let fontSize = Math.max(9, Math.min(12, chartFontSize - 1));
 
     if (minDim < 170) {
-        radius = viewType === 'pie' ? '54%' : ['28%', '54%'];
-        line1 = 4;
-        line2 = 4;
+        radius = viewType === 'pie' ? '48%' : ['24%', '48%'];
+        line1 = 14;
+        line2 = 8;
         fontSize = 9;
-    } else if (minDim < 230) {
+    } else if (minDim < 240) {
+        // Typical Visual Console compact tile (~180px - 220px)
+        radius = viewType === 'pie' ? '52%' : ['28%', '52%'];
+        line1 = 16;
+        line2 = 10;
+        fontSize = 10;
+    } else if (minDim < 320) {
+        // Medium tile (~240px - 320px)
         radius = viewType === 'pie' ? '58%' : ['32%', '58%'];
-        line1 = 6;
-        line2 = 5;
-        fontSize = 9;
-    } else if (minDim < 300) {
-        radius = viewType === 'pie' ? '62%' : ['36%', '62%'];
-        line1 = 8;
-        line2 = 6;
+        line1 = 18;
+        line2 = 12;
         fontSize = 10;
     } else {
-        radius = viewType === 'pie' ? '68%' : ['40%', '68%'];
-        line1 = 12;
-        line2 = 8;
-        fontSize = Math.max(10, chartFontSize);
+        // Spacious (> 320px)
+        radius = viewType === 'pie' ? '64%' : ['36%', '64%'];
+        line1 = 20;
+        line2 = 14;
+        fontSize = Math.max(11, chartFontSize);
     }
 
     const pieData = displayStatuses.map(s => ({
@@ -5923,7 +5927,7 @@ function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartF
             name: 'Status',
             type: 'pie',
             radius: radius,
-            center: ['50%', '50%'],
+            center: ['50%', '48%'],
             avoidLabelOverlap: true,
             data: pieData,
             itemStyle: {
@@ -5933,9 +5937,10 @@ function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartF
             label: {
                 show: true,
                 position: 'outside',
+                distanceToLabelLine: 4,
                 color: '#334155',
                 fontSize: fontSize,
-                lineHeight: fontSize + 3,
+                lineHeight: fontSize + 4,
                 formatter: function(params) {
                     const pct = (params.percent !== undefined) ? Math.round(params.percent) : 0;
                     let shortName = params.name;
@@ -5950,7 +5955,8 @@ function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartF
                 show: true,
                 length: line1,
                 length2: line2,
-                smooth: 0.2
+                smooth: false,
+                minTurnAngle: 90
             }
         }]
     };
