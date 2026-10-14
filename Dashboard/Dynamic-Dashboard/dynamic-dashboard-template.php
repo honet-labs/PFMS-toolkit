@@ -1581,6 +1581,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                     <label>Chart Font Size</label>
                     <input type="number" id="p_chart_font_size" class="form-control-fix" value="10" min="6" max="32">
                 </div>
+                <div class="form-group" style="flex:1;" id="wrap_chart_size">
+                    <label>Chart / Pie Size (%)</label>
+                    <input type="number" id="p_chart_size" class="form-control-fix" placeholder="Auto (e.g. 52)" min="20" max="85">
+                </div>
             </div>
 
             <div id="wrap_heatmap_options" style="display:none; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; margin-top:5px; margin-bottom:10px;">
@@ -4583,18 +4587,35 @@ function refreshCurrentNodeData() {
                             const w = dom.clientWidth || 300;
                             const h = dom.clientHeight || 260;
                             const minDim = Math.min(w, h);
-                            let radius = p.type === 'pie' ? '64%' : ['36%', '64%'];
-                            let line1 = 20, line2 = 14, fs = Math.max(11, chartFs);
-                            if (minDim < 170) {
-                                radius = p.type === 'pie' ? '48%' : ['24%', '48%'];
-                                line1 = 14; line2 = 8; fs = 9;
-                            } else if (minDim < 240) {
-                                radius = p.type === 'pie' ? '52%' : ['28%', '52%'];
-                                line1 = 16; line2 = 10; fs = 10;
-                            } else if (minDim < 320) {
-                                radius = p.type === 'pie' ? '58%' : ['32%', '58%'];
-                                line1 = 18; line2 = 12; fs = 10;
+
+                            let radius;
+                            const numSize = parseInt(p.chart_size);
+                            if (!isNaN(numSize) && numSize >= 20 && numSize <= 90) {
+                                radius = p.type === 'pie' ? `${numSize}%` : [`${Math.round(numSize * 0.54)}%`, `${numSize}%`];
+                            } else {
+                                if (minDim < 170) {
+                                    radius = p.type === 'pie' ? '48%' : ['24%', '48%'];
+                                } else if (minDim < 240) {
+                                    radius = p.type === 'pie' ? '52%' : ['28%', '52%'];
+                                } else if (minDim < 320) {
+                                    radius = p.type === 'pie' ? '58%' : ['32%', '58%'];
+                                } else {
+                                    radius = p.type === 'pie' ? '64%' : ['36%', '64%'];
+                                }
                             }
+
+                            // Strictly honor user-defined chart_font_size!
+                            const parsedFs = parseInt(chartFs);
+                            let fs = (!isNaN(parsedFs) && parsedFs > 0) ? parsedFs : 10;
+                            if (parsedFs === 10 || isNaN(parsedFs)) {
+                                if (minDim < 170) fs = 9;
+                                else if (minDim < 240) fs = 10;
+                                else if (minDim < 320) fs = 10;
+                                else fs = 11;
+                            }
+
+                            let line1 = Math.max(16, fs + 5);
+                            let line2 = Math.max(10, fs);
 
                             const pieData = finalStatuses.map(s => ({
                                 value: s.value,
@@ -5484,6 +5505,7 @@ function openPanelBuilder() {
     if (document.getElementById('p_heatmap_custom_text')) document.getElementById('p_heatmap_custom_text').value = '';
     document.getElementById('p_row_limit').value = '200';
     document.getElementById('p_chart_font_size').value = '10';
+    if (document.getElementById('p_chart_size')) document.getElementById('p_chart_size').value = '';
     document.getElementById('p_lbl_1').value = '';
     document.getElementById('p_lbl_0').value = '';
     if (document.getElementById('p_value_calc')) document.getElementById('p_value_calc').value = 'current';
@@ -5533,6 +5555,9 @@ function openPanelEdit(id) {
     if (document.getElementById('p_heatmap_custom_text')) document.getElementById('p_heatmap_custom_text').value = p.heatmap_custom_text || '';
     document.getElementById('p_row_limit').value = p.row_limit || 200;
     document.getElementById('p_chart_font_size').value = p.chart_font_size || 10;
+    if (document.getElementById('p_chart_size')) {
+        document.getElementById('p_chart_size').value = p.chart_size || '';
+    }
     document.getElementById('p_font_size').value = p.font_size || (['table_viewer', 'device_info'].includes(p.type) ? 12 : 32);
     document.getElementById('p_font_weight').value = p.font_weight || (['table_viewer', 'device_info'].includes(p.type) ? '600' : '700');
     if (document.getElementById('p_value_calc')) document.getElementById('p_value_calc').value = p.value_calc || 'current';
@@ -5610,6 +5635,7 @@ function applyPanel() {
         heatmap_custom_text: document.getElementById('p_heatmap_custom_text') ? document.getElementById('p_heatmap_custom_text').value : '',
         row_limit: parseInt(document.getElementById('p_row_limit').value) || 200,
         chart_font_size: parseInt(document.getElementById('p_chart_font_size').value) || 10,
+        chart_size: document.getElementById('p_chart_size') ? (parseInt(document.getElementById('p_chart_size').value) || '') : '',
         font_size: parseInt(document.getElementById('p_font_size').value) || 32,
         font_weight: document.getElementById('p_font_weight').value || 700,
         value_calc: document.getElementById('p_value_calc') ? document.getElementById('p_value_calc').value : 'current',

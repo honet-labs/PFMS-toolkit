@@ -2,6 +2,17 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.11] - 2026-10-14 (Dashboard - Custom Chart Font Size, Pie Radius Size & Embed Sync)
+### Fixed & Added
+- **Pemberlakuan Penuh Ukuran Font Kustom (`Chart Font Size`) pada Diagram Pie & Donut:**
+  - Memperbaiki fungsi `getResponsivePieDonutOption` dan `getDynamicPieOption` yang sebelumnya menimpa (*hardcode*) ukuran font label diagram menjadi `10px` atau `9px` pada container berukuran kecil (< 320px seperti iframe Visual Console Pandora FMS), sehingga perubahan ukuran font yang diatur pengguna tidak berefek saat di-embed.
+  - Nilai kustom pada field `Chart Font Size (px)` kini dipatuhi secara langsung baik di dashboard utama maupun tampilan embed. Panjang garis penunjuk label (*labelLine*) juga otomatis menyesuaikan clearance secara proporsional terhadap ukuran font.
+- **Dukungan Pengaturan Ukuran Lingkaran Diagram Kustom ("Chart / Pie Size (%)"):**
+  - Menghadirkan opsi baru **"Chart / Pie Size (% Radius)"** pada modal builder & edit widget di **Metrics Dashboard** (`metrics-dashboard.php`) dan **Dynamic Dashboard** (`dynamic-dashboard-template.php`).
+  - Pengguna kini dapat mengatur sendiri persentase radius lingkaran diagram pie/donut (misal 40% untuk tampilan ringkas, atau 65% - 75% untuk lingkaran yang lebih besar dan dominan).
+- **Sinkronisasi Tinggi Panel (`Panel Height`) pada Kode Embed Iframe:**
+  - Memperbaiki generator kode embed share widget (`updateShareUrls`) yang sebelumnya selalu menetapkan atribut `height="280"` secara statis. Kini atribut tinggi iframe otomatis mengambil nilai `Panel Height (px)` kustom yang dikonfigurasi pada widget tersebut.
+
 ## [2.11.10] - 2026-10-14 (Dashboard - Fix Pie & Donut Chart Label Pointer Collision and Clearance)
 ### Fixed
 - **Pembersihan dan Pemisahan Label Menempel pada Pie Chart & Donut Chart:**

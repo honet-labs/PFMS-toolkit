@@ -1497,10 +1497,13 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 <option value="10">Top 10 + Others</option>
             </select>
             <label>Show Value Count in Legend</label>
-            <select id="b_show_legend_count" class="form-control-fix">
+            <select id="b_show_legend_count" class="form-control-fix" style="margin-bottom:12px;">
                 <option value="1">Show Count (e.g. UP (12))</option>
                 <option value="0">Hide Count (Label Only)</option>
             </select>
+            <label>Chart / Pie Size (% Radius)</label>
+            <input type="number" id="b_chart_size" class="form-control-fix" placeholder="Auto (e.g. 52)" min="20" max="85" style="margin-bottom:0;">
+            <small style="color:#64748b; font-size:11px; display:block; margin-top:3px;">Ukuran persentase radius lingkaran diagram (Default: Auto ~52%).</small>
         </div>
 
         <div class="form-group" id="wrap_show_stats">
@@ -5207,6 +5210,7 @@ async function openBuilder() {
     document.querySelectorAll('.col-visibility-chk').forEach(chk => chk.checked = true);
     document.getElementById('b_chart_limit').value = '0';
     document.getElementById('b_show_legend_count').value = '1';
+    if (document.getElementById('b_chart_size')) document.getElementById('b_chart_size').value = '';
     document.getElementById('b_show_stats').value = '1';
     ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'].forEach(s => {
         const el = document.getElementById('b_stat_' + s);
@@ -5299,6 +5303,9 @@ async function openEdit(id) {
     });
 
     document.getElementById('b_chart_font_size').value = c.chart_font_size || '11';
+    if (document.getElementById('b_chart_size')) {
+        document.getElementById('b_chart_size').value = c.chart_size || '';
+    }
     if (document.getElementById('b_show_module_name')) {
         document.getElementById('b_show_module_name').value = (c.show_module_name !== undefined) ? String(c.show_module_name) : '1';
     }
@@ -5402,6 +5409,7 @@ function saveWidget() {
         auto_convert_traffic: autoConvertTraffic,
         use_raw: document.getElementById('b_use_raw').checked,
         chart_limit: document.getElementById('b_chart_limit').value,
+        chart_size: document.getElementById('b_chart_size') ? (parseInt(document.getElementById('b_chart_size').value) || '') : '',
         show_legend_count: parseInt(document.getElementById('b_show_legend_count').value),
         show_stats: showStatsVal,
         visible_stats: visStats,
@@ -5511,7 +5519,9 @@ function updateShareUrls() {
         u.searchParams.set('hide_header', '1');
     }
     const urlString = u.toString();
-    const defaultHeight = hideHeader ? '240' : '280';
+    const defaultHeight = (currentShareCard && currentShareCard.height && parseInt(currentShareCard.height) > 0)
+        ? parseInt(currentShareCard.height)
+        : (hideHeader ? '240' : '280');
     const embedCode = `<iframe src="${urlString}" width="100%" height="${defaultHeight}" frameborder="0"></iframe>`;
     
     document.getElementById('shareStandaloneInput').value = urlString;
@@ -5867,7 +5877,7 @@ function openTimeRangeMenu(event, cardId) {
     setTimeout(() => document.addEventListener('click', closeListener), 10);
 }
 
-function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize) {
+function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize, customChartSize) {
     const w = (canvasEl && (canvasEl.clientWidth || (canvasEl.getBoundingClientRect && canvasEl.getBoundingClientRect().width))) || 300;
     const h = (canvasEl && (canvasEl.clientHeight || (canvasEl.getBoundingClientRect && canvasEl.getBoundingClientRect().height))) || 260;
     const minDim = Math.min(w, h);
@@ -5875,37 +5885,40 @@ function getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartF
     const activeStatuses = displayStatuses.filter(s => s.value > 0);
     const hasOnlyOne = (activeStatuses.length <= 1);
 
-    // Responsive radius and label lines
-    // Ensure line1 has adequate clearance (>=14px) so text never touches or overlaps the circle perimeter
+    // Responsive or user-customized radius
     let radius;
-    let line1 = 16;
-    let line2 = 10;
-    let fontSize = Math.max(9, Math.min(12, chartFontSize - 1));
-
-    if (minDim < 170) {
-        radius = viewType === 'pie' ? '48%' : ['24%', '48%'];
-        line1 = 14;
-        line2 = 8;
-        fontSize = 9;
-    } else if (minDim < 240) {
-        // Typical Visual Console compact tile (~180px - 220px)
-        radius = viewType === 'pie' ? '52%' : ['28%', '52%'];
-        line1 = 16;
-        line2 = 10;
-        fontSize = 10;
-    } else if (minDim < 320) {
-        // Medium tile (~240px - 320px)
-        radius = viewType === 'pie' ? '58%' : ['32%', '58%'];
-        line1 = 18;
-        line2 = 12;
-        fontSize = 10;
+    const numSize = parseInt(customChartSize);
+    if (!isNaN(numSize) && numSize >= 20 && numSize <= 90) {
+        radius = viewType === 'pie' ? `${numSize}%` : [`${Math.round(numSize * 0.54)}%`, `${numSize}%`];
     } else {
-        // Spacious (> 320px)
-        radius = viewType === 'pie' ? '64%' : ['36%', '64%'];
-        line1 = 20;
-        line2 = 14;
-        fontSize = Math.max(11, chartFontSize);
+        if (minDim < 170) {
+            radius = viewType === 'pie' ? '48%' : ['24%', '48%'];
+        } else if (minDim < 240) {
+            // Typical Visual Console compact tile (~180px - 220px)
+            radius = viewType === 'pie' ? '52%' : ['28%', '52%'];
+        } else if (minDim < 320) {
+            // Medium tile (~240px - 320px)
+            radius = viewType === 'pie' ? '58%' : ['32%', '58%'];
+        } else {
+            // Spacious (> 320px)
+            radius = viewType === 'pie' ? '64%' : ['36%', '64%'];
+        }
     }
+
+    // Font size: strictly honor user-defined chartFontSize!
+    const parsedFs = parseInt(chartFontSize);
+    let fontSize = (!isNaN(parsedFs) && parsedFs > 0) ? parsedFs : 11;
+    // Only adapt down if user left at default (11)
+    if (parsedFs === 11 || isNaN(parsedFs)) {
+        if (minDim < 170) fontSize = 9;
+        else if (minDim < 240) fontSize = 10;
+        else if (minDim < 320) fontSize = 10;
+        else fontSize = 11;
+    }
+
+    // Dynamic pointer line clearance adapting to font size
+    let line1 = Math.max(16, fontSize + 5);
+    let line2 = Math.max(10, fontSize);
 
     const pieData = displayStatuses.map(s => ({
         name: s.label,
@@ -6162,11 +6175,11 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         if (!canvasEl) return;
 
         activeCharts[cardId] = echarts.init(canvasEl);
-        activeCharts[cardId].setOption(getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize));
+        activeCharts[cardId].setOption(getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize, card.chart_size));
 
         setTimeout(() => {
             if (activeCharts[cardId] && typeof activeCharts[cardId].resize === 'function') {
-                activeCharts[cardId].setOption(getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize));
+                activeCharts[cardId].setOption(getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize, card.chart_size));
                 activeCharts[cardId].resize();
             }
         }, 50);
@@ -6470,7 +6483,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         ];
                         const activeStatuses = statusMap.filter(s => s.value > 0);
                         const displayStatuses = activeStatuses.length > 0 ? activeStatuses : statusMap;
-                        activeCharts[cardId].setOption(getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize));
+                        activeCharts[cardId].setOption(getResponsivePieDonutOption(canvasEl, viewType, displayStatuses, chartFontSize, card.chart_size));
                     }
                     activeCharts[cardId].resize();
                 }
