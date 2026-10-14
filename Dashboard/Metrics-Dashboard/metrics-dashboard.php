@@ -1063,7 +1063,24 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .page-breadcrumb { font-size: 11px !important; font-weight: normal !important; color: #7f8c8d; text-transform: uppercase; margin-bottom: 4px; display: block; }
         .page-title { font-size: 18px !important; font-weight: normal !important; color: #0b1a26; margin: 0; }
         
-        .top-controls { display: flex; gap: 10px; align-items: center; }
+        .top-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .toolbar-divider { height: 20px; width: 1px; background: #dce1e5; margin: 0 4px; }
+        .toolbar-item { display: flex; align-items: center; gap: 6px; }
+        .toolbar-label { font-size: 11px !important; color: #7f8c8d; font-weight: normal; text-transform: uppercase; letter-spacing: 0.5px; }
+        .toolbar-select { height: 32px; padding: 0 8px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 12px !important; font-weight: normal !important; color: #333; background: #fff; outline: none; cursor: pointer; transition: 0.2s;}
+        .toolbar-select:hover { border-color: #b5c1c9; }
+        .toolbar-select:focus { border-color: #004d40; box-shadow: 0 0 0 2px rgba(0,77,64,0.1); background: #ffffff; }
+        .toolbar-input { height: 32px; padding: 0 8px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 12px !important; font-weight: normal !important; color: #333; background: #fff; outline: none;}
+
+        .refresh-hud { display: flex; align-items: center; gap: 8px; background: #ffffff; padding: 3px 8px; border-radius: 6px; border: 1px solid #dce1e5; box-shadow: 0 1px 2px rgba(0,0,0,0.02);}
+        .refresh-hud-texts { display: flex; flex-direction: column; text-align: right; min-width: 85px; line-height: 1.2;}
+        .text-last-update { font-size: 10px !important; color: #64748b; font-weight: normal; letter-spacing: 0.2px;}
+        .text-countdown { font-size: 10px !important; color: #e67e22; font-weight: 600; }
+        .btn-refresh { background: #e8f5e9; color: #004d40; border: 1px solid #c8e6c9; height: 28px; width: 28px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s;}
+        .btn-refresh:hover { background: #c8e6c9; color: #00332a; }
+        .refresh-select { height: 28px; padding: 0 6px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 11px !important; font-weight: normal !important; color: #004d40; background: #fff; outline: none; cursor: pointer; transition: 0.2s;}
+        .refresh-select:hover { border-color: #b5c1c9; }
+
         .btn-secondary-custom { background-color: #ffffff; border: 1px solid #dce1e5; color: #0b1a26; padding: 7px 14px; border-radius: 4px; font-size: 12px !important; font-weight: normal !important; display: flex; align-items: center; gap: 6px; cursor: pointer; text-decoration: none; transition: 0.2s; }
         .btn-secondary-custom:hover { background-color: #f8f9fa; border-color: #b5c1c9; }
         .btn-apply { background-color: #004d40; border: 1px solid #004d40; color: #ffffff; padding: 7px 16px; border-radius: 4px; font-size: 12px !important; font-weight: normal !important; display: flex; align-items: center; gap: 6px; cursor: pointer; text-decoration: none; }
@@ -1308,7 +1325,48 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
     
     <div class="top-controls d-none" id="detailTopControls">
         <button class="btn-secondary-custom" onclick="closeDashboard()" title="Back to List"><span class="material-symbols-outlined">arrow_back</span> Back</button>
+        
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-item">
+            <span class="toolbar-label"><span class="material-symbols-outlined" style="font-size:18px!important; color:#004d40;">schedule</span></span>
+            <select id="top_time" class="toolbar-select" style="width:110px;" onchange="onGlobalTimeRangeChange()">
+                <option value="3600">Last 1h</option>
+                <option value="21600">Last 6h</option>
+                <option value="86400" selected>Last 24h</option>
+                <option value="604800">Last 7d</option>
+                <option value="2592000">Last 30d</option>
+                <option value="custom">Custom...</option>
+            </select>
+        </div>
+
+        <div id="customTimeBox" class="toolbar-item" style="display:none; background:#f0f3f5; padding:3px 8px; border-radius:4px; align-items:center; gap:6px;">
+            <input type="datetime-local" id="top_start" class="toolbar-input" style="height:26px; padding:0 4px; font-size:11px;">
+            <span style="font-weight: normal; color:#7f8c8d;">-</span>
+            <input type="datetime-local" id="top_end" class="toolbar-input" style="height:26px; padding:0 4px; font-size:11px;">
+            <button onclick="applyGlobalCustomTimeRange()" style="padding: 2px 8px; font-size:11px; height:26px; border:none; background:#1976d2; color:white; border-radius:3px; cursor:pointer; font-weight:600; display:inline-flex; align-items:center; justify-content:center;" title="Apply custom time range">Apply</button>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="refresh-hud">
+            <div class="refresh-hud-texts">
+                <span id="last_update_text" class="text-last-update">Last Update: -</span>
+                <span id="countdown_text" class="text-countdown">Auto Refresh: 1m</span>
+            </div>
+            <button class="btn-refresh" onclick="forceRefreshAll()" title="Force Refresh Data"><span class="material-symbols-outlined" style="font-size:18px!important;">sync</span></button>
+            <select id="top_refresh" class="refresh-select" onchange="applyGlobalAutoRefresh()">
+                <option value="0">Off</option>
+                <option value="10">10s</option>
+                <option value="30">30s</option>
+                <option value="60" selected>1m</option>
+                <option value="120">2m</option>
+                <option value="300">5m</option>
+            </select>
+        </div>
+
         <?php if ($is_admin): ?>
+        <div class="toolbar-divider"></div>
         <button class="btn-secondary-custom" onclick="openDashboardAclModal(currentDashId)" title="Access Permissions (Profiles & Users)" style="color:#0d9488; font-weight:600;"><span class="material-symbols-outlined" style="font-size:18px!important; color:#0d9488;">shield_person</span> Access</button>
         <button class="btn-apply" onclick="openBuilder()"><span class="material-symbols-outlined">add</span> Add Widget</button>
         <?php endif; ?>
@@ -2648,6 +2706,31 @@ function openDashboard(id) {
 
     const mainBreadcrumb = document.getElementById('mainBreadcrumb');
     if (mainBreadcrumb) mainBreadcrumb.innerText = baseBreadcrumb + " / " + d.title.toUpperCase();
+
+    // Sync global time range & auto refresh controls with dashboard settings
+    const topTimeEl = document.getElementById('top_time');
+    if (topTimeEl) {
+        topTimeEl.value = d.time_range || '86400';
+        const customBox = document.getElementById('customTimeBox');
+        if (topTimeEl.value === 'custom' && d.custom_start_ts && d.custom_end_ts) {
+            if (customBox) customBox.style.display = 'inline-flex';
+            const pad = (n) => String(n).padStart(2, '0');
+            const formatDT = (ts) => {
+                const dt = new Date(ts * 1000);
+                return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+            };
+            if (document.getElementById('top_start')) document.getElementById('top_start').value = formatDT(d.custom_start_ts);
+            if (document.getElementById('top_end')) document.getElementById('top_end').value = formatDT(d.custom_end_ts);
+        } else {
+            if (customBox) customBox.style.display = 'none';
+        }
+    }
+
+    const topRefreshEl = document.getElementById('top_refresh');
+    if (topRefreshEl) {
+        topRefreshEl.value = (d.refresh_sec !== undefined) ? String(d.refresh_sec) : '60';
+    }
+    applyGlobalAutoRefresh();
     
     renderGrid();
     
@@ -2656,7 +2739,12 @@ function openDashboard(id) {
     initCardObserver();
     
     dashboardCards.forEach((c, idx) => {
-        cardTimers[c.id] = parseInt(c.refresh_sec);
+        if (!c.time_range && d.time_range) {
+            c.time_range = d.time_range;
+            c.custom_start_ts = d.custom_start_ts;
+            c.custom_end_ts = d.custom_end_ts;
+        }
+        cardTimers[c.id] = parseInt(c.refresh_sec || 60);
         if (idx < 4 || IS_STANDALONE || !cardObserver) {
             cardLoadedMap[c.id] = true;
             fetchCardData(c);
@@ -2671,6 +2759,10 @@ function openDashboard(id) {
 }
 
 function closeDashboard() {
+    if (globalAutoRefreshTimer) {
+        clearInterval(globalAutoRefreshTimer);
+        globalAutoRefreshTimer = null;
+    }
     renderDashboardList();
 }
 
@@ -2747,18 +2839,152 @@ function duplicateDashboardFromList(id) {
     });
 }
 
+// Global Toolbar (Time Range & Auto Refresh)
+let globalAutoRefreshTimer = null;
+let globalCountdownValue = 60;
+let globalRefreshIntervalConfig = 60;
+
+function onGlobalTimeRangeChange() {
+    const val = document.getElementById('top_time').value;
+    const customBox = document.getElementById('customTimeBox');
+    if (val === 'custom') {
+        if (customBox) customBox.style.display = 'inline-flex';
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        const formatDT = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        
+        if (!document.getElementById('top_start').value) {
+            document.getElementById('top_start').value = formatDT(yesterday);
+        }
+        if (!document.getElementById('top_end').value) {
+            document.getElementById('top_end').value = formatDT(now);
+        }
+    } else {
+        if (customBox) customBox.style.display = 'none';
+        applyTimeRangeToAllCards(val);
+    }
+}
+
+function applyGlobalCustomTimeRange() {
+    const s = document.getElementById('top_start').value;
+    const e = document.getElementById('top_end').value;
+    if (!s || !e) {
+        alert('Please select both start and end times.');
+        return;
+    }
+    const startTs = Math.floor(new Date(s).getTime() / 1000);
+    const endTs = Math.floor(new Date(e).getTime() / 1000);
+    if (startTs >= endTs) {
+        alert('Start time must be before end time.');
+        return;
+    }
+    applyTimeRangeToAllCards('custom', startTs, endTs);
+}
+
+function applyTimeRangeToAllCards(range, startTs = null, endTs = null) {
+    const curDash = masterDashboards.find(d => d.id === currentDashId);
+    if (curDash) {
+        curDash.time_range = range;
+        if (range === 'custom') {
+            curDash.custom_start_ts = startTs;
+            curDash.custom_end_ts = endTs;
+        } else {
+            delete curDash.custom_start_ts;
+            delete curDash.custom_end_ts;
+        }
+    }
+
+    dashboardCards.forEach(c => {
+        c.time_range = range;
+        if (range === 'custom') {
+            c.custom_start_ts = startTs;
+            c.custom_end_ts = endTs;
+        } else {
+            delete c.custom_start_ts;
+            delete c.custom_end_ts;
+        }
+        cardLoadedMap[c.id] = true;
+        fetchCardData(c);
+    });
+    saveOrderToServer();
+}
+
+function applyGlobalAutoRefresh() {
+    if (globalAutoRefreshTimer) {
+        clearInterval(globalAutoRefreshTimer);
+        globalAutoRefreshTimer = null;
+    }
+    const el = document.getElementById('top_refresh');
+    if (!el) return;
+    globalRefreshIntervalConfig = parseInt(el.value);
+    
+    const curDash = masterDashboards.find(d => d.id === currentDashId);
+    if (curDash) {
+        curDash.refresh_sec = globalRefreshIntervalConfig;
+        saveOrderToServer();
+    }
+
+    if (globalRefreshIntervalConfig > 0) {
+        globalCountdownValue = globalRefreshIntervalConfig;
+        updateGlobalCountdownUI();
+        globalAutoRefreshTimer = setInterval(() => {
+            globalCountdownValue--;
+            if (globalCountdownValue <= 0) {
+                forceRefreshAll();
+            } else {
+                updateGlobalCountdownUI();
+            }
+        }, 1000);
+    } else {
+        updateGlobalCountdownUI();
+    }
+}
+
+function updateGlobalCountdownUI() {
+    const el = document.getElementById('countdown_text');
+    if (!el) return;
+    if (globalRefreshIntervalConfig <= 0) {
+        el.innerText = 'Auto Refresh: Off';
+        el.style.color = '#7f8c8d';
+    } else {
+        el.innerText = `Auto Refresh: ${globalCountdownValue}s`;
+        el.style.color = '#e67e22';
+    }
+}
+
+function forceRefreshAll() {
+    if (!dashboardCards || !dashboardCards.length) return;
+    dashboardCards.forEach(c => {
+        cardLoadedMap[c.id] = true;
+        fetchCardData(c);
+        cardTimers[c.id] = parseInt(c.refresh_sec || 60);
+    });
+    if (globalRefreshIntervalConfig > 0) {
+        globalCountdownValue = globalRefreshIntervalConfig;
+        updateGlobalCountdownUI();
+    }
+    const now = new Date();
+    const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
+                    now.getMinutes().toString().padStart(2, '0') + ':' + 
+                    now.getSeconds().toString().padStart(2, '0');
+    const updateEl = document.getElementById('last_update_text');
+    if (updateEl) updateEl.innerText = `Last Update: ${timeStr}`;
+}
+
 function runTimerLogic() {
     if(!currentDashId) return;
+    if(globalRefreshIntervalConfig === 0) return;
     if(document.getElementById('chartModal') && document.getElementById('chartModal').style.display === 'flex') return;
     if(document.getElementById('historyModal') && document.getElementById('historyModal').style.display === 'flex') return;
     if(document.getElementById('detailModal') && document.getElementById('detailModal').style.display === 'flex') return;
 
     dashboardCards.forEach(c => {
         if (!cardLoadedMap[c.id] && !IS_STANDALONE) return;
-        if (cardTimers[c.id] === undefined) cardTimers[c.id] = parseInt(c.refresh_sec);
+        if (cardTimers[c.id] === undefined) cardTimers[c.id] = parseInt(c.refresh_sec || 60);
         cardTimers[c.id]--;
         let m = document.getElementById(`meta_timer_${c.id}`); if(m) m.innerText = `(Refresh in ${cardTimers[c.id]}s)`;
-        if(cardTimers[c.id] <= 0) { fetchCardData(c); cardTimers[c.id] = parseInt(c.refresh_sec); }
+        if(cardTimers[c.id] <= 0) { fetchCardData(c); cardTimers[c.id] = parseInt(c.refresh_sec || 60); }
     });
 }
 
@@ -2948,6 +3174,10 @@ function fetchCardData(card) {
             return;
         }
         document.getElementById(`meta_up_${card.id}`).innerText = `Last update: ${res.updated}`;
+        const globalUpEl = document.getElementById('last_update_text');
+        if (globalUpEl && (globalUpEl.innerText === 'Last Update: -' || !globalUpEl.innerText)) {
+            globalUpEl.innerText = `Last Update: ${res.updated || '-'}`;
+        }
         
         cardDataStore[card.id] = res.table;
         if (!cardPages[card.id]) cardPages[card.id] = 1;
@@ -5449,6 +5679,10 @@ function saveOrderToServer() {
     masterDashboards = masterDashboards.map(d => {
         if (d.id === currentDashId) {
             d.panels = dashboardCards;
+            const topTime = document.getElementById('top_time');
+            if (topTime) d.time_range = topTime.value;
+            const topRef = document.getElementById('top_refresh');
+            if (topRef) d.refresh_sec = parseInt(topRef.value);
         }
         return d;
     });

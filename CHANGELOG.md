@@ -2,6 +2,15 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.8] - 2026-10-14 (Metrics Dashboard - Global Time Range & Auto Refresh HUD Toolbar Sync)
+### Added & Enhanced
+- **Sinkronisasi Global Time Range & Auto Refresh HUD pada Metrics Dashboard (Setara dengan Dynamic Dashboard):**
+  - Menghadirkan toolbar **Global Time Range** dropdown pada header Metrics Dashboard (`Last 1h`, `Last 6h`, `Last 24h`, `Last 7d`, `Last 30d`, dan `Custom...` dengan rentang tanggal dan jam) yang memungkinkan pengguna mengubah rentang waktu untuk seluruh widget di dashboard secara serentak hanya dengan satu kali klik.
+  - Menghadirkan **Global Refresh HUD** di toolbar atas Metrics Dashboard yang menampilkan status *Last Update: HH:MM:SS*, countdown interaktif *Auto Refresh: 1m*, tombol sinkronisasi instan *Force Refresh (`sync`)*, serta dropdown pilihan interval auto-refresh (*Off, 10s, 30s, 1m, 2m, 5m*).
+  - Menyinkronkan status timer global dengan mekanisme per-widget: saat interval diatur ke *Off*, auto-refresh widget dihentikan, dan saat tombol refresh atau hitung mundur tercapai, seluruh widget melakukan fetch data secara serentak.
+  - Nilai preferensi rentang waktu dan interval auto-refresh dashboard tersimpan secara otomatis dan persisten ke konfigurasi dashboard saat diubah.
+  - Tetap mempertahankan kontrol per-widget (tombol ikon jam pada header masing-masing widget) untuk pengguna yang ingin mengesampingkan rentang waktu widget tertentu.
+
 ## [2.11.7] - 2026-10-14 (Dashboard - Responsive Embed & Standalone Sizing for Status Timeline Uptime Blocks)
 ### Fixed
 - **Responsivitas Penuh Tampilan Embed & Standalone Visual Style Status Timeline (Uptime Blocks):**
