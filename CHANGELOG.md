@@ -2,6 +2,14 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.6] - 2026-10-14 (Metrics Dashboard - Show/Hide Status Cards Option for Pie & Donut Charts)
+### Added
+- **Opsi Show/Hide Status Cards pada Widget Pie & Donut Chart:**
+  - Menghadirkan opsi visibilitas kartu status ("Show Status Cards (UP, Critical, etc.)") pada modal Edit/Build Widget ketika Style View yang dipilih adalah **Pie Chart** atau **Donut Chart**.
+  - Ketika opsi diset ke **Hide**, baris kartu indikator status (`TOTAL`, `UP`, `WARNING`, `CRITICAL`, `UNKNOWN`, `NOT INIT`) disembunyikan secara menyeluruh dari card widget, sehingga tampilan card hanya menampilkan grafik pie / donut secara bersih dan elegan.
+  - Ketika opsi diset ke **Show**, baris kartu status ditampilkan dan pengguna tetap dapat memfilter kartu status mana saja yang ingin dimunculkan via daftar checklist "Visible Stat Cards".
+  - Penyesuaian layout kanvas grafik otomatis (tinggi proporsional dan `resize()` trigger ECharts) agar grafik mengisi ruang card dengan seimbang saat kartu status ditiadakan.
+
 ## [2.11.5] - 2026-10-13 (Explorer & Tools - Material Symbols Icon Font & Asset Resolution Fix)
 ### Fixed
 - **Perbaikan Pemuatan Icon Material Symbols & Aset Vendor di Netflow Explorer & Tools:**

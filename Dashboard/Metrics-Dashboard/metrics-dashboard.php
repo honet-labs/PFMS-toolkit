@@ -2757,7 +2757,7 @@ function renderGrid() {
             div.style.minHeight = c.height + 'px';
         }
 
-        const showStatsStyle = (c.view_type !== 'cards' && (c.show_stats === 0 || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer', 'sparkline_table', 'status_timeline'].includes(c.view_type))) ? 'display: none !important;' : '';
+        const showStatsStyle = (c.view_type !== 'cards' && (c.show_stats === 0 || String(c.show_stats) === '0' || c.show_stats === false || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer', 'sparkline_table', 'status_timeline'].includes(c.view_type))) ? 'display: none !important;' : '';
         const visStats = Array.isArray(c.visible_stats) && c.visible_stats.length > 0 
             ? c.visible_stats 
             : ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'];
@@ -4541,7 +4541,7 @@ function toggleViewTypeOptions() {
     if (vt === 'cards') {
         if (wrapShowStats) wrapShowStats.style.display = 'none';
         if (wrapVisibleStats) wrapVisibleStats.style.display = 'block';
-    } else if (vt === 'table' || vt === 'heatmap') {
+    } else if (vt === 'table' || vt === 'heatmap' || vt === 'pie' || vt === 'donut') {
         if (wrapShowStats) wrapShowStats.style.display = 'block';
         if (wrapVisibleStats) wrapVisibleStats.style.display = (document.getElementById('b_show_stats').value == '1') ? 'block' : 'none';
     } else {
@@ -5359,8 +5359,15 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         Chart.defaults.font.family = dashboardFontFamily;
         Chart.defaults.color = "#4a5568";
     }
-    container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; display: flex; flex-direction: column;">
-        <div id="chart_canvas_${cardId}" style="width: 100%; height: 260px; min-height: 220px;"></div>
+
+    const isPieOrDonut = (viewType === 'pie' || viewType === 'donut');
+    const isStandaloneOrHeight = (card.height || IS_STANDALONE);
+    const showStatsHidden = (card.show_stats === 0 || String(card.show_stats) === '0' || card.show_stats === false);
+    const containerHeightStyle = isStandaloneOrHeight ? 'height: 100%; flex: 1 1 0%; min-height: 0;' : '';
+    const chartHeightStyle = isStandaloneOrHeight ? 'height: 100%; min-height: 220px; flex: 1 1 0%;' : ((isPieOrDonut && showStatsHidden) ? 'height: 320px; min-height: 260px;' : 'height: 260px; min-height: 220px;');
+
+    container.innerHTML = `<div class="chart-container" style="position: relative; width: 100%; display: flex; flex-direction: column; ${containerHeightStyle}">
+        <div id="chart_canvas_${cardId}" style="width: 100%; ${chartHeightStyle}"></div>
         <div id="chart_legend_${cardId}" class="chart-html-legend" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-height: 80px; overflow-y: auto; padding: 6px 2px 2px 2px; margin-top: 4px; border-top: 1px solid #f1f5f9; flex-shrink: 0;"></div>
     </div>`;
 
@@ -5448,6 +5455,11 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 labelLine: { show: true, length: 15, length2: 10 }
             }]
         });
+        setTimeout(() => {
+            if (activeCharts[cardId] && typeof activeCharts[cardId].resize === 'function') {
+                activeCharts[cardId].resize();
+            }
+        }, 50);
     } else {
         if (!window.__metricChartColorMap) window.__metricChartColorMap = {};
 
