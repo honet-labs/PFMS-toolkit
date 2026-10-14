@@ -1331,15 +1331,15 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         <div class="form-group">
             <label>Style View</label>
             <select id="b_view_type" class="form-control-fix" onchange="toggleViewTypeOptions()">
-                <option value="table">Table View (Detailed)</option>
+                <option value="table">Table View (Current Status)</option>
                 <option value="history_table">History Table View</option>
                 <option value="sparkline_table">Sparkline Table (Trend Over Time)</option>
                 <option value="status_timeline">Status Timeline (Uptime Blocks)</option>
                 <option value="single_value">Single Value Card (Sparkline)</option>
-                <option value="heatmap">Heatmap View (Grid Summary)</option>
-                <option value="cards">Cards Status View (Stats Only)</option>
-                <option value="pie">Pie Chart (Metrics Value)</option>
-                <option value="donut">Donut Chart (Metrics Value)</option>
+                <option value="heatmap">Heatmap View (Current Status)</option>
+                <option value="cards">Stats Cards (Current Status)</option>
+                <option value="pie">Pie Chart (Current Status)</option>
+                <option value="donut">Donut Chart (Current Status)</option>
                 <option value="line">Line Chart (Value Comparison)</option>
                 <option value="area">Area Chart (Value Comparison)</option>
                 <option value="bar">Bar Chart (Value Comparison)</option>
@@ -2757,8 +2757,13 @@ function renderGrid() {
             div.style.minHeight = c.height + 'px';
         }
 
-        const showStatsStyle = (c.view_type !== 'cards' && (c.show_stats === 0 || String(c.show_stats) === '0' || c.show_stats === false || ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer', 'sparkline_table', 'status_timeline'].includes(c.view_type))) ? 'display: none !important;' : '';
-        const visStats = Array.isArray(c.visible_stats) && c.visible_stats.length > 0 
+        const isPieOrDonut = (c.view_type === 'pie' || c.view_type === 'donut');
+        const hideStats = (c.show_stats === 0 || String(c.show_stats) === '0' || c.show_stats === false ||
+            (isPieOrDonut && c.show_stats !== 1 && String(c.show_stats) !== '1' && c.show_stats !== true) ||
+            (Array.isArray(c.visible_stats) && c.visible_stats.length === 0) ||
+            ['line', 'area', 'bar', 'history_table', 'single_value', 'table_viewer', 'sparkline_table', 'status_timeline'].includes(c.view_type));
+        const showStatsStyle = (c.view_type !== 'cards' && hideStats) ? 'display: none !important;' : '';
+        const visStats = Array.isArray(c.visible_stats)
             ? c.visible_stats 
             : ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'];
 
@@ -4537,6 +4542,12 @@ function toggleViewTypeOptions() {
         wrapColumns.style.display = (vt === 'table') ? 'block' : 'none';
     }
 
+    if (editingCardId === null) {
+        if (vt === 'pie' || vt === 'donut') {
+            document.getElementById('b_show_stats').value = '0';
+        }
+    }
+
     const wrapVisibleStats = document.getElementById('wrap_visible_stats');
     if (vt === 'cards') {
         if (wrapShowStats) wrapShowStats.style.display = 'none';
@@ -4667,11 +4678,16 @@ async function openEdit(id) {
 
     document.getElementById('b_chart_limit').value = c.chart_limit || '0';
     document.getElementById('b_show_legend_count').value = (c.show_legend_count !== undefined) ? String(c.show_legend_count) : '1';
-    document.getElementById('b_show_stats').value = (c.show_stats !== undefined) ? String(c.show_stats) : '1';
+    const isPieOrDonut = (c.view_type === 'pie' || c.view_type === 'donut');
+    if (c.show_stats !== undefined && c.show_stats !== null) {
+        document.getElementById('b_show_stats').value = String(c.show_stats);
+    } else {
+        document.getElementById('b_show_stats').value = isPieOrDonut ? '0' : '1';
+    }
     
-    const vis = Array.isArray(c.visible_stats) && c.visible_stats.length > 0
+    const vis = Array.isArray(c.visible_stats)
         ? c.visible_stats
-        : ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'];
+        : (isPieOrDonut && (c.show_stats === undefined || c.show_stats === 0 || String(c.show_stats) === '0') ? [] : ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init']);
     ['total', 'normal', 'warning', 'critical', 'unknown', 'not_init'].forEach(s => {
         const el = document.getElementById('b_stat_' + s);
         if (el) el.checked = vis.includes(s);
@@ -4751,8 +4767,11 @@ function saveWidget() {
         const el = document.getElementById('b_stat_' + s);
         if (el && el.checked) visStats.push(s);
     });
+
+    let showStatsVal = parseInt(document.getElementById('b_show_stats').value);
+    if (isNaN(showStatsVal)) showStatsVal = 0;
     if (visStats.length === 0) {
-        visStats.push('total', 'normal', 'warning', 'critical', 'unknown', 'not_init');
+        showStatsVal = 0;
     }
 
     const autoConvertTraffic = document.getElementById('b_auto_convert_traffic') ? document.getElementById('b_auto_convert_traffic').checked : true;
@@ -4779,7 +4798,7 @@ function saveWidget() {
         use_raw: document.getElementById('b_use_raw').checked,
         chart_limit: document.getElementById('b_chart_limit').value,
         show_legend_count: parseInt(document.getElementById('b_show_legend_count').value),
-        show_stats: parseInt(document.getElementById('b_show_stats').value),
+        show_stats: showStatsVal,
         visible_stats: visStats,
         show_module_name: document.getElementById('b_show_module_name') ? parseInt(document.getElementById('b_show_module_name').value) : 1,
         value_calc: document.getElementById('b_value_calc') ? document.getElementById('b_value_calc').value : 'current',
@@ -5362,7 +5381,7 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
 
     const isPieOrDonut = (viewType === 'pie' || viewType === 'donut');
     const isStandaloneOrHeight = (card.height || IS_STANDALONE);
-    const showStatsHidden = (card.show_stats === 0 || String(card.show_stats) === '0' || card.show_stats === false);
+    const showStatsHidden = (card.show_stats === 0 || String(card.show_stats) === '0' || card.show_stats === false || (isPieOrDonut && card.show_stats !== 1 && String(card.show_stats) !== '1' && card.show_stats !== true) || (Array.isArray(card.visible_stats) && card.visible_stats.length === 0));
     const containerHeightStyle = isStandaloneOrHeight ? 'height: 100%; flex: 1 1 0%; min-height: 0;' : '';
     const chartHeightStyle = isStandaloneOrHeight ? 'height: 100%; min-height: 220px; flex: 1 1 0%;' : ((isPieOrDonut && showStatsHidden) ? 'height: 320px; min-height: 260px;' : 'height: 260px; min-height: 220px;');
 

@@ -2,13 +2,14 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
-## [2.11.6] - 2026-10-14 (Metrics Dashboard - Show/Hide Status Cards Option for Pie & Donut Charts)
-### Added
-- **Opsi Show/Hide Status Cards pada Widget Pie & Donut Chart:**
-  - Menghadirkan opsi visibilitas kartu status ("Show Status Cards (UP, Critical, etc.)") pada modal Edit/Build Widget ketika Style View yang dipilih adalah **Pie Chart** atau **Donut Chart**.
-  - Ketika opsi diset ke **Hide**, baris kartu indikator status (`TOTAL`, `UP`, `WARNING`, `CRITICAL`, `UNKNOWN`, `NOT INIT`) disembunyikan secara menyeluruh dari card widget, sehingga tampilan card hanya menampilkan grafik pie / donut secara bersih dan elegan.
-  - Ketika opsi diset ke **Show**, baris kartu status ditampilkan dan pengguna tetap dapat memfilter kartu status mana saja yang ingin dimunculkan via daftar checklist "Visible Stat Cards".
-  - Penyesuaian layout kanvas grafik otomatis (tinggi proporsional dan `resize()` trigger ECharts) agar grafik mengisi ruang card dengan seimbang saat kartu status ditiadakan.
+## [2.11.6] - 2026-10-14 (Metrics Dashboard - Show/Hide Status Cards & Dynamic Dashboard Sync)
+### Added & Fixed
+- **Sinkronisasi Visual Type & Opsi Show/Hide Status Cards pada Pie & Donut Chart:**
+  - Menyelaraskan visual type pada Metrics Dashboard dengan Dynamic Dashboard, di mana style view **Pie Chart (Current Status)** dan **Donut Chart (Current Status)** secara *default* hanya menampilkan grafik diagram lingkaran tanpa baris kartu status di atasnya.
+  - Menghadirkan opsi pemilihan visibilitas kartu status ("Show Status Cards (UP, Critical, etc.)") pada modal Edit/Build Widget ketika Style View yang dipilih adalah Pie Chart atau Donut Chart.
+  - Memperbaiki bug persistensi unchecklist kartu status: sebelumnya, ketika seluruh kotak centang kartu status di-uncheck, sistem secara keliru menganggap konfigurasi kosong dan mereset kembali ke semua kartu status tercentang saat di-refresh. Kini unchecklist seluruh atau sebagian kartu status tersimpan secara persisten.
+  - Jika seluruh kartu status di-uncheck atau opsi diset ke **Hide**, baris kartu indikator status disembunyikan sepenuhnya dan kanvas grafik pie/donut secara otomatis mengisi ruang card secara proporsional.
+  - Menyelaraskan penamaan opsi Style View (`Table View (Current Status)`, `Heatmap View (Current Status)`, `Stats Cards (Current Status)`, `Pie Chart (Current Status)`, `Donut Chart (Current Status)`) agar sinkron dan konsisten dengan Dynamic Dashboard.
 
 ## [2.11.5] - 2026-10-13 (Explorer & Tools - Material Symbols Icon Font & Asset Resolution Fix)
 ### Fixed
