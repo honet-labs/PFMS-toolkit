@@ -2,6 +2,17 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.15] - 2026-10-14 (Dashboard - Optimal Pie/Donut Label Clearance & Pointer Separation)
+### Fixed & Enhanced
+- **Pencegahan Label Menabrak / Terlalu Dekat dengan Lingkaran Diagram (*Label-to-Chart Clearance*):**
+  - Mengatasi masalah di mana label status (khususnya teks `UP` dan `1 (100%)` pada lingkaran *single-status*, serta slice trafik pada *multi-status*) menempel, menyentuh, atau bertabrakan langsung dengan garis tepi lingkaran diagram (*pie/donut circumference*).
+  - Akar penyebab: Panjang segmen pertama garis penunjuk radial (`labelLine.length`) sebelumnya terlalu pendek (`6px`–`8px`), sementara teks label bertumpuk 2 baris (`UP\n1 (100%)`) dengan tinggi teks ~26px–28px yang terpusat secara vertikal di ujung siku horizontal. Akibatnya, baris atas teks terdorong ke atas dan menabrak lingkaran luar diagram.
+  - Meningkatkan panjang radial `labelLine.length` menjadi **`14px`–`18px`** (dan `length2` menjadi **`10px`–`14px`**, `distanceToLabelLine: 4px–5px`) sehingga label selalu memiliki jarak aman (*breathing room*) minimal 10px–15px dari batas diagram.
+- **Penyesuaian Pusat (*Center Y*) dan Radius Proporsional:**
+  - Untuk *single-status* (100% UP), posisi pusat lingkaran disesuaikan ke `center: ['50%', '40%']` dengan radius adaptif `56%`–`68%`. Hal ini memberikan ruang vertikal yang lega di bagian bawah kartu untuk garis penunjuk dan dua baris label status tanpa menyentuh batas bawah kartu.
+  - Untuk *multi-status*, posisi pusat disesuaikan ke `['50%', '47%']` dengan radius `46%`–`60%`, memastikan label kiri dan kanan memiliki ruang horizontal yang cukup tanpa terpotong (*truncated*) oleh batas samping tile.
+  - Diterapkan secara seragam di **Metrics Dashboard** ([metrics-dashboard.php](file:///c:/Users/yusha/Documents/HOME_DATA/HONET/github-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php)) dan **Dynamic Dashboard** ([dynamic-dashboard-template.php](file:///c:/Users/yusha/Documents/HOME_DATA/HONET/github-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php)).
+
 ## [2.11.14] - 2026-10-14 (SNMP Explorer - Standardize Octet Units to bytes/s & Enforce 64-bit HC Counter Priority)
 ### Fixed & Enhanced
 - **Standardisasi Satuan Counter Octet Trafik Menjadi `bytes/s`:**

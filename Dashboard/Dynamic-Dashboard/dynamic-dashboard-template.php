@@ -4603,26 +4603,26 @@ function refreshCurrentNodeData() {
                                 radius = p.type === 'pie' ? `${numSize}%` : [`${Math.round(numSize * 0.54)}%`, `${numSize}%`];
                             } else {
                                 if (hasOnlyOne) {
-                                    // Single status (e.g. 100% UP) has only 1 bottom label: maximize circle to eliminate wide empty margins!
-                                    if (minDim < 170) {
-                                        radius = p.type === 'pie' ? '68%' : ['36%', '68%'];
-                                    } else if (minDim < 240) {
-                                        radius = p.type === 'pie' ? '72%' : ['38%', '72%'];
-                                    } else if (minDim < 320) {
-                                        radius = p.type === 'pie' ? '75%' : ['40%', '75%'];
-                                    } else {
-                                        radius = p.type === 'pie' ? '78%' : ['42%', '78%'];
-                                    }
-                                } else {
-                                    // Multi-status slices: well-balanced size filling box without wasting margins
+                                    // Single status (100% UP): comfortably large circle with dedicated vertical clearance for bottom label
                                     if (minDim < 170) {
                                         radius = p.type === 'pie' ? '56%' : ['28%', '56%'];
                                     } else if (minDim < 240) {
-                                        radius = p.type === 'pie' ? '62%' : ['32%', '62%'];
+                                        radius = p.type === 'pie' ? '60%' : ['30%', '60%'];
                                     } else if (minDim < 320) {
-                                        radius = p.type === 'pie' ? '66%' : ['34%', '66%'];
+                                        radius = p.type === 'pie' ? '64%' : ['32%', '64%'];
                                     } else {
-                                        radius = p.type === 'pie' ? '70%' : ['36%', '70%'];
+                                        radius = p.type === 'pie' ? '68%' : ['34%', '68%'];
+                                    }
+                                } else {
+                                    // Multi-status slices: well-balanced size ensuring labelLine has generous clearance without crowding circle or boundaries
+                                    if (minDim < 170) {
+                                        radius = p.type === 'pie' ? '46%' : ['24%', '46%'];
+                                    } else if (minDim < 240) {
+                                        radius = p.type === 'pie' ? '50%' : ['26%', '50%'];
+                                    } else if (minDim < 320) {
+                                        radius = p.type === 'pie' ? '55%' : ['28%', '55%'];
+                                    } else {
+                                        radius = p.type === 'pie' ? '60%' : ['30%', '60%'];
                                     }
                                 }
                             }
@@ -4637,20 +4637,40 @@ function refreshCurrentNodeData() {
                                 else fs = 11;
                             }
 
-                            let line1 = 12;
-                            let line2 = 10;
-                            let lineDist = 4;
-                            if (minDim < 200) {
-                                line1 = 6;
-                                line2 = 6;
-                                lineDist = 2;
-                            } else if (minDim < 260) {
-                                line1 = 8;
-                                line2 = 8;
-                                lineDist = 2;
+                            // Pointer line length and label distance:
+                            // Ensures healthy clearance so labels never touch or crowd the pie chart circumference
+                            let line1 = 14;
+                            let line2 = 12;
+                            let lineDist = 5;
+
+                            if (hasOnlyOne) {
+                                if (minDim < 180) {
+                                    line1 = 12;
+                                    line2 = 10;
+                                    lineDist = 4;
+                                } else if (minDim < 260) {
+                                    line1 = 16;
+                                    line2 = 12;
+                                    lineDist = 4;
+                                } else {
+                                    line1 = Math.max(18, fs + 6);
+                                    line2 = Math.max(14, fs + 3);
+                                    lineDist = 5;
+                                }
                             } else {
-                                line1 = Math.max(12, fs + 2);
-                                line2 = Math.max(10, fs);
+                                if (minDim < 180) {
+                                    line1 = 10;
+                                    line2 = 8;
+                                    lineDist = 3;
+                                } else if (minDim < 260) {
+                                    line1 = 14;
+                                    line2 = 10;
+                                    lineDist = 4;
+                                } else {
+                                    line1 = Math.max(16, fs + 4);
+                                    line2 = Math.max(12, fs + 2);
+                                    lineDist = 5;
+                                }
                             }
 
                             const pieData = finalStatuses.map(s => ({
@@ -4665,7 +4685,7 @@ function refreshCurrentNodeData() {
                                     name: 'Status',
                                     type: 'pie',
                                     radius: radius,
-                                    center: hasOnlyOne ? ['50%', '46%'] : ['50%', '48%'],
+                                    center: hasOnlyOne ? ['50%', '40%'] : ['50%', '47%'],
                                     avoidLabelOverlap: true,
                                     data: pieData,
                                     label: {
