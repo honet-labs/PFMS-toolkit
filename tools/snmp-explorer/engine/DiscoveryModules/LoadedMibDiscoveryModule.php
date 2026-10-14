@@ -542,6 +542,7 @@ final class LoadedMibDiscoveryModule implements DiscoveryModuleInterface
             str_contains($text, 'percent') || str_contains($text, '%') || $class === 'percentage' => '%',
             str_contains($text, 'kbit') || str_contains($text, 'kbps') => 'Kbps',
             str_contains($text, 'mbit') || str_contains($text, 'mbps') => 'Mbps',
+            str_contains($text, 'bytes/s') || str_contains($text, 'byte/s') || str_contains($text, 'octet/s') || str_contains($text, 'octets/s') => 'bytes/s',
             str_contains($text, 'octet') || str_contains($text, 'byte') => 'bytes',
             default => '',
         };

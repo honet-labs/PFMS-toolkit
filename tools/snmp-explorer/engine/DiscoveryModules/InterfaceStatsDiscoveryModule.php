@@ -110,7 +110,7 @@ final readonly class InterfaceStatsDiscoveryModule implements DiscoveryModuleInt
                 $interfaceName,
                 'ifHCInOctets',
                 'interface_in_octets',
-                'bytes',
+                'bytes/s',
                 [
                     [self::IF_HC_IN_OCTETS, $tables['ifHCInOctets'], 'IF-MIB::ifHCInOctets'],
                     [self::IF_IN_OCTETS, $tables['ifInOctets'], 'IF-MIB::ifInOctets'],
@@ -124,7 +124,7 @@ final readonly class InterfaceStatsDiscoveryModule implements DiscoveryModuleInt
                 $interfaceName,
                 'ifHCOutOctets',
                 'interface_out_octets',
-                'bytes',
+                'bytes/s',
                 [
                     [self::IF_HC_OUT_OCTETS, $tables['ifHCOutOctets'], 'IF-MIB::ifHCOutOctets'],
                     [self::IF_OUT_OCTETS, $tables['ifOutOctets'], 'IF-MIB::ifOutOctets'],

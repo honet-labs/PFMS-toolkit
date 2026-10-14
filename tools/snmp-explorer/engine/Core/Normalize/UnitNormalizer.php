@@ -25,6 +25,7 @@ final class UnitNormalizer
             str_contains($candidate, 'watt'), $candidate === 'w' => 'W',
             str_contains($candidate, 'percent'), str_contains($candidate, '%') => '%',
             str_contains($candidate, 'rpm') => 'rpm',
+            str_contains($candidate, 'bytes/s') || str_contains($candidate, 'byte/s') || str_contains($candidate, 'b/s') => 'bytes/s',
             str_contains($candidate, 'byte') => 'bytes',
             str_contains($candidate, 'packet') => 'packets',
             str_contains($candidate, 'meter') => 'm',

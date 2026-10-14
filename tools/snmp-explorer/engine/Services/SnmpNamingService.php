@@ -198,6 +198,7 @@ final readonly class SnmpNamingService
             str_contains($candidate, 'watt') || $candidate === 'w' => 'W',
             str_contains($candidate, 'percent') || $candidate === '%' => '%',
             str_contains($candidate, 'rpm') => 'rpm',
+            str_contains($candidate, 'bytes/s') || str_contains($candidate, 'byte/s') || str_contains($candidate, 'b/s') => 'bytes/s',
             str_contains($candidate, 'byte') => 'bytes',
             default => trim($unit),
         };

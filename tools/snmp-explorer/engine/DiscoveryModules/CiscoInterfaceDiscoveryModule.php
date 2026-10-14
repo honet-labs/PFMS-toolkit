@@ -37,6 +37,8 @@ final readonly class CiscoInterfaceDiscoveryModule implements DiscoveryModuleInt
     private const string IF_OPER_STATUS = '1.3.6.1.2.1.2.2.1.8';
     private const string IF_IN_OCTETS = '1.3.6.1.2.1.2.2.1.10';
     private const string IF_OUT_OCTETS = '1.3.6.1.2.1.2.2.1.16';
+    private const string IF_HC_IN_OCTETS = '1.3.6.1.2.1.31.1.1.1.6';
+    private const string IF_HC_OUT_OCTETS = '1.3.6.1.2.1.31.1.1.1.10';
     private const string IF_IN_ERRORS = '1.3.6.1.2.1.2.2.1.14';
     private const string IF_OUT_ERRORS = '1.3.6.1.2.1.2.2.1.20';
     private const string CISCO_CRC_ERRORS = '1.3.6.1.4.1.9.2.1.58.1.1.5';
@@ -101,27 +103,37 @@ final readonly class CiscoInterfaceDiscoveryModule implements DiscoveryModuleInt
                     ];
                 }
 
-                // Input bytes
-                $ifInOctets = $context->snmp()->get(self::IF_IN_OCTETS . '.' . $ifIndex);
+                // Input bytes (prefer 64-bit HC counter)
+                $inOctetsOid = self::IF_HC_IN_OCTETS . '.' . $ifIndex;
+                $ifInOctets = $context->snmp()->get($inOctetsOid);
+                if (in_array($ifInOctets, [null, '', '0'], true)) {
+                    $inOctetsOid = self::IF_IN_OCTETS . '.' . $ifIndex;
+                    $ifInOctets = $context->snmp()->get($inOctetsOid);
+                }
                 if ($ifInOctets) {
                     $sensors[] = [
                         'type' => 'cisco_interface_input_bytes',
                         'name' => "{$name} - Input Octets",
-                        'oid' => self::IF_IN_OCTETS . '.' . $ifIndex,
-                        'unit' => 'bytes',
+                        'oid' => $inOctetsOid,
+                        'unit' => 'bytes/s',
                         'value' => $ifInOctets,
                         'description' => "Input bytes on {$name}",
                     ];
                 }
 
-                // Output bytes
-                $ifOutOctets = $context->snmp()->get(self::IF_OUT_OCTETS . '.' . $ifIndex);
+                // Output bytes (prefer 64-bit HC counter)
+                $outOctetsOid = self::IF_HC_OUT_OCTETS . '.' . $ifIndex;
+                $ifOutOctets = $context->snmp()->get($outOctetsOid);
+                if (in_array($ifOutOctets, [null, '', '0'], true)) {
+                    $outOctetsOid = self::IF_OUT_OCTETS . '.' . $ifIndex;
+                    $ifOutOctets = $context->snmp()->get($outOctetsOid);
+                }
                 if ($ifOutOctets) {
                     $sensors[] = [
                         'type' => 'cisco_interface_output_bytes',
                         'name' => "{$name} - Output Octets",
-                        'oid' => self::IF_OUT_OCTETS . '.' . $ifIndex,
-                        'unit' => 'bytes',
+                        'oid' => $outOctetsOid,
+                        'unit' => 'bytes/s',
                         'value' => $ifOutOctets,
                         'description' => "Output bytes on {$name}",
                     ];

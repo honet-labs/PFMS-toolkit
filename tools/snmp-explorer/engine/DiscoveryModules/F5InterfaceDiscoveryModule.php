@@ -162,9 +162,11 @@ final readonly class F5InterfaceDiscoveryModule implements DiscoveryModuleInterf
                     }
 
                     // Input Octets (64-bit preferred)
-                    $ifInOctets = $context->snmp()->get(self::IF_HIGH_IN_OCTETS . '.' . $ifIndex);
+                    $inOctetsOid = self::IF_HIGH_IN_OCTETS . '.' . $ifIndex;
+                    $ifInOctets = $context->snmp()->get($inOctetsOid);
                     if (in_array($ifInOctets, [null, '', '0'], true)) {
-                        $ifInOctets = $context->snmp()->get(self::IF_IN_OCTETS . '.' . $ifIndex);
+                        $inOctetsOid = self::IF_IN_OCTETS . '.' . $ifIndex;
+                        $ifInOctets = $context->snmp()->get($inOctetsOid);
                     }
 
                     if ($ifInOctets) {
@@ -172,8 +174,8 @@ final readonly class F5InterfaceDiscoveryModule implements DiscoveryModuleInterf
                             'sensor_type' => 'f5_interface_in_octets',
                             'sensor_class' => 'interface_traffic',
                             'sensor_name' => "{$ifLabel} - Input Octets",
-                            'oid' => self::IF_IN_OCTETS . ".{$ifIndex}",
-                            'unit' => 'bytes',
+                            'oid' => $inOctetsOid,
+                            'unit' => 'bytes/s',
                             'raw_value' => $ifInOctets,
                             'description' => "Incoming traffic on F5 Interface {$ifLabel}",
                         ];
@@ -184,9 +186,11 @@ final readonly class F5InterfaceDiscoveryModule implements DiscoveryModuleInterf
                     }
 
                     // Output Octets (64-bit preferred)
-                    $ifOutOctets = $context->snmp()->get(self::IF_HIGH_OUT_OCTETS . '.' . $ifIndex);
+                    $outOctetsOid = self::IF_HIGH_OUT_OCTETS . '.' . $ifIndex;
+                    $ifOutOctets = $context->snmp()->get($outOctetsOid);
                     if (in_array($ifOutOctets, [null, '', '0'], true)) {
-                        $ifOutOctets = $context->snmp()->get(self::IF_OUT_OCTETS . '.' . $ifIndex);
+                        $outOctetsOid = self::IF_OUT_OCTETS . '.' . $ifIndex;
+                        $ifOutOctets = $context->snmp()->get($outOctetsOid);
                     }
 
                     if ($ifOutOctets) {
@@ -194,8 +198,8 @@ final readonly class F5InterfaceDiscoveryModule implements DiscoveryModuleInterf
                             'sensor_type' => 'f5_interface_out_octets',
                             'sensor_class' => 'interface_traffic',
                             'sensor_name' => "{$ifLabel} - Output Octets",
-                            'oid' => self::IF_OUT_OCTETS . ".{$ifIndex}",
-                            'unit' => 'bytes',
+                            'oid' => $outOctetsOid,
+                            'unit' => 'bytes/s',
                             'raw_value' => $ifOutOctets,
                             'description' => "Outgoing traffic on F5 Interface {$ifLabel}",
                         ];
