@@ -2,6 +2,18 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.16] - 2026-10-14 (Dashboard - Fix False Critical Status on Traffic Uploads / Downloads)
+### Fixed
+- **Pembersihan Status Palsu (*False Critical Status*) pada Modul Trafik Jaringan:**
+  - Mengatasi masalah di mana seluruh baris metrik trafik antarmuka (misalnya `Mpo50_ifHCOutOctets`, `Eth1/4_ifInOctets`, `Po1_ifHCInOctets`, dll.) pada widget Sparkline Table ("Traffic Uploads" dan "Traffic Downloads") menampilkan titik status merah (**Critical**) padahal trafik berjalan normal dalam batas wajar (ratusan Mbps).
+  - **Akar Penyebab (*Root Cause*):**
+    Fungsi `evaluateModuleThresholdStatus` memiliki evaluasi heuristik persentase cadangan (`isPct`) yang memeriksa substring kata kunci (`/cpu|usage|load|mem|disk|utilization|loss|drop/`). Ketika kartu diberi judul `"Traffic Uploads"` atau `"Traffic Downloads"`, regex mencocokkan potongan kata `"load"` yang terkandung di dalam kata `"Uploads"` dan `"Downloads"`. Akibatnya, modul trafik antarmuka disalahartikan sebagai metrik persentase beban sistem (0–100%). Karena nilai laju trafik (dalam Mbps atau bytes/s) jauh melampaui ambang batas 90 (misalnya $618\text{ Mbps} \ge 90$), sistem secara keliru menandai seluruh baris sebagai **Critical** (`status: 1`).
+  - **Perbaikan yang Diterapkan:**
+    1. Menambahkan pengkondisian `!isTraffic`: metrik laju trafik jaringan (`isTrafficMetric`) tidak pernah dievaluasi menggunakan heuristik persentase beban (0–100%).
+    2. Membersihkan string konteks dengan mengecualikan kata `upload` dan `download` agar tidak lagi memicu pencocokan parsial substring `load`.
+    3. Status modul trafik kini mematuhi status asli daemon Pandora FMS (`tagente_estado.estado` di mana 0 = Normal/OK warna hijau `#10b981`), atau nilai ambang batas eksplisit jika memang dikonfigurasi di database.
+  - Diterapkan secara konsisten pada [metrics-dashboard.php](file:///c:/Users/yusha/Documents/HOME_DATA/HONET/github-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php) dan [dynamic-dashboard-template.php](file:///c:/Users/yusha/Documents/HOME_DATA/HONET/github-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php).
+
 ## [2.11.15] - 2026-10-14 (Dashboard - Optimal Pie/Donut Label Clearance & Pointer Separation)
 ### Fixed & Enhanced
 - **Pencegahan Label Menabrak / Terlalu Dekat dengan Lingkaran Diagram (*Label-to-Chart Clearance*):**

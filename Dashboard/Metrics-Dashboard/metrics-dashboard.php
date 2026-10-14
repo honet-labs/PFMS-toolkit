@@ -3736,17 +3736,23 @@ function evaluateModuleThresholdStatus(m, numericVal, moduleName = '', unit = ''
     }
 
     // 4. Smart heuristic check for percentage / usage / load metrics when DB thresholds are unconfigured
-    const combinedStr = `${moduleName || ''} ${unit || ''} ${contextTitle || ''}`.toLowerCase();
-    const isPct = (unit && unit.includes('%')) || combinedStr.includes('%') || /cpu|usage|load|mem|disk|utilization|loss|drop/.test(combinedStr);
-    const isFreeMetric = /free|avail|available/.test(combinedStr);
+    // CRITICAL: Traffic metrics (bandwidth, octets, etc.) are NOT percentages!
+    // Also prevent 'upload' / 'download' from matching the 'load' substring!
+    const isTraffic = (typeof isTrafficMetric === 'function') ? isTrafficMetric(moduleName, unit, contextTitle) : false;
+    if (!isTraffic) {
+        const unitStr = (unit || '').toLowerCase().trim();
+        const cleanContext = `${moduleName || ''} ${contextTitle || ''}`.toLowerCase().replace(/upload|download/g, '');
+        const isPct = unitStr.includes('%') || cleanContext.includes('%') || /\b(cpu|usage|utilization|loss|drop|mem|memory|disk)\b|processor load|system load/.test(cleanContext);
+        const isFreeMetric = /free|avail|available/.test(cleanContext);
 
-    if (isPct && !isNaN(numericVal)) {
-        if (isFreeMetric) {
-            if (numericVal <= 10) return { status: 1, label: 'Critical', color: '#ef4444' };
-            if (numericVal <= 25) return { status: 2, label: 'Warning', color: '#f59e0b' };
-        } else {
-            if (numericVal >= 90) return { status: 1, label: 'Critical', color: '#ef4444' };
-            if (numericVal >= 75) return { status: 2, label: 'Warning', color: '#f59e0b' };
+        if (isPct && !isNaN(numericVal)) {
+            if (isFreeMetric) {
+                if (numericVal <= 10) return { status: 1, label: 'Critical', color: '#ef4444' };
+                if (numericVal <= 25) return { status: 2, label: 'Warning', color: '#f59e0b' };
+            } else {
+                if (numericVal >= 90) return { status: 1, label: 'Critical', color: '#ef4444' };
+                if (numericVal >= 75) return { status: 2, label: 'Warning', color: '#f59e0b' };
+            }
         }
     }
 
