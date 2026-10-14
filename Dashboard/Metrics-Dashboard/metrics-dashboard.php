@@ -1027,8 +1027,8 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .grid-layout { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; grid-template-columns: 1fr !important; gap: 0 !important; columns: 1 !important; margin: 0 !important; }
         .dashboard-card { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; box-shadow: none !important; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; margin: 0 !important; margin-bottom: 0 !important; overflow: hidden !important; }
         .dashboard-card-header { padding: 8px 12px !important; flex-shrink: 0 !important; }
-        .dashboard-card-body { padding: 6px 8px 8px 8px !important; gap: 0 !important; display: flex !important; flex-direction: column !important; flex: 1 !important; height: calc(100% - 40px) !important; overflow: hidden !important; }
-        .dashboard-card-body > div[id^="content_view_"] { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; }
+        .dashboard-card-body { padding: 6px 8px 8px 8px !important; gap: 0 !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; height: calc(100% - 40px) !important; overflow: hidden !important; }
+        .dashboard-card-body > div[id^="content_view_"] { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 1 0% !important; min-height: 0 !important; }
         .chart-container { height: 100% !important; width: 100% !important; display: flex !important; flex-direction: column !important; flex: 1 !important; padding: 0 !important; margin: 0 !important; }
         .chart-container > div[id^="chart_canvas_"] { flex: 1 !important; min-height: 120px !important; width: 100% !important; height: 100% !important; }
         .chart-html-legend { flex-shrink: 0 !important; max-height: 80px !important; overflow-y: auto !important; margin-top: auto !important; }
@@ -1040,7 +1040,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .dashboard-card-header { display: none !important; }
         .main-content { padding: 0 !important; }
         .dashboard-card { border: none !important; margin: 0 !important; }
-        .dashboard-card-body { padding: 4px 6px !important; height: 100% !important; }
+        .dashboard-card-body { padding: 4px 6px !important; height: 100% !important; flex: 1 1 0% !important; min-height: 0 !important; }
         .mini-stats-row { padding: 4px 6px !important; border-bottom: none !important; }
         html, body { overflow: hidden !important; }
         .floating-header-toggle { display: none !important; }
@@ -1109,6 +1109,29 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .sparkline-table thead th:hover { color: #0284c7 !important; background-color: #f1f5f9 !important; }
         .sparkline-table tbody td { border-bottom: 1px solid #f1f5f9; padding: 10px 14px !important; vertical-align: middle !important; }
         .sparkline-table tbody tr:hover td { background-color: #f8fafc !important; }
+        .status-timeline-wrapper { container-type: inline-size; width: 100%; height: 100%; flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; }
+        .status-timeline-list { display: flex; flex-direction: column; width: 100%; flex: 1 1 0%; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+        .status-timeline-item { transition: background 0.15s ease; box-sizing: border-box; }
+        .status-timeline-item:last-child { border-bottom: none !important; }
+        .status-timeline-item:hover { background: rgba(248, 250, 252, 0.7); }
+        .timeline-labels-row { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; font-weight: 500; margin-top: 3px; padding: 0 2px; user-select: none; line-height: 1.2; }
+        .timeline-labels-row span { white-space: nowrap; }
+        @media (max-width: 620px) {
+            .timeline-tick-sub { display: none !important; }
+            .timeline-labels-row { font-size: 10px !important; }
+        }
+        @media (max-width: 380px) {
+            .timeline-tick-mid { display: none !important; }
+            .timeline-labels-row { font-size: 9px !important; }
+        }
+        @container (max-width: 620px) {
+            .timeline-tick-sub { display: none !important; }
+            .timeline-labels-row { font-size: 10px !important; }
+        }
+        @container (max-width: 380px) {
+            .timeline-tick-mid { display: none !important; }
+            .timeline-labels-row { font-size: 9px !important; }
+        }
         .status-timeline-block {
             transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
         }
@@ -2848,6 +2871,9 @@ function renderGrid() {
 
         if (c.height) {
             div.style.minHeight = c.height + 'px';
+            div.style.height = c.height + 'px';
+            div.style.display = 'flex';
+            div.style.flexDirection = 'column';
         }
 
         const isPieOrDonut = (c.view_type === 'pie' || c.view_type === 'donut');
@@ -2888,11 +2914,12 @@ function renderGrid() {
             statsHtml += `<div class="mini-stat st-border-blue" style="${statCardStyle}" onclick="showDetailModal('${c.id}', 'not_init')"><div class="mini-stat-val text-blue" style="${statValColor} ${statFs}" id="st_not_init_${c.id}">0</div><div class="mini-stat-label" style="${statLblColor} ${statLblFs}">NOT INIT</div></div>`;
         }
 
-        const bodyPaddingStyle = (c.view_type === 'status_timeline') ? 'padding: 10px 14px 12px 14px; gap: 8px;' : ((c.view_type === 'sparkline_table') ? 'padding: 12px 16px;' : '');
+        const bodyPaddingStyle = (c.view_type === 'status_timeline') ? 'padding: 6px 10px 8px 10px; gap: 4px;' : ((c.view_type === 'sparkline_table') ? 'padding: 12px 16px;' : '');
+        const cardBodyFlex = (c.height || IS_STANDALONE) ? 'height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column;' : '';
         const contentFlexStyle = (c.height || IS_STANDALONE) ? 'height:100%; width:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column;' : '';
 
         div.innerHTML = `<div class="dashboard-card-header"><div><h5 class="dashboard-card-title"><span class="material-symbols-outlined" style="color:#004d40;">analytics</span> ${c.title}</h5><div style="font-size:10px; color:#7f8c8d; font-weight: normal;"><span id="meta_up_${c.id}">Awaiting...</span> <span id="meta_timer_${c.id}"></span></div></div>${acts}</div>
-        <div class="dashboard-card-body" style="${bodyPaddingStyle}">
+        <div class="dashboard-card-body" style="${bodyPaddingStyle} ${cardBodyFlex}">
             <div class="mini-stats-row" style="${showStatsStyle} ${c.view_type === 'cards' && c.height ? 'height:100%; display:flex; flex-wrap:wrap; align-content:stretch; gap:8px; margin:0; box-sizing:border-box;' : ''}">
                 ${statsHtml}
             </div>
@@ -3758,6 +3785,16 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
     const card = dashboardCards.find(c => c.id === cardId);
     if (!card) return;
 
+    const isEmbedOrCustomH = (IS_STANDALONE || (card.height && parseInt(card.height) > 0));
+    if (isEmbedOrCustomH) {
+        container.style.height = '100%';
+        container.style.width = '100%';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.flex = '1 1 0%';
+        container.style.minHeight = '0';
+    }
+
     const historyMap = {};
     if (historyData && Array.isArray(historyData)) {
         historyData.forEach(h => {
@@ -3812,7 +3849,10 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
     let labelTicks = [];
     for (let i = 0; i < numLabels; i++) {
         const tickTs = startTs + (i / (numLabels - 1)) * rangeSec;
-        labelTicks.push(formatTimeTick(tickTs));
+        labelTicks.push({
+            text: formatTimeTick(tickTs),
+            cls: (i === 0) ? 'timeline-tick-start' : (i === numLabels - 1 ? 'timeline-tick-end' : (i === 3 ? 'timeline-tick-mid' : 'timeline-tick-sub'))
+        });
     }
 
     window.metricsTimelineSearch = window.metricsTimelineSearch || {};
@@ -3939,7 +3979,7 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
             const safeTs = escapeHtml(formatFullTime(blockTs));
 
             blocksHtml += `<div class="status-timeline-block" 
-                style="flex:1; min-width:4px; height:24px; border-radius:4px; background:${blockColor}; cursor:pointer;"
+                style="flex:1; min-width:2px; height:100%; border-radius:3px; background:${blockColor}; cursor:pointer;"
                 data-ts="${safeTs}"
                 data-agent="${safeAgent}"
                 data-mod="${safeMod}"
@@ -3954,49 +3994,56 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
         }
 
         const agentTitle = (m.agent_alias || m.agent_name || 'Agent') + (m.ip_address && m.ip_address !== m.agent_alias && m.ip_address !== m.agent_name ? ` (${m.ip_address})` : '');
+        const labelsRowHtml = `
+            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:3px; padding:0 2px; user-select:none; flex-shrink:0;">
+                ${labelTicks.map(t => `<span class="${t.cls}">${t.text}</span>`).join('')}
+            </div>`;
 
         if (tableData.length === 1) {
             return `
-            <div class="status-timeline-single" style="width:100%; display:flex; flex-direction:column; justify-content:flex-start; padding:2px 2px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
-                    <div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden;">
-                        <span style="font-weight:700; color:#0284c7; font-size:12px;">${escapeHtml(agentTitle)}</span>
-                        <span style="color:#cbd5e1;">•</span>
-                        <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="openNativeModuleDetailModal('${m.id_agente_modulo}', '${((m.agent_alias || m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
+            <div class="status-timeline-single" style="width:100%; height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column; justify-content:center; padding:2px 2px; gap:4px; box-sizing:border-box;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; gap:8px; flex-shrink:0;">
+                    <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; flex:1;">
+                        <span style="font-weight:700; color:#0284c7; font-size:12px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:1;" title="${escapeHtml(agentTitle)}">${escapeHtml(agentTitle)}</span>
+                        <span style="color:#cbd5e1; flex-shrink:0;">•</span>
+                        <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; flex:1; min-width:0;" onclick="openNativeModuleDetailModal('${m.id_agente_modulo}', '${((m.agent_alias || m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
                     </div>
                     <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                        <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28;"></span>
-                        <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(curDisplayVal)}</span>
+                        <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28; flex-shrink:0;"></span>
+                        <span style="font-weight:700; color:#0f172a; font-size:12px; white-space:nowrap;">${escapeHtml(curDisplayVal)}</span>
                     </div>
                 </div>
-                <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:26px; align-items:stretch;">
+                <div class="timeline-blocks-track" style="display:flex; gap:2px; width:100%; height:26px; ${isEmbedOrCustomH ? 'flex:1 1 auto; max-height:40px; min-height:18px;' : ''} align-items:stretch;">
                     ${blocksHtml}
                 </div>
-                <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:4px; padding:0 2px; user-select:none;">
-                    ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
-                </div>
+                ${labelsRowHtml}
             </div>`;
         }
 
+        const itemFlexStyle = isEmbedOrCustomH
+            ? 'flex: 1 1 0%; min-height: 46px; max-height: 85px; justify-content: center;'
+            : 'min-height: 46px;';
+        const trackFlexStyle = isEmbedOrCustomH
+            ? 'flex: 1 1 auto; max-height: 30px; min-height: 16px; height: 100%;'
+            : 'height: 24px;';
+
         return `
-        <div class="status-timeline-item" style="padding:6px 10px; border-bottom:1px solid #f1f5f9; display:flex; flex-direction:column; gap:4px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
-                    <span style="font-weight:700; color:#0284c7; font-size:11px; flex-shrink:0;">${escapeHtml(agentTitle)}</span>
-                    <span style="color:#cbd5e1;">•</span>
-                    <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="openNativeModuleDetailModal('${m.id_agente_modulo}', '${((m.agent_alias || m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
+        <div class="status-timeline-item" style="padding:6px 10px; border-bottom:1px solid #f1f5f9; display:flex; flex-direction:column; gap:3px; ${itemFlexStyle} box-sizing:border-box;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-shrink:0;">
+                <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; flex:1;">
+                    <span style="font-weight:700; color:#0284c7; font-size:11px; max-width:55%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:1;" title="${escapeHtml(agentTitle)}">${escapeHtml(agentTitle)}</span>
+                    <span style="color:#cbd5e1; flex-shrink:0;">•</span>
+                    <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; flex:1; min-width:0;" onclick="openNativeModuleDetailModal('${m.id_agente_modulo}', '${((m.agent_alias || m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                    <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28;"></span>
-                    <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(curDisplayVal)}</span>
+                    <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28; flex-shrink:0;"></span>
+                    <span style="font-weight:700; color:#0f172a; font-size:12px; white-space:nowrap;">${escapeHtml(curDisplayVal)}</span>
                 </div>
             </div>
-            <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:24px; align-items:stretch;">
+            <div class="timeline-blocks-track" style="display:flex; gap:2px; width:100%; ${trackFlexStyle} align-items:stretch;">
                 ${blocksHtml}
             </div>
-            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:4px; padding:0 2px; user-select:none;">
-                ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
-            </div>
+            ${labelsRowHtml}
         </div>`;
     }).join('');
 
@@ -4016,21 +4063,22 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
     const hideSearch = (card.hide_search_bar === true || card.hide_search_bar === 1 || card.hide_search_bar === '1' || card.hide_search_bar === 'true');
 
     if (tableData.length === 1) {
-        container.innerHTML = `<div class="status-timeline-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:flex-start; padding:2px 0;">${cardsHtml}</div>`;
+        const singleJustify = isEmbedOrCustomH ? 'justify-content:center;' : 'justify-content:flex-start;';
+        container.innerHTML = `<div class="status-timeline-wrapper" style="width:100%; height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column; ${singleJustify} padding:4px 6px; box-sizing:border-box;">${cardsHtml}</div>`;
         return;
     }
 
     container.innerHTML = `
-    <div class="status-timeline-wrapper" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1 1 0%; min-height:0; overflow:hidden;">
+    <div class="status-timeline-wrapper" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1 1 0%; min-height:0; overflow:hidden; box-sizing:border-box;">
         ${!hideSearch && totalItems > 1 ? `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-shrink:0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px; flex-shrink:0;">
             <div style="font-size:10px; color:#94a3b8; font-weight:500;">Showing ${Math.min(limit, totalItems)} of ${totalItems} Nodes</div>
             <div style="position:relative; width:180px;">
                 <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.metricsTimelineSearch[cardId] || '')}" oninput="window.metricsTimelineSearch['${cardId}'] = this.value; window.metricsTimelinePages['${cardId}'] = 1; const s = window.metricsTimelineStores['${cardId}']; if(s) renderStatusTimelineWidget('${cardId}', s.table, s.history);">
                 <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
             </div>
         </div>` : ''}
-        <div style="overflow-y:auto; overflow-x:hidden; flex:1 1 0%; min-height:0; width:100%; padding-right:2px;">
+        <div class="status-timeline-list" style="overflow-y:auto; overflow-x:hidden; flex:1 1 0%; min-height:0; width:100%; padding-right:2px; display:flex; flex-direction:column;">
             ${cardsHtml}
         </div>
         ${paginationHtml}

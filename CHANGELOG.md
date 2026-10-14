@@ -2,6 +2,16 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.7] - 2026-10-14 (Dashboard - Responsive Embed & Standalone Sizing for Status Timeline Uptime Blocks)
+### Fixed
+- **Responsivitas Penuh Tampilan Embed & Standalone Visual Style Status Timeline (Uptime Blocks):**
+  - Mengatasi masalah tampilan Status Timeline yang tidak responsif saat di-embed di Visual Console Pandora FMS / iframe standalone (di mana baris metrik tetap berukuran kaku dan meninggalkan ruang kosong putih besar / *dead gap* di bagian bawah saat container visual console di-resize meninggi).
+  - Mengimplementasikan *dynamic flex distribution* (`flex: 1 1 0%`, `min-height: 46px`, `max-height: 85px`) pada setiap baris item Status Timeline ketika container memiliki tinggi kustom atau dalam mode standalone/embed (`IS_STANDALONE` / `card.height`), sehingga seluruh baris metrik terdistribusi secara seimbang dan proporsional mengisi tinggi visual console tanpa ruang kosong.
+  - Memperbarui track timeline blocks (`timeline-blocks-track`) dan balok-balok status (`status-timeline-block`) dengan tinggi dinamis (`height: 100%`, `min-height: 16px`, `max-height: 30px`) yang secara otomatis menyesuaikan ketinggian alokasi baris.
+  - Menghadirkan responsivitas horizontal cerdas pada baris timestamp (`timeline-labels-row`) menggunakan media query dan container query (`@container (max-width: 620px)` dan `@container (max-width: 380px)`): label timestamp menengah disembunyikan secara bertahap saat lebar panel menyempit untuk mencegah tabrakan atau teks bertumpuk.
+  - Memperbaiki judul baris metrik dengan pembatasan lebar dan *ellipsis text* (`max-width: 55%`, `text-overflow: ellipsis`, `white-space: nowrap`) sehingga nama node yang panjang tidak lagi mendorong status dot atau nilai metrik ke luar layar pada ukuran panel sempit.
+  - Menyelaraskan perbaikan ini di kedua modul: **Metrics Dashboard** (`metrics-dashboard.php`) dan **Dynamic Dashboard** (`dynamic-dashboard-template.php`).
+
 ## [2.11.6] - 2026-10-14 (Metrics Dashboard - Visual Type Library & Dynamic Dashboard Sync)
 ### Added & Fixed
 - **Integrasi Visual Type Library & Interactive Preview Gallery (Sinkron dengan Dynamic Dashboard):**

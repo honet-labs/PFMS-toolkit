@@ -940,6 +940,30 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             to { opacity: 1; transform: translateY(0); }
         }
 
+        .status-timeline-wrapper { container-type: inline-size; width: 100%; height: 100%; flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; }
+        .status-timeline-list { display: flex; flex-direction: column; width: 100%; flex: 1 1 0%; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+        .status-timeline-card { transition: background 0.15s ease, transform 0.15s ease; box-sizing: border-box; }
+        .status-timeline-block { transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease; }
+        .status-timeline-block:hover { transform: scaleY(1.22) scaleX(1.08); filter: brightness(1.25); box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 5; position: relative; }
+        .timeline-labels-row { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; font-weight: 500; margin-top: 3px; padding: 0 2px; user-select: none; line-height: 1.2; }
+        .timeline-labels-row span { white-space: nowrap; }
+        @media (max-width: 620px) {
+            .timeline-tick-sub { display: none !important; }
+            .timeline-labels-row { font-size: 10px !important; }
+        }
+        @media (max-width: 380px) {
+            .timeline-tick-mid { display: none !important; }
+            .timeline-labels-row { font-size: 9px !important; }
+        }
+        @container (max-width: 620px) {
+            .timeline-tick-sub { display: none !important; }
+            .timeline-labels-row { font-size: 10px !important; }
+        }
+        @container (max-width: 380px) {
+            .timeline-tick-mid { display: none !important; }
+            .timeline-labels-row { font-size: 9px !important; }
+        }
+
         .icon-btn { background: none; border: none; padding: 0; width: 22px; height: 22px; cursor: pointer; color: #b5c1c9; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
         .icon-btn:hover { color: #0b1a26; background: rgba(0,0,0,0.03); }
         .icon-btn .material-symbols-outlined { font-size: 15px !important; }
@@ -6696,8 +6720,13 @@ function renderStatusTimelineContent(p, modules) {
     let labelTicks = [];
     for (let i = 0; i < numLabels; i++) {
         const tickTs = startTs + (i / (numLabels - 1)) * rangeSec;
-        labelTicks.push(formatTimeTick(tickTs));
+        labelTicks.push({
+            text: formatTimeTick(tickTs),
+            cls: (i === 0) ? 'timeline-tick-start' : (i === numLabels - 1 ? 'timeline-tick-end' : (i === 3 ? 'timeline-tick-mid' : 'timeline-tick-sub'))
+        });
     }
+
+    const isEmbedOrCustomH = (IS_STANDALONE || (p.height && parseInt(p.height) > 0));
 
     window.timelineSearch = window.timelineSearch || {};
     const searchKw = (window.timelineSearch[p.id] || '').toLowerCase().trim();
@@ -6822,7 +6851,7 @@ function renderStatusTimelineContent(p, modules) {
             const safeTs = escapeHtml(formatFullTime(blockTs));
 
             blocksHtml += `<div class="status-timeline-block" 
-                style="flex:1; min-width:4px; height:24px; border-radius:4px; background:${blockColor}; cursor:pointer;"
+                style="flex:1; min-width:2px; height:100%; border-radius:3px; background:${blockColor}; cursor:pointer;"
                 data-ts="${safeTs}"
                 data-agent="${safeAgent}"
                 data-mod="${safeMod}"
@@ -6837,49 +6866,56 @@ function renderStatusTimelineContent(p, modules) {
         }
 
         const agentTitle = m.agent_name ? `${m.agent_name}${m.ip_address && m.ip_address !== m.agent_name ? ' (' + m.ip_address + ')' : ''}` : (m.ip_address || 'Node');
+        const labelsRowHtml = `
+            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:3px; padding:0 2px; user-select:none; flex-shrink:0;">
+                ${labelTicks.map(t => `<span class="${t.cls}">${t.text}</span>`).join('')}
+            </div>`;
 
         if (modules.length === 1) {
             return `
-            <div class="status-timeline-single" style="width:100%; display:flex; flex-direction:column; justify-content:flex-start; padding:2px 2px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
-                    <div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden;">
-                        <span style="font-weight:700; color:#0284c7; font-size:12px;">${escapeHtml(agentTitle)}</span>
-                        <span style="color:#cbd5e1;">•</span>
-                        <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(m.module_name)}</span>
+            <div class="status-timeline-single" style="width:100%; height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column; justify-content:center; padding:2px 2px; gap:4px; box-sizing:border-box;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; gap:8px; flex-shrink:0;">
+                    <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; flex:1;">
+                        <span style="font-weight:700; color:#0284c7; font-size:12px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:1;" title="${escapeHtml(agentTitle)}">${escapeHtml(agentTitle)}</span>
+                        <span style="color:#cbd5e1; flex-shrink:0;">•</span>
+                        <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; flex:1; min-width:0;" onclick="openNativeModuleDetailModal('${m.id}', '${((m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
                     </div>
                     <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                        <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28;"></span>
-                        <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(curDisplayVal)}</span>
+                        <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28; flex-shrink:0;"></span>
+                        <span style="font-weight:700; color:#0f172a; font-size:12px; white-space:nowrap;">${escapeHtml(curDisplayVal)}</span>
                     </div>
                 </div>
-                <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:26px; align-items:stretch;">
+                <div class="timeline-blocks-track" style="display:flex; gap:2px; width:100%; height:26px; ${isEmbedOrCustomH ? 'flex:1 1 auto; max-height:40px; min-height:18px;' : ''} align-items:stretch;">
                     ${blocksHtml}
                 </div>
-                <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:4px; padding:0 2px; user-select:none;">
-                    ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
-                </div>
+                ${labelsRowHtml}
             </div>`;
         }
 
+        const itemFlexStyle = isEmbedOrCustomH
+            ? 'flex: 1 1 0%; min-height: 46px; max-height: 85px; justify-content: center;'
+            : 'min-height: 46px;';
+        const trackFlexStyle = isEmbedOrCustomH
+            ? 'flex: 1 1 auto; max-height: 30px; min-height: 16px; height: 100%;'
+            : 'height: 24px;';
+
         return `
-        <div class="status-timeline-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px; margin-bottom:8px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
-                <div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden;">
-                    <span style="font-weight:700; color:#0284c7; font-size:12px; white-space:nowrap;">${escapeHtml(agentTitle)}</span>
-                    <span style="color:#cbd5e1; font-size:12px;">•</span>
-                    <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="openNativeModuleDetailModal('${m.id}', '${((m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
+        <div class="status-timeline-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; margin-bottom:4px; box-shadow:0 1px 3px rgba(0,0,0,0.02); display:flex; flex-direction:column; gap:3px; ${itemFlexStyle} box-sizing:border-box;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-shrink:0;">
+                <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; flex:1;">
+                    <span style="font-weight:700; color:#0284c7; font-size:12px; max-width:55%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:1;" title="${escapeHtml(agentTitle)}">${escapeHtml(agentTitle)}</span>
+                    <span style="color:#cbd5e1; flex-shrink:0;">•</span>
+                    <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; flex:1; min-width:0;" onclick="openNativeModuleDetailModal('${m.id}', '${((m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                    <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28;"></span>
-                    <span style="font-weight:700; color:#0f172a; font-size:12px;">${escapeHtml(curDisplayVal)}</span>
+                    <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28; flex-shrink:0;"></span>
+                    <span style="font-weight:700; color:#0f172a; font-size:12px; white-space:nowrap;">${escapeHtml(curDisplayVal)}</span>
                 </div>
             </div>
-            <div class="timeline-blocks-track" style="display:flex; gap:3px; width:100%; height:24px; align-items:stretch;">
+            <div class="timeline-blocks-track" style="display:flex; gap:2px; width:100%; ${trackFlexStyle} align-items:stretch;">
                 ${blocksHtml}
             </div>
-            <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:4px; padding:0 2px; user-select:none;">
-                ${labelTicks.map(lbl => `<span>${lbl}</span>`).join('')}
-            </div>
+            ${labelsRowHtml}
         </div>`;
     }).join('');
 
@@ -6899,20 +6935,21 @@ function renderStatusTimelineContent(p, modules) {
     const hideSearch = (p.hide_search_bar === true || p.hide_search_bar === 1 || p.hide_search_bar === '1' || p.hide_search_bar === 'true');
 
     if (modules.length === 1) {
-        return `<div class="status-timeline-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:flex-start; padding:2px 0;">${cardsHtml}</div>`;
+        const singleJustify = isEmbedOrCustomH ? 'justify-content:center;' : 'justify-content:flex-start;';
+        return `<div class="status-timeline-wrapper" style="width:100%; height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column; ${singleJustify} padding:2px 0; box-sizing:border-box;">${cardsHtml}</div>`;
     }
 
     return `
-    <div class="status-timeline-wrapper" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1 1 0%; min-height:0; overflow:hidden;">
+    <div class="status-timeline-wrapper" style="display:flex; flex-direction:column; width:100%; height:100%; flex:1 1 0%; min-height:0; overflow:hidden; box-sizing:border-box;">
         ${!hideSearch && totalItems > 1 ? `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-shrink:0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px; flex-shrink:0;">
             <div style="font-size:10px; color:#94a3b8; font-weight:500;">Showing ${Math.min(limit, totalItems)} of ${totalItems} Nodes</div>
             <div style="position:relative; width:180px;">
                 <input type="text" placeholder="Search node, IP..." class="form-control-fix" style="font-size:11px; padding:3px 8px 3px 24px; height:24px; border-radius:4px; margin-bottom:0;" value="${escapeHtml(window.timelineSearch[p.id] || '')}" oninput="window.timelineSearch['${p.id}'] = this.value; window.timelinePages['${p.id}'] = 1; forceRefresh();">
                 <span class="material-symbols-outlined" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:13px; color:#94a3b8; pointer-events:none;">search</span>
             </div>
         </div>` : ''}
-        <div style="overflow-y:auto; overflow-x:hidden; flex:1 1 0%; min-height:0; width:100%; padding-right:2px;">
+        <div class="status-timeline-list" style="overflow-y:auto; overflow-x:hidden; flex:1 1 0%; min-height:0; width:100%; padding-right:2px; display:flex; flex-direction:column;">
             ${cardsHtml}
         </div>
         ${paginationHtml}
