@@ -2,6 +2,20 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.17] - 2026-10-14 (Dashboard - Sticky Header & Footer on Modal Dialogs)
+### Fixed & Enhanced
+- **Pemisahan Header & Footer Tetap (*Sticky / Fixed Header & Footer*) pada Modal Dialog:**
+  - Mengatasi masalah pada menu **Metrics Dashboard** di mana judul modal, ikon silang penutup (**`close` / `x`**), serta tombol aksi (**`Cancel`** dan **`Save Widget`** / **`Apply Widget`**) ikut tergulung (*scrolling*) saat pengguna menavigasi form konfigurasi widget yang panjang.
+  - **Akar Penyebab (*Root Cause*):**
+    Sebelumnya, kontainer modal (`.modal-box`) menerapkan aturan `padding: 25px; max-height: 90vh; overflow-y: auto;` pada elemen pembungkus terluar. Seluruh elemen—termasuk header, beragam form isian (preview tipe, filter grup, daftar agen, pengaturan heatmap, opsi diagram), dan tombol footer—diletakkan dalam satu ruang gulung yang sama. Akibatnya, saat menggulir ke bawah, header dan tombol `close` lenyap ke atas, sementara tombol simpan tersembunyi jauh di bagian paling dasar.
+  - **Perbaikan yang Diterapkan:**
+    1. Memperkenalkan sistem tata letak terstruktur `.modal-box-structured` berbasis Flexbox (`display: flex; flex-direction: column; overflow: hidden;`):
+       - **Fixed Header (`.modal-header-custom`):** Dipatok di bagian paling atas dengan batas bawah tipis (`border-bottom`). Judul modal dan tombol `close` tetap terlihat dan dapat diklik kapan saja tanpa tergulung.
+       - **Scrollable Body (`.modal-body-scroll`):** Kontainer khusus dengan `flex: 1; overflow-y: auto; min-height: 0;` yang menampung seluruh formulir dan kontrol builder secara independen.
+       - **Fixed Footer (`.modal-footer-custom`):** Dipatok di bagian paling bawah dengan batas atas tipis (`border-top`). Tombol `Cancel` dan `Save Widget` selalu siap dijangkau tanpa harus menggulir sampai ujung halaman.
+    2. Menambahkan reset scroll otomatis (`scrollTop = 0`) saat modal dibuka (`openBuilder()` dan `openEdit()`) agar posisi form selalu dimulai rapi dari atas.
+    3. Menerapkan pola konsisten ini pada modal **Build Widget** (`#builderModal`), **Export Data** (`#exportModal`), **Dashboard Settings** (`#dashMetaModal`), dan **Share Widget** (`#shareWidgetModal`) pada [metrics-dashboard.php](file:///c:/Users/yusha/Documents/HOME_DATA/HONET/github-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php), [availability-node-modules.php](file:///c:/Users/yusha/Documents/HOME_DATA/HONET/github-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/availability-node-modules.php), dan [optical-power-metrics.php](file:///c:/Users/yusha/Documents/HOME_DATA/HONET/github-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/optical-power-metrics.php).
+
 ## [2.11.16] - 2026-10-14 (Dashboard - Fix False Critical Status on Traffic Uploads / Downloads)
 ### Fixed
 - **Pembersihan Status Palsu (*False Critical Status*) pada Modul Trafik Jaringan:**

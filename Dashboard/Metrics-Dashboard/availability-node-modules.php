@@ -942,6 +942,13 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: none; align-items: center; justify-content: center; z-index: 99999; padding: 12px; box-sizing: border-box; }
         .modal-box { background: #fff; width: 550px; padding: 25px; border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.2); border: 1px solid #e0e4e8; max-height: 90vh; overflow-y: auto; }
+        .modal-box-structured { display: flex !important; flex-direction: column !important; padding: 0 !important; overflow: hidden !important; width: 620px; max-width: 95%; max-height: 90vh; box-sizing: border-box; }
+        .modal-header-custom { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding: 16px 20px; background: #fafbfc; flex-shrink: 0; }
+        .modal-header-custom h5 { font-weight: 600 !important; font-size: 14px !important; color: #0b1a26; margin: 0; text-transform: uppercase; letter-spacing: 0.3px; }
+        .modal-header-custom .close-btn, .modal-header-custom span.material-symbols-outlined { cursor: pointer; color: #64748b; font-size: 22px; transition: color 0.15s ease; }
+        .modal-header-custom .close-btn:hover, .modal-header-custom span.material-symbols-outlined:hover { color: #0f172a; }
+        .modal-body-scroll { flex: 1; overflow-y: auto; padding: 20px; min-height: 0; }
+        .modal-footer-custom { display: flex; justify-content: flex-end; align-items: center; gap: 10px; border-top: 1px solid #e2e8f0; padding: 14px 20px; background: #fafbfc; flex-shrink: 0; }
         .detail-modal-box { width: 1000px !important; max-width: 98% !important; max-height: 94vh !important; height: auto; padding: 0 !important; overflow: hidden !important; display: flex !important; flex-direction: column !important; border-radius: 8px; border: 1px solid #cbd5e1; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.25); }
         .detail-modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding: 14px 20px; background: #f8fafc; flex-shrink: 0; }
 
@@ -1029,12 +1036,13 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
 </div>
 
 <div class="modal-overlay" id="builderModal">
-    <div class="modal-box">
-        <div style="display:flex; justify-content:space-between; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:20px;">
-            <h5 style="font-weight: normal!important; text-transform:uppercase;" id="builderTitle">Build Widget</h5>
-            <span class="material-symbols-outlined" style="cursor:pointer;color:#7f8c8d;" onclick="closeBuilder()">close</span>
+    <div class="modal-box modal-box-structured" style="width: 620px; max-width: 95%; max-height: 90vh;">
+        <div class="modal-header-custom">
+            <h5 style="font-weight: 600!important; text-transform:uppercase;" id="builderTitle">Build Widget</h5>
+            <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size:22px;" onclick="closeBuilder()">close</span>
         </div>
-        <div class="form-group"><label>Widget Title</label><input type="text" id="b_title" class="form-control-fix" placeholder="e.g. Core Ping Status"></div>
+        <div class="modal-body-scroll">
+            <div class="form-group"><label>Widget Title</label><input type="text" id="b_title" class="form-control-fix" placeholder="e.g. Core Ping Status"></div>
 
         <div class="row g-2 form-group">
             <div class="col-4"><label>Label OK (0/1)</label><input type="text" id="b_lbl_ok" class="form-control-fix" placeholder="UP"></div>
@@ -1098,42 +1106,46 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 <option value="50">50 Rows</option>
                 <option value="100" selected>100 Rows (Max Recommended)</option>
             </select></div><div style="flex:1;"><label>Auto-Refresh</label><select id="b_refresh" class="form-control-fix"><option value="30">30s</option><option value="60" selected>1m</option><option value="300">5m</option></select></div></div>
-        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;"><button class="btn-secondary-custom" onclick="closeBuilder()">Cancel</button><button class="btn-apply" id="btnSaveWidget" onclick="saveWidget()">Save Widget</button></div>
+        </div>
+        <div class="modal-footer-custom">
+            <button class="btn-secondary-custom" onclick="closeBuilder()">Cancel</button>
+            <button class="btn-apply" id="btnSaveWidget" onclick="saveWidget()">Save Widget</button>
+        </div>
     </div>
 </div>
 
 <!-- SHARE WIDGET MODAL -->
 <div class="modal-overlay" id="shareWidgetModal" style="z-index: 2100;">
-    <div class="modal-box" style="width: 560px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:12px; margin-bottom:18px;">
+    <div class="modal-box modal-box-structured" style="width: 560px; max-width: 95%;">
+        <div class="modal-header-custom">
             <h5 style="font-weight: 600; margin:0; font-size:15px; color:#0b1a26;" id="shareModalTitle">Share Widget URL</h5>
-            <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d;" onclick="closeModal('shareWidgetModal')">close</span>
+            <span class="material-symbols-outlined" style="cursor:pointer; color:#7f8c8d; font-size:22px;" onclick="closeModal('shareWidgetModal')">close</span>
         </div>
-        
-        <div style="margin-bottom:18px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px 15px;">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-weight:500; font-size:13px; color:#1e293b;">
-                <input type="checkbox" id="shareHideHeaderChk" style="width:16px; height:16px; cursor:pointer;" onchange="updateShareUrls()">
-                <span><strong>Hide Card Header</strong> (Hide Title & Timestamp for Iframe / Visual Console)</span>
-            </label>
-        </div>
+        <div class="modal-body-scroll">
+            <div style="margin-bottom:18px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px 15px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-weight:500; font-size:13px; color:#1e293b;">
+                    <input type="checkbox" id="shareHideHeaderChk" style="width:16px; height:16px; cursor:pointer;" onchange="updateShareUrls()">
+                    <span><strong>Hide Card Header</strong> (Hide Title & Timestamp for Iframe / Visual Console)</span>
+                </label>
+            </div>
 
-        <div class="form-group" style="margin-bottom:15px;">
-            <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:5px; display:block;">1. Standalone Fullscreen URL</label>
-            <div style="display:flex; gap:8px;">
-                <input type="text" id="shareStandaloneInput" class="form-control-fix" readonly style="margin-bottom:0; background:#f8fafc; font-family:monospace; font-size:12px;">
-                <button class="btn-apply" style="padding:0 18px;" onclick="copyShareText('shareStandaloneInput')">Copy</button>
+            <div class="form-group" style="margin-bottom:15px;">
+                <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:5px; display:block;">1. Standalone Fullscreen URL</label>
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="shareStandaloneInput" class="form-control-fix" readonly style="margin-bottom:0; background:#f8fafc; font-family:monospace; font-size:12px;">
+                    <button class="btn-apply" style="padding:0 18px;" onclick="copyShareText('shareStandaloneInput')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
+                <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:5px; display:block;">2. Iframe Embed Code (Visual Console / External)</label>
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="shareEmbedInput" class="form-control-fix" readonly style="margin-bottom:0; background:#f8fafc; font-family:monospace; font-size:12px;">
+                    <button class="btn-apply" style="padding:0 18px;" onclick="copyShareText('shareEmbedInput')">Copy</button>
+                </div>
             </div>
         </div>
-
-        <div class="form-group" style="margin-bottom:15px;">
-            <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:5px; display:block;">2. Iframe Embed Code (Visual Console / External)</label>
-            <div style="display:flex; gap:8px;">
-                <input type="text" id="shareEmbedInput" class="form-control-fix" readonly style="margin-bottom:0; background:#f8fafc; font-family:monospace; font-size:12px;">
-                <button class="btn-apply" style="padding:0 18px;" onclick="copyShareText('shareEmbedInput')">Copy</button>
-            </div>
-        </div>
-
-        <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+        <div class="modal-footer-custom">
             <button class="btn-secondary-custom" onclick="closeModal('shareWidgetModal')">Close</button>
         </div>
     </div>
