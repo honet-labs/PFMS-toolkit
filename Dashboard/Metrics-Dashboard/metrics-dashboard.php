@@ -390,20 +390,20 @@ if ($api === 'module_list' && $db_status) {
 
     global $custom_pdos;
     $target_dbs = [];
-    if ($groupParsed['id'] > 0) {
+    if (!empty($manualIdsParsed)) {
+        foreach ($manualIdsParsed as $node => $aids) {
+            $target_dbs[$node] = [
+                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
+                'group_id' => ($groupParsed['node'] === $node) ? $groupParsed['id'] : 0,
+                'agent_ids' => $aids
+            ];
+        }
+    } elseif ($groupParsed['id'] > 0) {
         $target_dbs[$groupParsed['node']] = [
             'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
             'group_id' => $groupParsed['id'],
             'agent_ids' => []
         ];
-    } elseif (!empty($manualIdsParsed)) {
-        foreach ($manualIdsParsed as $node => $aids) {
-            $target_dbs[$node] = [
-                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
-                'group_id' => 0,
-                'agent_ids' => $aids
-            ];
-        }
     } else {
         $target_dbs['primary'] = ['pdo' => $pdo, 'group_id' => 0, 'agent_ids' => []];
         if (!empty($custom_pdos)) {
@@ -535,20 +535,20 @@ if ($api === 'card_data' && $db_status) {
     $groupParsed = parse_node_id($groupIdRaw);
     $manualIdsParsed = parse_node_ids($manual_ids);
     $target_nodes = [];
-    if ($groupParsed['id'] > 0) {
+    if (!empty($manualIdsParsed)) {
+        foreach ($manualIdsParsed as $node => $aids) {
+            $target_nodes[$node] = [
+                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
+                'group_id' => ($groupParsed['node'] === $node) ? $groupParsed['id'] : 0,
+                'agent_ids' => $aids
+            ];
+        }
+    } elseif ($groupParsed['id'] > 0) {
         $target_nodes[$groupParsed['node']] = [
             'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
             'group_id' => $groupParsed['id'],
             'agent_ids' => []
         ];
-    } elseif (!empty($manualIdsParsed)) {
-        foreach ($manualIdsParsed as $node => $aids) {
-            $target_nodes[$node] = [
-                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
-                'group_id' => 0,
-                'agent_ids' => $aids
-            ];
-        }
     } else {
         $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0, 'agent_ids' => []];
         if (!empty($custom_pdos)) {
@@ -709,11 +709,15 @@ if ($api === 'card_data' && $db_status) {
 
         $historyData = [];
         if (!empty($tableData) && isset($_GET['history']) && $_GET['history'] === '1') {
-            $historyLimit = (isset($_GET['chart_limit']) && (int)$_GET['chart_limit'] > 0) ? (int)$_GET['chart_limit'] : 25;
+            $chartLimitParam = (isset($_GET['chart_limit']) && (int)$_GET['chart_limit'] > 0) ? (int)$_GET['chart_limit'] : 0;
             if (isset($_GET['view_type']) && $_GET['view_type'] === 'single_value') {
                 $historyLimit = 1;
             } elseif (isset($_GET['view_type']) && in_array($_GET['view_type'], ['sparkline_table', 'status_timeline'])) {
                 $historyLimit = (isset($_GET['limit']) && (int)$_GET['limit'] > 0) ? (int)$_GET['limit'] : count($tableData);
+            } elseif ($chartLimitParam > 0) {
+                $historyLimit = $chartLimitParam;
+            } else {
+                $historyLimit = count($tableData);
             }
             $slicedTableData = array_slice($tableData, 0, $historyLimit);
             $modIds = array_column($slicedTableData, 'id_agente_modulo');
@@ -763,20 +767,20 @@ if ($api === 'status_details' && $db_status) {
 
     global $custom_pdos;
     $target_nodes = [];
-    if ($groupParsed['id'] > 0) {
+    if (!empty($manualIdsParsed)) {
+        foreach ($manualIdsParsed as $node => $aids) {
+            $target_nodes[$node] = [
+                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
+                'group_id' => ($groupParsed['node'] === $node) ? $groupParsed['id'] : 0,
+                'agent_ids' => $aids
+            ];
+        }
+    } elseif ($groupParsed['id'] > 0) {
         $target_nodes[$groupParsed['node']] = [
             'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
             'group_id' => $groupParsed['id'],
             'agent_ids' => []
         ];
-    } elseif (!empty($manualIdsParsed)) {
-        foreach ($manualIdsParsed as $node => $aids) {
-            $target_nodes[$node] = [
-                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
-                'group_id' => 0,
-                'agent_ids' => $aids
-            ];
-        }
     } else {
         $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0, 'agent_ids' => []];
         if (!empty($custom_pdos)) {
@@ -1503,20 +1507,25 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         </div>
 
         <div class="form-group" id="wrap_chart_options" style="display:none;">
-            <label>Pie/Donut Slice Limit</label>
+            <label id="lbl_chart_limit">Pie/Donut Slice Limit</label>
             <select id="b_chart_limit" class="form-control-fix" style="margin-bottom:12px;">
-                <option value="0">Show All Slices</option>
-                <option value="5">Top 5 + Others</option>
-                <option value="10">Top 10 + Others</option>
+                <option value="0">Show All (Default)</option>
+                <option value="5">Top 5</option>
+                <option value="10">Top 10</option>
+                <option value="25">Top 25</option>
+                <option value="50">Top 50</option>
+                <option value="100">Top 100</option>
             </select>
-            <label>Show Value Count in Legend</label>
-            <select id="b_show_legend_count" class="form-control-fix" style="margin-bottom:12px;">
-                <option value="1">Show Count (e.g. UP (12))</option>
-                <option value="0">Hide Count (Label Only)</option>
-            </select>
-            <label>Chart / Pie Size (% Radius)</label>
-            <input type="number" id="b_chart_size" class="form-control-fix" placeholder="Auto (e.g. 52)" min="20" max="85" style="margin-bottom:0;">
-            <small style="color:#64748b; font-size:11px; display:block; margin-top:3px;">Ukuran persentase radius lingkaran diagram (Default: Auto ~52%).</small>
+            <div id="wrap_pie_only_options">
+                <label>Show Value Count in Legend</label>
+                <select id="b_show_legend_count" class="form-control-fix" style="margin-bottom:12px;">
+                    <option value="1">Show Count (e.g. UP (12))</option>
+                    <option value="0">Hide Count (Label Only)</option>
+                </select>
+                <label>Chart / Pie Size (% Radius)</label>
+                <input type="number" id="b_chart_size" class="form-control-fix" placeholder="Auto (e.g. 52)" min="20" max="85" style="margin-bottom:0;">
+                <small style="color:#64748b; font-size:11px; display:block; margin-top:3px;">Ukuran persentase radius lingkaran diagram (Default: Auto ~52%).</small>
+            </div>
         </div>
 
         <div class="form-group" id="wrap_show_stats">
@@ -3061,8 +3070,15 @@ function toggleBuilderAgentAll() {
     const allChecked = visibleChks.every(c => c.checked);
     visibleChks.forEach(c => {
         c.checked = !allChecked;
-        handleAgentCheck(c);
+        const val = String(c.value);
+        if (!allChecked) {
+            if (!selectedIds.includes(val)) selectedIds.push(val);
+        } else {
+            selectedIds = selectedIds.filter(id => id !== val);
+        }
     });
+    document.getElementById('sel_count').innerText = selectedIds.length + " Selected";
+    refreshBuilderModuleList();
 }
 
 function toggleSearchInput(cardId) { 
@@ -4958,10 +4974,18 @@ function toggleViewTypeOptions() {
         }
     }
 
-    if (vt === 'pie' || vt === 'donut') {
-        wrap.style.display = 'block';
-    } else {
-        wrap.style.display = 'none';
+    const isPieOrDonut = (vt === 'pie' || vt === 'donut');
+    const isLineAreaBar = (vt === 'line' || vt === 'area' || vt === 'bar');
+    if (wrap) {
+        if (isPieOrDonut || isLineAreaBar) {
+            wrap.style.display = 'block';
+            const lbl = document.getElementById('lbl_chart_limit');
+            if (lbl) lbl.innerText = isPieOrDonut ? 'Pie/Donut Slice Limit' : 'Max Chart Series Limit';
+            const pieOnly = document.getElementById('wrap_pie_only_options');
+            if (pieOnly) pieOnly.style.display = isPieOrDonut ? 'block' : 'none';
+        } else {
+            wrap.style.display = 'none';
+        }
     }
 
     if (wrapSingleValue) {
@@ -6300,7 +6324,9 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
         if (history && history.length > 0) {
             const historyModIds = [...new Set(history.map(h => String(h.id_mod)))];
             const activeData = data.filter(m => historyModIds.includes(String(m.id_agente_modulo)));
-            const targetData = activeData.length > 0 ? activeData : data.slice(0, chartLimit > 0 ? chartLimit : 25);
+            const targetData = (chartLimit > 0)
+                ? (activeData.length > 0 ? activeData.slice(0, chartLimit) : data.slice(0, chartLimit))
+                : (activeData.length > 0 ? activeData : data);
 
             // Deterministic natural sorting so that module order and colors never shift across refreshes
             targetData.sort((a, b) => {

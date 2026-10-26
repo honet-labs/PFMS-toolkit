@@ -2,6 +2,24 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.18] - 2026-10-26 (Dashboard - Fix Multi-Agent Selection & Time-Series History Truncation in Line/Area Charts)
+### Fixed & Enhanced
+- **Perbaikan Pemilihan Agen Manual & Pengabaian Daftar Agen (*Agent Override Bug Fix*):**
+  - Mengatasi bug pada **Metrics Dashboard** di mana saat pengguna memilih Filter Group (misalnya "Network") lalu mencari dan memilih agen secara manual atau mengklik *Select All*, sistem justru mengabaikan agen-agen yang dipilih dan hanya mengambil data dari seluruh grup.
+  - **Akar Penyebab (*Root Cause*):** Logika evaluasi di backend `metrics-dashboard.php` mengevaluasi kondisi `if ($groupParsed['id'] > 0)` lebih dahulu dan mengosongkan array `$target_nodes['agent_ids'] = []`, sehingga parameter `manual_ids` dibuang dan query SQL jatuh ke fallback seluruh grup (`WHERE a.id_grupo IN (...)`).
+  - **Perbaikan yang Diterapkan:** Memprioritaskan pemeriksaan `!empty($manualIdsParsed)` sebelum pengecekan grup di endpoint `card_data`, `module_list`, dan `status_details` pada [metrics-dashboard.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php), [availability-node-modules.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/availability-node-modules.php), dan [optical-power-metrics.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/optical-power-metrics.php).
+
+- **Penghapusan Pembatasan Paksa 25 Riwayat Metrik pada Line Chart & Area Chart:**
+  - Mengatasi masalah di mana diagram garis/area hanya menampilkan satu perangkat atau beberapa metrik saja padahal banyak agen yang dipilih.
+  - **Akar Penyebab (*Root Cause*):** Backend membatasi riwayat ke batas default hardcoded 25 saat `chart_limit` bernilai 0 (*Show All*). Karena metrik diurutkan secara alfabetis berdasarkan alias agen, switch pertama (misalnya `ASW01` dengan 24 port) menghabiskan seluruh kuota 25 slot riwayat, sehingga perangkat lain tidak mendapatkan kuota time-series riwayat sama sekali.
+  - **Perbaikan yang Diterapkan:**
+    1. Mengubah backend agar saat `chart_limit === 0` (*Show All*), batas riwayat mencakup seluruh metrik yang cocok (`count($tableData)`).
+    2. Menghapus pemotongan fallback `data.slice(0, 25)` pada frontend `renderWidgetChart`.
+    3. Membuka kontrol **Max Chart Series Limit** di modal builder untuk Line Chart, Area Chart, dan Bar Chart (*Show All (Default)*, *Top 5*, *Top 10*, *Top 25*, *Top 50*, *Top 100*).
+
+- **Optimalisasi Tombol `[ Select/Clear All ]` pada Builder Modal:**
+  - Mengubah logika `toggleBuilderAgentAll()` agar memperbarui state centang dan array `selectedIds` secara massal dalam satu siklus, lalu hanya memicu 1 kali pembaruan jumlah pilihan (`sel_count`) dan daftar modul ke server (menghilangkan *network request spam*).
+
 ## [2.11.17] - 2026-10-14 (Dashboard - Sticky Header & Footer on Modal Dialogs)
 ### Fixed & Enhanced
 - **Pemisahan Header & Footer Tetap (*Sticky / Fixed Header & Footer*) pada Modal Dialog:**

@@ -296,20 +296,20 @@ if ($api === 'card_data' && $db_status) {
 
     global $custom_pdos, $custom_connections;
     $target_nodes = [];
-    if ($groupParsed['id'] > 0) {
+    if (!empty($manualIdsParsed)) {
+        foreach ($manualIdsParsed as $node => $aids) {
+            $target_nodes[$node] = [
+                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
+                'group_id' => ($groupParsed['node'] === $node) ? $groupParsed['id'] : 0,
+                'agent_ids' => $aids
+            ];
+        }
+    } elseif ($groupParsed['id'] > 0) {
         $target_nodes[$groupParsed['node']] = [
             'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
             'group_id' => $groupParsed['id'],
             'agent_ids' => []
         ];
-    } elseif (!empty($manualIdsParsed)) {
-        foreach ($manualIdsParsed as $node => $aids) {
-            $target_nodes[$node] = [
-                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
-                'group_id' => 0,
-                'agent_ids' => $aids
-            ];
-        }
     } else {
         $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0, 'agent_ids' => []];
         if (!empty($custom_pdos)) {
@@ -523,20 +523,20 @@ if ($api === 'status_details' && $db_status) {
 
     global $custom_pdos, $custom_connections;
     $target_nodes = [];
-    if ($groupParsed['id'] > 0) {
+    if (!empty($manualIdsParsed)) {
+        foreach ($manualIdsParsed as $node => $aids) {
+            $target_nodes[$node] = [
+                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
+                'group_id' => ($groupParsed['node'] === $node) ? $groupParsed['id'] : 0,
+                'agent_ids' => $aids
+            ];
+        }
+    } elseif ($groupParsed['id'] > 0) {
         $target_nodes[$groupParsed['node']] = [
             'pdo' => ($groupParsed['node'] === 'primary') ? $pdo : ($custom_pdos[$groupParsed['node']] ?? null),
             'group_id' => $groupParsed['id'],
             'agent_ids' => []
         ];
-    } elseif (!empty($manualIdsParsed)) {
-        foreach ($manualIdsParsed as $node => $aids) {
-            $target_nodes[$node] = [
-                'pdo' => ($node === 'primary') ? $pdo : ($custom_pdos[$node] ?? null),
-                'group_id' => 0,
-                'agent_ids' => $aids
-            ];
-        }
     } else {
         $target_nodes['primary'] = ['pdo' => $pdo, 'group_id' => 0, 'agent_ids' => []];
         if (!empty($custom_pdos)) {
