@@ -414,6 +414,33 @@ if (!empty($api)) {
                     SET sensor_name = REPLACE(sensor_name, ' - TX Power', '')
                     WHERE sensor_name LIKE '%Bias% - TX Power%'
                 ");
+
+                // 3. Auto-repair interface speed for disconnected / down interfaces
+                $pdo->exec("
+                    UPDATE sensor_inventory s
+                    JOIN sensor_inventory o ON s.device_id = o.device_id
+                        AND (
+                            (s.interface_index IS NOT NULL AND s.interface_index = o.interface_index)
+                            OR (s.interface_name IS NOT NULL AND s.interface_name = o.interface_name)
+                        )
+                    SET s.normalized_value = 0.0,
+                        s.raw_value = '0',
+                        s.status = 'down'
+                    WHERE (s.sensor_type IN ('interface_speed', 'bandwidth') OR s.sensor_name LIKE '%ifHighSpeed%' OR s.sensor_name LIKE '%ifSpeed%' OR s.sensor_name LIKE '%Speed%')
+                      AND (o.sensor_name LIKE '%ifOperStatus%' OR o.oid LIKE '1.3.6.1.2.1.2.2.1.8.%' OR o.sensor_type = 'status')
+                      AND o.raw_value != '1'
+                      AND (s.normalized_value = 10.0 OR s.raw_value = '10' OR s.raw_value = '10000000' OR s.status != 'down')
+                ");
+
+                $pdo->exec("
+                    UPDATE sensor_inventory
+                    SET normalized_value = 0.0,
+                        raw_value = '0',
+                        status = 'down'
+                    WHERE status IN ('down', 'nonoperational')
+                      AND (sensor_type IN ('interface_speed', 'bandwidth') OR sensor_name LIKE '%ifHighSpeed%' OR sensor_name LIKE '%ifSpeed%' OR sensor_name LIKE '%Speed%')
+                      AND (normalized_value = 10.0 OR raw_value = '10' OR raw_value = '10000000')
+                ");
             } catch (\Throwable) {}
 
             // Count total
@@ -432,6 +459,20 @@ if (!empty($api)) {
             $dataStmt = $pdo->prepare($dataSql);
             $dataStmt->execute($params);
             $rows = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($rows as &$r) {
+                $isSpeed = in_array($r['sensor_type'] ?? '', ['interface_speed', 'bandwidth'], true)
+                    || stripos($r['sensor_name'] ?? '', 'speed') !== false
+                    || in_array(strtolower($r['unit'] ?? ''), ['bps', 'kbps', 'mbps', 'gbps'], true);
+
+                if ($isSpeed && in_array($r['status'] ?? '', ['down', 'nonoperational'], true)) {
+                    if ((float)($r['normalized_value'] ?? 0) == 10.0 || ($r['raw_value'] ?? '') === '10' || ($r['raw_value'] ?? '') === '10000000') {
+                        $r['normalized_value'] = 0.0;
+                        $r['raw_value'] = '0';
+                    }
+                }
+            }
+            unset($r);
 
             echo json_encode([
                 'ok' => true,
@@ -3865,9 +3906,35 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
 
             let rowsHtml = '';
             sensors.forEach((s, idx) => {
-                const val = (s.normalized_value !== null && s.normalized_value !== undefined)
+                let val = (s.normalized_value !== null && s.normalized_value !== undefined)
                     ? `${s.normalized_value} ${s.unit || ''}`
                     : (s.raw_value || 'N/A');
+
+                const isSpeed = (
+                    s.sensor_type === 'interface_speed' ||
+                    s.sensor_type === 'bandwidth' ||
+                    (s.sensor_name && /speed/i.test(s.sensor_name)) ||
+                    (s.unit && /^(bps|kbps|mbps|gbps)$/i.test(s.unit)) ||
+                    (s.oid && (s.oid.includes('1.3.6.1.2.1.31.1.1.1.15') || s.oid.includes('1.3.6.1.2.1.2.2.1.5')))
+                );
+                const isDown = (
+                    s.status === 'down' ||
+                    s.status === 'nonoperational' ||
+                    (isSpeed && (parseFloat(s.normalized_value) === 0 || s.raw_value === '0'))
+                );
+
+                let valStyle = "color:#004d40; font-weight:700;";
+                let notConnectedBadge = "";
+
+                if (isSpeed && isDown) {
+                    if (parseFloat(s.normalized_value) === 10 || s.raw_value === '10' || s.raw_value === '10000000') {
+                        val = `0 ${s.unit || 'Mbps'}`.trim();
+                    }
+                    valStyle = "color:#ef4444; font-weight:700;";
+                    notConnectedBadge = `<span class="badge" style="background:#fee2e2; color:#b91c1c; font-size:10px; padding:1px 6px; margin-left:6px; border:1px solid #fca5a5; font-weight:600;">Not Connected</span>`;
+                } else if (s.status === 'down' || s.status === 'nonoperational') {
+                    valStyle = "color:#ef4444; font-weight:700;";
+                }
                 
                 let classBadge = 'badge-neutral';
                 const c = (s.sensor_class || '').toLowerCase();
@@ -3882,7 +3949,7 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
                         <td class="mono" style="color:#94a3b8; text-align:center;">${idx + 1}</td>
                         <td><strong style="color:#0f172a;">${escapeHtml(s.sensor_name || 'Unnamed')}</strong></td>
                         <td><span class="badge ${classBadge}">${escapeHtml(s.sensor_class || 'general')}</span></td>
-                        <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(val)}</td>
+                        <td class="mono" style="${valStyle}">${escapeHtml(val)}${notConnectedBadge}</td>
                         <td>
                             <span class="mono oid-copyable" onclick="copyOid('${escapeHtml(s.oid || '')}')" title="Click to copy OID">
                                 ${escapeHtml(s.oid || '-')}
@@ -4014,9 +4081,36 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
                     ? `<span class="badge badge-success">Provisioned ${r.agent_name ? '(' + escapeHtml(r.agent_name) + ')' : ''}</span>`
                     : `<span class="badge badge-warning">Pending</span>`;
 
-                const valDisplay = (r.normalized_value !== null && r.normalized_value !== undefined && r.normalized_value !== '')
+                let displayVal = (r.normalized_value !== null && r.normalized_value !== undefined && r.normalized_value !== '')
                     ? `${r.normalized_value} ${r.unit || ''}`.trim()
                     : (r.raw_value !== null && r.raw_value !== undefined && r.raw_value !== '' ? r.raw_value : 'N/A');
+
+                const isSpeedSensor = (
+                    r.sensor_type === 'interface_speed' ||
+                    r.sensor_type === 'bandwidth' ||
+                    (r.sensor_name && /speed/i.test(r.sensor_name)) ||
+                    (r.unit && /^(bps|kbps|mbps|gbps)$/i.test(r.unit)) ||
+                    (r.oid && (r.oid.includes('1.3.6.1.2.1.31.1.1.1.15') || r.oid.includes('1.3.6.1.2.1.2.2.1.5')))
+                );
+
+                const isDownOrDisconnected = (
+                    r.status === 'down' ||
+                    r.status === 'nonoperational' ||
+                    (isSpeedSensor && (parseFloat(r.normalized_value) === 0 || r.raw_value === '0'))
+                );
+
+                let valStyle = "color:#004d40; font-weight:700;";
+                let notConnectedBadge = "";
+
+                if (isSpeedSensor && isDownOrDisconnected) {
+                    if (parseFloat(r.normalized_value) === 10 || r.raw_value === '10' || r.raw_value === '10000000') {
+                        displayVal = `0 ${r.unit || 'Mbps'}`.trim();
+                    }
+                    valStyle = "color:#ef4444; font-weight:700;";
+                    notConnectedBadge = `<span class="badge" style="background:#fee2e2; color:#b91c1c; font-size:10px; padding:1px 6px; margin-left:6px; border:1px solid #fca5a5; font-weight:600;">Not Connected</span>`;
+                } else if (r.status === 'down' || r.status === 'nonoperational') {
+                    valStyle = "color:#ef4444; font-weight:700;";
+                }
 
                 const vStr = r.snmp_version ? (r.snmp_version.toString().toLowerCase().includes('3') ? 'v3' : 'v' + r.snmp_version) : '';
                 const vBadge = vStr ? `<span class="badge ${vStr === 'v3' ? 'badge-primary' : 'badge-neutral'}" style="margin-left:6px; font-size:10px; padding:2px 6px;">${vStr}</span>` : '';
@@ -4031,7 +4125,7 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
                         <td><span class="badge badge-info">${escapeHtml(r.vendor || '')}</span></td>
                         <td><span class="badge badge-neutral">${escapeHtml(r.sensor_class || '')}</span></td>
                         <td class="text-truncate-cell" title="[ID #${r.id}] ${escapeHtml(r.sensor_name || '')}">${idBadge}<strong>${escapeHtml(r.sensor_name || '')}</strong></td>
-                        <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(valDisplay)}</td>
+                        <td class="mono" style="${valStyle}">${escapeHtml(displayVal)}${notConnectedBadge}</td>
                         <td class="mono text-truncate-cell" title="${escapeHtml(r.oid || '')}">${escapeHtml(r.oid || '')}</td>
                         <td>${provBadge}</td>
                         <td style="text-align:right;">
@@ -4265,6 +4359,33 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
                         ? `${r.normalized_value} ${r.unit || ''}`.trim()
                         : (r.raw_value || 'N/A'));
 
+                let displayVal = valDisplay;
+                const isSpeedSensor = (
+                    r.sensor_type === 'interface_speed' ||
+                    r.sensor_type === 'bandwidth' ||
+                    (r.sensor_name && /speed/i.test(r.sensor_name)) ||
+                    (r.unit && /^(bps|kbps|mbps|gbps)$/i.test(r.unit)) ||
+                    (r.oid && (r.oid.includes('1.3.6.1.2.1.31.1.1.1.15') || r.oid.includes('1.3.6.1.2.1.2.2.1.5')))
+                );
+                const isDownOrDisconnected = (
+                    r.status === 'down' ||
+                    r.status === 'nonoperational' ||
+                    (isSpeedSensor && (parseFloat(r.normalized_value) === 0 || r.raw_value === '0' || parseFloat(r.module_latest_data) === 0))
+                );
+
+                let valStyle = "color:#004d40; font-weight:700;";
+                let notConnectedBadge = "";
+
+                if (isSpeedSensor && isDownOrDisconnected) {
+                    if (parseFloat(r.normalized_value) === 10 || r.raw_value === '10' || r.raw_value === '10000000') {
+                        displayVal = `0 ${r.unit || 'Mbps'}`.trim();
+                    }
+                    valStyle = "color:#ef4444; font-weight:700;";
+                    notConnectedBadge = `<span class="badge" style="background:#fee2e2; color:#b91c1c; font-size:10px; padding:1px 6px; margin-left:6px; border:1px solid #fca5a5; font-weight:600;">Not Connected</span>`;
+                } else if (r.status === 'down' || r.status === 'nonoperational') {
+                    valStyle = "color:#ef4444; font-weight:700;";
+                }
+
                 const vStr = r.snmp_version ? (r.snmp_version.toString().toLowerCase().includes('3') ? 'v3' : 'v' + r.snmp_version) : '';
                 const vBadge = vStr ? `<span class="badge ${vStr === 'v3' ? 'badge-primary' : 'badge-neutral'}" style="margin-left:6px; font-size:10px; padding:2px 6px;">${vStr}</span>` : '';
                 const modIdBadge = r.resolved_module_id ? `<span style="display:inline-block; font-size:10px; font-family:monospace; background:#e0f2fe; color:#0369a1; padding:1px 5px; border-radius:3px; margin-right:4px;" title="Pandora Module ID #${r.resolved_module_id}">#${r.resolved_module_id}</span>` : '';
@@ -4298,7 +4419,7 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
                             <span style="font-size:12px; color:#475569;" title="${escapeHtml(r.sensor_name || '')}">${escapeHtml(r.sensor_name || '')}</span>
                         </td>
                         <td class="mono text-truncate-cell" title="${escapeHtml(r.oid || '')}">${escapeHtml(r.oid || '')}</td>
-                        <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(valDisplay)}</td>
+                        <td class="mono" style="${valStyle}">${escapeHtml(displayVal)}${notConnectedBadge}</td>
                         <td style="font-size:11.5px; color:#64748b;">${provDate}</td>
                         <td style="text-align:right;">
                             <div style="display:inline-flex; gap:4px; align-items:center;">
@@ -4506,6 +4627,33 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
                     ? `${s.normalized_value} ${s.unit || ''}`.trim()
                     : (s.raw_value !== null && s.raw_value !== undefined && s.raw_value !== '' ? s.raw_value : 'N/A');
 
+                let displayVal = valDisplay;
+                const isSpeedSensor = (
+                    s.sensor_type === 'interface_speed' ||
+                    s.sensor_type === 'bandwidth' ||
+                    (s.sensor_name && /speed/i.test(s.sensor_name)) ||
+                    (s.unit && /^(bps|kbps|mbps|gbps)$/i.test(s.unit)) ||
+                    (s.oid && (s.oid.includes('1.3.6.1.2.1.31.1.1.1.15') || s.oid.includes('1.3.6.1.2.1.2.2.1.5')))
+                );
+                const isDownOrDisconnected = (
+                    s.status === 'down' ||
+                    s.status === 'nonoperational' ||
+                    (isSpeedSensor && (parseFloat(s.normalized_value) === 0 || s.raw_value === '0'))
+                );
+
+                let valStyle = "color:#004d40; font-weight:700;";
+                let notConnectedBadge = "";
+
+                if (isSpeedSensor && isDownOrDisconnected) {
+                    if (parseFloat(s.normalized_value) === 10 || s.raw_value === '10' || s.raw_value === '10000000') {
+                        displayVal = `0 ${s.unit || 'Mbps'}`.trim();
+                    }
+                    valStyle = "color:#ef4444; font-weight:700;";
+                    notConnectedBadge = `<span class="badge" style="background:#fee2e2; color:#b91c1c; font-size:10px; padding:1px 6px; margin-left:6px; border:1px solid #fca5a5; font-weight:600;">Not Connected</span>`;
+                } else if (s.status === 'down' || s.status === 'nonoperational') {
+                    valStyle = "color:#ef4444; font-weight:700;";
+                }
+
                 const vStr = s.snmp_version ? (s.snmp_version.toString().toLowerCase().includes('3') ? 'v3' : 'v' + s.snmp_version) : '';
                 const vBadge = vStr ? `<span class="badge ${vStr === 'v3' ? 'badge-primary' : 'badge-neutral'}" style="margin-left:6px; font-size:10px; padding:2px 6px;">${vStr}</span>` : '';
 
@@ -4515,7 +4663,7 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
                         <td><strong>${escapeHtml(s.sensor_name || 'Sensor #' + s.id)}</strong></td>
                         <td><span class="badge badge-neutral">${escapeHtml(s.sensor_class || '')}</span></td>
                         <td class="mono text-truncate-cell">${escapeHtml(s.oid || '')}</td>
-                        <td class="mono" style="color:#004d40; font-weight:700;">${escapeHtml(valDisplay)}</td>
+                        <td class="mono" style="${valStyle}">${escapeHtml(displayVal)}${notConnectedBadge}</td>
                         <td style="text-align:center;">
                             <button type="button" class="btn-danger-custom" style="padding:2px 8px; height:26px; font-size:11px; display:inline-flex; align-items:center; gap:3px;" onclick="removeProvisionSensor('${s.id}')" title="Remove sensor from provisioning queue">
                                 <span class="material-symbols-outlined" style="font-size:14px;">delete</span>

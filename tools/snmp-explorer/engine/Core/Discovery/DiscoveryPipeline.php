@@ -149,6 +149,7 @@ final readonly class DiscoveryPipeline
         }
 
         $sensors = array_values(array_map(static fn (array $item): array => $item['sensor'], $sensorsByOid));
+        $sensors = $this->reconcileInterfaceStatuses($sensors);
 
         return $this->disambiguateSensorNames($sensors);
     }
@@ -571,5 +572,86 @@ final readonly class DiscoveryPipeline
             $values,
             static fn (mixed $value): bool => $value !== null && $value !== '',
         );
+    }
+
+    /**
+     * Reconcile speed sensors against interface operational status.
+     * If an interface is not connected (operStatus != 1), speed must default to 0 with status 'down'.
+     *
+     * @param list<array<string, mixed>> $sensors
+     * @return list<array<string, mixed>>
+     */
+    private function reconcileInterfaceStatuses(array $sensors): array
+    {
+        // 1. Build map of interface status by interface_index and normalized interface_name
+        $downInterfacesByIndex = [];
+        $downInterfacesByName = [];
+
+        foreach ($sensors as $s) {
+            $oid = (string) ($s['oid'] ?? '');
+            $name = (string) ($s['sensor_name'] ?? '');
+            $type = (string) ($s['sensor_type'] ?? '');
+
+            $isOperStatus = str_contains($oid, '1.3.6.1.2.1.2.2.1.8')
+                || str_contains($name, 'ifOperStatus')
+                || ($type === 'status' && str_contains($name, 'OperStatus'));
+
+            if ($isOperStatus) {
+                $raw = trim((string) ($s['raw_value'] ?? $s['normalized_value'] ?? ''));
+                $isUp = ($raw === '1' || strtolower($raw) === 'up' || strtolower($raw) === 'ok');
+
+                if (!$isUp) {
+                    $ifIndex = $s['interface_index'] ?? null;
+                    if ($ifIndex !== null && $ifIndex !== '') {
+                        $downInterfacesByIndex[(string) $ifIndex] = true;
+                    }
+                    $ifName = trim((string) ($s['interface_name'] ?? ''));
+                    if ($ifName !== '') {
+                        $downInterfacesByName[strtolower($ifName)] = true;
+                    }
+                }
+            }
+        }
+
+        if (empty($downInterfacesByIndex) && empty($downInterfacesByName)) {
+            return $sensors;
+        }
+
+        // 2. Adjust any speed/bandwidth sensors on disconnected interfaces
+        foreach ($sensors as &$s) {
+            $oid = (string) ($s['oid'] ?? '');
+            $name = (string) ($s['sensor_name'] ?? '');
+            $type = (string) ($s['sensor_type'] ?? '');
+
+            $isSpeed = str_contains($oid, '1.3.6.1.2.1.31.1.1.1.15')
+                || str_contains($oid, '1.3.6.1.2.1.2.2.1.5')
+                || str_contains($name, 'ifHighSpeed')
+                || str_contains($name, 'ifSpeed')
+                || stripos($name, 'Speed') !== false
+                || in_array($type, ['interface_speed', 'bandwidth', 'cisco_interface_speed', 'huawei_interface_speed'], true);
+
+            if (!$isSpeed) {
+                continue;
+            }
+
+            $ifIndex = (string) ($s['interface_index'] ?? '');
+            $ifName = strtolower(trim((string) ($s['interface_name'] ?? '')));
+
+            $isDown = ($ifIndex !== '' && isset($downInterfacesByIndex[$ifIndex]))
+                || ($ifName !== '' && isset($downInterfacesByName[$ifName]));
+
+            if ($isDown) {
+                $s['raw_value'] = '0';
+                $s['normalized_value'] = 0;
+                $s['status'] = 'down';
+                if (isset($s['metadata']) && is_array($s['metadata'])) {
+                    $s['metadata']['connected'] = false;
+                    $s['metadata']['status_label'] = 'down';
+                }
+            }
+        }
+        unset($s);
+
+        return $sensors;
     }
 }

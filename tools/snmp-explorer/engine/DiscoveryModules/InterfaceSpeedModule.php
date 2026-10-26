@@ -59,6 +59,7 @@ final readonly class InterfaceSpeedModule implements DiscoveryModuleInterface
             
             $ifNames = $context->walker->walkIndexed(self::IF_NAME);
             $ifHighSpeeds = $context->walker->walkIndexed('1.3.6.1.2.1.31.1.1.1.15'); // ifHighSpeed
+            $ifOperStatuses = $context->walker->walkIndexed('1.3.6.1.2.1.2.2.1.8'); // ifOperStatus
 
             foreach ($ifDescriptions as $ifIndex => $ifDescription) {
                 try {
@@ -79,25 +80,40 @@ final readonly class InterfaceSpeedModule implements DiscoveryModuleInterface
                     $speedSource = '';
                     $speedUnit = 'Mbps';
                     $speedInBps = 0;
+                    $sensorStatus = 'ok';
                     
                     $highSpeed = $ifHighSpeeds[$ifIndex] ?? null;
-                    
-                    if (!in_array($highSpeed, [null, '', 'NULL'], true) && (int)$highSpeed >= 0) {
+                    $operStatus = isset($ifOperStatuses[$ifIndex]) ? (int) $ifOperStatuses[$ifIndex] : null;
+                    $isKnownDown = ($operStatus !== null && $operStatus !== 1);
+
+                    if ($isKnownDown) {
+                        // Port is down / disconnected: default to 0 Mbps with 'down' status
+                        $speed = 0;
+                        $speedOid = "1.3.6.1.2.1.31.1.1.1.15.{$ifIndex}";
+                        $speedSource = 'Not Connected (Port Down)';
+                        $speedUnit = 'Mbps';
+                        $speedInBps = 0;
+                        $sensorStatus = 'down';
+                        $speedDisplay = '0 Mbps';
+                    } elseif (!in_array($highSpeed, [null, '', 'NULL'], true) && (int)$highSpeed >= 0) {
                         $speed = (int) $highSpeed;
                         $speedOid = "1.3.6.1.2.1.31.1.1.1.15.{$ifIndex}";
                         $speedSource = 'ifHighSpeed (Mbps)';
                         $speedUnit = 'Mbps';
                         $speedInBps = $speed * 1000000;
+                        $sensorStatus = 'ok';
+                        $speedDisplay = $this->formatSpeedWithUnit($speed, $speedUnit);
                     } else {
                         $speed = 0;
                         $speedOid = "1.3.6.1.2.1.31.1.1.1.15.{$ifIndex}";
                         $speedSource = 'Fallback to 0 Mbps';
                         $speedUnit = 'Mbps';
                         $speedInBps = 0;
+                        $sensorStatus = 'ok';
+                        $speedDisplay = $this->formatSpeedWithUnit($speed, $speedUnit);
                     }
                     // Always create sensor
                     // Use original unit from detector (Mbps for ifHighSpeed, bps for ifSpeed)
-                    $speedDisplay = $this->formatSpeedWithUnit($speed, $speedUnit);
                     $sensorName = \SnmpBridge\Helpers\StringHelper::safeModuleName(
                         $this->formatter->interfaceMetric($interfaceName, 'ifSpeed')
                     );
@@ -115,7 +131,7 @@ final readonly class InterfaceSpeedModule implements DiscoveryModuleInterface
                         'unit' => $speedUnit,  // Original unit: Mbps or bps
                         'scale' => null,
                         'precision' => null,
-                        'status' => 'ok',
+                        'status' => $sensorStatus,
                         'metadata' => [
                             'interface_name' => $interfaceName,
                             'if_index' => $ifIndex,
@@ -123,6 +139,7 @@ final readonly class InterfaceSpeedModule implements DiscoveryModuleInterface
                             'speed_in_bps' => $speedInBps,  // For internal calculations
                             'source' => $speedSource,
                             'original_unit' => $speedUnit,
+                            'connected' => !$isKnownDown,
                             'description' => "Interface: {$interfaceName} | Speed: {$speedDisplay} | Source: {$speedSource}",
                         ],
                     ];

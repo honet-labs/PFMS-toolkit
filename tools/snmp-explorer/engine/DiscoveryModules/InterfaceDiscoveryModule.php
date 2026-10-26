@@ -159,7 +159,28 @@ final readonly class InterfaceDiscoveryModule implements DiscoveryModuleInterfac
             // 3. Speed / Bandwidth
             $highSpeed = SnmpValueHelper::integer($ifHighSpeeds[$index] ?? null);
             $speed = SnmpValueHelper::integer($ifSpeeds[$index] ?? null);
-            if ($highSpeed !== null && $highSpeed > 0) {
+            $isKnownDown = ($operStatus !== null && $operStatus !== 1);
+
+            if ($isKnownDown) {
+                // When interface is not connected / down, default speed to 0 Mbps with 'down' status
+                $this->appendNumericSensor(
+                    $sensors,
+                    $index,
+                    $interfaceName,
+                    'ifHighSpeed',
+                    'bandwidth',
+                    self::IF_HIGH_SPEED . '.' . $index,
+                    0,
+                    'Mbps',
+                    $metadata + [
+                        'source' => 'IF-MIB::ifHighSpeed (Not Connected)',
+                        'connected' => false,
+                        'operational_status' => $operStatus,
+                        'status_label' => self::OPER_STATUS[$operStatus] ?? 'down',
+                    ],
+                    'down',
+                );
+            } elseif ($highSpeed !== null && $highSpeed > 0) {
                 $this->appendNumericSensor(
                     $sensors,
                     $index,
@@ -169,7 +190,10 @@ final readonly class InterfaceDiscoveryModule implements DiscoveryModuleInterfac
                     self::IF_HIGH_SPEED . '.' . $index,
                     $highSpeed,
                     'Mbps',
-                    $metadata + ['source' => 'IF-MIB::ifHighSpeed'],
+                    $metadata + [
+                        'source' => 'IF-MIB::ifHighSpeed',
+                        'connected' => true,
+                    ],
                     'ok',
                 );
             } elseif ($speed !== null && $speed > 0) {
@@ -182,7 +206,10 @@ final readonly class InterfaceDiscoveryModule implements DiscoveryModuleInterfac
                     self::IF_SPEED . '.' . $index,
                     $speed,
                     'bps',
-                    $metadata + ['source' => 'IF-MIB::ifSpeed'],
+                    $metadata + [
+                        'source' => 'IF-MIB::ifSpeed',
+                        'connected' => true,
+                    ],
                     'ok',
                 );
             }

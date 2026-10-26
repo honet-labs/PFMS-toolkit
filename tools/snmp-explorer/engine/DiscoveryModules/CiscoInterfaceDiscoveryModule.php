@@ -85,23 +85,24 @@ final readonly class CiscoInterfaceDiscoveryModule implements DiscoveryModuleInt
                 $name = $this->normalizeInterfaceName($name);
 
                 // Speed detection using reusable SpeedDetector
-                $speedResult = $this->speedDetector->detect($context, $ifIndex);
+                $operStatusInt = (!in_array($ifStatus, [null, '', 'NULL', false], true)) ? (int) $ifStatus : null;
+                $speedResult = $this->speedDetector->detect($context, $ifIndex, $operStatusInt);
                 $speed = $speedResult['speed'];
                 $speedOid = $speedResult['oid'];
                 $speedSource = $speedResult['source'];
+                $isConnected = ($operStatusInt === null || $operStatusInt === 1);
                 
                 // Speed with interface name and value
-                if ($speed && $speed > 0) {
-                    $speedDisplay = $this->formatSpeed($speed);
-                    $sensors[] = [
-                        'type' => 'cisco_interface_speed',
-                        'name' => "{$name} - Speed ({$speedDisplay})",
-                        'oid' => $speedOid,
-                        'unit' => 'bps',
-                        'value' => $speed,
-                        'description' => "Speed of {$name} - {$speedDisplay} ({$speedSource})",
-                    ];
-                }
+                $speedDisplay = $speed > 0 ? $this->formatSpeed($speed) : '0 bps';
+                $sensors[] = [
+                    'type' => 'cisco_interface_speed',
+                    'name' => "{$name} - Speed ({$speedDisplay})",
+                    'oid' => $speedOid,
+                    'unit' => 'bps',
+                    'value' => $speed,
+                    'status' => $isConnected ? 'ok' : 'down',
+                    'description' => "Speed of {$name} - {$speedDisplay} ({$speedSource})",
+                ];
 
                 // Input bytes (prefer 64-bit HC counter)
                 $inOctetsOid = self::IF_HC_IN_OCTETS . '.' . $ifIndex;

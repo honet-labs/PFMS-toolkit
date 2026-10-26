@@ -33,6 +33,7 @@ final class SpeedDetector
     // Standard IF-MIB OIDs
     private const string IF_SPEED = '1.3.6.1.2.1.2.2.1.5';
     private const string IF_HIGH_SPEED = '1.3.6.1.2.1.31.1.1.1.15';
+    private const string IF_OPER_STATUS = '1.3.6.1.2.1.2.2.1.8';
     
     // Speed validation: accept any value > 0
     private const int MIN_VALID_SPEED = 0;
@@ -55,16 +56,42 @@ final class SpeedDetector
      *   source: Description of speed source
      *   raw_values: Debug info with both OID values
      */
-    public function detect(DiscoveryContext $context, int|string $ifIndex): array
+    public function detect(DiscoveryContext $context, int|string $ifIndex, ?int $operStatus = null): array
     {
         $ifIndex = (int) $ifIndex;
         $debugInfo = [
             'if_index' => $ifIndex,
             'ifHighSpeed_raw' => null,
             'ifSpeed_raw' => null,
+            'oper_status' => $operStatus,
         ];
         
         try {
+            // Check operational status if not explicitly passed
+            if ($operStatus === null) {
+                try {
+                    $operVal = $context->snmp()->get(self::IF_OPER_STATUS . ".{$ifIndex}");
+                    if (!in_array($operVal, [null, '', 'NULL', false], true)) {
+                        $operStatus = (int) $operVal;
+                        $debugInfo['oper_status'] = $operStatus;
+                    }
+                } catch (\Throwable) {}
+            }
+
+            // If port is down / not connected (operStatus != 1), speed defaults to 0 Mbps
+            if ($operStatus !== null && $operStatus !== 1) {
+                return [
+                    'speed' => 0,
+                    'unit' => 'Mbps',
+                    'oid' => self::IF_HIGH_SPEED . ".{$ifIndex}",
+                    'source' => 'Not Connected (Port Down)',
+                    'raw_values' => $debugInfo,
+                    'speed_in_bps' => 0,
+                    'connected' => false,
+                    'status' => 'down',
+                ];
+            }
+
             // Try high-speed first (RFC 2096) - returns Mbps
             $ifHighSpeed = $context->snmp()->get(self::IF_HIGH_SPEED . ".{$ifIndex}");
             $debugInfo['ifHighSpeed_raw'] = $ifHighSpeed;

@@ -35,6 +35,25 @@ final readonly class SensorInventoryRepository
 
             $this->bulkUpsert($deviceId, $uniqueSensors);
 
+            // Reconcile speed sensors against interface operStatus for this device
+            try {
+                $this->pdo->exec("
+                    UPDATE sensor_inventory s
+                    JOIN sensor_inventory o ON s.device_id = o.device_id
+                        AND (
+                            (s.interface_index IS NOT NULL AND s.interface_index = o.interface_index)
+                            OR (s.interface_name IS NOT NULL AND s.interface_name = o.interface_name)
+                        )
+                    SET s.normalized_value = 0.0,
+                        s.raw_value = '0',
+                        s.status = 'down'
+                    WHERE s.device_id = {$deviceId}
+                      AND (s.sensor_type IN ('interface_speed', 'bandwidth') OR s.sensor_name LIKE '%ifHighSpeed%' OR s.sensor_name LIKE '%ifSpeed%' OR s.sensor_name LIKE '%Speed%')
+                      AND (o.sensor_name LIKE '%ifOperStatus%' OR o.oid LIKE '1.3.6.1.2.1.2.2.1.8.%' OR o.sensor_type = 'status')
+                      AND o.raw_value != '1'
+                ");
+            } catch (Throwable) {}
+
             if ($startedTransaction) {
                 $this->pdo->commit();
             }

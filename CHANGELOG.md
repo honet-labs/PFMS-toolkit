@@ -2,6 +2,23 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.21] - 2026-10-26 (SNMP Explorer - Fix Default Speed for Not Connected Interfaces to 0 Mbps with Red Styling)
+### Fixed & Enhanced
+- **Penetapan Kecepatan Default 0 Mbps pada Port yang Tidak Terhubung (*Disconnected / Not Connected Interfaces*):**
+  - Mengatasi masalah di mana interface yang tidak terhubung (*operStatus* = 2 / *down*) pada switch (seperti Cisco Catalyst) secara keliru menampilkan kecepatan `10 Mbps` di Sensor Inventory SNMP Explorer.
+  - **Akar Penyebab (*Root Cause*):** Firmware switch Cisco secara bawaan mengembalikan nilai `10` pada OID `ifHighSpeed` (`1.3.6.1.2.1.31.1.1.1.15`) atau `10,000,000` pada `ifSpeed` (`1.3.6.1.2.1.2.2.1.5`) saat port GigabitEthernet tidak tertancap kabel (*unlinked / not connected*) sebagai fallback baseline 10BASE-T PHY state standar IEEE 802.3.
+  - **Perbaikan yang Diterapkan:**
+    1. **Modul Penemuan Mesin (*Discovery Modules*):**
+       - [InterfaceDiscoveryModule.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/tools/snmp-explorer/engine/DiscoveryModules/InterfaceDiscoveryModule.php): Memeriksa status operasional port (`operStatus`). Jika port tidak terhubung (`operStatus !== 1`), kecepatan disetel ke nilai default `0 Mbps` dengan status sensor `'down'`.
+       - [InterfaceSpeedModule.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/tools/snmp-explorer/engine/DiscoveryModules/InterfaceSpeedModule.php): Melakukan walk OID `ifOperStatus` (`1.3.6.1.2.1.2.2.1.8`) dan menetapkan nilai default `0 Mbps` dengan status `'down'` saat port tidak terhubung.
+       - [SpeedDetector.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/tools/snmp-explorer/engine/Core/Normalize/SpeedDetector.php): Mendeteksi `operStatus` secara otomatis; jika port *down*, langsung mengembalikan `0 Mbps` dengan `connected = false`.
+       - [CiscoInterfaceDiscoveryModule.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/tools/snmp-explorer/engine/DiscoveryModules/CiscoInterfaceDiscoveryModule.php) & [HuaweiInterfaceDiscoveryModule.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/tools/snmp-explorer/engine/DiscoveryModules/HuaweiInterfaceDiscoveryModule.php): Menyerahkan `ifStatus` ke `SpeedDetector` dan menetapkan status sensor ke `'down'` serta display `'0 bps'` bila port tidak terhubung.
+       - [DiscoveryPipeline.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/tools/snmp-explorer/engine/Core/Discovery/DiscoveryPipeline.php): Menambahkan rekonsiliasi akhir lintas vendor (`reconcileInterfaceStatuses`) agar seluruh modul penemu sensor mematok kecepatan `0 Mbps` jika status operasional port tidak UP.
+    2. **Auto-Repair Basis Data (*Database Migration & Self-Healing*):**
+       - Menambahkan migrasi otomatis pada endpoint `get_inventory` dan repository [SensorInventoryRepository.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/tools/snmp-explorer/engine/Repository/SensorInventoryRepository.php) di [snmp-explorer.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/tools/snmp-explorer/snmp-explorer.php) untuk memperbarui baris inventaris lama di tabel `sensor_inventory` yang tersimpan `10 Mbps` saat port *down* menjadi `0 Mbps` dengan status `'down'`.
+    3. **Penyelarasan Tampilan Visual Antarmuka (*UI Red Color & Badge Indicator*):**
+       - Menampilkan nilai kecepatan port yang tidak terhubung dengan warna **merah** (`#ef4444`) dan badge penanda `[Not Connected]` berwarna merah muda (`#fee2e2` / `#b91c1c`) di tabel Sensor Inventory, modal Quick Scan, tabel Provisioned Modules, dan antrian Selected Sensors.
+
 ## [2.11.20] - 2026-10-26 (Dashboard - Fix False NOT INIT Blocks in 24h Status Timeline & Add Batch Baseline Lookback)
 ### Fixed & Enhanced
 - **Pembersihan Blok Biru Palsu (*False NOT INIT / No Data Recorded*) pada Status Timeline 24 Jam:**
