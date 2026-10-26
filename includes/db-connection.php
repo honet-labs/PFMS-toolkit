@@ -966,6 +966,45 @@ function get_modules_history_data_batch($pdo, $pdo_history, $modIds, $start, $en
             }
         }
 
+        // Query baseline lookback point immediately preceding $start for each module in $ids
+        // to establish known initial status at timeline start (consistent with get_module_history_data line 782)
+        foreach ($h_pdos as $h_pdo) {
+            try {
+                $lb_sql = "SELECT d.id_agente_modulo, d.utimestamp as ts, d.datos
+                           FROM tagente_datos d
+                           INNER JOIN (
+                               SELECT id_agente_modulo, MAX(utimestamp) as max_ts
+                               FROM tagente_datos
+                               WHERE id_agente_modulo IN ($placeholders) AND utimestamp < ?
+                               GROUP BY id_agente_modulo
+                           ) mxt ON d.id_agente_modulo = mxt.id_agente_modulo AND d.utimestamp = mxt.max_ts";
+                $stLb = $h_pdo->prepare($lb_sql);
+                $stLb->execute(array_merge($ids, [$start]));
+                $lb_rows = $stLb->fetchAll(PDO::FETCH_ASSOC);
+                if (!empty($lb_rows)) {
+                    $seen_lb = [];
+                    foreach ($lb_rows as $lb) {
+                        $mid = $lb['id_agente_modulo'];
+                        if (isset($seen_lb[$mid])) continue;
+                        $seen_lb[$mid] = true;
+                        if (isset($bounds_map[$mid]) && is_numeric($lb['datos'])) {
+                            $vNum = (float)$lb['datos'];
+                            $b = $bounds_map[$mid];
+                            if ($b['max'] !== null && $vNum > $b['max']) continue;
+                            if ($b['min'] !== null && $vNum < $b['min']) continue;
+                        }
+                        $prefixed_mod_id = $node . ':' . $mid;
+                        $node_data[] = [
+                            'id_mod' => $prefixed_mod_id,
+                            'ts' => (int)$start,
+                            'datos' => $lb['datos']
+                        ];
+                    }
+                    break;
+                }
+            } catch (Throwable $e) {}
+        }
+
         // Fallback Path: Check string/incremental tables if direct query returned no rows (e.g. string/inc modules)
         if (empty($node_data)) {
             $queries = [];

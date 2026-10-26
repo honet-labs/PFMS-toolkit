@@ -4269,17 +4269,32 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
                     blockVal = prior.val;
                     blockTs = prior.utimestamp || prior.ts || bCenter;
                     dataNote = 'Steady state continues';
-                } else if (sortedHist.length === 0) {
+                } else if (sortedHist.filter(h => !h.is_latest).length === 0) {
+                    // No state change logged across timeline: module has continuously stayed in current verified state
                     blockStatus = curEval.status;
                     blockVal = m.current_value;
-                    blockTs = lastContactTs || bCenter;
-                    dataNote = 'Current status verified';
-                } else {
-                    blockStatus = 4;
-                    blockVal = 'N/A';
                     blockTs = bCenter;
-                    dataNote = 'No data recorded';
+                    dataNote = 'Steady state continues';
+                } else {
+                    // Baseline state before first recorded event in range represents prior steady state
+                    const realPoints = sortedHist.filter(h => !h.is_latest);
+                    const firstEv = realPoints[0];
+                    if (firstEv) {
+                        const fNum = parseFloat(String(firstEv.val).replace(',', '.'));
+                        const fEval = evaluateModuleThresholdStatus(m, isNaN(fNum) ? 0 : fNum, m.module_name, m.unit, card.title);
+                        blockStatus = fEval.status;
+                        blockVal = firstEv.val;
+                        blockTs = bCenter;
+                        dataNote = 'Steady state continues';
+                    } else {
+                        blockStatus = curEval.status;
+                        blockVal = m.current_value;
+                        blockTs = bCenter;
+                        dataNote = 'Steady state continues';
+                    }
                 }
+                lastVal = blockVal;
+                lastTs = blockTs;
             }
 
             let blockColor = '#22c55e';

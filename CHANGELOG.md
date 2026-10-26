@@ -2,6 +2,17 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.20] - 2026-10-26 (Dashboard - Fix False NOT INIT Blocks in 24h Status Timeline & Add Batch Baseline Lookback)
+### Fixed & Enhanced
+- **Pembersihan Blok Biru Palsu (*False NOT INIT / No Data Recorded*) pada Status Timeline 24 Jam:**
+  - Mengatasi masalah di mana saat pengguna memilih rentang waktu *Last 24 Hours* pada kartu bergaya *Status Timeline* (*Uptime Blocks*), balok-balok awal (misal 4 jam pertama, atau bahkan hampir seluruh 24 jam) ditampilkan berwarna biru (**NOT INIT** / *No data recorded*) padahal modul berstatus normal (**UP**) sepanjang waktu.
+  - **Akar Penyebab (*Root Cause*):**
+    1. **Ketiadaan Baseline Lookback pada Batch Query:** Fungsi `get_modules_history_data_batch` di `includes/db-connection.php` sebelumnya hanya mengambil data dengan kriteria `utimestamp BETWEEN $start AND $end`. Modul yang tidak mengalami perubahan status sebelum jendela 24 jam tidak memiliki titik data sama sekali di batas awal `$start`.
+    2. **Logika Fallback Frontend Terjebak:** Ketika stempel waktu kontak terkini (`is_latest`) disuntikkan di akhir timeline, array riwayat memiliki panjang 1 (`sortedHist.length === 1`). Untuk balok waktu sebelumnya yang belum memiliki riwayat, kondisi `priorPoints.length === 0` dan `sortedHist.length === 0` menjadi tidak terpenuhi sehingga sistem secara keliru menandai balok sebagai `blockStatus = 4` (NOT INIT / *No data recorded*).
+  - **Perbaikan yang Diterapkan:**
+    1. **Baseline Lookback Query Batch:** Menambahkan subquery lookback pada `get_modules_history_data_batch` di [includes/db-connection.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/includes/db-connection.php) untuk mengambil status terakhir sebelum `$start` dan mematoknya di batas awal `$start`.
+    2. **Steady State Preservation:** Memperbaiki logika evaluasi balok di [metrics-dashboard.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php) dan [dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php) sehingga modul yang tidak memiliki transisi status di jendela riwayat tetap mempertahankan status terverifikasi (`curEval.status` / `Steady state continues`) dan tidak pernah lagi berubah menjadi biru (NOT INIT).
+
 ## [2.11.19] - 2026-10-26 (Dashboard - Real-Time Timestamp in Uptime Blocks, UI English Standardization & RULES.md)
 ### Fixed & Enhanced
 - **Sinkronisasi Waktu Riil pada Balok Status Uptime Timeline (*Latest Contact Timestamp Fix*):**
