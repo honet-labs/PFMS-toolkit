@@ -121,6 +121,24 @@ if ($api === 'load_config') {
     if(file_exists($CONFIG_FILE)) { 
         $content = file_get_contents($CONFIG_FILE); 
         $dashboards = json_decode($content, true);
+        if (is_array($dashboards)) {
+            $valid_sorts = ['default', 'rx_desc', 'rx_asc', 'tx_desc', 'tx_asc', 'rx_pct_desc', 'rx_pct_asc', 'tx_pct_desc', 'tx_pct_asc', 'top_10_rx_pct', 'top_10_tx_pct'];
+            foreach ($dashboards as &$d) {
+                if (!isset($d['settings']) || !is_array($d['settings'])) {
+                    $d['settings'] = [];
+                }
+                if (empty($d['settings']['sort']) || !in_array($d['settings']['sort'], $valid_sorts, true)) {
+                    $d['settings']['sort'] = 'default';
+                }
+                if (empty($d['settings']['unit'])) {
+                    $d['settings']['unit'] = 'Auto';
+                }
+                if (empty($d['settings']['speed_filter'])) {
+                    $d['settings']['speed_filter'] = 'all';
+                }
+            }
+            unset($d);
+        }
         if (!$is_admin && is_array($dashboards)) {
             $dashboards = array_values(array_filter($dashboards, function($d) use ($user_id, $pdo) {
                 return check_dashboard_access($d['access_control'] ?? null, (string)$user_id, 'view', $pdo);
@@ -144,6 +162,26 @@ if ($api === 'save_config') {
         echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh portal.']); exit;
     }
     $input = file_get_contents('php://input');
+    $dashboards = json_decode($input, true);
+    if (is_array($dashboards)) {
+        $valid_sorts = ['default', 'rx_desc', 'rx_asc', 'tx_desc', 'tx_asc', 'rx_pct_desc', 'rx_pct_asc', 'tx_pct_desc', 'tx_pct_asc', 'top_10_rx_pct', 'top_10_tx_pct'];
+        foreach ($dashboards as &$d) {
+            if (!isset($d['settings']) || !is_array($d['settings'])) {
+                $d['settings'] = [];
+            }
+            if (empty($d['settings']['sort']) || !in_array($d['settings']['sort'], $valid_sorts, true)) {
+                $d['settings']['sort'] = 'default';
+            }
+            if (empty($d['settings']['unit'])) {
+                $d['settings']['unit'] = 'Auto';
+            }
+            if (empty($d['settings']['speed_filter'])) {
+                $d['settings']['speed_filter'] = 'all';
+            }
+        }
+        unset($d);
+        $input = json_encode($dashboards, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
     $bytes = @file_put_contents($CONFIG_FILE, $input);
     if ($bytes === false) {
         $err = error_get_last();
@@ -902,7 +940,11 @@ if ($api === 'data') {
             }));
         }
 
-        $sort = $input['sort'] ?? 'default';
+        $sort = trim((string)($input['sort'] ?? 'default'));
+        $valid_sorts = ['default', 'rx_desc', 'rx_asc', 'tx_desc', 'tx_asc', 'rx_pct_desc', 'rx_pct_asc', 'tx_pct_desc', 'tx_pct_asc', 'top_10_rx_pct', 'top_10_tx_pct'];
+        if (empty($sort) || !in_array($sort, $valid_sorts, true)) {
+            $sort = 'default';
+        }
 
         if ($sort === 'top_10_rx_pct') {
             usort($interfaces, function($a, $b) {
@@ -1600,7 +1642,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             <div class="toolbar-collapse-content">
                 <div class="toolbar-left">
                     <div class="toolbar-item"><select id="f_unit" class="toolbar-select" onchange="onFilterChange()"><option value="Auto" selected>Auto</option><option value="Mbps">Mbps</option><option value="Gbps">Gbps</option><option value="Bps">B/s</option><option value="MBps">MB/s</option><option value="GBps">GB/s</option></select></div>
-                    <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="onFilterChange()"><option value="default">Default</option><option value="rx_desc">Largest RX (Max)</option><option value="rx_asc">Smallest RX (Min)</option><option value="tx_desc">Largest TX (Max)</option><option value="tx_asc">Smallest TX (Min)</option><option value="rx_pct_desc">Largest RX % (Max)</option><option value="rx_pct_asc">Smallest RX % (Min)</option><option value="tx_pct_desc">Largest TX % (Max)</option><option value="tx_pct_asc">Smallest TX % (Min)</option><option value="top_10_rx_pct">Top 10 RX (%)</option><option value="top_10_tx_pct">Top 10 TX (%)</option></select></div>
+                    <div class="toolbar-item"><select id="f_sort" class="toolbar-select" onchange="onFilterChange()"><option value="default" selected>Default</option><option value="rx_desc">Largest RX (Max)</option><option value="rx_asc">Smallest RX (Min)</option><option value="tx_desc">Largest TX (Max)</option><option value="tx_asc">Smallest TX (Min)</option><option value="rx_pct_desc">Largest RX % (Max)</option><option value="rx_pct_asc">Smallest RX % (Min)</option><option value="tx_pct_desc">Largest TX % (Max)</option><option value="tx_pct_asc">Smallest TX % (Min)</option><option value="top_10_rx_pct">Top 10 RX (%)</option><option value="top_10_tx_pct">Top 10 TX (%)</option></select></div>
                     <div class="toolbar-item"><select id="f_speed_filter" class="toolbar-select" onchange="onFilterChange()"><option value="all" selected>All Speeds</option><option value="gbps">Gbps Only</option><option value="mbps">Mbps Only</option><option value="gbps_mbps">Gbps & Mbps</option><option value="na">N/A Only</option></select></div>
                     <div class="toolbar-item" id="search_wrapper" style="display:flex; align-items:center;">
                         <button class="btn-neutral" style="width:32px; padding:0; height:32px;" onclick="toggleSearch()" title="Search">
@@ -1800,8 +1842,22 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         { value: 'GBps', label: 'GB/s' }
     ];
 
+    const VALID_SORTS = ['default', 'rx_desc', 'rx_asc', 'tx_desc', 'tx_asc', 'rx_pct_desc', 'rx_pct_asc', 'tx_pct_desc', 'tx_pct_asc', 'top_10_rx_pct', 'top_10_tx_pct'];
+    function normalizeSort(s) {
+        if (!s) return 'default';
+        const str = String(s).trim();
+        return VALID_SORTS.includes(str) ? str : 'default';
+    }
+
+    const VALID_SPEED_FILTERS = ['all', 'gbps', 'mbps', 'gbps_mbps', 'na'];
+    function normalizeSpeedFilter(s) {
+        if (!s) return 'all';
+        const str = String(s).trim().toLowerCase();
+        return VALID_SPEED_FILTERS.includes(str) ? str : 'all';
+    }
+
     function normalizeUnit(s) {
-        if (!s) return '';
+        if (!s) return 'Auto';
         const str = String(s).trim();
         if (str === 'MBps' || str === 'MB/s' || str === 'MBPS_BYTES') return 'MBps';
         if (str === 'GBps' || str === 'GB/s' || str === 'GBPS_BYTES') return 'GBps';
@@ -1918,9 +1974,20 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const params = new URLSearchParams(window.location.search);
         
         // URL Params override UI filter defaults
-        if(params.has('unit')) document.getElementById('f_unit').value = params.get('unit');
-        if(params.has('sort')) document.getElementById('f_sort').value = params.get('sort');
-        if(params.has('speed_filter')) document.getElementById('f_speed_filter').value = params.get('speed_filter');
+        const initUnit = normalizeUnit(params.get('unit') || 'Auto');
+        const unitEl = document.getElementById('f_unit');
+        if (unitEl) unitEl.value = initUnit;
+
+        const initSort = normalizeSort(params.get('sort') || 'default');
+        const sortEl = document.getElementById('f_sort');
+        if (sortEl) {
+            sortEl.value = initSort;
+            if (sortEl.selectedIndex < 0) sortEl.value = 'default';
+        }
+
+        const initSpeed = normalizeSpeedFilter(params.get('speed_filter') || 'all');
+        const speedEl = document.getElementById('f_speed_filter');
+        if (speedEl) speedEl.value = initSpeed;
         if(params.has('search')) {
             const fs = document.getElementById('f_search');
             fs.value = params.get('search');
@@ -2056,21 +2123,28 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / TRAFFIC DASHBOARD / " + d.name.toUpperCase();
         }
         
-        // Load per-dashboard settings: Priority (1) Server saved config (dSettings) -> (2) URL Params -> (3) LocalStorage -> (4) Defaults
+        // Load per-dashboard settings: Priority (1) URL Params -> (2) LocalStorage -> (3) Server saved config (dSettings) -> (4) Defaults
         const dSettings = d.settings || {};
         const saved = JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
         const params = new URLSearchParams(window.location.search);
 
-        const warn = dSettings.warn ?? ((isInitial && params.has('warn')) ? params.get('warn') : (saved.warn ?? 70));
-        const crit = dSettings.crit ?? ((isInitial && params.has('crit')) ? params.get('crit') : (saved.crit ?? 80));
-        const fs = dSettings.fs ?? ((isInitial && params.has('fs')) ? params.get('fs') : (saved.fs ?? 12));
-        const unit = dSettings.unit ?? ((isInitial && params.has('unit')) ? params.get('unit') : (saved.unit ?? 'Auto'));
-        const sort = dSettings.sort ?? ((isInitial && params.has('sort')) ? params.get('sort') : (saved.sort ?? 'default'));
-        const speed_filter = dSettings.speed_filter ?? ((isInitial && params.has('speed_filter')) ? params.get('speed_filter') : (saved.speed_filter ?? 'all'));
-        const search = dSettings.search ?? ((isInitial && params.has('search')) ? params.get('search') : (saved.search ?? ''));
-        const showUnits = dSettings.show_units ?? ((isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (saved.show_units ?? true));
-        const perPage = dSettings.per_page ?? ((isInitial && params.has('per_page')) ? params.get('per_page') : (saved.per_page ?? 20));
-        const refresh = dSettings.refresh ?? ((isInitial && params.has('refresh')) ? params.get('refresh') : (saved.refresh ?? '60'));
+        const warn = (isInitial && params.has('warn') && params.get('warn') !== '') ? params.get('warn') : (saved.warn ?? (dSettings.warn ?? 70));
+        const crit = (isInitial && params.has('crit') && params.get('crit') !== '') ? params.get('crit') : (saved.crit ?? (dSettings.crit ?? 80));
+        const fs = (isInitial && params.has('fs') && params.get('fs') !== '') ? params.get('fs') : (saved.fs ?? (dSettings.fs ?? 12));
+        
+        const rawUnit = (isInitial && params.has('unit') && params.get('unit')) ? params.get('unit') : (saved.unit || dSettings.unit || 'Auto');
+        const unit = normalizeUnit(rawUnit);
+
+        const rawSort = (isInitial && params.has('sort') && params.get('sort')) ? params.get('sort') : (saved.sort || dSettings.sort || 'default');
+        const sort = normalizeSort(rawSort);
+
+        const rawSpeed = (isInitial && params.has('speed_filter') && params.get('speed_filter')) ? params.get('speed_filter') : (saved.speed_filter || dSettings.speed_filter || 'all');
+        const speed_filter = normalizeSpeedFilter(rawSpeed);
+
+        const search = (isInitial && params.has('search')) ? params.get('search') : (saved.search ?? (dSettings.search ?? ''));
+        const showUnits = (isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (saved.show_units ?? (dSettings.show_units ?? true));
+        const perPage = (isInitial && params.has('per_page') && params.get('per_page') !== '') ? params.get('per_page') : (saved.per_page ?? (dSettings.per_page ?? 20));
+        const refresh = (isInitial && params.has('refresh') && params.get('refresh') !== '') ? params.get('refresh') : (saved.refresh ?? (dSettings.refresh ?? '60'));
 
         let enabledUnits = null;
         if (dSettings.enabled_units && Array.isArray(dSettings.enabled_units) && dSettings.enabled_units.length > 0) {
@@ -2093,15 +2167,30 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         document.getElementById('f_warn').value = warn;
         document.getElementById('f_crit').value = crit;
         document.getElementById('f_fontsize').value = fs;
-        document.getElementById('f_sort').value = sort;
-        document.getElementById('f_speed_filter').value = speed_filter;
+        
+        const sortSelect = document.getElementById('f_sort');
+        if (sortSelect) {
+            sortSelect.value = sort;
+            if (sortSelect.selectedIndex < 0) sortSelect.value = 'default';
+        }
+
+        const speedSelect = document.getElementById('f_speed_filter');
+        if (speedSelect) {
+            speedSelect.value = speed_filter;
+            if (speedSelect.selectedIndex < 0) speedSelect.value = 'all';
+        }
+
         document.getElementById('f_showunits').checked = showUnits;
         document.getElementById('f_perpage').value = perPage;
         document.getElementById('f_refresh').value = refresh;
 
         syncEnabledUnitsUI(enabledUnits);
         updateUnitDropdown(enabledUnits);
-        if (unit) document.getElementById('f_unit').value = unit;
+        const unitSelect = document.getElementById('f_unit');
+        if (unitSelect && unit) {
+            unitSelect.value = unit;
+            if (unitSelect.selectedIndex < 0) unitSelect.value = 'Auto';
+        }
         syncEnabledCategoriesUI(enabledCategories);
 
         const searchEl = document.getElementById('f_search');
@@ -2113,6 +2202,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
 
         applyFontSize();
+        updateURLState();
 
         const url = new URL(window.location); url.searchParams.set('dash_id', id); window.history.replaceState({}, '', url);
         if (window.parent && window.parent !== window) {
@@ -2230,7 +2320,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         });
     }
 
-    function saveConfigToServer(callback) {
+    function saveConfigToServer(callback, silent = false) {
         fetch('?api=save_config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN },
@@ -2241,11 +2331,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             if(res.ok) {
                 if(callback) callback();
             } else {
-                alert(res.error || 'Failed to save configuration.');
+                if (!silent) alert(res.error || 'Failed to save configuration.');
             }
         })
         .catch(err => {
-            alert('Error communicating with server: ' + err.message);
+            if (!silent) alert('Error communicating with server: ' + err.message);
         });
     }
 
@@ -2255,9 +2345,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const warn = document.getElementById('f_warn').value;
         const crit = document.getElementById('f_crit').value;
         const fs = document.getElementById('f_fontsize').value;
-        const unit = document.getElementById('f_unit').value;
-        const sort = document.getElementById('f_sort').value;
-        const speed_filter = document.getElementById('f_speed_filter').value;
+        const unit = normalizeUnit(document.getElementById('f_unit').value);
+        let sort = normalizeSort(document.getElementById('f_sort').value);
+        const sortEl = document.getElementById('f_sort');
+        if (sortEl && sortEl.selectedIndex < 0) {
+            sort = 'default';
+            sortEl.value = 'default';
+        }
+        const speed_filter = normalizeSpeedFilter(document.getElementById('f_speed_filter').value);
         const search = document.getElementById('f_search').value;
         const showUnits = document.getElementById('f_showunits').checked;
         const perPage = document.getElementById('f_perpage').value || 20;
@@ -2458,9 +2553,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         const warn = document.getElementById('f_warn').value;
         const crit = document.getElementById('f_crit').value;
         const fs = document.getElementById('f_fontsize').value;
-        const unit = document.getElementById('f_unit').value;
-        const sort = document.getElementById('f_sort').value;
-        const speed_filter = document.getElementById('f_speed_filter').value;
+        const unit = normalizeUnit(document.getElementById('f_unit').value);
+        let sort = normalizeSort(document.getElementById('f_sort').value);
+        const sortEl = document.getElementById('f_sort');
+        if (sortEl && sortEl.selectedIndex < 0) {
+            sort = 'default';
+            sortEl.value = 'default';
+        }
+        const speed_filter = normalizeSpeedFilter(document.getElementById('f_speed_filter').value);
         const search = document.getElementById('f_search').value;
         const show_units = document.getElementById('f_showunits').checked;
         const per_page = document.getElementById('f_perpage').value || 20;
@@ -2509,9 +2609,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     }
 
     function onFilterChange() {
-        const unit = document.getElementById('f_unit').value;
-        const sort = document.getElementById('f_sort').value;
-        const speedFilter = document.getElementById('f_speed_filter').value;
+        const unit = normalizeUnit(document.getElementById('f_unit').value);
+        let sort = normalizeSort(document.getElementById('f_sort').value);
+        const sortEl = document.getElementById('f_sort');
+        if (sortEl && sortEl.selectedIndex < 0) {
+            sort = 'default';
+            sortEl.value = 'default';
+        }
+        const speedFilter = normalizeSpeedFilter(document.getElementById('f_speed_filter').value);
         const refresh = document.getElementById('f_refresh').value;
         const perPage = document.getElementById('f_perpage').value || 20;
 
@@ -2532,6 +2637,16 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (cbNA && cbNA.checked) enabled_categories.push('N/A');
 
         if (currentDashId) {
+            const saved = JSON.parse(localStorage.getItem('pfms_settings_' + currentDashId) || '{}');
+            saved.unit = unit;
+            saved.sort = sort;
+            saved.speed_filter = speedFilter;
+            saved.refresh = refresh;
+            saved.per_page = perPage;
+            saved.enabled_units = enabled_units;
+            saved.enabled_categories = enabled_categories;
+            localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify(saved));
+
             const dash = masterDashboards.find(x => x.id === currentDashId);
             if (dash) {
                 if (!dash.settings) dash.settings = {};
@@ -2542,16 +2657,22 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 dash.settings.per_page = perPage;
                 dash.settings.enabled_units = enabled_units;
                 dash.settings.enabled_categories = enabled_categories;
-                saveConfigToServer();
+                saveConfigToServer(null, true);
             }
         }
+        updateURLState();
         fetchData();
     }
 
     function updateURLState() {
-        const unit = document.getElementById('f_unit').value;
-        const sort = document.getElementById('f_sort').value;
-        const speedFilter = document.getElementById('f_speed_filter').value;
+        const unit = normalizeUnit(document.getElementById('f_unit').value);
+        let sort = normalizeSort(document.getElementById('f_sort').value);
+        const sortEl = document.getElementById('f_sort');
+        if (sortEl && sortEl.selectedIndex < 0) {
+            sort = 'default';
+            sortEl.value = 'default';
+        }
+        const speedFilter = normalizeSpeedFilter(document.getElementById('f_speed_filter').value);
         const search = document.getElementById('f_search').value;
         const warn = document.getElementById('f_warn').value;
         const crit = document.getElementById('f_crit').value;

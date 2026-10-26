@@ -2,6 +2,21 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.22] - 2026-10-26 (Traffic Dashboard - Fix Blank Sort Dropdown & Ensure Setting Persistence Across Refresh/Embed)
+### Fixed & Enhanced
+- **Perbaikan Dropdown Urutan Kosong (*Blank Sort Dropdown*) & Ketahanan Pengaturan (*State Persistence*):**
+  - Mengatasi masalah pada menu **Traffic Dashboard** di mana kolom pemilihan urutan (*sorting dropdown*) yang seharusnya secara default terisi `Default` justru tampil kosong (*blank*). Ketika diubah ke pilihan lain atau ke default, lalu di-refresh (baik refresh manual, auto-refresh countdown, maupun saat di-embed di iframe Pandora Console), dropdown selalu kembali kosong seolah perubahan tidak tersimpan.
+  - **Akar Penyebab (*Root Cause*):**
+    1. **Ketiadaan Atribut `selected` & Opsi Kosong pada DOM:** Elemen `<select id="f_sort">` pada toolbar tidak memiliki atribut `selected` pada opsi `<option value="default">`. Karena tidak ada opsi dengan `value=""`, penugasan string kosong menyebabkan browser menyetel `selectedIndex = -1` (tampilan dropdown menjadi kosong).
+    2. **Nullish Coalescing Trap (`??`) terhadap String Kosong:** Pada fungsi `openDashboard()`, konfigurasi dibaca dengan pola `dSettings.sort ?? 'default'`. Dalam JavaScript, `"" ?? 'default'` mengevaluasi ke string kosong `""`. Begitu file JSON server atau URL memuat `sort=""`, dropdown diatur dengan `f_sort.value = ""` yang memicu `selectedIndex = -1` secara permanen.
+    3. **Ketiadaan Sinkronisasi URL & LocalStorage di `onFilterChange()`:** Fungsi `onFilterChange()` sebelumnya tidak memanggil `updateURLState()` dan tidak segera menyimpan state ke `localStorage`. Ketika dashboard di-refresh atau di-embed di dalam iframe Pandora FMS, halaman memuat ulang URL iframe asal tanpa query parameter `sort` yang baru, dan jika user bukan administrator Pandora, penyimpanan server (`save_config`) ditolak (403) sehingga perubahan hilang saat refresh.
+  - **Perbaikan yang Diterapkan:**
+    1. **Toolbar HTML:** Menambahkan atribut `selected` pada `<option value="default" selected>Default</option>` di [traffic-dashboard.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Traffic-Dashboard/traffic-dashboard.php).
+    2. **Fungsi Normalisasi (*Whitelist Normalization*):** Menambahkan fungsi pembantu `normalizeSort()` dan `normalizeSpeedFilter()` serta menyempurnakan `normalizeUnit()` untuk menjamin nilai yang dikembalikan selalu valid dan memfallback ke `'default'` / `'Auto'` / `'all'` bila kosong atau tidak valid.
+    3. **Hierarki Pemuatan Pengaturan (*Settings Loading Hierarchy*):** Memperbarui `openDashboard()` dengan urutan prioritas: URL Params -> LocalStorage (`saved`) -> Server Config (`dSettings`) -> Default (`'default'`), serta menambahkan pengecekan `selectedIndex < 0`.
+    4. **Sinkronisasi Otomatis (*Immediate URL & LocalStorage Persistence*):** Memperbarui `onFilterChange()` agar selalu menyimpan pengaturan terbaru ke `localStorage` secara instan, memanggil `updateURLState()` untuk menyinkronkan URL browser maupun window parent (iframe embed), serta mendukung parameter `silent = true` pada `saveConfigToServer()` agar pengguna non-admin tidak terganggu oleh dialog otorisasi.
+    5. **Sanitasi Backend (*PHP Server Config & API Data Sanitization*):** Menambahkan sanitasi pada endpoint `load_config`, `save_config`, dan `api=data` di PHP sehingga file konfigurasi JSON di server maupun request data selalu dinormalisasi dan tidak pernah menyimpan nilai string kosong.
+
 ## [2.11.21] - 2026-10-26 (SNMP Explorer - Fix Default Speed for Not Connected Interfaces to 0 Mbps with Red Styling)
 ### Fixed & Enhanced
 - **Penetapan Kecepatan Default 0 Mbps pada Port yang Tidak Terhubung (*Disconnected / Not Connected Interfaces*):**
