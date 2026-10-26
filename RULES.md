@@ -29,3 +29,18 @@ Setiap penambahan fitur baru pada dashboard, toolkit, atau visualizer wajib mema
    * Pada visualisasi time-series dan Status Timeline (Uptime Blocks), balok waktu terbaru (*latest block*) harus selalu menampilkan waktu pembaruan kontak terakhir (`last_contact`) modul secara riil, bukan stempel waktu lama dari event perubahan status hari sebelumnya.
 6. **Batas Seri Chart Transparan (Chart Limit):**
    * Pilihan limit diagram (`chart_limit`) harus mendukung `Show All (Default: 0)` secara murni tanpa pemotongan tersembunyi (*hardcoded slicing*) di backend. Pilihan limit opsional (Top 5, Top 10, Top 25, Top 50, Top 100) dapat disediakan untuk kontrol performa pengguna.
+
+---
+
+## 3. Standar Ikon & Larangan Penggunaan Emotikon / Emoji Berwarna (No Colored Emojis & Monochrome Icon Standard)
+* **Larangan Penggunaan Emotikon & Emoji Berwarna (*Strict Prohibition on Colored Emojis / Emoticons*):**
+  * Dilarang keras menggunakan emotikon berwarna atau emoji Unicode (seperti 🚀, ✅, ❌, ⚠️, 🔥, 💡, 🔧, 🌡️, 🧹, 🗑️, 🗂️, dll.) di dalam teks antarmuka pengguna (UI), label tombol, badge, dialog modal, notifikasi alert, header tabel, dokumentasi rilis, pesan commit, maupun respons asisten AI.
+  * Tampilan antarmuka sistem harus memancarkan nuansa enterprise profesional, bersih (*clean*), dan rapi tanpa elemen kartun, playful, atau warna emoji yang mencolok dan inkonsisten antar-browser/OS.
+* **Standar Penggunaan Ikon Monokrom (*Monochrome & Neutral Icon Standard*):**
+  * Gunakan ikon monokromatik berstandar industri seperti **Google Material Symbols** (`.material-symbols-outlined`) atau SVG monokrom.
+  * Ikon pada tombol aksi atau toolbar harus mewarisi warna teks netral tombol (`color: inherit;` atau warna turunan slate/neutral gray seperti `#475569`, `var(--text-main)`, atau `var(--text-dim)`).
+  * Hindari pewarnaan ikon inline yang mencolok (misal merah, oranye terang, atau biru terang) pada tombol sekunder reguler agar tidak menyerupai emoji berwarna. Warna aksen hanya diperbolehkan pada tombol status/bahaya khusus (seperti tombol delete permanen bertema merah) dengan palet tema yang terkontrol.
+* **Standar Format Respon Asisten AI (*Assistant Response Standard*):**
+  * Dalam setiap penjelasan, ringkasan, dan komunikasi dengan pengguna, asisten AI dilarang menyisipkan emoji atau emotikon berwarna.
+  * Gunakan format Markdown standar yang bersih dan profesional: tanda butir (*bullet point* `-`), teks tebal (*bold* `**`), blok kode (*code blocks*), dan tautan klik file (`file:///...`).
+

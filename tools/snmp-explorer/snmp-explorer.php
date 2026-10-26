@@ -2710,10 +2710,10 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
                             <span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle;">build</span> Auto-Fix (%) Modules
                         </button>
                         <button class="btn-secondary-custom" onclick="repairEnvironmentalModules()" title="Auto-fix sensor values in Pandora FMS suffering from scaling issues (e.g. 360 C -> 36.0 C with 0.1, 690 A -> 0.69 A with 0.001)">
-                            <span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle; color:#ea580c;">device_thermostat</span> Auto-Fix Scales
+                            <span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle;">device_thermostat</span> Auto-Fix Scales
                         </button>
                         <button type="button" class="btn-secondary-custom" id="btn-clean-duplicates" onclick="cleanDuplicateSensors()" title="Find and delete duplicate sensor rows sharing identical OID, keeping the newest entry">
-                            <span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle; color:#0284c7;">cleaning_services</span> Clean Duplicates
+                            <span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle;">cleaning_services</span> Clean Duplicates
                         </button>
                         <button class="btn-apply" onclick="proceedToProvisioning()">
                             Provision Selected (<span id="inv-selected-count">0</span>)
@@ -2723,7 +2723,7 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
                             Delete Selected (<span id="inv-delete-count">0</span>)
                         </button>
                         <button type="button" class="btn-secondary-custom" id="btn-clear-filtered" onclick="clearFilteredSensors()" style="color:#b91c1c; border-color:#fecaca;" title="Permanently delete all sensors matching current filters, or wipe entire inventory">
-                            <span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle; color:#ef4444;">delete_sweep</span>
+                            <span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle;">delete_sweep</span>
                             Clear Filtered / All
                         </button>
                     </div>
@@ -3712,10 +3712,10 @@ $vendor_url = !empty($TOOLKIT_BASE_PATH) ? ($TOOLKIT_BASE_PATH . '/vendor') : '.
             if (!clearBtn) return;
             if (deviceEl && deviceEl.value !== '') {
                 const optText = (deviceEl.selectedIndex >= 0 && deviceEl.options[deviceEl.selectedIndex]) ? deviceEl.options[deviceEl.selectedIndex].text : '';
-                clearBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle; color:#ef4444;">delete_sweep</span> Clear Device Sensors';
+                clearBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle;">delete_sweep</span> Clear Device Sensors';
                 clearBtn.title = `Permanently delete all discovered sensors belonging to ${optText}`;
             } else {
-                clearBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle; color:#ef4444;">delete_sweep</span> Clear Filtered / All';
+                clearBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px; vertical-align:middle;">delete_sweep</span> Clear Filtered / All';
                 clearBtn.title = 'Permanently delete all sensors matching current filters, or wipe entire inventory';
             }
         }

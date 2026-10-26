@@ -2,6 +2,13 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.24] - 2026-10-26 (Repository Standards - Ban Colored Emojis & Establish Monochrome Icon Standard)
+### Added & Enhanced
+- **Penetapan Standar Larangan Emotikon / Emoji Berwarna & Standardisasi Ikon Monokrom:**
+  - Menambahkan aturan baku pada [RULES.md](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/RULES.md) (Bagian 3) yang secara tegas melarang penggunaan emotikon atau emoji Unicode berwarna (seperti rocket, checkmark, warning, thermometer, broom, trash, dll.) di seluruh elemen antarmuka pengguna (UI), teks tombol, badge, modal dialog, header, commit message, changelog, dan komunikasi asisten AI.
+  - Memastikan antarmuka sistem berpenampilan rapi, profesional, dan seragam (*enterprise-grade clean appearance*) dengan menggunakan ikon standar **Google Material Symbols** monokromatis yang mewarisi warna teks netral tombol (`color: inherit;` / neutral slate `#475569`).
+  - Menetralisir pewarnaan inline berwarna mencolok pada tombol aksi inventaris sensor di [tools/snmp-explorer/snmp-explorer.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/tools/snmp-explorer/snmp-explorer.php) (`Auto-Fix Scales`, `Clean Duplicates`, `Clear Filtered / All`) agar konsisten dengan standar ikon monokrom.
+
 ## [2.11.23] - 2026-10-26 (Traffic Dashboard - Fix Dashboard Settings Persistence, Modal Form Sync & URL Query Pollution)
 ### Fixed & Enhanced
 - **Perbaikan Ketahanan Penyimpanan Pengaturan Dashboard (*Dashboard Settings Persistence*):**
