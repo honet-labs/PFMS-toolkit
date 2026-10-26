@@ -158,6 +158,10 @@ if ($api === 'save_config') {
         exit;
     }
     $client_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (empty($client_token) && function_exists('getallheaders')) {
+        $headers = getallheaders();
+        $client_token = $headers['X-CSRF-TOKEN'] ?? ($headers['x-csrf-token'] ?? '');
+    }
     if (empty($csrf_token) || $client_token !== $csrf_token) {
         echo json_encode(['ok' => false, 'error' => 'Invalid CSRF Token. Refresh portal.']); exit;
     }
@@ -1993,20 +1997,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             fs.value = params.get('search');
             fs.classList.add('active');
         }
-        if(params.has('warn')) document.getElementById('f_warn').value = params.get('warn');
-        if(params.has('crit')) document.getElementById('f_crit').value = params.get('crit');
-        if(params.has('fs')) document.getElementById('f_fontsize').value = params.get('fs');
-        if(params.has('show_units')) document.getElementById('f_showunits').checked = params.get('show_units') !== '0';
-        if(params.has('per_page')) document.getElementById('f_perpage').value = params.get('per_page');
-        
-        let activeUnitsList = null;
-        let activeCategoriesList = null;
-        if(params.has('enabled_units')) activeUnitsList = params.get('enabled_units').split(',').map(s => s.trim()).filter(Boolean);
-        if(params.has('enabled_categories')) activeCategoriesList = params.get('enabled_categories').split(',').map(s => s.trim()).filter(Boolean);
-        
-        syncEnabledUnitsUI(activeUnitsList);
-        updateUnitDropdown(activeUnitsList);
-        syncEnabledCategoriesUI(activeCategoriesList);
         applyFontSize();
 
         const dashId = params.get('dash_id');
@@ -2099,7 +2089,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     }
 
     function openDashboard(id, isInitial = false) {
-        const d = masterDashboards.find(x => x.id === id); if(!d) return renderMasterList();
+        const d = masterDashboards.find(x => String(x.id) === String(id)); if(!d) return renderMasterList();
         currentDashId = id;
         document.getElementById('masterView').style.display = 'none';
         document.getElementById('detailView').style.display = 'block';
@@ -2123,44 +2113,40 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             mainBreadcrumb.innerText = "PANDORA CONSOLE / CUSTOM / PANEL / TRAFFIC DASHBOARD / " + d.name.toUpperCase();
         }
         
-        // Load per-dashboard settings: Priority (1) URL Params -> (2) LocalStorage -> (3) Server saved config (dSettings) -> (4) Defaults
+        // Load per-dashboard settings: Priority (1) Server saved config (dSettings) -> (2) LocalStorage (saved) -> (3) Defaults
         const dSettings = d.settings || {};
         const saved = JSON.parse(localStorage.getItem('pfms_settings_' + id) || '{}');
         const params = new URLSearchParams(window.location.search);
 
-        const warn = (isInitial && params.has('warn') && params.get('warn') !== '') ? params.get('warn') : (saved.warn ?? (dSettings.warn ?? 70));
-        const crit = (isInitial && params.has('crit') && params.get('crit') !== '') ? params.get('crit') : (saved.crit ?? (dSettings.crit ?? 80));
-        const fs = (isInitial && params.has('fs') && params.get('fs') !== '') ? params.get('fs') : (saved.fs ?? (dSettings.fs ?? 12));
-        
-        const rawUnit = (isInitial && params.has('unit') && params.get('unit')) ? params.get('unit') : (saved.unit || dSettings.unit || 'Auto');
+        const warn = dSettings.warn !== undefined ? dSettings.warn : (saved.warn !== undefined ? saved.warn : 70);
+        const crit = dSettings.crit !== undefined ? dSettings.crit : (saved.crit !== undefined ? saved.crit : 80);
+        const fs = dSettings.fs !== undefined ? dSettings.fs : (saved.fs !== undefined ? saved.fs : 12);
+        const showUnits = dSettings.show_units !== undefined ? (dSettings.show_units !== false && dSettings.show_units !== '0') : (saved.show_units !== undefined ? (saved.show_units !== false && saved.show_units !== '0') : true);
+        const perPage = dSettings.per_page !== undefined ? dSettings.per_page : (saved.per_page !== undefined ? saved.per_page : 20);
+
+        const rawUnit = (isInitial && params.has('unit') && params.get('unit')) ? params.get('unit') : (dSettings.unit || saved.unit || 'Auto');
         const unit = normalizeUnit(rawUnit);
 
-        const rawSort = (isInitial && params.has('sort') && params.get('sort')) ? params.get('sort') : (saved.sort || dSettings.sort || 'default');
+        const rawSort = (isInitial && params.has('sort') && params.get('sort')) ? params.get('sort') : (dSettings.sort || saved.sort || 'default');
         const sort = normalizeSort(rawSort);
 
-        const rawSpeed = (isInitial && params.has('speed_filter') && params.get('speed_filter')) ? params.get('speed_filter') : (saved.speed_filter || dSettings.speed_filter || 'all');
+        const rawSpeed = (isInitial && params.has('speed_filter') && params.get('speed_filter')) ? params.get('speed_filter') : (dSettings.speed_filter || saved.speed_filter || 'all');
         const speed_filter = normalizeSpeedFilter(rawSpeed);
 
-        const search = (isInitial && params.has('search')) ? params.get('search') : (saved.search ?? (dSettings.search ?? ''));
-        const showUnits = (isInitial && params.has('show_units')) ? (params.get('show_units') !== '0') : (saved.show_units ?? (dSettings.show_units ?? true));
-        const perPage = (isInitial && params.has('per_page') && params.get('per_page') !== '') ? params.get('per_page') : (saved.per_page ?? (dSettings.per_page ?? 20));
-        const refresh = (isInitial && params.has('refresh') && params.get('refresh') !== '') ? params.get('refresh') : (saved.refresh ?? (dSettings.refresh ?? '60'));
+        const search = (isInitial && params.has('search')) ? params.get('search') : (dSettings.search || saved.search || '');
+        const refresh = (isInitial && params.has('refresh') && params.get('refresh') !== '') ? params.get('refresh') : (dSettings.refresh || saved.refresh || '60');
 
         let enabledUnits = null;
         if (dSettings.enabled_units && Array.isArray(dSettings.enabled_units) && dSettings.enabled_units.length > 0) {
             enabledUnits = dSettings.enabled_units;
-        } else if (isInitial && params.has('enabled_units')) {
-            enabledUnits = params.get('enabled_units').split(',').map(s=>s.trim()).filter(Boolean);
-        } else if (saved.enabled_units && Array.isArray(saved.enabled_units)) {
+        } else if (saved.enabled_units && Array.isArray(saved.enabled_units) && saved.enabled_units.length > 0) {
             enabledUnits = saved.enabled_units;
         }
 
         let enabledCategories = null;
         if (dSettings.enabled_categories && Array.isArray(dSettings.enabled_categories) && dSettings.enabled_categories.length > 0) {
             enabledCategories = dSettings.enabled_categories;
-        } else if (isInitial && params.has('enabled_categories')) {
-            enabledCategories = params.get('enabled_categories').split(',').map(s=>s.trim()).filter(Boolean);
-        } else if (saved.enabled_categories && Array.isArray(saved.enabled_categories)) {
+        } else if (saved.enabled_categories && Array.isArray(saved.enabled_categories) && saved.enabled_categories.length > 0) {
             enabledCategories = saved.enabled_categories;
         }
 
@@ -2186,12 +2172,13 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
 
         syncEnabledUnitsUI(enabledUnits);
         updateUnitDropdown(enabledUnits);
+        syncEnabledCategoriesUI(enabledCategories);
+
         const unitSelect = document.getElementById('f_unit');
         if (unitSelect && unit) {
             unitSelect.value = unit;
             if (unitSelect.selectedIndex < 0) unitSelect.value = 'Auto';
         }
-        syncEnabledCategoriesUI(enabledCategories);
 
         const searchEl = document.getElementById('f_search');
         searchEl.value = search;
@@ -2545,7 +2532,32 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if(sec > 0) countdown = sec;
     }
 
-    function openSettingsModal() { document.getElementById('settingsModal').style.display = 'flex'; }
+    function openSettingsModal() {
+        const d = masterDashboards.find(x => String(x.id) === String(currentDashId));
+        const dSettings = (d && d.settings) ? d.settings : {};
+        const saved = JSON.parse(localStorage.getItem('pfms_settings_' + currentDashId) || '{}');
+
+        const warn = dSettings.warn !== undefined ? dSettings.warn : (saved.warn !== undefined ? saved.warn : (document.getElementById('f_warn').value || 70));
+        const crit = dSettings.crit !== undefined ? dSettings.crit : (saved.crit !== undefined ? saved.crit : (document.getElementById('f_crit').value || 80));
+        const fs = dSettings.fs !== undefined ? dSettings.fs : (saved.fs !== undefined ? saved.fs : (document.getElementById('f_fontsize').value || 12));
+        const perPage = dSettings.per_page !== undefined ? dSettings.per_page : (saved.per_page !== undefined ? saved.per_page : (document.getElementById('f_perpage').value || 20));
+        const showUnits = dSettings.show_units !== undefined ? (dSettings.show_units !== false && dSettings.show_units !== '0') : (saved.show_units !== undefined ? (saved.show_units !== false && saved.show_units !== '0') : document.getElementById('f_showunits').checked);
+
+        const enabledUnits = (dSettings.enabled_units && Array.isArray(dSettings.enabled_units) && dSettings.enabled_units.length > 0) ? dSettings.enabled_units : ((saved.enabled_units && Array.isArray(saved.enabled_units) && saved.enabled_units.length > 0) ? saved.enabled_units : null);
+
+        const enabledCategories = (dSettings.enabled_categories && Array.isArray(dSettings.enabled_categories) && dSettings.enabled_categories.length > 0) ? dSettings.enabled_categories : ((saved.enabled_categories && Array.isArray(saved.enabled_categories) && saved.enabled_categories.length > 0) ? saved.enabled_categories : null);
+
+        document.getElementById('f_warn').value = warn;
+        document.getElementById('f_crit').value = crit;
+        document.getElementById('f_fontsize').value = fs;
+        document.getElementById('f_perpage').value = perPage;
+        document.getElementById('f_showunits').checked = showUnits;
+
+        syncEnabledUnitsUI(enabledUnits);
+        syncEnabledCategoriesUI(enabledCategories);
+
+        document.getElementById('settingsModal').style.display = 'flex';
+    }
     function closeSettingsModal() { document.getElementById('settingsModal').style.display = 'none'; }
 
     function saveSettings() {
@@ -2573,12 +2585,14 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         });
 
         const enabled_categories = [];
-        availableCategories.forEach(c => {
-            const cb = document.getElementById('cat_opt_' + c.id);
-            if (cb && cb.checked) enabled_categories.push(c.name);
-        });
-        const cbNA = document.getElementById('cat_opt_na');
-        if (cbNA && cbNA.checked) enabled_categories.push('N/A');
+        if (availableCategories && availableCategories.length > 0) {
+            availableCategories.forEach(c => {
+                const cb = document.getElementById('cat_opt_' + c.id);
+                if (cb && cb.checked) enabled_categories.push(c.name);
+            });
+            const cbNA = document.getElementById('cat_opt_na');
+            if (cbNA && cbNA.checked) enabled_categories.push('N/A');
+        }
 
         const settingsObj = { warn, crit, fs, unit, sort, speed_filter, search, show_units, enabled_units, enabled_categories, per_page, refresh };
 
@@ -2586,10 +2600,12 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify(settingsObj));
 
         // Save to in-memory dashboard object and persist to server JSON file
-        const dash = masterDashboards.find(x => x.id === currentDashId);
+        const dash = masterDashboards.find(x => String(x.id) === String(currentDashId));
         if (dash) {
             dash.settings = settingsObj;
-            saveConfigToServer();
+            saveConfigToServer(() => {
+                alert("Dashboard settings saved successfully!");
+            });
         }
 
         updateUnitDropdown(enabled_units);
@@ -2647,7 +2663,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             saved.enabled_categories = enabled_categories;
             localStorage.setItem('pfms_settings_' + currentDashId, JSON.stringify(saved));
 
-            const dash = masterDashboards.find(x => x.id === currentDashId);
+            const dash = masterDashboards.find(x => String(x.id) === String(currentDashId));
             if (dash) {
                 if (!dash.settings) dash.settings = {};
                 dash.settings.unit = unit;
@@ -2674,18 +2690,6 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         }
         const speedFilter = normalizeSpeedFilter(document.getElementById('f_speed_filter').value);
         const search = document.getElementById('f_search').value;
-        const warn = document.getElementById('f_warn').value;
-        const crit = document.getElementById('f_crit').value;
-        const fs = document.getElementById('f_fontsize').value;
-        const showUnits = document.getElementById('f_showunits').checked ? '1' : '0';
-        const perPage = document.getElementById('f_perpage').value || 20;
-
-        const enabled_units = [];
-        ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(u => {
-            const cb = document.getElementById('unit_opt_' + u);
-            if (cb && cb.checked) enabled_units.push(u);
-        });
-
         const refresh = document.getElementById('f_refresh').value;
 
         const newUrl = new URL(window.location);
@@ -2693,22 +2697,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         newUrl.searchParams.set('sort', sort);
         newUrl.searchParams.set('speed_filter', speedFilter);
         newUrl.searchParams.set('search', search);
-        newUrl.searchParams.set('warn', warn);
-        newUrl.searchParams.set('crit', crit);
-        newUrl.searchParams.set('fs', fs);
-        newUrl.searchParams.set('show_units', showUnits);
-        newUrl.searchParams.set('per_page', perPage);
         newUrl.searchParams.set('refresh', refresh);
-        const enabled_categories = [];
-        availableCategories.forEach(c => {
-            const cb = document.getElementById('cat_opt_' + c.id);
-            if (cb && cb.checked) enabled_categories.push(c.name);
-        });
-        const cbNA = document.getElementById('cat_opt_na');
-        if (cbNA && cbNA.checked) enabled_categories.push('N/A');
-        newUrl.searchParams.set('enabled_units', enabled_units.join(','));
-        newUrl.searchParams.set('enabled_categories', enabled_categories.join(','));
         if(currentDashId) newUrl.searchParams.set('dash_id', currentDashId);
+
+        // Remove static dashboard configuration from query string to avoid override loops on reload
+        ['warn', 'crit', 'fs', 'show_units', 'per_page', 'enabled_units', 'enabled_categories'].forEach(p => newUrl.searchParams.delete(p));
         window.history.replaceState({}, '', newUrl);
 
         if (window.parent && window.parent !== window) {
@@ -2718,15 +2711,10 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                 parentUrl.searchParams.set('sort', sort);
                 parentUrl.searchParams.set('speed_filter', speedFilter);
                 parentUrl.searchParams.set('search', search);
-                parentUrl.searchParams.set('warn', warn);
-                parentUrl.searchParams.set('crit', crit);
-                parentUrl.searchParams.set('fs', fs);
-                parentUrl.searchParams.set('show_units', showUnits);
-                parentUrl.searchParams.set('per_page', perPage);
                 parentUrl.searchParams.set('refresh', refresh);
-                parentUrl.searchParams.set('enabled_units', enabled_units.join(','));
-                parentUrl.searchParams.set('enabled_categories', enabled_categories.join(','));
                 if(currentDashId) parentUrl.searchParams.set('dash_id', currentDashId);
+
+                ['warn', 'crit', 'fs', 'show_units', 'per_page', 'enabled_units', 'enabled_categories'].forEach(p => parentUrl.searchParams.delete(p));
                 window.parent.history.replaceState({}, '', parentUrl);
             } catch (e) {
                 console.error("Failed to update parent window URL state:", e);
@@ -2811,43 +2799,22 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
             u.searchParams.set('dash_id', currentDashId);
             
             // Append current filter settings to the shared URL
-            const unit = document.getElementById('f_unit').value;
-            const sort = document.getElementById('f_sort').value;
-            const speedFilter = document.getElementById('f_speed_filter').value;
+            const unit = normalizeUnit(document.getElementById('f_unit').value);
+            let sort = normalizeSort(document.getElementById('f_sort').value);
+            const sortEl = document.getElementById('f_sort');
+            if (sortEl && sortEl.selectedIndex < 0) {
+                sort = 'default';
+                sortEl.value = 'default';
+            }
+            const speedFilter = normalizeSpeedFilter(document.getElementById('f_speed_filter').value);
             const search = document.getElementById('f_search').value;
-            const warn = document.getElementById('f_warn').value;
-            const crit = document.getElementById('f_crit').value;
-            const fs = document.getElementById('f_fontsize').value;
-            const showUnits = document.getElementById('f_showunits').checked ? '1' : '0';
-            const perPage = document.getElementById('f_perpage').value || 20;
             const refresh = document.getElementById('f_refresh').value;
-
-            const enabled_units = [];
-            ['Auto', 'Mbps', 'Gbps', 'Bps', 'MBps', 'GBps'].forEach(unitVal => {
-                const cb = document.getElementById('unit_opt_' + unitVal);
-                if (cb && cb.checked) enabled_units.push(unitVal);
-            });
-
-            const enabled_categories = [];
-            availableCategories.forEach(c => {
-                const cb = document.getElementById('cat_opt_' + c.id);
-                if (cb && cb.checked) enabled_categories.push(c.name);
-            });
-            const cbNA = document.getElementById('cat_opt_na');
-            if (cbNA && cbNA.checked) enabled_categories.push('N/A');
 
             u.searchParams.set('unit', unit);
             u.searchParams.set('sort', sort);
             u.searchParams.set('speed_filter', speedFilter);
             u.searchParams.set('search', search);
-            u.searchParams.set('warn', warn);
-            u.searchParams.set('crit', crit);
-            u.searchParams.set('fs', fs);
-            u.searchParams.set('show_units', showUnits);
-            u.searchParams.set('per_page', perPage);
             u.searchParams.set('refresh', refresh);
-            u.searchParams.set('enabled_units', enabled_units.join(','));
-            u.searchParams.set('enabled_categories', enabled_categories.join(','));
         }
         const urlString = u.toString();
         

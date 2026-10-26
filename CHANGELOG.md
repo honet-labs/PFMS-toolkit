@@ -2,6 +2,22 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.23] - 2026-10-26 (Traffic Dashboard - Fix Dashboard Settings Persistence, Modal Form Sync & URL Query Pollution)
+### Fixed & Enhanced
+- **Perbaikan Ketahanan Penyimpanan Pengaturan Dashboard (*Dashboard Settings Persistence*):**
+  - Mengatasi masalah di mana perubahan yang dilakukan pada modal **Dashboard Settings** (seperti ambang batas *Warning*, *Critical*, ukuran font tabel *Table Font Size*, batas baris *Row Limit*, akhiran satuan *Show Unit Suffixes*, serta pilihan unit dan kategori aktif) tidak tersimpan secara permanen dan selalu kembali ke nilai awal bawaan (*default* 70, 80, 12, 20) ketika di-refresh atau dibuka kembali.
+  - **Akar Penyebab (*Root Cause*):**
+    1. **Polusi Parameter Query URL (*URL State Query Pollution*):** Fungsi `updateURLState()` sebelumnya menyuntikkan parameter statis dashboard (`warn`, `crit`, `fs`, `show_units`, `per_page`, `enabled_units`, `enabled_categories`) ke dalam URL browser dan window parent (iframe Pandora Console). Ketika browser atau embed dimuat ulang, query parameter yang memuat nilai default awal (`warn=70&crit=80`) diteruskan kembali dan secara paksa menimpa konfigurasi yang sudah tersimpan di server (`dSettings`) maupun `localStorage`.
+    2. **Ketiadaan Pengisian Form Modal (*Unpopulated Settings Modal Inputs*):** Fungsi `openSettingsModal()` sebelumnya hanya mengubah visibilitas modal (`display: flex`) tanpa membaca dan mengisi form input modal dari konfigurasi dashboard aktif (`d.settings` / `localStorage`). Akibatnya modal selalu menampilkan nilai statis bawaan HTML.
+    3. **Prioritas Konfigurasi Terbalik (*Configuration Hierarchy Inversion*):** Pada fungsi `openDashboard()`, query parameter URL diberi prioritas tertinggi di atas `dSettings` server. Karena query URL terkontaminasi oleh default lama, nilai server `dSettings` tidak pernah diterapkan saat reload.
+    4. **Penyimpanan Asinkron & Perbandingan ID Bertipe Lemah:** Fungsi `saveSettings()` sebelumnya menggunakan perbandingan ketat `x.id === currentDashId` (rawan gagal bila ID berupa angka dan string) serta menutup modal tanpa memberikan konfirmasi visual apakah request `saveConfigToServer` berhasil atau mengalami kegagalan.
+  - **Perbaikan yang Diterapkan:**
+    1. **Pembersihan Parameter Statis dari URL (*URL Query Decontamination*):** Mengeliminasi injeksi parameter statis dashboard (`warn`, `crit`, `fs`, `show_units`, `per_page`, `enabled_units`, `enabled_categories`) dari `updateURLState()` dan `copyShareLink()`. Secara eksplisit menghapus parameter-parameter tersebut dari URL iframe maupun parent window sehingga reload tidak memicu override loops.
+    2. **Sinkronisasi Form Modal (*Modal Form Synchronization*):** Memperbarui `openSettingsModal()` agar membaca pengaturan aktif dashboard dari `d.settings` dan `localStorage` sebelum modal dibuka, mengisi seluruh input (`f_warn`, `f_crit`, `f_fontsize`, `f_perpage`, `f_showunits`), serta menyinkronkan status checkbox unit (`syncEnabledUnitsUI`) dan kategori (`syncEnabledCategoriesUI`).
+    3. **Kanonisitas Konfigurasi Server (*Server Settings as Source of Truth*):** Pada `openDashboard()`, menjadikan konfigurasi server `dSettings` sebagai sumber utama kebenaran (*canonical source of truth*) yang dipadukan dengan `localStorage` (`saved`) dan nilai default, serta memanggil `syncEnabledCategoriesUI()` yang sebelumnya terlewat.
+    4. **Ketahanan Identifikasi & Notifikasi Sukses (*Safe Lookup & User Feedback*):** Menyelaraskan pencarian dashboard dengan `String(x.id) === String(currentDashId)` dan memberikan umpan balik visual instan (`alert("Dashboard settings saved successfully!")`) ketika konfigurasi berhasil disimpan ke file server JSON.
+    5. **Ketahanan Validasi CSRF Backend:** Menambahkan fallback pembacaan header via `getallheaders()` pada endpoint `api=save_config` di [traffic-dashboard.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Traffic-Dashboard/traffic-dashboard.php).
+
 ## [2.11.22] - 2026-10-26 (Traffic Dashboard - Fix Blank Sort Dropdown & Ensure Setting Persistence Across Refresh/Embed)
 ### Fixed & Enhanced
 - **Perbaikan Dropdown Urutan Kosong (*Blank Sort Dropdown*) & Ketahanan Pengaturan (*State Persistence*):**
