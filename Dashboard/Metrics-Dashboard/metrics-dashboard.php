@@ -1524,7 +1524,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                 </select>
                 <label>Chart / Pie Size (% Radius)</label>
                 <input type="number" id="b_chart_size" class="form-control-fix" placeholder="Auto (e.g. 52)" min="20" max="85" style="margin-bottom:0;">
-                <small style="color:#64748b; font-size:11px; display:block; margin-top:3px;">Ukuran persentase radius lingkaran diagram (Default: Auto ~52%).</small>
+                <small style="color:#64748b; font-size:11px; display:block; margin-top:3px;">Chart circular radius percentage size (Default: Auto ~52%).</small>
             </div>
         </div>
 
@@ -1537,7 +1537,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         </div>
 
         <div class="form-group" id="wrap_visible_stats">
-            <label style="margin-bottom:6px; display:block;">Visible Stat Cards (Pilih Kartu Status)</label>
+            <label style="margin-bottom:6px; display:block;">Visible Stat Cards</label>
             <div style="display:flex; flex-wrap:wrap; gap:12px; background:#f8fafc; padding:10px 14px; border:1px solid #e2e8f0; border-radius:6px;">
                 <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
                     <input type="checkbox" id="b_stat_total" value="total" checked style="width:15px; height:15px;"> Total
@@ -1582,10 +1582,10 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         <div class="form-group" id="wrap_history_table_options" style="display:none;">
             <label style="font-weight:600; margin-bottom:6px; display:block;">History Table Sort Order (Urutan Data)</label>
             <select id="b_history_sort" class="form-control-fix">
-                <option value="val_desc">Highest Value First / Nilai Tertinggi (DESC)</option>
-                <option value="val_asc">Lowest Value First / Nilai Terendah (ASC)</option>
-                <option value="time_desc" selected>Newest Timestamp / Waktu Terbaru (DESC)</option>
-                <option value="time_asc">Oldest Timestamp / Waktu Terlama (ASC)</option>
+                <option value="val_desc">Highest Value First (DESC)</option>
+                <option value="val_asc">Lowest Value First (ASC)</option>
+                <option value="time_desc" selected>Newest Timestamp (DESC)</option>
+                <option value="time_asc">Oldest Timestamp (ASC)</option>
                 <option value="agent_asc">Agent Name (A-Z)</option>
                 <option value="mod_asc">Module Name (A-Z)</option>
             </select>
@@ -1598,7 +1598,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             </div>
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; margin-bottom:0; color:#334155; font-weight:500;">
                 <input type="checkbox" id="b_hide_search_bar" style="width:16px; height:16px; margin:0;">
-                Hide Search Bar & Total Items (Sembunyikan Bilah Pencarian & Total Item)
+                Hide Search Bar & Total Items
             </label>
         </div>
 
@@ -1610,7 +1610,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             
             <div style="display:flex; gap:10px; margin-bottom:10px;">
                 <div style="flex:1;">
-                    <label style="font-size:11px; margin-bottom:4px; display:block;">Heatmap Box Size (Ukuran Kotak)</label>
+                    <label style="font-size:11px; margin-bottom:4px; display:block;">Heatmap Box Size</label>
                     <select id="b_heatmap_box_size" class="form-control-fix" onchange="toggleHeatmapCustomSize('metrics')" style="margin-bottom:0;">
                         <option value="rect_sm">Compact Bar (110px × 28px)</option>
                         <option value="medium" selected>Standard Bar (160px × 34px)</option>
@@ -1623,7 +1623,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
                     </select>
                 </div>
                 <div style="flex:1;">
-                    <label style="font-size:11px; margin-bottom:4px; display:block;">Box Label / Text Display (Teks Kotak)</label>
+                    <label style="font-size:11px; margin-bottom:4px; display:block;">Box Label / Text Display</label>
                     <select id="b_heatmap_text_type" class="form-control-fix" onchange="toggleHeatmapCustomText('metrics')" style="margin-bottom:0;">
                         <option value="agent">Agent Name / Alias</option>
                         <option value="module" selected>Module Name</option>
@@ -1650,7 +1650,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             <div id="b_wrap_heatmap_custom_text" style="display:none; margin-bottom:10px;">
                 <label style="font-size:11px; margin-bottom:4px; display:block;">Custom Label Text / Template</label>
                 <input type="text" id="b_heatmap_custom_text" class="form-control-fix" placeholder="e.g. {agent} or {agent}: {value} or Host Alive" style="margin-bottom:2px;">
-                <small style="color:#64748b; font-size:10px; display:block;">* Tag variabel: <code>{agent}</code>, <code>{module}</code>, <code>{ip}</code>, <code>{value}</code>, <code>{unit}</code>, atau teks statis biasa.</small>
+                <small style="color:#64748b; font-size:10px; display:block;">* Variable tags: <code>{agent}</code>, <code>{module}</code>, <code>{ip}</code>, <code>{value}</code>, <code>{unit}</code>, or plain text.</small>
             </div>
 
             <div style="display:flex; gap:10px;">
@@ -4187,9 +4187,22 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
 
         const sortedHist = [...hist].sort((a, b) => ((a.utimestamp || a.ts || 0) - (b.utimestamp || b.ts || 0)));
 
+        const lastContactTs = parseInt(m.last_contact) || 0;
+        if (lastContactTs > 0) {
+            const lastHistTs = sortedHist.length > 0 ? (sortedHist[sortedHist.length - 1].utimestamp || sortedHist[sortedHist.length - 1].ts || 0) : 0;
+            if (lastContactTs > lastHistTs) {
+                sortedHist.push({
+                    utimestamp: lastContactTs,
+                    ts: lastContactTs,
+                    val: m.current_value,
+                    is_latest: true
+                });
+            }
+        }
+
         let blocksHtml = '';
         let lastVal = (sortedHist.length > 0 && sortedHist[0].val !== undefined) ? sortedHist[0].val : m.current_value;
-        let lastTs = (sortedHist.length > 0 && (sortedHist[0].utimestamp || sortedHist[0].ts)) ? (sortedHist[0].utimestamp || sortedHist[0].ts) : (m.last_contact || startTs);
+        let lastTs = (sortedHist.length > 0 && (sortedHist[0].utimestamp || sortedHist[0].ts)) ? (sortedHist[0].utimestamp || sortedHist[0].ts) : (lastContactTs || startTs);
 
         for (let b = 0; b < numBlocks; b++) {
             const bStart = Math.floor(startTs + b * bucketSec);
@@ -4199,6 +4212,9 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
 
             const bucketPoints = sortedHist.filter(h => {
                 const hts = h.utimestamp || h.ts || 0;
+                if (b === numBlocks - 1) {
+                    return (hts >= bStart);
+                }
                 return (hts >= bStart && hts < bEnd);
             });
 
@@ -4228,7 +4244,19 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
                 blockStatus = worstStatus;
                 blockVal = worstPoint.val;
                 blockTs = worstPoint.utimestamp || worstPoint.ts || bCenter;
-                dataNote = 'Data Event Tercatat';
+                if (worstPoint.is_latest || (b === numBlocks - 1 && worstStatus === 0 && lastContactTs > 0)) {
+                    blockTs = lastContactTs || blockTs;
+                    dataNote = 'Latest polled data';
+                } else {
+                    dataNote = 'Recorded event';
+                }
+                lastVal = blockVal;
+                lastTs = blockTs;
+            } else if (b === numBlocks - 1 && lastContactTs > 0) {
+                blockStatus = curEval.status;
+                blockVal = m.current_value;
+                blockTs = lastContactTs;
+                dataNote = 'Latest polled data';
                 lastVal = blockVal;
                 lastTs = blockTs;
             } else {
@@ -4240,17 +4268,17 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
                     blockStatus = priorEval.status;
                     blockVal = prior.val;
                     blockTs = prior.utimestamp || prior.ts || bCenter;
-                    dataNote = 'Status stabil berlanjut';
+                    dataNote = 'Steady state continues';
                 } else if (sortedHist.length === 0) {
                     blockStatus = curEval.status;
                     blockVal = m.current_value;
-                    blockTs = m.last_contact || bCenter;
-                    dataNote = 'Status data saat ini';
+                    blockTs = lastContactTs || bCenter;
+                    dataNote = 'Current status verified';
                 } else {
                     blockStatus = 4;
                     blockVal = 'N/A';
                     blockTs = bCenter;
-                    dataNote = 'Belum ada data';
+                    dataNote = 'No data recorded';
                 }
             }
 
@@ -4422,7 +4450,7 @@ function showTimelineBlockTooltip(el, e) {
 
     const dataTimeRow = pointTs ? `
         <div style="display:flex; justify-content:space-between; gap:12px; margin-top:2px;">
-            <span style="color:#94a3b8;">Waktu Data:</span>
+            <span style="color:#94a3b8;">Data Timestamp:</span>
             <div style="text-align:right;">
                 <span style="color:#cbd5e1; font-weight:600;">${escapeHtml(pointTs)}</span>
                 ${dataNote ? `<div style="color:#64748b; font-size:10px;">(${escapeHtml(dataNote)})</div>` : ''}
@@ -4432,23 +4460,23 @@ function showTimelineBlockTooltip(el, e) {
     tip.innerHTML = `
         <div style="display:flex; align-items:center; gap:6px; font-weight:600; color:#ffffff; font-size:11px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:8px;">
             <span class="material-symbols-outlined" style="font-size:15px; color:#38bdf8;">calendar_month</span>
-            <span>Periode: ${escapeHtml(period)}</span>
+            <span>Period: ${escapeHtml(period)}</span>
         </div>
         <div style="display:flex; flex-direction:column; gap:5px;">
             <div style="display:flex; justify-content:space-between; gap:12px;">
-                <span style="color:#94a3b8;">Nama Agent:</span>
+                <span style="color:#94a3b8;">Agent Name:</span>
                 <span style="font-weight:600; color:#38bdf8; text-align:right; word-break:break-word;">${escapeHtml(agent)}</span>
             </div>
             <div style="display:flex; justify-content:space-between; gap:12px;">
-                <span style="color:#94a3b8;">Nama Module:</span>
+                <span style="color:#94a3b8;">Module Name:</span>
                 <span style="font-weight:600; color:#ffffff; text-align:right; word-break:break-word;">${escapeHtml(mod)}</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-                <span style="color:#94a3b8;">Status Module:</span>
+                <span style="color:#94a3b8;">Module Status:</span>
                 <span style="background:${color}; color:#fff; padding:1px 8px; border-radius:10px; font-size:10px; font-weight:700;">${escapeHtml(status)}</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-                <span style="color:#94a3b8;">Value Module:</span>
+                <span style="color:#94a3b8;">Module Value:</span>
                 <span style="font-weight:700; color:#34d399; font-size:12px; text-align:right;">${escapeHtml(val)}</span>
             </div>
             ${dataTimeRow}

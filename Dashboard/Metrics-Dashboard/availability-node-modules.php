@@ -1060,7 +1060,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         </div>
 
         <div class="form-group">
-            <label style="margin-bottom:6px; display:block;">Visible Stat Cards (Pilih Kartu Status)</label>
+            <label style="margin-bottom:6px; display:block;">Visible Stat Cards</label>
             <div style="display:flex; flex-wrap:wrap; gap:12px; background:#f8fafc; padding:10px 14px; border:1px solid #e2e8f0; border-radius:6px;">
                 <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
                     <input type="checkbox" id="b_stat_total" value="total" checked style="width:15px; height:15px;"> Total

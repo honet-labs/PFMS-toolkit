@@ -6938,9 +6938,23 @@ function renderStatusTimelineContent(p, modules) {
 
         const sortedHist = [...hist].sort((a, b) => (a.ts || 0) - (b.ts || 0));
 
+        // Incorporate real-time module last_contact timestamp so uptime blocks reflect active verification
+        const lastContactTs = m.last_contact ? Math.floor(new Date(m.last_contact.replace(' ', 'T')).getTime() / 1000) : 0;
+        if (lastContactTs > 0) {
+            const hasNewerHistorical = sortedHist.some(h => (h.ts || 0) >= lastContactTs);
+            if (!hasNewerHistorical) {
+                sortedHist.push({
+                    utimestamp: lastContactTs,
+                    ts: lastContactTs,
+                    val: m.current,
+                    is_latest: true
+                });
+            }
+        }
+
         let blocksHtml = '';
         let lastVal = (sortedHist.length > 0 && sortedHist[0].val !== undefined) ? sortedHist[0].val : m.current;
-        let lastTs = (sortedHist.length > 0 && sortedHist[0].ts) ? sortedHist[0].ts : (m.last_contact || startTs);
+        let lastTs = (sortedHist.length > 0 && sortedHist[0].ts) ? sortedHist[0].ts : (lastContactTs || startTs);
 
         for (let b = 0; b < numBlocks; b++) {
             const bStart = Math.floor(startTs + b * bucketSec);
@@ -6976,7 +6990,7 @@ function renderStatusTimelineContent(p, modules) {
                 blockStatus = worstStatus;
                 blockVal = worstPoint.val;
                 blockTs = worstPoint.ts;
-                dataNote = 'Data Event Tercatat';
+                dataNote = worstPoint.is_latest ? 'Current status verified' : 'Recorded event';
                 lastVal = blockVal;
                 lastTs = blockTs;
             } else {
@@ -6987,18 +7001,23 @@ function renderStatusTimelineContent(p, modules) {
                     const priorEval = evaluateModuleThresholdStatus(m, isNaN(priorNum) ? 0 : priorNum, m.module_name, m.unit, p.title);
                     blockStatus = priorEval.status;
                     blockVal = prior.val;
-                    blockTs = prior.ts;
-                    dataNote = 'Status stabil berlanjut';
+                    if (b === numBlocks - 1 && lastContactTs >= bStart) {
+                        blockTs = lastContactTs;
+                        dataNote = 'Current status verified';
+                    } else {
+                        blockTs = prior.ts;
+                        dataNote = 'Steady state continues';
+                    }
                 } else if (sortedHist.length === 0) {
                     blockStatus = curEval.status;
                     blockVal = m.current;
-                    blockTs = m.last_contact || bCenter;
-                    dataNote = 'Status data saat ini';
+                    blockTs = lastContactTs || bCenter;
+                    dataNote = 'Current status verified';
                 } else {
                     blockStatus = 4;
                     blockVal = 'N/A';
                     blockTs = bCenter;
-                    dataNote = 'Belum ada data';
+                    dataNote = 'No data recorded';
                 }
             }
 
@@ -7169,7 +7188,7 @@ function showTimelineBlockTooltip(el, e) {
 
     const dataTimeRow = pointTs ? `
         <div style="display:flex; justify-content:space-between; gap:12px; margin-top:2px;">
-            <span style="color:#94a3b8;">Waktu Data:</span>
+            <span style="color:#94a3b8;">Data Timestamp:</span>
             <div style="text-align:right;">
                 <span style="color:#cbd5e1; font-weight:600;">${escapeHtml(pointTs)}</span>
                 ${dataNote ? `<div style="color:#64748b; font-size:10px;">(${escapeHtml(dataNote)})</div>` : ''}
@@ -7179,23 +7198,23 @@ function showTimelineBlockTooltip(el, e) {
     tip.innerHTML = `
         <div style="display:flex; align-items:center; gap:6px; font-weight:600; color:#ffffff; font-size:11px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:8px;">
             <span class="material-symbols-outlined" style="font-size:15px; color:#38bdf8;">calendar_month</span>
-            <span>Periode: ${escapeHtml(period)}</span>
+            <span>Period: ${escapeHtml(period)}</span>
         </div>
         <div style="display:flex; flex-direction:column; gap:5px;">
             <div style="display:flex; justify-content:space-between; gap:12px;">
-                <span style="color:#94a3b8;">Nama Agent:</span>
+                <span style="color:#94a3b8;">Agent Name:</span>
                 <span style="font-weight:600; color:#38bdf8; text-align:right; word-break:break-word;">${escapeHtml(agent)}</span>
             </div>
             <div style="display:flex; justify-content:space-between; gap:12px;">
-                <span style="color:#94a3b8;">Nama Module:</span>
+                <span style="color:#94a3b8;">Module Name:</span>
                 <span style="font-weight:600; color:#ffffff; text-align:right; word-break:break-word;">${escapeHtml(mod)}</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-                <span style="color:#94a3b8;">Status Module:</span>
+                <span style="color:#94a3b8;">Module Status:</span>
                 <span style="background:${color}; color:#fff; padding:1px 8px; border-radius:10px; font-size:10px; font-weight:700;">${escapeHtml(status)}</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-                <span style="color:#94a3b8;">Value Module:</span>
+                <span style="color:#94a3b8;">Module Value:</span>
                 <span style="font-weight:700; color:#34d399; font-size:12px; text-align:right;">${escapeHtml(val)}</span>
             </div>
             ${dataTimeRow}

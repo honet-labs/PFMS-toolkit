@@ -2,6 +2,23 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.19] - 2026-10-26 (Dashboard - Real-Time Timestamp in Uptime Blocks, UI English Standardization & RULES.md)
+### Fixed & Enhanced
+- **Sinkronisasi Waktu Riil pada Balok Status Uptime Timeline (*Latest Contact Timestamp Fix*):**
+  - Mengatasi masalah pada visualisasi kartu gaya *Status Timeline* (Uptime Blocks) di mana saat kursor diarahkan (*hover*) pada balok waktu terbaru (misal jam 13:12 hari ini), stempel waktu data menampilkan timestamp dari event perubahan status lama (misal kemarin `2026-10-25 19:05:37`) dengan catatan `(Status stabil berlanjut)`.
+  - **Akar Penyebab (*Root Cause*):** Modul boolean seperti `Host Alive` pada Pandora FMS hanya mencatat baris baru ke tabel riwayat `tagente_datos` jika terjadi perubahan nilai/status (misal status UP ke DOWN). Ketika host terus-menerus UP secara stabil selama berjam-jam atau berhari-hari, array riwayat data historis tidak memiliki baris baru di dalam rentang interval balok terkini. Akibatnya, visualizer jatuh ke *fallback point* event terakhir dari hari sebelumnya.
+  - **Perbaikan yang Diterapkan:**
+    1. Mengintegrasikan stempel waktu verifikasi kontak berkala real-time dari daemon Pandora FMS (`m.last_contact` / `tagente_estado.utimestamp`) ke dalam array titik data `sortedHist`.
+    2. Pada balok rentang waktu paling akhir (`b === numBlocks - 1`), sistem kini memverifikasi kontak aktif modul dan secara akurat menampilkan stempel waktu pemeriksaan terbaru (`Data Timestamp`) dengan penanda status terkini (`Current status verified`).
+    3. Diterapkan secara sinkron pada [metrics-dashboard.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php) dan [dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php).
+- **Standarisasi Bahasa Antarmuka Pengguna (UI Language Standardization - English Only):**
+  - Menghapus seluruh teks dan petunjuk berbahasa Indonesia yang tersisa pada antarmuka pengguna dashboard, menyelaraskan seluruh elemen visual ke dalam Bahasa Inggris secara profesional dan konsisten:
+    - Tooltip hover Uptime Blocks: `Period:`, `Agent Name:`, `Module Name:`, `Module Status:`, `Module Value:`, `Data Timestamp:`.
+    - Status data notes: `Recorded event`, `Steady state continues`, `Current status verified`, `No data recorded`.
+    - Modal builder controls & helper texts: `Visible Stat Cards`, `Newest Timestamp (DESC)`, `Heatmap Box Size`, `Chart circular radius percentage`, dll.
+- **Penerbitan Dokumen Standar Repositori `RULES.md`:**
+  - Menambahkan file [RULES.md](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/RULES.md) di direktori utama repositori sebagai panduan baku pengembangan, mencakup kewajiban Bahasa Inggris pada seluruh teks UI, alur penambahan fitur, pencatatan di `CHANGELOG.md`, integritas data waktu real-time, serta hierarki pemilihan agen.
+
 ## [2.11.18] - 2026-10-26 (Dashboard - Fix Multi-Agent Selection & Time-Series History Truncation in Line/Area Charts)
 ### Fixed & Enhanced
 - **Perbaikan Pemilihan Agen Manual & Pengabaian Daftar Agen (*Agent Override Bug Fix*):**

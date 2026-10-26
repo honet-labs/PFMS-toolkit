@@ -502,7 +502,7 @@ if ($api === 'auto_scan') {
         'ok' => true,
         'scanned' => count($discovered),
         'added' => $new_added,
-        'message' => "Auto scan selesai: Ditemukan " . count($discovered) . " agen ($new_added baru ditambahkan)."
+        'message' => "Auto scan completed: Found " . count($discovered) . " agents ($new_added newly added)."
     ]);
     exit;
 }
