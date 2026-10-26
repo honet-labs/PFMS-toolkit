@@ -62,10 +62,10 @@ if (!function_exists('h')) {
 }
 
 // 4. TRAFFIC MODULE SETTINGS
-$moduleSuffixesIn  = ['_ifHCIInOctets', '_ifHCInOctets', 'ifHCInOctets', '_ifInOctets', 'ifInOctets', ' - traffic in', ' - traffic_in', '_traffic_in', ' traffic in', ' - in octets', '_in_octets'];
-$moduleSuffixesOut = ['_ifHCOutOctets', '_ifHCIOutOctets', 'ifHCOutOctets', '_ifOutOctets', 'ifOutOctets', ' - traffic out', ' - traffic_out', '_traffic_out', ' traffic out', ' - out octets', '_out_octets'];
-$moduleSuffixesSpeed = ['_ifHighSpeed', 'ifHighSpeed', '_ifSpeed', 'ifSpeed', ' - Speed', '- Speed', '_Speed', ' - ifspeed', '_ifspeed']; 
-$modulePrefixesSpeed = ['ifhighspeed - ', 'ifhighspeed-', 'ifspeed - ', 'ifspeed-', 'speed - ', 'speed-'];
+$moduleSuffixesIn  = ['_ifHCIInOctets', '_ifHCInOctets', 'ifHCInOctets', '_ifInOctets', 'ifInOctets'];
+$moduleSuffixesOut = ['_ifHCOutOctets', '_ifHCIOutOctets', 'ifHCOutOctets', '_ifOutOctets', 'ifOutOctets'];
+$moduleSuffixesSpeed = ['_ifHighSpeed', 'ifHighSpeed', '_ifSpeed', 'ifSpeed',' - ifspeed', '_ifspeed']; 
+$modulePrefixesSpeed = ['_ifHighSpeed', 'ifHighSpeed', '_ifSpeed', 'ifSpeed',' - ifspeed', '_ifspeed'];
 $modulePrefixesIn  = ['traffic in - ', 'traffic in-', 'traffic_in_', 'traffic in ', 'in traffic - ', 'in traffic ', 'trafficin_'];
 $modulePrefixesOut = ['traffic out - ', 'traffic out-', 'traffic_out_', 'traffic out ', 'out traffic - ', 'out traffic ', 'trafficout_'];
 $moduleSuffixesIndex = ['_ifIndex', 'ifIndex'];
