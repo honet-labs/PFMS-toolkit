@@ -2,6 +2,68 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.28] - 2026-10-28 (Dashboard Ecosystem - Standardize 10-Row Limit and Unified Pagination across All Dashboard Lists)
+### Added & Enhanced
+- **Implementasi Batasan 10 Baris (*Default Limit: 10 Rows*) dan Kontrol Pagination Terpadu (*Unified Pagination System*) pada Seluruh Master Dashboard List:**
+  - Mengatasi masalah di mana daftar dashboard pada menu utama seperti **Dynamic Dashboard**, **Metrics Dashboard**, **Topology Network**, **Traffic Dashboard**, dan **Route Parser** merender seluruh item dashboard sekaligus tanpa pembatasan jumlah baris atau kontrol navigasi halaman.
+  - Sesuai permintaan pengguna, kini seluruh tabel master dashboard menerapkan batas tampilan default 10 baris per halaman (`limit: 10`) yang dilengkapi bilah kontrol pagination terpadu (*unified pagination bar*).
+  - **Peningkatan yang Diterapkan:**
+    1. **Dynamic Dashboard ([dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php)):**
+       - Menambahkan komponen pagination di bawah tabel master `#dashListTable`.
+       - Memperbarui fungsi `renderDashboardList()` agar membagi daftar dashboard hasil pencarian ke dalam halaman-halaman berisi 10 baris secara default.
+       - Menyediakan navigasi halaman: tombol First (`first_page`), Previous (`chevron_left`), nomor halaman dengan penanda status aktif, Next (`chevron_right`), dan Last (`last_page`), disertai info rentang baris (*Showing X to Y of Z dashboards*) dan pemilih batas baris (10, 25, 50, 100).
+       - Menambahkan reset otomatis ke halaman 1 setiap kali kata kunci pencarian diubah.
+    2. **Metrics Dashboard ([metrics-dashboard.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php)):**
+       - Menerapkan komponen pagination dan logika slicing data yang sama pada tabel master `#dashListTable` dan fungsi `renderDashboardList()`.
+    3. **Topology Network ([topology-network.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Topology-Network/topology-network.php)):**
+       - Menambahkan kontrol pagination pada tabel master `#dashListTable` dan memperbarui `renderDashboardTable()` serta `filterDashboardTable()`.
+    4. **Traffic Dashboard ([traffic-dashboard.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Traffic-Dashboard/traffic-dashboard.php)):**
+       - Menambahkan kotak pencarian `#listSearch` pada header bilah atas master list (`listTopControls`).
+       - Menambahkan bilah pagination `#masterListPagination` pada kartu tabel `#masterTable` dan memperbarui `renderMasterList()` dengan pemotongan 10 baris per halaman.
+    5. **Route Parser ([route-parser.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Route-Parser/route-parser.php)):**
+       - Menambahkan kontrol pagination `#dashListPagination` dan memperbarui fungsi `filterTable()` untuk membatasi tampilan baris tabel awal sebanyak 10 item serta menangani navigasi halaman dan filtering secara mulus.
+    6. **Kepatuhan Desain & Gaya Antarmuka (*Design Aesthetics & Strict Emoji Policy*):** Seluruh tombol navigasi dan ikon menggunakan standar Material Symbols monokrom tanpa emoji berwarna, dengan skema warna yang konsisten mengikuti tema Pandora FMS Toolkit.
+
+## [2.11.27] - 2026-10-28 (Topology Network - Eliminate Auto-Detected Default Dashboard & Enable Manual Topology Creation Flow)
+### Fixed & Enhanced
+- **Penghapusan Dashboard Otomatis (*Core Infrastructure Network*) & Transisi ke Alur Pembuatan Manual Murni:**
+  - Mengatasi masalah di mana pada menu **Topology Network** ([topology-network.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Topology-Network/topology-network.php)), sistem secara sepihak memuat dashboard bawaan bernama `"Core Infrastructure Network"` yang melakukan auto-detect / auto-discovery seluruh agen Pandora FMS di semua grup.
+  - Pengguna menginginkan menu Topology Network dimulai dari keadaan bersih (*clean state*), tanpa ada topologi yang dibuat otomatis di awal, sehingga pengguna dapat membuat dan menyusun topologi jaringan secara manual sesuai kebutuhan.
+  - **Peningkatan yang Diterapkan:**
+    1. **Pembersihan Berkas Konfigurasi (*Config Reset*):** Mengosongkan data awal pada [topology_dashboards.json](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Topology-Network/topology_dashboards.json) menjadi array kosong (`[]`).
+    2. **Pencegahan Resureksi Template Lama (*Cache Protection*):** Memperbarui fungsi `load_topology_dashboards()` di [topology-network.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Topology-Network/topology-network.php) agar secara otomatis membersihkan dan mengabaikan entri legacy `core-infra-01`, sehingga template bawaan lama tidak akan pernah muncul kembali dari cache atau file temporary.
+    3. **Penghapusan Blokir Access Denied pada State Kosong (*Empty State Accessibility*):** Memperbaiki evaluasi inisialisasi awal di [topology-network.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Topology-Network/topology-network.php). Sebelumnya, jika daftar dashboard kosong (`$dashboards = []`), skrip secara keliru mengeksekusi `render_pfms_access_denied()` yang memblokir akses pengguna. Kini, sistem menampilkan tabel Master Dashboard List (`view_list`) dengan tampilan kosong (*empty state banner*) yang rapi bertuliskan *"No Topology Dashboards Configured"* beserta tombol *"Create Topology Dashboard"*.
+    4. **Navigasi Konsisten Master List (*Consistent View Flow*):** Memperbaiki inisialisasi awal sehingga ketika pengguna membuka menu Topology Network dari bilah menu samping (tanpa parameter `dashboard_id`), sistem selalu menampilkan daftar dashboard terlebih dahulu (seperti halnya di Dynamic Dashboard), bukan langsung memaksakan pembukaan canvas topologi pertama.
+
+## [2.11.26] - 2026-10-27 (Dynamic Dashboard & History Engine - Fix Metric Value Clamping to 100 for Non-Percentage Modules)
+### Fixed & Enhanced
+- **Perbaikan Pembatasan Semu Nilai 100 (*False Clamping to 100*) pada Grafik Garis (*Line Chart*), Area (*Area Chart*), Tabel Riwayat, dan Engine Historis:**
+  - Mengatasi masalah di mana panel grafik garis (*line chart*) dan area (*area chart*) di menu **Dynamic Dashboard** menampilkan garis horizontal datar (*flat horizontal line*) di angka 100 MHz dengan tooltip yang terkunci di 100 MHz, padahal pada tampilan modul data Pandora FMS nilai aslinya bernilai ribuan (seperti modul `VMsCPUUsedMHz` dengan nilai aktual 13,156 MHz, 7,458 MHz, dan 1,254 MHz).
+  - **Akar Penyebab (*Root Cause*):**
+    1. **Deteksi Persentase Berbasis Substring Naif (*Naive Substring Matching*):** Pada fungsi rendering grafik multi-overlay di [dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php), evaluasi variabel persentase menggunakan logika `(m.module_name && (m.module_name.includes('Load') || m.module_name.includes('Used')))`. Karena modul bernama `Host:10.10.6.100 (host-16010):VMsCPUUsedMHz` memuat kata `"Used"`, sistem secara keliru menganggap metrik tersebut sebagai metrik persentase beban sistem (0-100%). Logika berikutnya `if (isPct && v > 100) v = 100;` kemudian memotong (*clamp*) paksa nilai 13,156 MHz, 7,458 MHz, dan 1,254 MHz menjadi persis 100 MHz.
+    2. **Pemaksaan Sumbu Y Maksimal (*Forced Y-Axis Max Capping*):** Pada grafik modul tunggal dan multi-overlay, sumbu Y secara otomatis dipaksa `max: 100` karena nama modul memuat kata kunci heuristik (`cpu`, `load`, `used`) sekalipun satuan modul adalah unit absolut (`MHz`, `GB`, `MB`, `Bytes`).
+    3. **Penolakan Titik Historis oleh Batas Maksimal Default Database (*Outlier Rejection Trap*):** Di dalam [includes/db-connection.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/includes/db-connection.php) dan pemrosesan backend `bulk_panel_data`, kolom `tagente_modulo.max` digunakan sebagai batas pembuangan outlier (`$max_bound`). Pada instalasi Pandora FMS di lapangan, modul yang dibuat dari wizard/template sering kali memiliki nilai bawaan `max = 100` di database meskipun mengukur unit non-persentase. Hal ini menyebabkan titik-titik data riwayat di atas 100 dibuang sebagai outlier palsu atau nilai terkini dipangkas ke 100.
+  - **Peningkatan yang Diterapkan:**
+    1. **Fungsi Deteksi Persentase Standar (*Robust Percentage Metric Detection*):**
+       - Menambahkan fungsi pembantu standar `isPercentageMetric(moduleName, rawUnit, cardTitle)` di frontend JavaScript dan `is_percentage_metric_php($unit, $nombre)` di backend PHP.
+       - Menyertakan daftar hitam (*explicit unit blacklist*) untuk seluruh satuan non-persentase (`mhz`, `ghz`, `hz`, `b`, `bytes`, `kb`, `mb`, `gb`, `tb`, `bps`, `kbps`, `mbps`, `gbps`, `ms`, `s`, `iops`, `pps`, `rpm`, `v`, `w`, `a`, `dbm`, `°c`, dll.) serta verifikasi akhiran nama modul. Jika satuan terdaftar dalam blacklist, metrik dijamin **TIDAK PERNAH** dievaluasi sebagai persentase.
+    2. **Pembersihan Logika Grafik Multi-Overlay & Single Module:**
+       - Menghapus pengecekan longgar `includes('Used')` dan `includes('Load')` pada [dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php), menggantikannya dengan `isPercentageMetric()`. Nilai data riwayat kini dialirkan secara utuh dan autentik tanpa pembatasan ke 100.
+       - Memperbaiki penentuan sumbu Y (`yAxis.max`) agar hanya mengunci di angka 100 jika metrik memang berupa persentase murni (`unit === '%'`) atau pengguna secara sadar mencentang opsi `Force 0-100% Y-Axis` (`p.force_100`).
+    3. **Penyelarasan Modal Grafik Detail (*Native Detail Graph Modal*):** Memperbarui `isDetailPct` pada modal grafik detail sehingga pembacaan titik dan tabel riwayat untuk metrik berkecepatan/berfrekuensi tinggi (seperti MHz) tidak lagi dipotong ke 100.
+    4. **Perlindungan Data Historis Backend (*Database Outlier Protection*):** Memperbarui fungsi `get_module_history_data` dan `get_modules_history_data_batch` di [includes/db-connection.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/includes/db-connection.php) agar batas `$max_bound` hanya berlaku untuk metrik persentase. Metrik non-persentase tidak lagi terpengaruh oleh nilai default `max = 100` bawaan template Pandora FMS.
+
+## [2.11.25] - 2026-10-27 (Dynamic Dashboard - Add Show/Hide Current Value Toggle in Panel Configuration)
+### Added & Enhanced
+- **Penambahan Opsi Tampilkan / Sembunyikan Nilai Terkini (*Show / Hide Current Value Toggle*):**
+  - Mengatasi ketiadaan kontrol visibilitas untuk nilai metrik terkini (*current value*) pada panel grafik di menu **Dynamic Dashboard** ([dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php)).
+  - Sebelumnya, panel grafik (`line`, `area`, `bar`) selalu menampilkan teks nilai metrik terkini beserta satuan secara permanen di baris header kartu (`statusHtml`), tanpa adanya opsi checkbox pada modal pengaturan panel untuk menyembunyikannya.
+  - **Peningkatan yang Diterapkan:**
+    1. **Formulir Pengaturan Panel (*Modal Settings Input*):** Menambahkan checkbox kontrol baru `Show Current Value` (`#p_show_current_value`) di dalam modal formulir panel tepat di samping opsi `Show Module Name`.
+    2. **Visibilitas Berbasis Tipe Panel (*Conditional Field Visibility*):** Mengatur `wrap_show_current_value` di dalam `toggleTypeFields()` agar opsi ini aktif secara kontekstual untuk tipe panel visual (`line`, `area`, `bar`, `text`, `single_value`, `gauge`).
+    3. **Penyimpanan & Pengisian Nilai Pengaturan (*State Persistence & Population*):** Menyelaraskan fungsi `openPanelBuilder()` (default: `true`), `openPanelEdit()` (`p.show_current_value !== false`), dan `applyPanel()` agar properti `show_current_value` tersimpan secara persisten ke dalam berkas `dynamic-dashboards-master.json`.
+    4. **Penyempurnaan Tata Letak Header Kartu (*Card Header Layout & Alignment*):** Memperbarui `generatePanelHtml()` sehingga ketika `show_current_value` dinonaktifkan (`false`), teks angka metrik disembunyikan secara bersih. Jika nama modul dan nilai terkini sama-sama dinonaktifkan, kontainer header dihilangkan sepenuhnya sehingga grafik visual memanfaatkan 100% tinggi ruang panel tanpa celah kosong. Ketika nama modul tidak ditampilkan namun nilai terkini aktif, posisi nilai kini konsisten berada di sisi kanan (*align-right*) melalui `margin-left: auto`.
+
 ## [2.11.24] - 2026-10-26 (Repository Standards - Ban Colored Emojis & Establish Monochrome Icon Standard)
 ### Added & Enhanced
 - **Penetapan Standar Larangan Emotikon / Emoji Berwarna & Standardisasi Ikon Monokrom:**

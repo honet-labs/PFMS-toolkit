@@ -2,7 +2,7 @@
 /* dynamic-dashboard-template.php
  *
  * Universal Grafana-Style Dynamic Dashboard
- * - Version: 4.9.3 (STABLE: Fully Responsive Table View, Word-Wrap Fixes)
+ * - Version: 4.9.5 (Fix Value Clamping on Non-Percentage Metrics in Line & Area Charts)
  * - Features: 12-Column Smart Grid, Drag & Drop Flow, Auto-Clone Panels, Real-Time HUD.
  */
 
@@ -572,11 +572,9 @@ if ($api === 'bulk_panel_data') {
                 if ($cur_val !== null && is_numeric($cur_val)) {
                     $u_trim = trim($mod['unit'] ?? '');
                     $n_trim = strtolower(trim($mod['nombre'] ?? ''));
-                    $is_pct = ($u_trim === '%' || strpos($u_trim, '%') !== false || strpos($n_trim, ' in %') !== false || strpos($n_trim, ' %') !== false);
+                    $is_pct = is_percentage_metric_php($u_trim, $n_trim);
                     if ($is_pct && (float)$cur_val > 100.0) {
                         $cur_val = ($mod['max'] > 0) ? min(100.0, (float)$mod['max']) : 100.0;
-                    } elseif ((float)$mod['max'] > 0 && (float)$cur_val > (float)$mod['max']) {
-                        $cur_val = (float)$mod['max'];
                     }
                 }
 
@@ -682,6 +680,21 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
         .dash-name-link { font-weight: normal !important; font-size: 14px !important; color: #1976d2 !important; text-decoration: none; display: flex; align-items: center; gap:8px; cursor:pointer;}
         .dash-name-link:hover { text-decoration: underline; color: #0d47a1 !important; }
         .dash-badge { background: #e0f2f1; color: #004d40; padding: 2px 8px; border-radius: 10px; font-size: 10px !important; font-weight: normal; }
+
+        /* DASHBOARD LIST PAGINATION */
+        .dash-pagination-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #fafbfc; border-top: 1px solid #e0e4e8; font-size: 12px; color: #64748b; flex-wrap: wrap; gap: 12px; }
+        .dash-pagination-info { display: flex; align-items: center; gap: 12px; }
+        .dash-pagination-info b { color: #1e293b; }
+        .dash-pagination-limit { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; }
+        .dash-pagination-limit select { height: 28px; padding: 0 8px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 12px; color: #1e293b; background: #fff; outline: none; cursor: pointer; }
+        .dash-pagination-limit select:focus { border-color: #004d40; }
+        .dash-pagination-controls { display: flex; align-items: center; gap: 4px; }
+        .dash-page-btn { min-width: 30px; height: 30px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #dce1e5; background: #ffffff; color: #475569; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; user-select: none; }
+        .dash-page-btn:hover:not(:disabled):not(.active) { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; }
+        .dash-page-btn.active { background: #004d40; border-color: #004d40; color: #ffffff !important; font-weight: 600; cursor: default; }
+        .dash-page-btn:disabled { opacity: 0.45; cursor: not-allowed; background: #f8fafc; border-color: #e2e8f0; }
+        .dash-page-btn .material-symbols-outlined { font-size: 16px !important; }
+        .dash-page-ellipsis { padding: 0 4px; color: #94a3b8; user-select: none; }
 
         div.top-controls { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 10px; align-items: center; justify-content: flex-end; }
         .list-search-box { padding: 0 15px 0 35px !important; height: 36px !important; margin: 0 !important; box-sizing: border-box !important; width: 300px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 13px !important; font-weight: normal !important; outline: none; background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%237f8c8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 10px center; transition:0.2s; }
@@ -1325,6 +1338,7 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
             </thead>
             <tbody></tbody>
         </table>
+        <div id="dashListPagination" class="dash-pagination-bar" style="display:none;"></div>
     </div>
 </div>
 
@@ -1673,6 +1687,9 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
             <div style="margin-top:5px; padding:10px; background:#fff; border:1px solid #dce1e5; border-radius:6px; margin-bottom:10px; display:flex; gap:15px; flex-wrap:wrap;">
                 <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;">
                     <input type="checkbox" id="p_show_module" checked style="margin-right:8px; width:16px; height:16px;"> Show Module Name
+                </label>
+                <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;" id="wrap_show_current_value">
+                    <input type="checkbox" id="p_show_current_value" checked style="margin-right:8px; width:16px; height:16px;"> Show Current Value
                 </label>
                 <label style="display:flex; align-items:center; cursor:pointer; font-size:11px; font-weight:600; color:#004d40; margin-bottom:0;">
                     <input type="checkbox" id="p_use_raw" style="margin-right:8px; width:16px; height:16px;"> Use Raw Value
@@ -2035,6 +2052,51 @@ function isByteTrafficMetric(moduleName = '', rawUnit = '', cardTitle = '') {
     }
     // All other traffic metrics (bytes/s, B/s, bytes, octets, ifInOctets, ifOutOctets, etc.) are in bytes and need 8x multiplier
     return true;
+}
+
+function isPercentageMetric(moduleName = '', rawUnit = '', cardTitle = '') {
+    const u = (rawUnit || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const m = (moduleName || '').toLowerCase();
+    const t = (cardTitle || '').toLowerCase();
+
+    // 1. Explicit blacklist of known non-percentage units
+    const nonPctUnits = [
+        'mhz', 'ghz', 'hz', 'khz',
+        'b', 'byte', 'bytes', 'kb', 'kbyte', 'kbytes', 'mb', 'mbyte', 'mbytes', 'gb', 'gbyte', 'gbytes', 'tb', 'tbyte', 'tbytes', 'pb',
+        'bps', 'kbps', 'mbps', 'gbps', 'tbps', 'b/s', 'kb/s', 'mb/s', 'gb/s', 'bytes/s', 'octet', 'octets', 'octets/s',
+        'ms', 's', 'sec', 'seconds', 'min', 'minute', 'minutes', 'h', 'hr', 'hrs', 'hour', 'hours', 'd', 'days',
+        'iops', 'ops', 'ops/s', 'tps', 'qps', 'pkt', 'pkts', 'packets', 'packets/s', 'pps', 'connections', 'conn', 'users', 'sessions', 'rpm',
+        'v', 'volt', 'volts', 'mv', 'w', 'watt', 'watts', 'kw', 'mw', 'a', 'amp', 'amps', 'ma', 'dbm', 'db',
+        '°c', 'c', '°f', 'f', 'k'
+    ];
+
+    if (nonPctUnits.includes(u)) {
+        return false;
+    }
+
+    if (/\b(mhz|ghz|hz|khz|bytes?|octets?|bps|kbps|mbps|gbps|iops|pps|ms)\b/i.test(u)) {
+        return false;
+    }
+
+    // 2. If module name ends with or clearly specifies a non-percentage unit (e.g. VMsCPUUsedMHz)
+    if (/(mhz|ghz|hz|khz|bytes?|kb|mb|gb|tb|bps|kbps|mbps|gbps|iops|pps|ms)$/i.test(m) ||
+        /\((mhz|ghz|hz|khz|bytes?|kb|mb|gb|tb|bps|kbps|mbps|gbps|iops|pps|ms)\)/i.test(m)) {
+        return false;
+    }
+
+    // 3. Positive check: unit is or contains '%' or 'pct'
+    if (u === '%' || u.includes('%') || u === 'pct' || u === 'percent') {
+        return true;
+    }
+
+    // 4. If unit is empty / undefined / none / '-', check if module name explicitly contains percentage notation
+    if (!u || u === 'none' || u === '-') {
+        if (m.includes('%') || m.includes('in %') || m.includes('(%)') || m.includes('percent')) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function formatBitsRate(bits) {
@@ -2452,17 +2514,119 @@ async function init() {
     } catch(e) {}
 }
 
+let dashListPage = 1;
+let dashListLimit = 10;
+let dashListLastKw = '';
+
+function changeDashListPage(page) {
+    dashListPage = page;
+    renderDashboardList();
+}
+
+function changeDashListLimit(limit) {
+    dashListLimit = parseInt(limit, 10) || 10;
+    dashListPage = 1;
+    renderDashboardList();
+}
+
+function renderPaginationControls(containerId, currentPage, totalPages, totalItems, limit, onPageChange, onLimitChange) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (totalItems === 0) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+    container.style.display = 'flex';
+
+    const startIdx = (currentPage - 1) * limit + 1;
+    const endIdx = Math.min(currentPage * limit, totalItems);
+
+    let pagesHtml = '';
+    const maxButtons = 5;
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    if (endPage - startPage < maxButtons - 1) {
+        startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+
+    if (startPage > 1) {
+        pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(1)">1</button>`;
+        if (startPage > 2) {
+            pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+        }
+    }
+
+    for (let p = startPage; p <= endPage; p++) {
+        pagesHtml += `<button type="button" class="dash-page-btn ${p === currentPage ? 'active' : ''}" onclick="${onPageChange}(${p})" ${p === currentPage ? 'disabled' : ''}>${p}</button>`;
+    }
+
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+        }
+        pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})">${totalPages}</button>`;
+    }
+
+    container.innerHTML = `
+        <div class="dash-pagination-info">
+            <span>Showing <b>${startIdx}</b> to <b>${endIdx}</b> of <b>${totalItems}</b> dashboards</span>
+            <div class="dash-pagination-limit">
+                <span>Rows:</span>
+                <select onchange="${onLimitChange}(this.value)">
+                    <option value="10" ${limit === 10 ? 'selected' : ''}>10</option>
+                    <option value="25" ${limit === 25 ? 'selected' : ''}>25</option>
+                    <option value="50" ${limit === 50 ? 'selected' : ''}>50</option>
+                    <option value="100" ${limit === 100 ? 'selected' : ''}>100</option>
+                </select>
+            </div>
+        </div>
+        <div class="dash-pagination-controls">
+            <button type="button" class="dash-page-btn" onclick="${onPageChange}(1)" ${currentPage <= 1 ? 'disabled' : ''} title="First Page">
+                <span class="material-symbols-outlined">first_page</span>
+            </button>
+            <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''} title="Previous Page">
+                <span class="material-symbols-outlined">chevron_left</span>
+            </button>
+            ${pagesHtml}
+            <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''} title="Next Page">
+                <span class="material-symbols-outlined">chevron_right</span>
+            </button>
+            <button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})" ${currentPage >= totalPages ? 'disabled' : ''} title="Last Page">
+                <span class="material-symbols-outlined">last_page</span>
+            </button>
+        </div>
+    `;
+}
+
 function renderDashboardList() {
     const tbody = document.querySelector('#dashListTable tbody');
     if(!tbody) return;
-    const kw = document.getElementById('listSearch').value.toLowerCase();
+    const searchEl = document.getElementById('listSearch');
+    const kw = (searchEl ? searchEl.value : '').toLowerCase().trim();
+    if (kw !== dashListLastKw) {
+        dashListPage = 1;
+        dashListLastKw = kw;
+    }
     tbody.innerHTML = '';
-    const filtered = masterDashboards.filter(d => d.title.toLowerCase().includes(kw));
-    if (filtered.length === 0) {
+    const filtered = masterDashboards.filter(d => (d.title || '').toLowerCase().includes(kw));
+    const totalItems = filtered.length;
+
+    if (totalItems === 0) {
         tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:30px; color:#7f8c8d;">No Dashboard Templates found.</td></tr>`;
+        renderPaginationControls('dashListPagination', 1, 1, 0, dashListLimit, 'changeDashListPage', 'changeDashListLimit');
         return;
     }
-    filtered.forEach(d => {
+
+    const totalPages = Math.ceil(totalItems / dashListLimit) || 1;
+    if (dashListPage > totalPages) dashListPage = totalPages;
+    if (dashListPage < 1) dashListPage = 1;
+
+    const startIdx = (dashListPage - 1) * dashListLimit;
+    const endIdx = Math.min(startIdx + dashListLimit, totalItems);
+    const pageItems = filtered.slice(startIdx, endIdx);
+
+    pageItems.forEach(d => {
         const groupName = globalGroupsMap[d.default_group] || 'All Groups';
         const panelCount = (d.panels || []).length;
         const tr = document.createElement('tr');
@@ -2498,6 +2662,8 @@ function renderDashboardList() {
         `;
         tbody.appendChild(tr);
     });
+
+    renderPaginationControls('dashListPagination', dashListPage, totalPages, totalItems, dashListLimit, 'changeDashListPage', 'changeDashListLimit');
 }
 
 function editDashboardSettingsFromList(id) {
@@ -3328,9 +3494,8 @@ function evaluateModuleThresholdStatus(m, numericVal, moduleName = '', unit = ''
     // Also prevent 'upload' / 'download' from matching the 'load' substring!
     const isTraffic = (typeof isTrafficMetric === 'function') ? isTrafficMetric(moduleName, unit, contextTitle) : false;
     if (!isTraffic) {
-        const unitStr = (unit || '').toLowerCase().trim();
-        const cleanContext = `${moduleName || ''} ${contextTitle || ''}`.toLowerCase().replace(/upload|download/g, '');
-        const isPct = unitStr.includes('%') || cleanContext.includes('%') || /\b(cpu|usage|utilization|loss|drop|mem|memory|disk)\b|processor load|system load/.test(cleanContext);
+        const isPct = isPercentageMetric(moduleName, unit, contextTitle);
+        const cleanContext = `${moduleName || ''} ${contextTitle || ''}`.toLowerCase();
         const isFreeMetric = /free|avail|available/.test(cleanContext);
 
         if (isPct && !isNaN(numericVal)) {
@@ -3405,24 +3570,28 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     const modNameHtml = (showMod && !isMultiOverlay) ? `<div class="mod-subtitle">${moduleData.module_name}</div>` : '';
     const showStatusDot = p.show_status_dot !== false;
     const dotHtml = showStatusDot ? `<span class="status-dot ${bgClass}"></span>` : '';
-    const statusHtml = isMultiOverlay ? '' : `<div style="display:flex; align-items:center;">${dotHtml}<span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span></div>`;
+    const showCurrentVal = p.show_current_value !== false;
+    const valTextHtml = showCurrentVal ? `<span style="font-size:${Math.round(fs*0.5)}px; font-weight:${fw};">${valText}</span><span style="font-size:10px; margin-left:3px;">${moduleData.unit}</span>` : '';
+    const statusHtml = (isMultiOverlay || (!showStatusDot && !showCurrentVal)) ? '' : `<div style="display:flex; align-items:center;">${dotHtml}${valTextHtml}</div>`;
 
     if (p.type === 'text') {
-        contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;"><div style="display:flex; align-items:baseline; justify-content:center;">${dotHtml}<span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${summaryHtml}${modNameHtml}</div>`;
+        const textValHtml = showCurrentVal ? `<span class="val-big" style="font-size:${fs}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span>` : '';
+        contentHtml = `<div style="display:flex; align-items:center; justify-content:center; flex-direction:column; height:100%; padding:10px;"><div style="display:flex; align-items:baseline; justify-content:center;">${dotHtml}${textValHtml}</div>${summaryHtml}${modNameHtml}</div>`;
     } 
     else if (p.type === 'single_value') {
         const color = {0:'#2ecc71', 1:'#e74c3c', 2:'#f1c40f', 4:'#3498db'}[moduleData.status] || '#95a5a6';
         const showSvDot = (p.show_status_dot === true);
         const svDotHtml = showSvDot ? `<span class="status-dot ${bgClass}" style="width:10px; height:10px; margin-right:6px; display:inline-block; border-radius:50%; vertical-align:middle;"></span>` : '';
+        const svValHtml = showCurrentVal ? `<span>${valText}</span><span style="font-size: ${Math.round(fs * 0.45)}px; font-weight: normal; color: #64748b;">${moduleData.unit}</span>` : '';
         contentHtml = `
         <div class="single-value-card-inner" style="height: 100%; width: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative;">
+            ${(showSvDot || showCurrentVal || summaryHtml) ? `
             <div style="flex-shrink: 0; z-index: 2; padding: 0 0 2px 0;">
                 <div style="font-size: ${fs}px; font-weight: ${fw}; color: ${color}; line-height: 1.1; display: flex; align-items: baseline; gap: 4px;">
-                    ${svDotHtml}<span>${valText}</span>
-                    <span style="font-size: ${Math.round(fs * 0.45)}px; font-weight: normal; color: #64748b;">${moduleData.unit}</span>
+                    ${svDotHtml}${svValHtml}
                 </div>
                 ${summaryHtml}
-            </div>
+            </div>` : ''}
             <!-- Relative positioned ECharts Sparkline container: fills available height without overflowing -->
             <div id="chart_${uniqueId}" style="flex: 1 1 0%; min-height: 0; width: 100%; cursor: pointer;" onclick="openNativeModuleDetailModal('${moduleData.id}', '${(moduleData.agent_name + ' - ' + moduleData.module_name).replace(/'/g, "\\'")}')"></div>
             
@@ -3435,7 +3604,8 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         `;
     }
     else if (p.type === 'gauge') {
-        contentHtml = `<div class="chart-wrapper"><div id="chart_${uniqueId}" style="width:100%; height:100%; min-height:100px;"></div><div class="gauge-text"><div><span class="gauge-val" style="font-size:${Math.round(fs*0.75)}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>${modNameHtml}</div></div>`;
+        const gaugeValHtml = showCurrentVal ? `<div><span class="gauge-val" style="font-size:${Math.round(fs*0.75)}px; font-weight:${fw};">${valText}</span><span class="val-unit">${moduleData.unit}</span></div>` : '';
+        contentHtml = `<div class="chart-wrapper"><div id="chart_${uniqueId}" style="width:100%; height:100%; min-height:100px;"></div><div class="gauge-text">${gaugeValHtml}${modNameHtml}</div></div>`;
     }
     else if (p.type === 'table_viewer') {
         const tableFs = parseInt(p.font_size) || 11;
@@ -3484,8 +3654,12 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
     }
     else {
         const history = moduleData.history || [];
+        const hasHeaderRow = (modNameHtml || statusHtml);
+        const headerRowHtml = hasHeaderRow 
+            ? `<div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:2px;"><div>${modNameHtml}</div><div style="margin-left:auto;">${statusHtml}</div></div>` 
+            : '';
         if (history.length === 0 && ['line','area','bar'].includes(p.type)) {
-            contentHtml = `<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">${modNameHtml}${statusHtml}</div><div class="chart-wrapper" style="color:#bdc3c7; font-size:11px; flex-direction:column;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">history_toggle_off</span>No historical data</div>`;
+            contentHtml = `${headerRowHtml}<div class="chart-wrapper" style="color:#bdc3c7; font-size:11px; flex-direction:column;"><span class="material-symbols-outlined" style="font-size:24px; margin-bottom:5px;">history_toggle_off</span>No historical data</div>`;
         } else {
             let chartHtml = '';
             if (p.chart_engine === 'native') {
@@ -3518,7 +3692,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
                 chartHtml = `<div class="chart-wrapper" style="width:100%; height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column; margin-top:2px; overflow:hidden;"><div id="chart_${uniqueId}" style="width:100%; height:100%; flex:1 1 0%; min-height:80px;"></div><div id="chart_legend_${uniqueId}" class="chart-html-legend" style="display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; max-height:85px; overflow-y:auto; padding:4px 24px 2px 2px; margin-top:4px; border-top:1px solid #f1f5f9; flex-shrink:0;"></div></div>`;
             }
 
-            contentHtml = `<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">${modNameHtml}${statusHtml}</div>${chartHtml}`;
+            contentHtml = `${headerRowHtml}${chartHtml}`;
         }
     }
 
@@ -3809,7 +3983,7 @@ function generateSummaryPanelHtml(p, modules) {
             history.forEach(h => {
                 let valNum = parseFloat(h.val);
                 let numericVal = isNaN(valNum) ? 0 : valNum;
-                const isPctMod = (m.unit === '%' || (m.module_name && (m.module_name.includes('Load') || m.module_name.includes('Used'))) || p.title.toLowerCase().includes('utiliz'));
+                const isPctMod = isPercentageMetric(m.module_name, m.unit, p.title);
                 if (isPctMod && numericVal > 100) {
                     numericVal = 100;
                 }
@@ -4785,7 +4959,7 @@ function refreshCurrentNodeData() {
                                 historyMap[roundedTs] = h.val;
                             }
                         });
-                        const isPct = (m.unit === '%' || (m.module_name && (m.module_name.includes('Load') || m.module_name.includes('Used'))) || p.title.toLowerCase().includes('utiliz'));
+                        const isPct = isPercentageMetric(m.module_name, m.unit, p.title);
                         let lastVal = null;
                         const data = uniqueTimestamps.map(ts => {
                             if (historyMap[ts] !== undefined) lastVal = historyMap[ts];
@@ -4869,7 +5043,7 @@ function refreshCurrentNodeData() {
                             yAxis: { 
                                 type: 'value', 
                                 show: (p.show_yaxis !== false),
-                                max: (p.force_100 || (commonUnit === '%')) ? 100 : null, 
+                                max: (p.force_100 || (commonUnit === '%' || isPercentageMetric('', commonUnit, p.title))) ? 100 : null, 
                                 splitLine: { show: (p.show_yaxis !== false), lineStyle: { color: '#f0f3f5' } }, 
                                 axisLine: { show: false },
                                 axisTick: { show: false },
@@ -4986,8 +5160,7 @@ function refreshCurrentNodeData() {
                             });
 
                             const unitStr = (m.unit || '').trim();
-                            const cleanContext = `${m.module_name || ''} ${p.title || ''}`.toLowerCase().replace(/upload|download/g, '');
-                            const isPct = unitStr === '%' || cleanContext.includes('%') || /\b(cpu|usage|utilization|loss|drop|mem|memory|disk)\b|processor load|system load/.test(cleanContext);
+                            const isPct = isPercentageMetric(m.module_name, unitStr, p.title);
 
                             chartInstances[uniqueId].setOption({
                                 tooltip: { 
@@ -5135,6 +5308,8 @@ function toggleTypeFields() {
     if (document.getElementById('wrap_force_100')) document.getElementById('wrap_force_100').style.display = isChart ? 'flex' : 'none';
     const typesWithDot = ['text', 'device_info', 'single_value', 'status_table', 'sparkline_table', 'status_timeline', 'line', 'area', 'bar'];
     if (document.getElementById('wrap_show_status_dot')) document.getElementById('wrap_show_status_dot').style.display = typesWithDot.includes(type) ? 'flex' : 'none';
+    const typesWithCurVal = ['line', 'area', 'bar', 'text', 'single_value', 'gauge'];
+    if (document.getElementById('wrap_show_current_value')) document.getElementById('wrap_show_current_value').style.display = typesWithCurVal.includes(type) ? 'flex' : 'none';
     const wrapChartColors = document.getElementById('wrap_chart_colors');
     if (wrapChartColors) {
         wrapChartColors.style.display = isChart ? 'block' : 'none';
@@ -5576,6 +5751,7 @@ function openPanelBuilder() {
     document.getElementById('p_stat_font_color').value = '#334155';
     document.getElementById('p_stat_font_color_hex').value = '';
     document.getElementById('p_show_module').checked = true;
+    if (document.getElementById('p_show_current_value')) document.getElementById('p_show_current_value').checked = true;
     document.getElementById('p_use_raw').checked = false;
     if (document.getElementById('p_show_status_dot')) document.getElementById('p_show_status_dot').checked = true;
     document.getElementById('p_auto_convert_traffic').checked = true;
@@ -5628,6 +5804,9 @@ function openPanelEdit(id) {
     document.getElementById('p_stat_font_color').value = p.stat_font_color || '#334155';
     document.getElementById('p_stat_font_color_hex').value = p.stat_font_color || '';
     document.getElementById('p_show_module').checked = p.show_module !== false;
+    if (document.getElementById('p_show_current_value')) {
+        document.getElementById('p_show_current_value').checked = p.show_current_value !== false;
+    }
     document.getElementById('p_use_raw').checked = p.use_raw || false;
     if (document.getElementById('p_show_status_dot')) {
         document.getElementById('p_show_status_dot').checked = (p.type === 'single_value') ? (p.show_status_dot === true) : (p.show_status_dot !== false);
@@ -5704,6 +5883,7 @@ function applyPanel() {
         stat_bg_color: document.getElementById('p_stat_bg_color_hex').value.trim(),
         stat_font_color: document.getElementById('p_stat_font_color_hex').value.trim(),
         show_module: document.getElementById('p_show_module').checked,
+        show_current_value: document.getElementById('p_show_current_value') ? document.getElementById('p_show_current_value').checked : true,
         use_raw: document.getElementById('p_use_raw').checked,
         show_status_dot: document.getElementById('p_show_status_dot') ? document.getElementById('p_show_status_dot').checked : true,
         auto_convert_traffic: document.getElementById('p_auto_convert_traffic').checked,
@@ -6120,7 +6300,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
         const unit = res.unit ? ' ' + res.unit : '';
         
         let html = '';
-        const isDetailPct = (unit.trim() === '%' || unit.includes('%') || title.toLowerCase().includes('load') || title.toLowerCase().includes('used'));
+        const isDetailPct = isPercentageMetric(title, unit.trim(), title);
         data.forEach(row => {
             let formattedDate = row.waktu;
             if (row.waktu && row.waktu.includes('-')) {

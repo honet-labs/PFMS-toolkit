@@ -1227,6 +1227,24 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         .btn-create { background: #004d40; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
         .btn-create:hover { background: #00695c; }
 
+        .list-search-box { padding: 0 15px 0 35px !important; height: 36px !important; margin: 0 !important; box-sizing: border-box !important; width: 300px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 13px !important; font-weight: normal !important; outline: none; background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%237f8c8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 10px center; transition:0.2s; }
+        .list-search-box:focus { border-color:#004d40; box-shadow: 0 0 0 2px rgba(0,77,64,0.1); }
+
+        /* DASHBOARD LIST PAGINATION */
+        .dash-pagination-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #fafbfc; border-top: 1px solid var(--border-color); font-size: 12px; color: #64748b; flex-wrap: wrap; gap: 12px; }
+        .dash-pagination-info { display: flex; align-items: center; gap: 12px; }
+        .dash-pagination-info b { color: #1e293b; }
+        .dash-pagination-limit { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; }
+        .dash-pagination-limit select { height: 28px; padding: 0 8px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 12px; color: #1e293b; background: #fff; outline: none; cursor: pointer; }
+        .dash-pagination-limit select:focus { border-color: #004d40; }
+        .dash-pagination-controls { display: flex; align-items: center; gap: 4px; }
+        .dash-page-btn { min-width: 30px; height: 30px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #dce1e5; background: #ffffff; color: #475569; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; user-select: none; }
+        .dash-page-btn:hover:not(:disabled):not(.active) { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; }
+        .dash-page-btn.active { background: #004d40; border-color: #004d40; color: #ffffff !important; font-weight: 600; cursor: default; }
+        .dash-page-btn:disabled { opacity: 0.45; cursor: not-allowed; background: #f8fafc; border-color: #e2e8f0; }
+        .dash-page-btn .material-symbols-outlined { font-size: 16px !important; }
+        .dash-page-ellipsis { padding: 0 4px; color: #94a3b8; user-select: none; }
+
         .main-content { padding: 20px 25px; overflow-x: auto; }
         @media (max-width: 768px) {
             .main-content { padding: 15px; }
@@ -1596,6 +1614,7 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
     </div>
     
     <div class="top-controls" id="listTopControls">
+        <input type="text" id="listSearch" class="list-search-box" placeholder="Search dashboards..." onkeyup="renderMasterList()">
         <button class="btn-create" onclick="openCreateModal()"><span class="material-symbols-outlined">add</span> Create Dashboard</button>
         <input type="file" id="importBackupFile" style="display:none" onchange="importDashboardConfig(event)">
     </div>
@@ -1606,10 +1625,11 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         <div class="card">
             <div style="overflow-x: auto; width: 100%;">
                 <table class="master-table">
-                    <thead><tr><th>Dashboard Name</th><th>Target Group</th><th>Target Node</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Dashboard Name</th><th>Target Group</th><th>Target Node</th><th style="text-align:right;">Actions</th></tr></thead>
                     <tbody id="masterTableBody"></tbody>
                 </table>
             </div>
+            <div id="masterListPagination" class="dash-pagination-bar" style="display:none;"></div>
         </div>
     </div>
 </div>
@@ -2003,6 +2023,91 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         if (dashId) openDashboard(dashId, true); else renderMasterList();
     }
 
+    let masterListPage = 1;
+    let masterListLimit = 10;
+    let masterListLastKw = '';
+
+    function changeMasterListPage(page) {
+        masterListPage = page;
+        renderMasterList();
+    }
+
+    function changeMasterListLimit(limit) {
+        masterListLimit = parseInt(limit, 10) || 10;
+        masterListPage = 1;
+        renderMasterList();
+    }
+
+    function renderMasterPaginationControls(containerId, currentPage, totalPages, totalItems, limit, onPageChange, onLimitChange) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        if (totalItems === 0) {
+            container.style.display = 'none';
+            container.innerHTML = '';
+            return;
+        }
+        container.style.display = 'flex';
+
+        const startIdx = (currentPage - 1) * limit + 1;
+        const endIdx = Math.min(currentPage * limit, totalItems);
+
+        let pagesHtml = '';
+        const maxButtons = 5;
+        let startPage = Math.max(1, currentPage - 2);
+        let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+        if (endPage - startPage < maxButtons - 1) {
+            startPage = Math.max(1, endPage - maxButtons + 1);
+        }
+
+        if (startPage > 1) {
+            pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(1)">1</button>`;
+            if (startPage > 2) {
+                pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+            }
+        }
+
+        for (let p = startPage; p <= endPage; p++) {
+            pagesHtml += `<button type="button" class="dash-page-btn ${p === currentPage ? 'active' : ''}" onclick="${onPageChange}(${p})" ${p === currentPage ? 'disabled' : ''}>${p}</button>`;
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+            }
+            pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})">${totalPages}</button>`;
+        }
+
+        container.innerHTML = `
+            <div class="dash-pagination-info">
+                <span>Showing <b>${startIdx}</b> to <b>${endIdx}</b> of <b>${totalItems}</b> dashboards</span>
+                <div class="dash-pagination-limit">
+                    <span>Rows:</span>
+                    <select onchange="${onLimitChange}(this.value)">
+                        <option value="10" ${limit === 10 ? 'selected' : ''}>10</option>
+                        <option value="25" ${limit === 25 ? 'selected' : ''}>25</option>
+                        <option value="50" ${limit === 50 ? 'selected' : ''}>50</option>
+                        <option value="100" ${limit === 100 ? 'selected' : ''}>100</option>
+                    </select>
+                </div>
+            </div>
+            <div class="dash-pagination-controls">
+                <button type="button" class="dash-page-btn" onclick="${onPageChange}(1)" ${currentPage <= 1 ? 'disabled' : ''} title="First Page">
+                    <span class="material-symbols-outlined">first_page</span>
+                </button>
+                <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''} title="Previous Page">
+                    <span class="material-symbols-outlined">chevron_left</span>
+                </button>
+                ${pagesHtml}
+                <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''} title="Next Page">
+                    <span class="material-symbols-outlined">chevron_right</span>
+                </button>
+                <button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})" ${currentPage >= totalPages ? 'disabled' : ''} title="Last Page">
+                    <span class="material-symbols-outlined">last_page</span>
+                </button>
+            </div>
+        `;
+    }
+
     function renderMasterList() {
         if(timerInterval) clearInterval(timerInterval);
         document.getElementById('masterView').style.display = 'block';
@@ -2023,8 +2128,38 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
         // Reset to default font for master list
         document.getElementById('detailView').style.setProperty('--table-font-size', '12px');
 
+        const searchEl = document.getElementById('listSearch');
+        const kw = (searchEl ? searchEl.value : '').toLowerCase().trim();
+        if (kw !== masterListLastKw) {
+            masterListPage = 1;
+            masterListLastKw = kw;
+        }
+
+        const filtered = masterDashboards.filter(d => 
+            (d.name || '').toLowerCase().includes(kw) ||
+            (d.group_name || '').toLowerCase().includes(kw) ||
+            (d.agent_name || '').toLowerCase().includes(kw)
+        );
+        const totalItems = filtered.length;
+
         const body = document.getElementById('masterTableBody');
-        body.innerHTML = masterDashboards.map(d => `<tr>
+        if (!body) return;
+
+        if (totalItems === 0) {
+            body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Dashboards Found</td></tr>';
+            renderMasterPaginationControls('masterListPagination', 1, 1, 0, masterListLimit, 'changeMasterListPage', 'changeMasterListLimit');
+            return;
+        }
+
+        const totalPages = Math.ceil(totalItems / masterListLimit) || 1;
+        if (masterListPage > totalPages) masterListPage = totalPages;
+        if (masterListPage < 1) masterListPage = 1;
+
+        const startIdx = (masterListPage - 1) * masterListLimit;
+        const endIdx = Math.min(startIdx + masterListLimit, totalItems);
+        const pageItems = filtered.slice(startIdx, endIdx);
+
+        body.innerHTML = pageItems.map(d => `<tr>
             <td><a href="#" class="dash-link" onclick="openDashboard('${d.id}')">${d.name}</a></td>
             <td>${d.group_name || 'All Groups'}</td>
             <td>${d.agent_name || 'All Nodes'}</td>
@@ -2085,7 +2220,9 @@ $isStandalone = (isset($_GET['standalone']) && $_GET['standalone'] == '1') || (i
                     </div>
                 </div>
             </td>
-        </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No Dashboards Created Yet.</td></tr>';
+        </tr>`).join('');
+
+        renderMasterPaginationControls('masterListPagination', masterListPage, totalPages, totalItems, masterListLimit, 'changeMasterListPage', 'changeMasterListLimit');
     }
 
     function openDashboard(id, isInitial = false) {

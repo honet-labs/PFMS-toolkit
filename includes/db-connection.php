@@ -372,6 +372,52 @@ if (!function_exists('cleanPandoraText')) {
     }
 }
 
+if (!function_exists('is_percentage_metric_php')) {
+    function is_percentage_metric_php($unit = '', $nombre = '') {
+        $u = strtolower(trim($unit ?? ''));
+        $n = strtolower(trim($nombre ?? ''));
+
+        // Explicit blacklist of known non-percentage units
+        $non_pct_units = [
+            'mhz', 'ghz', 'hz', 'khz',
+            'b', 'byte', 'bytes', 'kb', 'kbyte', 'kbytes', 'mb', 'mbyte', 'mbytes', 'gb', 'gbyte', 'gbytes', 'tb', 'tbyte', 'tbytes', 'pb',
+            'bps', 'kbps', 'mbps', 'gbps', 'tbps', 'b/s', 'kb/s', 'mb/s', 'gb/s', 'bytes/s', 'octet', 'octets', 'octets/s',
+            'ms', 's', 'sec', 'seconds', 'min', 'minute', 'minutes', 'h', 'hr', 'hrs', 'hour', 'hours', 'd', 'days',
+            'iops', 'ops', 'ops/s', 'tps', 'qps', 'pkt', 'pkts', 'packets', 'packets/s', 'pps', 'connections', 'conn', 'users', 'sessions', 'rpm',
+            'v', 'volt', 'volts', 'mv', 'w', 'watt', 'watts', 'kw', 'mw', 'a', 'amp', 'amps', 'ma', 'dbm', 'db',
+            '°c', 'c', '°f', 'f', 'k'
+        ];
+
+        if (in_array($u, $non_pct_units, true)) {
+            return false;
+        }
+
+        if (preg_match('/\b(mhz|ghz|hz|khz|bytes?|octets?|bps|kbps|mbps|gbps|iops|pps|ms)\b/i', $u)) {
+            return false;
+        }
+
+        // If module name ends with or clearly specifies a non-percentage unit (e.g. VMsCPUUsedMHz)
+        if (preg_match('/(mhz|ghz|hz|khz|bytes?|kb|mb|gb|tb|bps|kbps|mbps|gbps|iops|pps|ms)$/i', $n) ||
+            preg_match('/\((mhz|ghz|hz|khz|bytes?|kb|mb|gb|tb|bps|kbps|mbps|gbps|iops|pps|ms)\)/i', $n)) {
+            return false;
+        }
+
+        // Positive check: unit is or contains '%' or 'pct'
+        if ($u === '%' || strpos($u, '%') !== false || $u === 'pct' || $u === 'percent') {
+            return true;
+        }
+
+        // If unit is empty / undefined / none / '-', check if module name explicitly contains percentage notation
+        if ($u === '' || $u === 'none' || $u === '-') {
+            if (strpos($n, '%') !== false || strpos($n, 'in %') !== false || strpos($n, '(%)') !== false || strpos($n, 'percent') !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
 function formatInterval($seconds) {
     $seconds = (int)$seconds;
     if ($seconds <= 0) return 'N/A';
@@ -668,17 +714,14 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
         $mod_min = isset($mod_meta['min']) ? (float)$mod_meta['min'] : 0.0;
         $mod_max = isset($mod_meta['max']) ? (float)$mod_meta['max'] : 0.0;
 
-        $is_percent = ($raw_unit === '%' || strpos($raw_unit, '%') !== false || strpos($raw_nombre, ' in %') !== false || strpos($raw_nombre, ' %') !== false);
+        $is_percent = is_percentage_metric_php($raw_unit, $raw_nombre);
         
         if ($is_percent) {
             // Percentage metrics must strictly stay within [0, 100] unless configured otherwise
             $min_bound = ($mod_min != 0.0) ? $mod_min : 0.0;
             $max_bound = ($mod_max > 0.0) ? $mod_max : 100.0;
         } else {
-            // Non-percentage numeric metrics: respect explicit positive max or non-zero min if configured
-            if ($mod_max > 0.0) {
-                $max_bound = $mod_max;
-            }
+            // Non-percentage metrics: do NOT use template default max (e.g. 100) to discard genuine data points
             if ($mod_min != 0.0) {
                 $min_bound = $mod_min;
             }
@@ -925,10 +968,10 @@ function get_modules_history_data_batch($pdo, $pdo_history, $modIds, $start, $en
                 $nm = strtolower(trim($mRow['nombre'] ?? ''));
                 $mn = isset($mRow['min']) ? (float)$mRow['min'] : 0.0;
                 $mx = isset($mRow['max']) ? (float)$mRow['max'] : 0.0;
-                $is_pct = ($u === '%' || strpos($u, '%') !== false || strpos($nm, ' in %') !== false || strpos($nm, ' %') !== false);
+                $is_pct = is_percentage_metric_php($u, $nm);
                 $bounds_map[$mRow['id_agente_modulo']] = [
                     'min' => $is_pct ? ($mn != 0.0 ? $mn : 0.0) : ($mn != 0.0 ? $mn : null),
-                    'max' => $is_pct ? ($mx > 0.0 ? $mx : 100.0) : ($mx > 0.0 ? $mx : null),
+                    'max' => $is_pct ? ($mx > 0.0 ? $mx : 100.0) : null,
                 ];
             }
         } catch (Throwable $e) {}

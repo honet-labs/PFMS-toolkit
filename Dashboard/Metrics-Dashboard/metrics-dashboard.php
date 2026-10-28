@@ -1243,6 +1243,21 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
         .dash-name-link:hover { text-decoration: underline; color: #0d47a1 !important; }
         .dash-badge { background: #e0f2f1; color: #004d40; padding: 2px 8px; border-radius: 10px; font-size: 10px !important; font-weight: normal; }
 
+        /* DASHBOARD LIST PAGINATION */
+        .dash-pagination-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #fafbfc; border-top: 1px solid #e0e4e8; font-size: 12px; color: #64748b; flex-wrap: wrap; gap: 12px; }
+        .dash-pagination-info { display: flex; align-items: center; gap: 12px; }
+        .dash-pagination-info b { color: #1e293b; }
+        .dash-pagination-limit { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; }
+        .dash-pagination-limit select { height: 28px; padding: 0 8px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 12px; color: #1e293b; background: #fff; outline: none; cursor: pointer; }
+        .dash-pagination-limit select:focus { border-color: #004d40; }
+        .dash-pagination-controls { display: flex; align-items: center; gap: 4px; }
+        .dash-page-btn { min-width: 30px; height: 30px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #dce1e5; background: #ffffff; color: #475569; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; user-select: none; }
+        .dash-page-btn:hover:not(:disabled):not(.active) { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; }
+        .dash-page-btn.active { background: #004d40; border-color: #004d40; color: #ffffff !important; font-weight: 600; cursor: default; }
+        .dash-page-btn:disabled { opacity: 0.45; cursor: not-allowed; background: #f8fafc; border-color: #e2e8f0; }
+        .dash-page-btn .material-symbols-outlined { font-size: 16px !important; }
+        .dash-page-ellipsis { padding: 0 4px; color: #94a3b8; user-select: none; }
+
         .list-search-box { padding: 0 15px 0 35px !important; height: 36px !important; margin: 0 !important; box-sizing: border-box !important; width: 300px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 13px !important; font-weight: normal !important; outline: none; background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%237f8c8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 10px center; transition:0.2s; }
         .list-search-box:focus { border-color:#004d40; box-shadow: 0 0 0 2px rgba(0,77,64,0.1); }
         
@@ -1396,6 +1411,7 @@ $isModalOnly = (isset($_GET['modal_only']) && $_GET['modal_only'] == '1') || (is
             </thead>
             <tbody></tbody>
         </table>
+        <div id="dashListPagination" class="dash-pagination-bar" style="display:none;"></div>
     </div>
 </div>
 
@@ -2026,6 +2042,51 @@ function isByteTrafficMetric(moduleName = '', rawUnit = '', cardTitle = '') {
     return true;
 }
 
+function isPercentageMetric(moduleName = '', rawUnit = '', cardTitle = '') {
+    const u = (rawUnit || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const m = (moduleName || '').toLowerCase();
+    const t = (cardTitle || '').toLowerCase();
+
+    // 1. Explicit blacklist of known non-percentage units
+    const nonPctUnits = [
+        'mhz', 'ghz', 'hz', 'khz',
+        'b', 'byte', 'bytes', 'kb', 'kbyte', 'kbytes', 'mb', 'mbyte', 'mbytes', 'gb', 'gbyte', 'gbytes', 'tb', 'tbyte', 'tbytes', 'pb',
+        'bps', 'kbps', 'mbps', 'gbps', 'tbps', 'b/s', 'kb/s', 'mb/s', 'gb/s', 'bytes/s', 'octet', 'octets', 'octets/s',
+        'ms', 's', 'sec', 'seconds', 'min', 'minute', 'minutes', 'h', 'hr', 'hrs', 'hour', 'hours', 'd', 'days',
+        'iops', 'ops', 'ops/s', 'tps', 'qps', 'pkt', 'pkts', 'packets', 'packets/s', 'pps', 'connections', 'conn', 'users', 'sessions', 'rpm',
+        'v', 'volt', 'volts', 'mv', 'w', 'watt', 'watts', 'kw', 'mw', 'a', 'amp', 'amps', 'ma', 'dbm', 'db',
+        '°c', 'c', '°f', 'f', 'k'
+    ];
+
+    if (nonPctUnits.includes(u)) {
+        return false;
+    }
+
+    if (/\b(mhz|ghz|hz|khz|bytes?|octets?|bps|kbps|mbps|gbps|iops|pps|ms)\b/i.test(u)) {
+        return false;
+    }
+
+    // 2. If module name ends with or clearly specifies a non-percentage unit (e.g. VMsCPUUsedMHz)
+    if (/(mhz|ghz|hz|khz|bytes?|kb|mb|gb|tb|bps|kbps|mbps|gbps|iops|pps|ms)$/i.test(m) ||
+        /\((mhz|ghz|hz|khz|bytes?|kb|mb|gb|tb|bps|kbps|mbps|gbps|iops|pps|ms)\)/i.test(m)) {
+        return false;
+    }
+
+    // 3. Positive check: unit is or contains '%' or 'pct'
+    if (u === '%' || u.includes('%') || u === 'pct' || u === 'percent') {
+        return true;
+    }
+
+    // 4. If unit is empty / undefined / none / '-', check if module name explicitly contains percentage notation
+    if (!u || u === 'none' || u === '-') {
+        if (m.includes('%') || m.includes('in %') || m.includes('(%)') || m.includes('percent')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function formatBitsRate(bits) {
     if (bits === null || bits === undefined || bits === '' || isNaN(bits) || bits === '-') return '-';
     const b = parseFloat(bits);
@@ -2622,6 +2683,91 @@ function updateURLState(dashId) {
     } catch(e) {}
 }
 
+let dashListPage = 1;
+let dashListLimit = 10;
+let dashListLastKw = '';
+
+function changeDashListPage(page) {
+    dashListPage = page;
+    renderDashboardList();
+}
+
+function changeDashListLimit(limit) {
+    dashListLimit = parseInt(limit, 10) || 10;
+    dashListPage = 1;
+    renderDashboardList();
+}
+
+function renderPaginationControls(containerId, currentPage, totalPages, totalItems, limit, onPageChange, onLimitChange) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (totalItems === 0) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+    container.style.display = 'flex';
+
+    const startIdx = (currentPage - 1) * limit + 1;
+    const endIdx = Math.min(currentPage * limit, totalItems);
+
+    let pagesHtml = '';
+    const maxButtons = 5;
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    if (endPage - startPage < maxButtons - 1) {
+        startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+
+    if (startPage > 1) {
+        pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(1)">1</button>`;
+        if (startPage > 2) {
+            pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+        }
+    }
+
+    for (let p = startPage; p <= endPage; p++) {
+        pagesHtml += `<button type="button" class="dash-page-btn ${p === currentPage ? 'active' : ''}" onclick="${onPageChange}(${p})" ${p === currentPage ? 'disabled' : ''}>${p}</button>`;
+    }
+
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+        }
+        pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})">${totalPages}</button>`;
+    }
+
+    container.innerHTML = `
+        <div class="dash-pagination-info">
+            <span>Showing <b>${startIdx}</b> to <b>${endIdx}</b> of <b>${totalItems}</b> dashboards</span>
+            <div class="dash-pagination-limit">
+                <span>Rows:</span>
+                <select onchange="${onLimitChange}(this.value)">
+                    <option value="10" ${limit === 10 ? 'selected' : ''}>10</option>
+                    <option value="25" ${limit === 25 ? 'selected' : ''}>25</option>
+                    <option value="50" ${limit === 50 ? 'selected' : ''}>50</option>
+                    <option value="100" ${limit === 100 ? 'selected' : ''}>100</option>
+                </select>
+            </div>
+        </div>
+        <div class="dash-pagination-controls">
+            <button type="button" class="dash-page-btn" onclick="${onPageChange}(1)" ${currentPage <= 1 ? 'disabled' : ''} title="First Page">
+                <span class="material-symbols-outlined">first_page</span>
+            </button>
+            <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''} title="Previous Page">
+                <span class="material-symbols-outlined">chevron_left</span>
+            </button>
+            ${pagesHtml}
+            <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''} title="Next Page">
+                <span class="material-symbols-outlined">chevron_right</span>
+            </button>
+            <button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})" ${currentPage >= totalPages ? 'disabled' : ''} title="Last Page">
+                <span class="material-symbols-outlined">last_page</span>
+            </button>
+        </div>
+    `;
+}
+
 function renderDashboardList() {
     updateURLState(null);
     currentDashId = null;
@@ -2644,16 +2790,32 @@ function renderDashboardList() {
     const tbody = document.querySelector('#dashListTable tbody');
     if(!tbody) return;
     
-    const kw = document.getElementById('listSearch').value.toLowerCase().trim();
+    const searchEl = document.getElementById('listSearch');
+    const kw = (searchEl ? searchEl.value : '').toLowerCase().trim();
+    if (kw !== dashListLastKw) {
+        dashListPage = 1;
+        dashListLastKw = kw;
+    }
     tbody.innerHTML = '';
     
-    const filtered = masterDashboards.filter(d => d.title.toLowerCase().includes(kw));
-    if (filtered.length === 0) {
+    const filtered = masterDashboards.filter(d => (d.title || '').toLowerCase().includes(kw));
+    const totalItems = filtered.length;
+
+    if (totalItems === 0) {
         tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:30px; color:#7f8c8d;">No Metrics Dashboards found. Click "Create Dashboard" to add one.</td></tr>`;
+        renderPaginationControls('dashListPagination', 1, 1, 0, dashListLimit, 'changeDashListPage', 'changeDashListLimit');
         return;
     }
+
+    const totalPages = Math.ceil(totalItems / dashListLimit) || 1;
+    if (dashListPage > totalPages) dashListPage = totalPages;
+    if (dashListPage < 1) dashListPage = 1;
+
+    const startIdx = (dashListPage - 1) * dashListLimit;
+    const endIdx = Math.min(startIdx + dashListLimit, totalItems);
+    const pageItems = filtered.slice(startIdx, endIdx);
     
-    filtered.forEach(d => {
+    pageItems.forEach(d => {
         const tr = document.createElement('tr');
         const widgetCount = (d.panels || []).length;
         tr.innerHTML = `
@@ -2691,6 +2853,8 @@ function renderDashboardList() {
         `;
         tbody.appendChild(tr);
     });
+
+    renderPaginationControls('dashListPagination', dashListPage, totalPages, totalItems, dashListLimit, 'changeDashListPage', 'changeDashListLimit');
 }
 
 let cardObserver = null;
@@ -3773,9 +3937,8 @@ function evaluateModuleThresholdStatus(m, numericVal, moduleName = '', unit = ''
     // Also prevent 'upload' / 'download' from matching the 'load' substring!
     const isTraffic = (typeof isTrafficMetric === 'function') ? isTrafficMetric(moduleName, unit, contextTitle) : false;
     if (!isTraffic) {
-        const unitStr = (unit || '').toLowerCase().trim();
-        const cleanContext = `${moduleName || ''} ${contextTitle || ''}`.toLowerCase().replace(/upload|download/g, '');
-        const isPct = unitStr.includes('%') || cleanContext.includes('%') || /\b(cpu|usage|utilization|loss|drop|mem|memory|disk)\b|processor load|system load/.test(cleanContext);
+        const isPct = isPercentageMetric(moduleName, unit, contextTitle);
+        const cleanContext = `${moduleName || ''} ${contextTitle || ''}`.toLowerCase();
         const isFreeMetric = /free|avail|available/.test(cleanContext);
 
         if (isPct && !isNaN(numericVal)) {

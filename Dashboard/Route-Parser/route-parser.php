@@ -1369,6 +1369,21 @@ if (!$current_dashboard):
             color: #b91c1c;
         }
 
+        /* DASHBOARD LIST PAGINATION */
+        .dash-pagination-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #fafbfc; border-top: 1px solid #e0e4e8; font-size: 12px; color: #64748b; flex-wrap: wrap; gap: 12px; }
+        .dash-pagination-info { display: flex; align-items: center; gap: 12px; }
+        .dash-pagination-info b { color: #1e293b; }
+        .dash-pagination-limit { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; }
+        .dash-pagination-limit select { height: 28px; padding: 0 8px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 12px; color: #1e293b; background: #fff; outline: none; cursor: pointer; }
+        .dash-pagination-limit select:focus { border-color: #004d40; }
+        .dash-pagination-controls { display: flex; align-items: center; gap: 4px; }
+        .dash-page-btn { min-width: 30px; height: 30px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #dce1e5; background: #ffffff; color: #475569; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; user-select: none; }
+        .dash-page-btn:hover:not(:disabled):not(.active) { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; }
+        .dash-page-btn.active { background: #004d40; border-color: #004d40; color: #ffffff !important; font-weight: 600; cursor: default; }
+        .dash-page-btn:disabled { opacity: 0.45; cursor: not-allowed; background: #f8fafc; border-color: #e2e8f0; }
+        .dash-page-btn .material-symbols-outlined { font-size: 16px !important; }
+        .dash-page-ellipsis { padding: 0 4px; color: #94a3b8; user-select: none; }
+
         /* Modal Styles */
         .modal-overlay {
             position: fixed;
@@ -1615,6 +1630,7 @@ if (!$current_dashboard):
                     <?php endif; ?>
                 </tbody>
             </table>
+            <div id="dashListPagination" class="dash-pagination-bar" style="display:none;"></div>
         </div>
     </div>
 
@@ -1839,14 +1855,127 @@ if (!$current_dashboard):
             });
         }
 
-        function filterTable() {
-            const q = document.getElementById('listSearch').value.toLowerCase().trim();
-            const rows = document.querySelectorAll('.dash-table-row');
-            rows.forEach(r => {
-                const s = r.getAttribute('data-search') || '';
-                r.style.display = (!q || s.includes(q)) ? '' : 'none';
-            });
+        let routeListPage = 1;
+        let routeListLimit = 10;
+        let routeListLastKw = '';
+
+        function changeRouteListPage(page) {
+            routeListPage = page;
+            filterTable(true);
         }
+
+        function changeRouteListLimit(limit) {
+            routeListLimit = parseInt(limit, 10) || 10;
+            routeListPage = 1;
+            filterTable(true);
+        }
+
+        function renderRoutePaginationControls(containerId, currentPage, totalPages, totalItems, limit, onPageChange, onLimitChange) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            if (totalItems === 0) {
+                container.style.display = 'none';
+                container.innerHTML = '';
+                return;
+            }
+            container.style.display = 'flex';
+
+            const startIdx = (currentPage - 1) * limit + 1;
+            const endIdx = Math.min(currentPage * limit, totalItems);
+
+            let pagesHtml = '';
+            const maxButtons = 5;
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+            if (endPage - startPage < maxButtons - 1) {
+                startPage = Math.max(1, endPage - maxButtons + 1);
+            }
+
+            if (startPage > 1) {
+                pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(1)">1</button>`;
+                if (startPage > 2) {
+                    pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+                }
+            }
+
+            for (let p = startPage; p <= endPage; p++) {
+                pagesHtml += `<button type="button" class="dash-page-btn ${p === currentPage ? 'active' : ''}" onclick="${onPageChange}(${p})" ${p === currentPage ? 'disabled' : ''}>${p}</button>`;
+            }
+
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+                }
+                pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})">${totalPages}</button>`;
+            }
+
+            container.innerHTML = `
+                <div class="dash-pagination-info">
+                    <span>Showing <b>${startIdx}</b> to <b>${endIdx}</b> of <b>${totalItems}</b> dashboards</span>
+                    <div class="dash-pagination-limit">
+                        <span>Rows:</span>
+                        <select onchange="${onLimitChange}(this.value)">
+                            <option value="10" ${limit === 10 ? 'selected' : ''}>10</option>
+                            <option value="25" ${limit === 25 ? 'selected' : ''}>25</option>
+                            <option value="50" ${limit === 50 ? 'selected' : ''}>50</option>
+                            <option value="100" ${limit === 100 ? 'selected' : ''}>100</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="dash-pagination-controls">
+                    <button type="button" class="dash-page-btn" onclick="${onPageChange}(1)" ${currentPage <= 1 ? 'disabled' : ''} title="First Page">
+                        <span class="material-symbols-outlined">first_page</span>
+                    </button>
+                    <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''} title="Previous Page">
+                        <span class="material-symbols-outlined">chevron_left</span>
+                    </button>
+                    ${pagesHtml}
+                    <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''} title="Next Page">
+                        <span class="material-symbols-outlined">chevron_right</span>
+                    </button>
+                    <button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})" ${currentPage >= totalPages ? 'disabled' : ''} title="Last Page">
+                        <span class="material-symbols-outlined">last_page</span>
+                    </button>
+                </div>
+            `;
+        }
+
+        function filterTable(isPageChange = false) {
+            const searchEl = document.getElementById('listSearch');
+            const q = (searchEl ? searchEl.value : '').toLowerCase().trim();
+            if (!isPageChange && q !== routeListLastKw) {
+                routeListPage = 1;
+                routeListLastKw = q;
+            }
+            const rows = Array.from(document.querySelectorAll('.dash-table-row'));
+            if (rows.length === 0) {
+                renderRoutePaginationControls('dashListPagination', 1, 1, 0, routeListLimit, 'changeRouteListPage', 'changeRouteListLimit');
+                return;
+            }
+
+            const matched = rows.filter(r => {
+                const s = r.getAttribute('data-search') || '';
+                return !q || s.includes(q);
+            });
+
+            const totalItems = matched.length;
+            const totalPages = Math.ceil(totalItems / routeListLimit) || 1;
+            if (routeListPage > totalPages) routeListPage = totalPages;
+            if (routeListPage < 1) routeListPage = 1;
+
+            const startIdx = (routeListPage - 1) * routeListLimit;
+            const endIdx = Math.min(startIdx + routeListLimit, totalItems);
+
+            rows.forEach(r => r.style.display = 'none');
+            for (let i = startIdx; i < endIdx; i++) {
+                matched[i].style.display = '';
+            }
+
+            renderRoutePaginationControls('dashListPagination', routeListPage, totalPages, totalItems, routeListLimit, 'changeRouteListPage', 'changeRouteListLimit');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => { filterTable(); });
+        setTimeout(() => { filterTable(); }, 50);
 
         function openModal(id) {
             document.getElementById(id).style.display = 'flex';

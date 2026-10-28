@@ -108,14 +108,14 @@ function get_topology_storage_candidates(): array {
     ]));
 }
 
-// Helper: load dashboards (always load the NEWEST file with valid data, prioritizing files that contain user-created dashboards)
+// Helper: load dashboards (always load the NEWEST file with valid data, stripping legacy auto-detected template)
 function load_topology_dashboards(string $file = ''): array {
     $candidates = get_topology_storage_candidates();
     if (!empty($file) && !in_array($file, $candidates)) {
         array_unshift($candidates, $file);
     }
 
-    $best_score = -1;
+    $best_mtime = -1;
     $best_data = null;
 
     foreach ($candidates as $f) {
@@ -123,24 +123,13 @@ function load_topology_dashboards(string $file = ''): array {
             $raw = @file_get_contents($f);
             if ($raw) {
                 $data = json_decode((string)$raw, true);
-                if (is_array($data) && !empty($data)) {
+                if (is_array($data)) {
+                    // Strip out legacy auto-detected "core-infra-01" so it never resurrects from stale caches
+                    $clean = array_values(array_filter($data, fn($item) => is_array($item) && ($item['id'] ?? '') !== 'core-infra-01'));
                     $mtime = @filemtime($f) ?: 0;
-                    $has_custom = false;
-                    if (count($data) > 1) {
-                        $has_custom = true;
-                    } else {
-                        foreach ($data as $item) {
-                            if (isset($item['id']) && $item['id'] !== 'core-infra-01') {
-                                $has_custom = true;
-                                break;
-                            }
-                        }
-                    }
-                    // Candidates with custom dashboards get high priority so stale git files never shadow them
-                    $score = ($has_custom ? 10000000000 : 0) + $mtime;
-                    if ($score > $best_score) {
-                        $best_score = $score;
-                        $best_data = $data;
+                    if ($mtime > $best_mtime) {
+                        $best_mtime = $mtime;
+                        $best_data = $clean;
                     }
                 }
             }
@@ -149,17 +138,6 @@ function load_topology_dashboards(string $file = ''): array {
 
     if ($best_data !== null) {
         return $best_data;
-    }
-
-    // Fallback: if no non-empty data found, return whatever is valid
-    foreach ($candidates as $f) {
-        if (file_exists($f) && is_readable($f)) {
-            $raw = @file_get_contents($f);
-            if ($raw) {
-                $data = json_decode((string)$raw, true);
-                if (is_array($data)) return $data;
-            }
-        }
     }
 
     return [];
@@ -1744,12 +1722,9 @@ if (!empty($selected_dash_id)) {
         render_pfms_access_denied((string)$user_id, $pandora_base ?: '/pandora_console', $pdo, 'You do not have permission to view the requested dashboard (' . htmlspecialchars($selected_dash_id) . ').');
         exit;
     }
-} elseif (!empty($dashboards)) {
+} elseif ($is_embed && !empty($dashboards)) {
     $current_dashboard = $dashboards[0];
     $selected_dash_id = $current_dashboard['id'];
-} else {
-    render_pfms_access_denied((string)$user_id, $pandora_base ?: '/pandora_console', $pdo, 'You do not currently have view permissions for any Network Topology dashboards.');
-    exit;
 }
 
 $has_edit_rights = $current_dashboard ? check_dashboard_access($current_dashboard['access_control'] ?? null, (string)$user_id, 'edit', $pdo) : $is_admin;
@@ -2011,6 +1986,21 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             font-weight: normal;
             display: inline-block;
         }
+
+        /* DASHBOARD LIST PAGINATION */
+        .dash-pagination-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #fafbfc; border-top: 1px solid var(--border-color); font-size: 12px; color: #64748b; flex-wrap: wrap; gap: 12px; }
+        .dash-pagination-info { display: flex; align-items: center; gap: 12px; }
+        .dash-pagination-info b { color: #1e293b; }
+        .dash-pagination-limit { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; }
+        .dash-pagination-limit select { height: 28px; padding: 0 8px; border: 1px solid #dce1e5; border-radius: 4px; font-size: 12px; color: #1e293b; background: #fff; outline: none; cursor: pointer; }
+        .dash-pagination-limit select:focus { border-color: var(--brand-green); }
+        .dash-pagination-controls { display: flex; align-items: center; gap: 4px; }
+        .dash-page-btn { min-width: 30px; height: 30px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #dce1e5; background: #ffffff; color: #475569; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; user-select: none; }
+        .dash-page-btn:hover:not(:disabled):not(.active) { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; }
+        .dash-page-btn.active { background: var(--brand-green); border-color: var(--brand-green); color: #ffffff !important; font-weight: 600; cursor: default; }
+        .dash-page-btn:disabled { opacity: 0.45; cursor: not-allowed; background: #f8fafc; border-color: #e2e8f0; }
+        .dash-page-btn .material-symbols-outlined { font-size: 16px !important; }
+        .dash-page-ellipsis { padding: 0 4px; color: #94a3b8; user-select: none; }
         .badge-demo {
             background: #fef3c7;
             color: #92400e;
@@ -3206,6 +3196,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         <!-- Rendered by JavaScript -->
                     </tbody>
                 </table>
+                <div id="dashListPagination" class="dash-pagination-bar" style="display:none;"></div>
             </div>
         </div>
     </div>
@@ -4160,11 +4151,103 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
         }
 
         // --- 1. RENDER DASHBOARD LIST ---
-        function renderDashboardTable(dashboardsToRender) {
+        let topoListPage = 1;
+        let topoListLimit = 10;
+        let currentTopoList = [];
+
+        function changeTopoListPage(page) {
+            topoListPage = page;
+            renderDashboardTable(currentTopoList, true);
+        }
+
+        function changeTopoListLimit(limit) {
+            topoListLimit = parseInt(limit, 10) || 10;
+            topoListPage = 1;
+            renderDashboardTable(currentTopoList, true);
+        }
+
+        function renderPaginationControls(containerId, currentPage, totalPages, totalItems, limit, onPageChange, onLimitChange) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            if (totalItems === 0) {
+                container.style.display = 'none';
+                container.innerHTML = '';
+                return;
+            }
+            container.style.display = 'flex';
+
+            const startIdx = (currentPage - 1) * limit + 1;
+            const endIdx = Math.min(currentPage * limit, totalItems);
+
+            let pagesHtml = '';
+            const maxButtons = 5;
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+            if (endPage - startPage < maxButtons - 1) {
+                startPage = Math.max(1, endPage - maxButtons + 1);
+            }
+
+            if (startPage > 1) {
+                pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(1)">1</button>`;
+                if (startPage > 2) {
+                    pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+                }
+            }
+
+            for (let p = startPage; p <= endPage; p++) {
+                pagesHtml += `<button type="button" class="dash-page-btn ${p === currentPage ? 'active' : ''}" onclick="${onPageChange}(${p})" ${p === currentPage ? 'disabled' : ''}>${p}</button>`;
+            }
+
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    pagesHtml += `<span class="dash-page-ellipsis">...</span>`;
+                }
+                pagesHtml += `<button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})">${totalPages}</button>`;
+            }
+
+            container.innerHTML = `
+                <div class="dash-pagination-info">
+                    <span>Showing <b>${startIdx}</b> to <b>${endIdx}</b> of <b>${totalItems}</b> dashboards</span>
+                    <div class="dash-pagination-limit">
+                        <span>Rows:</span>
+                        <select onchange="${onLimitChange}(this.value)">
+                            <option value="10" ${limit === 10 ? 'selected' : ''}>10</option>
+                            <option value="25" ${limit === 25 ? 'selected' : ''}>25</option>
+                            <option value="50" ${limit === 50 ? 'selected' : ''}>50</option>
+                            <option value="100" ${limit === 100 ? 'selected' : ''}>100</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="dash-pagination-controls">
+                    <button type="button" class="dash-page-btn" onclick="${onPageChange}(1)" ${currentPage <= 1 ? 'disabled' : ''} title="First Page">
+                        <span class="material-symbols-outlined">first_page</span>
+                    </button>
+                    <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''} title="Previous Page">
+                        <span class="material-symbols-outlined">chevron_left</span>
+                    </button>
+                    ${pagesHtml}
+                    <button type="button" class="dash-page-btn" onclick="${onPageChange}(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''} title="Next Page">
+                        <span class="material-symbols-outlined">chevron_right</span>
+                    </button>
+                    <button type="button" class="dash-page-btn" onclick="${onPageChange}(${totalPages})" ${currentPage >= totalPages ? 'disabled' : ''} title="Last Page">
+                        <span class="material-symbols-outlined">last_page</span>
+                    </button>
+                </div>
+            `;
+        }
+
+        function renderDashboardTable(dashboardsToRender, isPageChange = false) {
             const tbody = document.getElementById('dashTableBody');
             if (!tbody) return;
 
-            if (!dashboardsToRender || dashboardsToRender.length === 0) {
+            if (!isPageChange) {
+                topoListPage = 1;
+                currentTopoList = Array.isArray(dashboardsToRender) ? dashboardsToRender : (allDashboards || []);
+            }
+
+            const totalItems = currentTopoList.length;
+
+            if (totalItems === 0) {
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="5" style="text-align:center; padding:45px 20px; color:#64748b;">
@@ -4177,11 +4260,20 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                         </td>
                     </tr>
                 `;
+                renderPaginationControls('dashListPagination', 1, 1, 0, topoListLimit, 'changeTopoListPage', 'changeTopoListLimit');
                 return;
             }
 
+            const totalPages = Math.ceil(totalItems / topoListLimit) || 1;
+            if (topoListPage > totalPages) topoListPage = totalPages;
+            if (topoListPage < 1) topoListPage = 1;
+
+            const startIdx = (topoListPage - 1) * topoListLimit;
+            const endIdx = Math.min(startIdx + topoListLimit, totalItems);
+            const pageItems = currentTopoList.slice(startIdx, endIdx);
+
             let html = '';
-            dashboardsToRender.forEach(d => {
+            pageItems.forEach(d => {
                 const cleanName = cleanText(d.name);
                 const cleanDesc = cleanText(d.description || '');
                 const isBlank = (d.map_type === 'blank');
@@ -4235,6 +4327,8 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                 `;
             });
             tbody.innerHTML = html;
+
+            renderPaginationControls('dashListPagination', topoListPage, totalPages, totalItems, topoListLimit, 'changeTopoListPage', 'changeTopoListLimit');
         }
 
         function filterDashboardTable(keyword) {

@@ -29,6 +29,8 @@ Setiap penambahan fitur baru pada dashboard, toolkit, atau visualizer wajib mema
    * Pada visualisasi time-series dan Status Timeline (Uptime Blocks), balok waktu terbaru (*latest block*) harus selalu menampilkan waktu pembaruan kontak terakhir (`last_contact`) modul secara riil, bukan stempel waktu lama dari event perubahan status hari sebelumnya.
 6. **Batas Seri Chart Transparan (Chart Limit):**
    * Pilihan limit diagram (`chart_limit`) harus mendukung `Show All (Default: 0)` secara murni tanpa pemotongan tersembunyi (*hardcoded slicing*) di backend. Pilihan limit opsional (Top 5, Top 10, Top 25, Top 50, Top 100) dapat disediakan untuk kontrol performa pengguna.
+7. **Kontrol Tampilan Nilai Metrik Terkini (Current Value Visibility Control):**
+   * Panel visualisasi metrik pada Dynamic Dashboard (tipe `line`, `area`, `bar`, `single_value`, `text`, `gauge`) wajib menyediakan opsi `Show Current Value` (`p.show_current_value`, default: `true`). Opsi ini memungkinkan pengguna menampilkan atau menyembunyikan teks angka metrik terkini pada header panel secara independen dari nama modul maupun indikator status.
 
 ---
 
