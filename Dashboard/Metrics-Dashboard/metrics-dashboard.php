@@ -4342,9 +4342,10 @@ function renderStatusTimelineWidget(cardId, tableData, historyData) {
         let curDisplayVal = '';
         if (card.lbl_1 && (m.current_value == 1 || String(m.current_value) === '1' || String(m.current_value) === '1.0')) curDisplayVal = card.lbl_1;
         else if (card.lbl_0 && (m.current_value == 0 || String(m.current_value) === '0' || String(m.current_value) === '0.0')) curDisplayVal = card.lbl_0;
-        else if (isTraffic && autoConvert) curDisplayVal = formatBitsRate(isByte ? curNumeric * 8 : curNumeric);
-        else if (card.use_raw) curDisplayVal = (curNumeric % 1 === 0 ? curNumeric : curNumeric.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
-        else curDisplayVal = formatHumanMetric(curNumeric, m.unit, false, m.module_name, card.title);
+        else if (isTraffic && autoConvert && !isNaN(curValNum)) curDisplayVal = formatBitsRate(isByte ? curNumeric * 8 : curNumeric);
+        else if (card.use_raw && !isNaN(curValNum)) curDisplayVal = (curNumeric % 1 === 0 ? curNumeric : curNumeric.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+        else if (!isNaN(curValNum)) curDisplayVal = formatHumanMetric(curNumeric, m.unit, false, m.module_name, card.title);
+        else curDisplayVal = String(m.current_value || 'N/A');
 
         const curEval = evaluateModuleThresholdStatus(m, curNumeric, m.module_name, m.unit, card.title);
 
@@ -4626,9 +4627,11 @@ function showTimelineBlockTooltip(el, e) {
     const color = el.getAttribute('data-status-color') || '#22c55e';
     const val = el.getAttribute('data-val') || '';
 
+    const isSteady = dataNote && dataNote.includes('Steady state');
+    const tsLabel = isSteady ? 'Status Since:' : (dataNote && dataNote.includes('Current status') ? 'Verified At:' : 'Data Timestamp:');
     const dataTimeRow = pointTs ? `
         <div style="display:flex; justify-content:space-between; gap:12px; margin-top:2px;">
-            <span style="color:#94a3b8;">Data Timestamp:</span>
+            <span style="color:#94a3b8;">${tsLabel}</span>
             <div style="text-align:right;">
                 <span style="color:#cbd5e1; font-weight:600;">${escapeHtml(pointTs)}</span>
                 ${dataNote ? `<div style="color:#64748b; font-size:10px;">(${escapeHtml(dataNote)})</div>` : ''}
