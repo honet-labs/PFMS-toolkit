@@ -869,7 +869,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     if ($preData) {
         $pNum = is_numeric($preData['datos']) ? (float)$preData['datos'] : null;
         $pValid = true;
-        if (in_array($target_table, ['tagente_datos', 'tagente_datos_inc']) && $pNum !== null) {
+        if ($pNum !== null) {
             if ($is_percent && $pNum < 0.0) $pValid = false;
             if ($max_bound !== null && $pNum > $max_bound) $pValid = false;
             if ($min_bound !== null && $pNum < $min_bound) $pValid = false;
@@ -886,7 +886,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     // Deduplicate by timestamp and discard corrupted outliers outside module thresholds
     $unique = [];
     foreach ($merged as $item) {
-        if (in_array($target_table, ['tagente_datos', 'tagente_datos_inc']) && is_numeric($item['datos'])) {
+        if (is_numeric($item['datos'])) {
             $num = (float)$item['datos'];
             if ($is_percent && $num < 0.0) {
                 continue; // Discard negative error sentinel (e.g. -0.01 API timeout) for percentage metrics
@@ -976,7 +976,7 @@ function get_modules_history_data_batch($pdo, $pdo_history, $modIds, $start, $en
                 $mx = isset($mRow['max']) ? (float)$mRow['max'] : 0.0;
                 $is_pct = is_percentage_metric_php($u, $nm);
                 $bounds_map[$mRow['id_agente_modulo']] = [
-                    'min' => $is_pct ? ($mn != 0.0 ? $mn : 0.0) : ($mn != 0.0 ? $mn : null),
+                    'min' => $is_pct ? ($mn > 0.0 ? $mn : 0.0) : ($mn != 0.0 ? $mn : null),
                     'max' => $is_pct ? ($mx > 0.0 ? $mx : 100.0) : null,
                 ];
             }
