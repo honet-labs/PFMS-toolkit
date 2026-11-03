@@ -2,6 +2,22 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.34] - 2026-11-03 (Topology Network - Complete Node Agent Name Display & Smart Multi-Line Label Wrapping)
+### Fixed & Enhanced
+- **Tampilan Utuh & Pembungkusan Pintar Nama Agen pada Topology Network (*Node Label Full Display & Smart Wrapping*):**
+  - Mengatasi masalah nama agen/node yang terpotong dengan elipsis (`...`) pada kanvas **Topology Network** ([topology-network.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Topology-Network/topology-network.php)), seperti nama `MTK-SW02-1G - CSS...` yang terpotong di tengah.
+  - **Akar Masalah (*Root Cause*):**
+    - Konfigurasi stylesheet Cytoscape.js untuk selector `node` sebelumnya disetel ke `'text-wrap': 'ellipsis'` dengan batas lebar ketat `'text-max-width': '140px'`.
+    - Akibatnya, setiap nama agen yang panjangnya melebihi 140px (~18 karakter) secara paksa dipotong satu baris dengan akhiran elipsis (`...`).
+  - **Peningkatan yang Diterapkan:**
+    - **Fungsi Pembungkus Pintar Nama Node (`wrapNodeLabel`):**
+      - Menambahkan fungsi pembungkus teks cerdas [wrapNodeLabel](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Topology-Network/topology-network.php#L4127) yang memecah nama agen panjang secara proporsional berdasarkan pemisah alami (spasi, tanda hubung `-`, garis bawah `_`, atau garis miring `/`), sehingga tidak memotong kata secara canggung.
+    - **Pembaruan Style Cytoscape pada Node:**
+      - Mengubah `'text-wrap'` dari `'ellipsis'` menjadi `'wrap'` dan meningkatkan `'text-max-width'` dari `140px` ke `220px`.
+      - Menambahkan `'text-justification': 'center'` dan `'line-height': 1.25` agar label multi-baris tampil seimbang dan rapi di bawah ikon perangkat.
+    - **Integritas Data Asli:**
+      - Properti `ele.data('label')` tetap mempertahankan string asli tanpa modifikasi, sehingga fitur pencarian node/IP di toolbar dan rincian pada Device Inspector drawer tetap akurat dan lengkap seutuhnya.
+
 ## [2.11.33] - 2026-11-03 (Status Timeline - Direct Agent & Module Console Navigation Links)
 ### Fixed & Enhanced
 - **Tautan Langsung Navigasi Modul & Agen pada Tampilan Status Timeline (*Status Timeline Direct Navigation Links*):**

@@ -4124,6 +4124,46 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             return finalLines.filter(Boolean).join('\n');
         }
 
+        // Wraps node/agent name neatly at delimiters (-, _, /, space) or every maxCharsPerLine so it never truncates
+        function wrapNodeLabel(str, maxCharsPerLine = 18) {
+            if (!str) return '';
+            str = cleanText(String(str)).trim();
+            if (!str || str.length <= maxCharsPerLine) return str;
+            if (str.includes('\n')) return str;
+
+            const tokens = str.split(/([ \-_/]+)/);
+            let lines = [];
+            let current = '';
+
+            for (let i = 0; i < tokens.length; i++) {
+                const token = tokens[i];
+                if (!token) continue;
+
+                if (!current) {
+                    current = token;
+                } else if ((current + token).length <= maxCharsPerLine) {
+                    current += token;
+                } else {
+                    lines.push(current.trim());
+                    current = token.trim();
+                }
+            }
+            if (current) lines.push(current.trim());
+
+            let finalLines = [];
+            for (let l of lines) {
+                if (l.length > maxCharsPerLine + 4) {
+                    for (let i = 0; i < l.length; i += maxCharsPerLine) {
+                        finalLines.push(l.slice(i, i + maxCharsPerLine));
+                    }
+                } else {
+                    finalLines.push(l);
+                }
+            }
+
+            return finalLines.filter(Boolean).join('\n');
+        }
+
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toastNotification');
             if (!toast) return;
@@ -5250,15 +5290,19 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
                     {
                         selector: 'node',
                         style: {
-                            'label': 'data(label)',
+                            'label': function(ele) {
+                                return wrapNodeLabel(ele.data('label') || '', 18);
+                            },
                             'color': '#0f172a',
                             'font-family': 'Inter, sans-serif',
                             'font-size': 12,
                             'font-weight': 700,
                             'text-valign': 'bottom',
                             'text-margin-y': 10,
-                            'text-wrap': 'ellipsis',
-                            'text-max-width': '140px',
+                            'text-wrap': 'wrap',
+                            'text-max-width': '220px',
+                            'text-justification': 'center',
+                            'line-height': 1.25,
                             'width': 56,
                             'height': 56,
                             'background-color': 'transparent',
