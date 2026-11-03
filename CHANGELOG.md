@@ -2,6 +2,31 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.29] - 2026-11-03 (Dynamic Dashboard & Topology Network - Fix Status Timeline Crash & Refine Button Margin Spacing)
+### Fixed & Enhanced
+- **Perbaikan Kegagalan Render Panel Status Timeline (*TypeError: m.last_contact.replace is not a function*):**
+  - Mengatasi galat visual pada menu **Dynamic Dashboard** ([dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php)) ketika merender panel bertipe *Status Timeline (Uptime Blocks)* yang menampilkan pesan eror merah: `Error rendering panel: m.last_contact.replace is not a function`.
+  - **Akar Penyebab (*Root Cause*):**
+    - Pada fungsi `renderStatusTimelineContent()`, stempel waktu kontak modul terkini dievaluasi menggunakan ekspresi `new Date(m.last_contact.replace(' ', 'T'))`.
+    - Backend PHP ([dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php)) mengembalikan nilai `last_contact` dalam format integer Unix Epoch timestamp (`(int)$mod['last_contact']`).
+    - Dalam runtime JavaScript, tipe data angka (*Number*) tidak memiliki metode `.replace()`, sehingga pemanggilan tersebut langsung melempar eksepsi *TypeError* dan menghentikan proses rendering kartu uptime blocks.
+  - **Peningkatan yang Diterapkan:**
+    - Memperbarui mekanisme parsing `lastContactTs` di dalam fungsi `renderStatusTimelineContent()` agar mampu menangani secara fleksibel dan robust:
+      1. Nilai bertipe angka (*Number*), baik satuan detik (Unix Epoch standar) maupun milidetik.
+      2. Nilai bertipe string numerik (*numeric string* seperti `"1730617800"`).
+      3. Nilai bertipe string tanggal/waktu (*datetime string* seperti `"2026-11-03 14:10:00"`).
+      4. Nilai `null`, `undefined`, atau `0` tanpa memicu galat runtime.
+    - Menyelaraskan pencocokan titik data historis pada `sortedHist` agar mendukung pembacaan properti stempel waktu `ts` maupun `utimestamp`.
+
+- **Penyempurnaan Spasi Margin Tombol Create Topology Dashboard (*Button Margin & Spacing Polish*):**
+  - Mengatasi masalah tata letak visual pada menu **Topology Network** ([topology-network.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Topology-Network/topology-network.php)) di mana tombol *"Create Topology Dashboard"* pada tampilan kosong (*Empty State*) tampak menempel langsung tanpa jarak vertikal (*margin-top* dan *margin-bottom*).
+  - **Akar Penyebab (*Root Cause*):**
+    - Deklarasi CSS `.btn-apply` memiliki aturan `margin: 0 !important;` yang menimpa (*override*) nilai inline `style="margin-top:16px;"` pada elemen `<button>`.
+  - **Peningkatan yang Diterapkan:**
+    - Menghapus pembatasan `!important` pada `margin: 0;` di aturan CSS `.btn-apply`.
+    - Membungkus tombol *"Create Topology Dashboard"* dalam kontainer flex terpusat dengan `margin-top: 16px; margin-bottom: 12px;` serta menambahkan jarak bawah 18px pada teks keterangan empty state.
+    - Menambahkan `border-bottom: 1px solid var(--border-color);` pada kontainer bilah atas `.pandora-header-bottom` untuk pemisahan visual yang tegas dan rapi.
+
 ## [2.11.28] - 2026-10-28 (Dashboard Ecosystem - Standardize 10-Row Limit and Unified Pagination across All Dashboard Lists)
 ### Added & Enhanced
 - **Implementasi Batasan 10 Baris (*Default Limit: 10 Rows*) dan Kontrol Pagination Terpadu (*Unified Pagination System*) pada Seluruh Master Dashboard List:**

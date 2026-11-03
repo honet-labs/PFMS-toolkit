@@ -2,7 +2,7 @@
 /* dynamic-dashboard-template.php
  *
  * Universal Grafana-Style Dynamic Dashboard
- * - Version: 4.9.5 (Fix Value Clamping on Non-Percentage Metrics in Line & Area Charts)
+ * - Version: 4.9.6 (Fix Status Timeline Crash on Numeric last_contact Timestamp)
  * - Features: 12-Column Smart Grid, Drag & Drop Flow, Auto-Clone Panels, Real-Time HUD.
  */
 
@@ -7119,9 +7119,25 @@ function renderStatusTimelineContent(p, modules) {
         const sortedHist = [...hist].sort((a, b) => (a.ts || 0) - (b.ts || 0));
 
         // Incorporate real-time module last_contact timestamp so uptime blocks reflect active verification
-        const lastContactTs = m.last_contact ? Math.floor(new Date(m.last_contact.replace(' ', 'T')).getTime() / 1000) : 0;
+        let lastContactTs = 0;
+        if (m.last_contact) {
+            if (typeof m.last_contact === 'number') {
+                lastContactTs = m.last_contact > 1e11 ? Math.floor(m.last_contact / 1000) : Math.floor(m.last_contact);
+            } else if (typeof m.last_contact === 'string') {
+                const trimmed = m.last_contact.trim();
+                if (/^\d+$/.test(trimmed)) {
+                    const num = Number(trimmed);
+                    lastContactTs = num > 1e11 ? Math.floor(num / 1000) : Math.floor(num);
+                } else {
+                    const parsedDate = new Date(trimmed.replace(' ', 'T'));
+                    if (!isNaN(parsedDate.getTime())) {
+                        lastContactTs = Math.floor(parsedDate.getTime() / 1000);
+                    }
+                }
+            }
+        }
         if (lastContactTs > 0) {
-            const hasNewerHistorical = sortedHist.some(h => (h.ts || 0) >= lastContactTs);
+            const hasNewerHistorical = sortedHist.some(h => ((h.ts || h.utimestamp || 0) >= lastContactTs));
             if (!hasNewerHistorical) {
                 sortedHist.push({
                     utimestamp: lastContactTs,

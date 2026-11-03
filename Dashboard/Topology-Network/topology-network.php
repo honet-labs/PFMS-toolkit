@@ -1805,6 +1805,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             justify-content: space-between;
             flex-wrap: wrap;
             gap: 15px;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .breadcrumb-box {
@@ -1860,7 +1861,7 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
 
         .btn-apply {
             height: 36px !important;
-            margin: 0 !important;
+            margin: 0;
             box-sizing: border-box !important;
             background: var(--brand-green);
             color: #fff !important;
@@ -4250,13 +4251,15 @@ $dynamic_breadcrumb = "PANDORA CONSOLE / CUSTOM / PANEL / DASHBOARD / TOPOLOGY N
             if (totalItems === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="5" style="text-align:center; padding:45px 20px; color:#64748b;">
-                            <span class="material-symbols-outlined" style="font-size:48px; color:#94a3b8; margin-bottom:8px;">hub</span>
-                            <div style="font-size:15px; font-weight:600; color:#334155;">No Topology Dashboards Configured</div>
-                            <div style="font-size:13px; color:#94a3b8; margin-top:4px;">Create your first topology dashboard to visualize agent networks.</div>
-                            <button class="btn-apply" style="margin-top:16px;" onclick="openCreateModal()">
-                                <span class="material-symbols-outlined">add</span> Create Topology Dashboard
-                            </button>
+                        <td colspan="5" style="text-align:center; padding:50px 20px 45px 20px; color:#64748b;">
+                            <span class="material-symbols-outlined" style="font-size:48px; color:#94a3b8; margin-bottom:10px;">hub</span>
+                            <div style="font-size:16px; font-weight:600; color:#334155;">No Topology Dashboards Configured</div>
+                            <div style="font-size:13px; color:#94a3b8; margin-top:6px; margin-bottom:18px;">Create your first topology dashboard to visualize agent networks.</div>
+                            <div style="display:flex; justify-content:center; align-items:center; margin-top:16px; margin-bottom:12px;">
+                                <button class="btn-apply" style="margin-top:0 !important; margin-bottom:0 !important;" onclick="openCreateModal()">
+                                    <span class="material-symbols-outlined">add</span> Create Topology Dashboard
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
