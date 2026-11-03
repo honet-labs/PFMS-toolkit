@@ -2,6 +2,26 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.30] - 2026-11-03 (Dynamic Dashboard - Fix Module Value Fallback, Status Timeline String Mapping, and History Heatmap Multi-Module Grouping)
+### Fixed & Enhanced
+- **Sinkronisasi Nilai Modul Terkini dari Riwayat Historis (*Module Value Fallback from Historical Data*):**
+  - Mengatasi masalah di mana nilai modul hardware/asynchronous (seperti `DIMM A1:Status` atau `Physical Disk 0:1:0:Status`) pada [dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php) menampilkan angka `0` di samping indikator status, padahal di tooltip dan jendela riwayat (*Historical Module*) bernilai `1` atau terpetakan sebagai `"OK / Enabled"`.
+  - **Akar Penyebab (*Root Cause*):**
+    - Stempel waktu `utimestamp` pada tabel `tagente_estado` diperbarui setiap beberapa menit oleh siklus heartbeat agen Pandora FMS meskipun modul tidak mengalami perubahan data.
+    - Kondisi validasi `(int)$last_point['ts'] >= (int)$mod['last_contact']` menyebabkan backend menolak nilai data riwayat terakhir karena stempel waktunya lebih lama daripada waktu heartbeat agen, sehingga backend mempertahankan nilai instan mentah `tagente_estado.datos` yang bernilai `0`.
+  - **Peningkatan yang Diterapkan:**
+    - Memperbarui evaluasi backend PHP ([dynamic-dashboard-template.php baris 561-570](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php#L561-L570)) agar otomatis mengadopsi nilai data riwayat terakhir `$last_point['val']` apabila nilai pada `tagente_estado` bernilai `0`, kosong, atau `null`.
+    - Memperbaiki fungsi `renderStatusTimelineContent()` agar nilai string atau teks pemetaan label (`lbl_0` / `lbl_1`) seperti `"OK / Enabled"` tidak lagi dipaksa terkonversi menjadi `0`.
+    - Menyesuaikan label stempel waktu tooltip balok stabil dari `Data Timestamp:` menjadi `Status Since:` dengan penanda `(Steady state continues)` agar lebih jelas dan informatif bagi pengguna.
+
+- **Dukungan Multi-Modul pada History Heatmap Blocks (*History Heatmap Multi-Module Grouping*):**
+  - Mengatasi masalah pada visual style **History Heatmap Blocks** (`heatmap`) di mana pemilihan banyak modul (*multiple modules*) memecah visualisasi menjadi kartu-kartu panel baru duplikat bertumpuk (`PANEL (COPY)`) alih-alih menyatukannya ke dalam satu panel terpadu.
+  - **Akar Penyebab (*Root Cause*):**
+    - Tipe visual `heatmap` sebelumnya belum didaftarkan ke dalam handler `generateSummaryPanelHtml` dan pembatas `multi_overlay` hanya mencakup grafik `line`, `area`, dan `bar`.
+  - **Peningkatan yang Diterapkan:**
+    - Mendaftarkan tipe visual `heatmap` ke dalam daftar panel summary terpadu di fungsi render ([dynamic-dashboard-template.php baris 4717](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php#L4717)).
+    - Mengintegrasikan blok perenderan multi-modul terpadu untuk `heatmap` di dalam `generateSummaryPanelHtml()` ([baris 3971-4024](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php#L3971-L4024)), lengkap dengan kartu modul, indikator status, nilai terkini, dan kontainer heat-blocks per modul dalam satu panel yang rapi.
+
 ## [2.11.29] - 2026-11-03 (Dynamic Dashboard & Topology Network - Fix Status Timeline Crash & Refine Button Margin Spacing)
 ### Fixed & Enhanced
 - **Perbaikan Kegagalan Render Panel Status Timeline (*TypeError: m.last_contact.replace is not a function*):**

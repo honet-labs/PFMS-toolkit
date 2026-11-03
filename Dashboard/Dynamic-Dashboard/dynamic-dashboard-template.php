@@ -2,7 +2,7 @@
 /* dynamic-dashboard-template.php
  *
  * Universal Grafana-Style Dynamic Dashboard
- * - Version: 4.9.6 (Fix Status Timeline Crash on Numeric last_contact Timestamp)
+ * - Version: 4.9.7 (Fix Module Value Fallback from History, Status Timeline Labeling, and History Heatmap Multi-Module Grouping)
  * - Features: 12-Column Smart Grid, Drag & Drop Flow, Auto-Clone Panels, Real-Time HUD.
  */
 
@@ -562,9 +562,11 @@ if ($api === 'bulk_panel_data') {
                 if (!empty($history)) {
                     $last_point = end($history);
                     if ($last_point && isset($last_point['val']) && $last_point['val'] !== null && $last_point['val'] !== '') {
-                        if (empty($mod['last_contact']) || (int)$last_point['ts'] >= (int)$mod['last_contact']) {
+                        if (empty($mod['last_contact']) || (int)$last_point['ts'] >= (int)$mod['last_contact'] || $cur_val === null || $cur_val === '' || $cur_val === '0' || $cur_val === 0 || $cur_val === 'N/A') {
                             $cur_val = $last_point['val'];
-                            $mod['last_contact'] = (int)$last_point['ts'];
+                            if (empty($mod['last_contact']) || (int)$last_point['ts'] >= (int)$mod['last_contact']) {
+                                $mod['last_contact'] = (int)$last_point['ts'];
+                            }
                         }
                     }
                 }
@@ -3968,6 +3970,58 @@ function generateSummaryPanelHtml(p, modules) {
             <div style="position:relative; width:100%; ${flexStyle} display:flex; justify-content:center; align-items:center;">
                 <div id="chart_${p.id}" style="width:100%; height:100%; min-height:0;"></div>
             </div>`;
+    } else if (p.type === 'heatmap') {
+        const sizeMap = { 'small': '40px', 'medium': '60px', 'large': '100px', 'xl': '160px' };
+        const h = sizeMap[p.box_size] || '60px';
+        content = `
+            <div style="display:flex; flex-direction:column; gap:8px; width:100%; height:100%; overflow-y:auto; padding:2px; box-sizing:border-box;">
+                ${modules.map(m => {
+                    const history = m.history || [];
+                    const statusDot = {0:'#2ecc71', 1:'#ef4444', 2:'#f59e0b', 4:'#3b82f6'}[m.status] || '#94a3b8';
+                    let cleanVal = formatSmartValue(m.current, p.use_raw);
+                    let rawValStr = String(m.current || '');
+                    if (p.lbl_1 && (m.current == 1 || rawValStr === '1' || rawValStr === '1.0')) cleanVal = p.lbl_1;
+                    else if (p.lbl_0 && (m.current == 0 || rawValStr === '0' || rawValStr === '0.0')) cleanVal = p.lbl_0;
+
+                    let blocks = '';
+                    if (history.length === 0) {
+                        blocks = `<div style="color:#94a3b8; font-size:11px; padding:4px 0; font-style:italic;">No historical events recorded in selected range (steady state)</div>`;
+                    } else {
+                        blocks = history.map(h => {
+                            const val = parseFloat(h.val);
+                            let color = '#2ecc71';
+                            if (val === 1 || String(h.val) === '1') color = '#2ecc71';
+                            else if (val === 0 || String(h.val) === '0') color = '#2ecc71';
+                            const ev = evaluateModuleThresholdStatus(m, isNaN(val) ? 0 : val, m.module_name, m.unit, p.title);
+                            if (ev.status === 1) color = '#ef4444';
+                            else if (ev.status === 2) color = '#f59e0b';
+                            else if (ev.status === 4) color = '#3b82f6';
+                            else if (ev.status === 3) color = '#94a3b8';
+                            return `<div class="heat-block" style="background:${color}; cursor:pointer;" title="${escapeHtml(h.lbl)}: ${escapeHtml(h.val)}"></div>`;
+                        }).join('');
+                    }
+
+                    return `
+                        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; display:flex; flex-direction:column; gap:6px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                                <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
+                                    <span style="width:8px; height:8px; border-radius:50%; background:${statusDot}; flex-shrink:0;"></span>
+                                    <span style="font-weight:700; color:#0284c7; font-size:12px; white-space:nowrap;">${escapeHtml(m.agent_name || '')}</span>
+                                    <span style="color:#cbd5e1;">•</span>
+                                    <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="openNativeModuleDetailModal('${m.id}', '${((m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="Click to view module details">${escapeHtml(m.module_name || '')}</span>
+                                </div>
+                                <div style="font-weight:700; color:#0f172a; font-size:12px; white-space:nowrap; flex-shrink:0;">
+                                    ${escapeHtml(cleanVal)}${m.unit ? ' ' + escapeHtml(m.unit) : ''}
+                                </div>
+                            </div>
+                            <div class="heatmap-wrap" style="max-height:${h}; min-height:30px; margin-top:0; padding:6px; display:flex; flex-wrap:wrap; gap:3px;">
+                                ${blocks}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
     } else if (p.type === 'history_table') {
         const autoConvert = (p.auto_convert_traffic !== undefined)
             ? (p.auto_convert_traffic === true || p.auto_convert_traffic === 1 || p.auto_convert_traffic === '1' || p.auto_convert_traffic === 'true')
@@ -4714,7 +4768,7 @@ function refreshCurrentNodeData() {
                 activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
             }
 
-            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table', 'sparkline_table', 'device_info', 'status_timeline'].includes(p.type)) {
+            if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table', 'sparkline_table', 'device_info', 'status_timeline', 'heatmap'].includes(p.type)) {
                 wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             } else {
                 if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
@@ -7108,11 +7162,12 @@ function renderStatusTimelineContent(p, modules) {
         let curValNum = parseFloat(String(m.current).replace(',', '.'));
         let curNumeric = isNaN(curValNum) ? 0 : curValNum;
         let curDisplayVal = '';
-        if (p.lbl_1 && (m.current == 1 || String(m.current) === '1')) curDisplayVal = p.lbl_1;
-        else if (p.lbl_0 && (m.current == 0 || String(m.current) === '0')) curDisplayVal = p.lbl_0;
-        else if (isTraffic && autoConvert) curDisplayVal = formatBitsRate(isByte ? curNumeric * 8 : curNumeric);
-        else if (p.use_raw) curDisplayVal = (curNumeric % 1 === 0 ? curNumeric : curNumeric.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
-        else curDisplayVal = formatHumanMetric(curNumeric, m.unit, false, m.module_name, p.title);
+        if (p.lbl_1 && (m.current == 1 || String(m.current) === '1' || String(m.current) === '1.0')) curDisplayVal = p.lbl_1;
+        else if (p.lbl_0 && (m.current == 0 || String(m.current) === '0' || String(m.current) === '0.0')) curDisplayVal = p.lbl_0;
+        else if (isTraffic && autoConvert && !isNaN(curValNum)) curDisplayVal = formatBitsRate(isByte ? curNumeric * 8 : curNumeric);
+        else if (p.use_raw && !isNaN(curValNum)) curDisplayVal = (curNumeric % 1 === 0 ? curNumeric : curNumeric.toFixed(2)) + (m.unit ? ` ${m.unit}` : '');
+        else if (!isNaN(curValNum)) curDisplayVal = formatHumanMetric(curNumeric, m.unit, false, m.module_name, p.title);
+        else curDisplayVal = String(m.current || 'N/A');
 
         const curEval = evaluateModuleThresholdStatus(m, curNumeric, m.module_name, m.unit, p.title);
 
@@ -7397,9 +7452,11 @@ function showTimelineBlockTooltip(el, e) {
     const color = el.getAttribute('data-status-color') || '#22c55e';
     const val = el.getAttribute('data-val') || '';
 
+    const isSteady = dataNote && dataNote.includes('Steady state');
+    const tsLabel = isSteady ? 'Status Since:' : (dataNote && dataNote.includes('Current status') ? 'Verified At:' : 'Data Timestamp:');
     const dataTimeRow = pointTs ? `
         <div style="display:flex; justify-content:space-between; gap:12px; margin-top:2px;">
-            <span style="color:#94a3b8;">Data Timestamp:</span>
+            <span style="color:#94a3b8;">${tsLabel}</span>
             <div style="text-align:right;">
                 <span style="color:#cbd5e1; font-weight:600;">${escapeHtml(pointTs)}</span>
                 ${dataNote ? `<div style="color:#64748b; font-size:10px;">(${escapeHtml(dataNote)})</div>` : ''}
