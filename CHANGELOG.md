@@ -2,6 +2,35 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.32] - 2026-11-03 (Dynamic Dashboard - Multi-Module Parallel Grid Layout, Independent Subcard Dragging, and Split into Standalone Panels)
+### Fixed & Enhanced
+- **Tata Letak Sejajar / Grid Otomatis untuk Panel Multi-Modul (*Multi-Module Side-by-Side Grid Layout*):**
+  - Mengatasi masalah pada **Dynamic Dashboard** ([dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php)) ketika satu panel aturan mencocokkan beberapa modul dengan kata kunci/keyword yang sama (misal 3 host ESXi: `Host:10.10.6.98`, `Host:10.10.6.99`, `Host:10.10.6.100` pada metrik `cpu.usage.average`).
+  - **Akar Masalah (*Root Cause*):**
+    1. Kontainer pembungkus panel (`.panel-rule-wrapper`) sebelumnya selalu menggunakan CSS `display: flex; flex-direction: column;`, sehingga modul-modul yang cocok selalu dirender menumpuk secara vertikal dalam satu kolom panjang yang memakan ruang tinggi layar yang besar.
+    2. Ketika pengguna mencoba menggeser chart kedua menggunakan drag handle (`drag_indicator`), Sortable.js pada grid utama (`#panelsGrid`) menargetkan elemen induk `.panel-rule-wrapper`. Akibatnya, seluruh modul (chart 1, 2, dan 3) ikut tergeser bersama-sama sebagai satu blok utuh dan tidak bisa diletakkan berdampingan/sejajar.
+    3. Perhitungan baris grid pada `resizeGridItem()` hanya memperhitungkan tinggi 1 kartu tunggal, menyebabkan kartu-kartu yang menumpuk vertikal saling bertubrukan (*overlap*) atau memotong batas grid.
+  - **Peningkatan yang Diterapkan:**
+    - **Tata Letak Sejajar Otomatis (*Auto-Grid Layout*):**
+      - Secara default, panel non-summary (`gauge`, `single_value`, `text`, dan grafik individu) yang memiliki lebih dari 1 modul kini otomatis menerapkan kelas `.panel-rule-wrapper.layout-grid` dengan CSS Grid (`display: grid; grid-template-columns: repeat(cols, minmax(0, 1fr)); gap: 12px;`).
+      - Jumlah kolom dihitung secara proporsional sesuai jumlah modul dan lebar span panel (contoh: span 12 dengan 3 modul otomatis menghasilkan 3 kolom sejajar berdampingan yang rapi).
+    - **Pengaturan & Opsi Tata Letak Multi-Modul (*Multi-Module Layout Setting & Quick Toggle*):**
+      - Menambahkan opsi **Multi-Module Layout** di modal pengaturan panel: `Horizontal / Grid (Sejajar)` atau `Vertical (Menumpuk)`.
+      - Menambahkan tombol pintas (*quick toggle*) pada header panel dan menu dropdown 3-titik untuk beralih antara tampilan sejajar (*grid*) dan menumpuk (*vertical*) secara instan dengan satu klik.
+    - **Pengaturan Urutan Mandiri di Dalam Grup (*Independent Subcard Drag Reordering*):**
+      - Memisahkan drag handle subcard dengan kelas `.subcard-drag-handle` sehingga saat menggeser chart ke-2 di dalam panel multi-modul, hanya chart ke-2 yang berpindah urutan tanpa ikut menyeret chart lainnya.
+      - Pilihan urutan modul disimpan secara persisten di properti `p.module_order`.
+      - Ikon drag handle utama (`open_with`) disediakan pada kartu pertama untuk memindahkan seluruh grup panel di grid dashboard.
+    - **Fitur Pecah Menjadi Panel Mandiri (*Split into Standalone Panels*):**
+      - Menambahkan tombol aksi `Pecah Jadi Panel Terpisah (Split)` pada header panel dan menu dropdown 3-titik.
+      - Sekali klik, 1 panel aturan multi-modul akan otomatis dipecah menjadi *N* panel mandiri independen di `currentDash.panels` (dengan span seimbang, misal span 4 untuk 3 modul).
+      - Masing-masing panel hasil pemecahan menjadi widget grid independen seutuhnya: dapat digeser ke posisi mana pun di dashboard, diatur lebarnya secara terpisah, dan tidak lagi terikat satu sama lain.
+    - **Fitur Pisahkan Chart Ini (*Extract Specific Chart to Standalone Panel*):**
+      - Opsi pada menu subcard untuk mengekstrak hanya chart tertentu menjadi panel mandiri baru di dashboard, sementara modul lainnya tetap berada di panel asal.
+    - **Penyempurnaan Perhitungan Tinggi Grid (*Accurate Grid RowSpan Calculation*):**
+      - Memperbarui `resizeGridItem()` dan interaksi resize langsung (`initPanelResize`) agar secara cerdas menghitung `totalMinH` berdasarkan jumlah baris subcard (`Math.ceil(cards.length / cols)`), sehingga kartu grid tidak pernah lagi tumpang tindih (*overlap*).
+      - Menambahkan auto-resize instan untuk semua instance canvas ECharts setelah grid diperbarui.
+
 ## [2.11.31] - 2026-11-03 (Dynamic Dashboard & Backend - Percentage Metric Range Normalization, Outlier Sentinel Filtering, and Y-Axis Bounds Fix)
 ### Fixed & Enhanced
 - **Normalisasi Rentang Metrik Persentase dan Eliminasi Nilai Sentinel Eror Negatif (-0.01%):**

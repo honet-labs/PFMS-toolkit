@@ -484,7 +484,7 @@ if ($api === 'bulk_panel_data') {
                         $modulesFound[] = $mod;
                     } else if ($mType === 'exact') {
                         $clean_nombre = pretty_text($mod['nombre']);
-                        if ($mod_norm === $sub_kw_norm || strcasecmp($clean_nombre, $trimmed) === 0) {
+                        if ($mod_norm === $sub_kw_norm || strcasecmp($clean_nombre, $trimmed) === 0 || (is_numeric($trimmed) && (int)$mod['id_agente_modulo'] === (int)$trimmed)) {
                             $modulesFound[] = $mod;
                         }
                     } else {
@@ -776,6 +776,31 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
             height: 100%;
         }
         .panel-rule-wrapper .panel-card { flex: 1 1 0%; margin-bottom: 0; min-height: 0; }
+        
+        .panel-rule-wrapper.layout-grid {
+            display: grid !important;
+            grid-template-columns: repeat(var(--multi-cols, auto-fit), minmax(240px, 1fr));
+            gap: 12px;
+            align-items: stretch;
+        }
+        .panel-rule-wrapper.layout-grid .panel-card {
+            height: 100%;
+            min-height: var(--card-min-h, 200px);
+            min-width: 0;
+            width: 100%;
+            margin-bottom: 0;
+        }
+        .panel-card.dragging-ghost {
+            opacity: 0.4;
+            transform: scale(0.98);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+        }
+        .subcard-drag-handle {
+            cursor: grab;
+        }
+        .subcard-drag-handle:active {
+            cursor: grabbing;
+        }
         
         .panel-rule-wrapper.dragging { opacity: 0.4; transform: scale(0.98); }
         .panel-rule-wrapper.drag-over { border: 2px dashed #004d40; border-radius: 8px; padding: 4px; }
@@ -1558,6 +1583,13 @@ $isHideHeader = (isset($_GET['hide_header']) && $_GET['hide_header'] == '1') || 
                         <option value="10">Span 10</option>
                         <option value="11">Span 11</option>
                         <option value="12" selected>Span 12</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1;" id="wrap_multi_layout">
+                    <label>Multi-Module Layout</label>
+                    <select id="p_multi_layout" class="form-control-fix" title="Susunan chart saat keyword cocok dengan multiple module">
+                        <option value="grid" selected>Horizontal / Grid (Sejajar)</option>
+                        <option value="vertical">Vertical (Menumpuk)</option>
                     </select>
                 </div>
             </div>
@@ -3172,7 +3204,19 @@ function initPanelResize(e, panelId) {
         wrapper.style.setProperty('--panel-span', newSpan);
         wrapper.style.gridColumn = `span ${newSpan}`;
         const gapVal = 15;
-        const rowSpan = Math.ceil((newHeight + gapVal) / (5 + gapVal));
+        const resizeCards = wrapper.querySelectorAll('.panel-card');
+        let totalH = newHeight;
+        if (resizeCards.length > 1) {
+            const isVertical = (panel && panel.multi_layout === 'vertical');
+            const cols = isVertical ? 1 : Math.min(resizeCards.length, Math.max(1, Math.floor(newSpan / 3)) || resizeCards.length);
+            const numRows = Math.ceil(resizeCards.length / cols);
+            totalH = (numRows * newHeight) + ((numRows - 1) * 12);
+            if (!isVertical) {
+                wrapper.style.setProperty('--multi-cols', cols);
+                wrapper.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+            }
+        }
+        const rowSpan = Math.ceil((totalH + gapVal) / (5 + gapVal));
         wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
         wrapper.querySelectorAll('.panel-card').forEach(c => {
             c.style.minHeight = `${newHeight}px`;
@@ -3236,7 +3280,19 @@ function initPanelResize(e, panelId) {
             wrapper.style.setProperty('--panel-span', currentSpan);
             wrapper.style.gridColumn = `span ${currentSpan}`;
             const gapVal = 15;
-            const rowSpan = Math.ceil((currentHeight + gapVal) / (5 + gapVal));
+            const upCards = wrapper.querySelectorAll('.panel-card');
+            let totalUpH = currentHeight;
+            if (upCards.length > 1) {
+                const isVertical = (panel && panel.multi_layout === 'vertical');
+                const cols = isVertical ? 1 : Math.min(upCards.length, Math.max(1, Math.floor(currentSpan / 3)) || upCards.length);
+                const numRows = Math.ceil(upCards.length / cols);
+                totalUpH = (numRows * currentHeight) + ((numRows - 1) * 12);
+                if (!isVertical) {
+                    wrapper.style.setProperty('--multi-cols', cols);
+                    wrapper.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+                }
+            }
+            const rowSpan = Math.ceil((totalUpH + gapVal) / (5 + gapVal));
             wrapper.style.gridRowEnd = `span ${Math.max(1, rowSpan)}`;
             wrapper.querySelectorAll('.panel-card').forEach(c => {
                 c.style.minHeight = `${currentHeight}px`;
@@ -3315,7 +3371,117 @@ function toggleHiddenVisibility() {
     forceRefresh();
 }
 
-function getPanelControlsHtml(p, moduleId = null) {
+function toggleMultiLayout(panelId) {
+    const dash = masterDashboards.find(d => d.id === currentDashId);
+    if (!dash) return;
+    const p = dash.panels.find(x => x.id === panelId);
+    if (!p) return;
+    p.multi_layout = (p.multi_layout === 'vertical') ? 'grid' : 'vertical';
+    forceRefresh();
+    saveConfigToServer(null, true);
+    showToastNotice(`Layout diubah ke: ${p.multi_layout === 'vertical' ? 'Vertical (Menumpuk)' : 'Horizontal / Grid (Sejajar)'}`, 'info');
+}
+
+function splitPanelIntoIndividualPanels(panelId) {
+    const dash = masterDashboards.find(d => d.id === currentDashId);
+    if (!dash) return;
+    const pIdx = dash.panels.findIndex(x => x.id === panelId);
+    if (pIdx === -1) return;
+    const p = dash.panels[pIdx];
+
+    const cachedData = lastFetchedData && lastFetchedData[panelId];
+    let activeModules = (cachedData && cachedData.modules) ? cachedData.modules : [];
+    if (p.excluded) {
+        activeModules = activeModules.filter(m => !p.excluded.map(String).includes(String(m.id)));
+    }
+    if (activeModules.length <= 1) {
+        showToastNotice('Panel ini hanya memiliki 1 module, tidak perlu dipecah.', 'warning');
+        return;
+    }
+
+    const total = activeModules.length;
+    let splitWidth = 4;
+    if (total === 2) splitWidth = 6;
+    else if (total === 3) splitWidth = 4;
+    else if (total >= 4) splitWidth = 3;
+
+    const baseTitle = p.title.replace(/\s*\([^\)]*\)\s*$/, '').trim();
+
+    const newPanels = activeModules.map((m, idx) => {
+        const clone = JSON.parse(JSON.stringify(p));
+        clone.id = 'p' + Date.now() + '_' + m.id + '_' + idx;
+        const modLabel = m.module_name || '';
+        const agentLabel = m.agent_name || '';
+        clone.title = `${baseTitle} (${agentLabel ? agentLabel + ': ' : ''}${modLabel})`;
+        clone.match_type = 'exact';
+        clone.keyword = m.module_name || String(m.id);
+        clone.width = splitWidth;
+        clone.excluded = [];
+        delete clone.multi_layout;
+        delete clone.module_order;
+        return clone;
+    });
+
+    dash.panels.splice(pIdx, 1, ...newPanels);
+    renderPanelsGrid();
+    forceRefresh();
+    saveConfigToServer(null, true);
+    showToastNotice(`Panel berhasil dipecah menjadi ${newPanels.length} panel mandiri! Setiap chart sekarang berdiri sendiri, sejajar, dan bisa dipindahkan secara bebas.`, 'success');
+}
+
+function extractModuleToSeparatePanel(panelId, moduleId) {
+    const dash = masterDashboards.find(d => d.id === currentDashId);
+    if (!dash) return;
+    const pIdx = dash.panels.findIndex(x => x.id === panelId);
+    if (pIdx === -1) return;
+    const p = dash.panels[pIdx];
+
+    const cachedData = lastFetchedData && lastFetchedData[panelId];
+    const activeModules = (cachedData && cachedData.modules) ? cachedData.modules : [];
+    const targetMod = activeModules.find(m => String(m.id) === String(moduleId));
+    if (!targetMod) return;
+
+    if (!p.excluded) p.excluded = [];
+    if (!p.excluded.map(String).includes(String(moduleId))) {
+        p.excluded.push(String(moduleId));
+    }
+
+    const clone = JSON.parse(JSON.stringify(p));
+    clone.id = 'p' + Date.now() + '_' + targetMod.id;
+    const baseTitle = p.title.replace(/\s*\([^\)]*\)\s*$/, '').trim();
+    const modLabel = targetMod.module_name || '';
+    const agentLabel = targetMod.agent_name || '';
+    clone.title = `${baseTitle} (${agentLabel ? agentLabel + ': ' : ''}${modLabel})`;
+    clone.match_type = 'exact';
+    clone.keyword = targetMod.module_name || String(targetMod.id);
+    clone.width = Math.min(6, parseInt(p.width) || 6);
+    clone.excluded = [];
+    delete clone.multi_layout;
+    delete clone.module_order;
+
+    dash.panels.splice(pIdx + 1, 0, clone);
+    renderPanelsGrid();
+    forceRefresh();
+    saveConfigToServer(null, true);
+    showToastNotice(`Module "${modLabel}" berhasil dipisahkan menjadi panel mandiri!`, 'success');
+}
+
+function excludeModuleFromPanel(panelId, moduleId) {
+    const dash = masterDashboards.find(d => d.id === currentDashId);
+    if (!dash) return;
+    const p = dash.panels.find(x => x.id === panelId);
+    if (!p) return;
+    if (!p.excluded) p.excluded = [];
+    if (!p.excluded.map(String).includes(String(moduleId))) {
+        p.excluded.push(String(moduleId));
+    }
+    renderPanelsGrid();
+    forceRefresh();
+    saveConfigToServer(null, true);
+    showToastNotice('Module berhasil disembunyikan dari panel ini.', 'info');
+}
+
+function getPanelControlsHtml(p, moduleId = null, totalModules = 1) {
     if (IS_STANDALONE && p.id !== new URLSearchParams(window.location.search).get('panel_id')) return '';
     
     const isExcluded = moduleId && p.excluded && p.excluded.includes(moduleId);
@@ -3327,9 +3493,18 @@ function getPanelControlsHtml(p, moduleId = null) {
     const safeModId = moduleId !== null && moduleId !== undefined ? String(moduleId).replace(/[^a-zA-Z0-9_]/g, '_') : 'main';
     const uniqueMenuId = `pmenu_${p.id}_${safeModId}`;
 
+    const isMultiCard = (totalModules > 1);
+    const isVert = (p.multi_layout === 'vertical');
+    const layoutIcon = isVert ? 'view_column' : 'view_stream';
+    const layoutTitle = isVert ? 'Ubah ke Tampilan Sejajar (Grid)' : 'Ubah ke Tampilan Menumpuk (Vertical)';
+
     return `
         <div class="panel-controls">
             <div class="panel-controls-full">
+                ${isMultiCard ? `
+                    <button class="icon-btn" onclick="toggleMultiLayout('${p.id}')" title="${layoutTitle}"><span class="material-symbols-outlined">${layoutIcon}</span></button>
+                    <button class="icon-btn" onclick="splitPanelIntoIndividualPanels('${p.id}')" title="Pecah Semua Jadi Panel Terpisah (Split)"><span class="material-symbols-outlined" style="color:#0284c7;">call_split</span></button>
+                ` : ''}
                 <button class="icon-btn" onclick="quickTogglePanelHidden(${hideTarget})" title="${hideTitle}"><span class="material-symbols-outlined">${hideIcon}</span></button>
                 <button class="icon-btn" onclick="duplicatePanel('${p.id}')" title="Duplicate"><span class="material-symbols-outlined">content_copy</span></button>
                 <button class="icon-btn" onclick="openPanelEdit('${p.id}')" title="Settings"><span class="material-symbols-outlined">edit</span></button>
@@ -3340,6 +3515,21 @@ function getPanelControlsHtml(p, moduleId = null) {
                     <span class="material-symbols-outlined" style="font-size:16px!important;">more_vert</span>
                 </button>
                 <div class="panel-dropdown-menu" id="${uniqueMenuId}">
+                    ${isMultiCard && moduleId ? `
+                        <div class="panel-dropdown-item" onclick="extractModuleToSeparatePanel('${p.id}', '${moduleId}'); closeAllPanelMenus();">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">open_in_new</span>
+                            <span>Pisahkan Chart Ini (Panel Mandiri)</span>
+                        </div>
+                        <div class="panel-dropdown-item" onclick="splitPanelIntoIndividualPanels('${p.id}'); closeAllPanelMenus();">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">call_split</span>
+                            <span>Pecah Semua Jadi Panel Terpisah</span>
+                        </div>
+                        <div class="panel-dropdown-item" onclick="toggleMultiLayout('${p.id}'); closeAllPanelMenus();">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#64748b;">${layoutIcon}</span>
+                            <span>${layoutTitle}</span>
+                        </div>
+                        <div class="panel-dropdown-divider"></div>
+                    ` : ''}
                     <div class="panel-dropdown-item" onclick="quickTogglePanelHidden(${hideTarget}); closeAllPanelMenus();">
                         <span class="material-symbols-outlined" style="font-size:15px; color:#64748b;">${hideIcon}</span>
                         <span>${hideTitle}</span>
@@ -3353,9 +3543,15 @@ function getPanelControlsHtml(p, moduleId = null) {
                         <span>Settings</span>
                     </div>
                     <div class="panel-dropdown-divider"></div>
+                    ${isMultiCard && moduleId ? `
+                        <div class="panel-dropdown-item text-danger" onclick="excludeModuleFromPanel('${p.id}', '${moduleId}'); closeAllPanelMenus();">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#e74c3c;">remove_circle_outline</span>
+                            <span>Hapus Module Ini dari Panel</span>
+                        </div>
+                    ` : ''}
                     <div class="panel-dropdown-item text-danger" onclick="deletePanel('${p.id}'); closeAllPanelMenus();">
                         <span class="material-symbols-outlined" style="font-size:15px; color:#e74c3c;">delete</span>
-                        <span>Delete</span>
+                        <span>${isMultiCard ? 'Delete Seluruh Grup Panel' : 'Delete'}</span>
                     </div>
                 </div>
             </div>
@@ -3707,7 +3903,7 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         }
     }
 
-    const controlsHtml = getPanelControlsHtml(p, moduleData.id);
+    const controlsHtml = getPanelControlsHtml(p, moduleData.id, totalModulesInGroup);
     const isExcluded = p.excluded && p.excluded.map(String).includes(String(moduleData.id));
     const hiddenClass = (p.hidden || isExcluded) ? 'is-hidden' : '';
 
@@ -3725,8 +3921,18 @@ function generatePanelHtml(p, uniqueId, moduleData, isFirstInGroup, totalModules
         displayTitle = displayTitle.replace(new RegExp(`\\s*[\\(\\[]?${valCalc}[\\)\\]]?\\s*$`, 'i'), '').trim();
     }
 
+    let dragHandleHtml = '';
+    if (totalModulesInGroup > 1) {
+        dragHandleHtml = `
+            ${isFirstInGroup ? `<span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; margin-right:3px; color:#64748b; vertical-align:middle; flex-shrink:0;" title="Pindahkan seluruh panel grup">open_with</span>` : ''}
+            <span class="material-symbols-outlined subcard-drag-handle" style="font-size:14px; cursor:grab; margin-right:2px; color:#94a3b8; vertical-align:middle; flex-shrink:0;" title="Geser untuk mengatur urutan chart di dalam panel ini">drag_indicator</span>
+        `;
+    } else {
+        dragHandleHtml = `<span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; margin-right:2px; color:#b5c1c9; vertical-align:middle; flex-shrink:0;" title="Drag to reorder">drag_indicator</span>`;
+    }
+
     const bodyExtraClass = (p.type === 'single_value') ? ' is-single-value' : '';
-    return `<div class="panel-card ${hiddenClass}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;"><h6 class="panel-title" title="${escapeHtml(displayTitle)}" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:3px; max-width:100%;"><span class="material-symbols-outlined drag-handle" style="font-size:14px; cursor:grab; margin-right:2px; color:#b5c1c9; vertical-align:middle; flex-shrink:0;" title="Drag to reorder">drag_indicator</span><span style="overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word;">${escapeHtml(displayTitle)}</span>${badgeHtml}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body${bodyExtraClass}">${contentHtml}</div>${!IS_STANDALONE ? `<div class="panel-resize-handle" data-panel-id="${p.id}" title="Drag to resize panel (Width & Height)" onmousedown="initPanelResize(event, '${p.id}')" ontouchstart="initPanelResize(event, '${p.id}')"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/></svg></div>` : ''}</div>`;
+    return `<div class="panel-card ${hiddenClass}" data-module-id="${moduleData.id}" style="height: 100%; ${p.height ? 'min-height:' + p.height + 'px;' : ''} margin:0;"><div class="panel-header"><div style="display:flex; align-items:center; flex:1; min-width:0; overflow:hidden;"><h6 class="panel-title" title="${escapeHtml(displayTitle)}" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:3px; max-width:100%;">${dragHandleHtml}<span style="overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word;">${escapeHtml(displayTitle)}</span>${badgeHtml}${viewBtnHtml}</h6></div>${controlsHtml}</div><div class="panel-body${bodyExtraClass}">${contentHtml}</div>${!IS_STANDALONE ? `<div class="panel-resize-handle" data-panel-id="${p.id}" title="Drag to resize panel (Width & Height)" onmousedown="initPanelResize(event, '${p.id}')" ontouchstart="initPanelResize(event, '${p.id}')"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/></svg></div>` : ''}</div>`;
 }
 
 function generateSummaryPanelHtml(p, modules) {
@@ -4773,19 +4979,77 @@ function refreshCurrentNodeData() {
                     const nameB = `${b.agent_name || ''} - ${b.module_name || ''}`;
                     return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
                 });
+            } else if (p.module_order && Array.isArray(p.module_order) && p.module_order.length > 0) {
+                activeModules.sort((a, b) => {
+                    let idxA = p.module_order.indexOf(String(a.id));
+                    let idxB = p.module_order.indexOf(String(b.id));
+                    if (idxA === -1) idxA = 999;
+                    if (idxB === -1) idxB = 999;
+                    if (idxA !== idxB) return idxA - idxB;
+                    return (b.last_contact || 0) - (a.last_contact || 0);
+                });
             } else {
                 activeModules.sort((a, b) => (b.last_contact || 0) - (a.last_contact || 0));
             }
 
             if (['status_table', 'status_heatmap', 'status_stats', 'pie', 'donut', 'history_table', 'sparkline_table', 'device_info', 'status_timeline', 'heatmap'].includes(p.type)) {
+                wrapper.classList.remove('layout-grid');
+                wrapper.style.display = 'flex';
+                wrapper.style.flexDirection = 'column';
+                wrapper.style.removeProperty('--multi-cols');
+                wrapper.style.removeProperty('grid-template-columns');
                 wrapper.innerHTML = generateSummaryPanelHtml(p, activeModules);
             } else {
                 if (p.multi_overlay && ['line', 'area', 'bar'].includes(p.type)) {
+                    wrapper.classList.remove('layout-grid');
+                    wrapper.style.display = 'flex';
+                    wrapper.style.flexDirection = 'column';
+                    wrapper.style.removeProperty('--multi-cols');
+                    wrapper.style.removeProperty('grid-template-columns');
                     const firstMod = activeModules[0] || {};
                     const multiModData = { ...firstMod, module_name: 'Multi-Module Overlay', current: 'N/A' };
                     wrapper.innerHTML = generatePanelHtml(p, `${p.id}_multi`, multiModData, true, 1);
                 } else {
+                    const isVertical = (p.multi_layout === 'vertical');
+                    if (activeModules.length > 1 && !isVertical) {
+                        wrapper.classList.add('layout-grid');
+                        const pSpan = parseInt(p.width) || 12;
+                        const cols = Math.min(activeModules.length, Math.max(1, Math.floor(pSpan / 3)) || activeModules.length);
+                        wrapper.style.setProperty('--multi-cols', cols);
+                        wrapper.style.display = 'grid';
+                        wrapper.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+                        wrapper.style.gap = '12px';
+                    } else {
+                        wrapper.classList.remove('layout-grid');
+                        wrapper.style.display = 'flex';
+                        wrapper.style.flexDirection = 'column';
+                        wrapper.style.removeProperty('--multi-cols');
+                        wrapper.style.removeProperty('grid-template-columns');
+                        wrapper.style.gap = '12px';
+                    }
+
                     wrapper.innerHTML = activeModules.map((m, i) => generatePanelHtml(p, `${p.id}_${m.id}`, m, i===0, activeModules.length)).join('');
+
+                    if (!IS_STANDALONE && typeof Sortable !== 'undefined' && activeModules.length > 1) {
+                        if (wrapper._subcardSortable) {
+                            try { wrapper._subcardSortable.destroy(); } catch(e){}
+                        }
+                        wrapper._subcardSortable = new Sortable(wrapper, {
+                            animation: 150,
+                            handle: '.subcard-drag-handle',
+                            draggable: '.panel-card',
+                            ghostClass: 'dragging-ghost',
+                            onEnd: function(evt) {
+                                const newModOrder = [];
+                                wrapper.querySelectorAll('.panel-card').forEach(c => {
+                                    const mid = c.getAttribute('data-module-id');
+                                    if (mid) newModOrder.push(mid);
+                                });
+                                p.module_order = newModOrder;
+                                saveConfigToServer(null, true);
+                            }
+                        });
+                    }
                 }
             }
 
@@ -5327,6 +5591,9 @@ function refreshCurrentNodeData() {
         setTimeout(() => {
             resizeAllGridItems();
             updateCompactHeaders();
+            Object.values(chartInstances).forEach(c => {
+                if (c && typeof c.resize === 'function') c.resize();
+            });
         }, 250); 
     })
     .catch(err => {
@@ -5372,6 +5639,12 @@ function toggleTypeFields() {
     const wrapSparklineOptions = document.getElementById('wrap_sparkline_options');
     if (wrapSparklineOptions) {
         wrapSparklineOptions.style.display = (type === 'sparkline_table' || type === 'status_timeline') ? 'block' : 'none';
+    }
+
+    const isMultiCardType = ['gauge', 'single_value', 'text', 'line', 'area', 'bar', 'table_viewer'].includes(type);
+    const wrapMultiLayout = document.getElementById('wrap_multi_layout');
+    if (wrapMultiLayout) {
+        wrapMultiLayout.style.display = isMultiCardType ? 'block' : 'none';
     }
 
     const isChart = ['line','area','bar'].includes(type);
@@ -5834,6 +6107,7 @@ function openPanelBuilder() {
     }
     document.getElementById('p_hidden').checked = false;
     document.getElementById('p_multi_overlay').checked = false;
+    if (document.getElementById('p_multi_layout')) document.getElementById('p_multi_layout').value = 'grid';
     if (document.getElementById('p_color_palette')) document.getElementById('p_color_palette').value = 'vibrant';
     if (document.getElementById('p_chart_color')) document.getElementById('p_chart_color').value = '#0284c7';
     if (document.getElementById('p_chart_color_hex')) document.getElementById('p_chart_color_hex').value = '';
@@ -5895,6 +6169,7 @@ function openPanelEdit(id) {
     document.getElementById('p_lbl_0').value = p.lbl_0 || '';
     document.getElementById('p_hidden').checked = p.hidden || false;
     document.getElementById('p_multi_overlay').checked = p.multi_overlay || false;
+    if (document.getElementById('p_multi_layout')) document.getElementById('p_multi_layout').value = p.multi_layout || 'grid';
     if (document.getElementById('p_color_palette')) document.getElementById('p_color_palette').value = p.color_palette || 'vibrant';
     if (document.getElementById('p_chart_color')) document.getElementById('p_chart_color').value = p.chart_color || '#0284c7';
     if (document.getElementById('p_chart_color_hex')) document.getElementById('p_chart_color_hex').value = p.chart_color || '';
@@ -5968,6 +6243,8 @@ function applyPanel() {
         hidden: document.getElementById('p_hidden').checked,
         hide_search_bar: document.getElementById('p_hide_search_bar') ? document.getElementById('p_hide_search_bar').checked : false,
         multi_overlay: document.getElementById('p_multi_overlay').checked,
+        multi_layout: document.getElementById('p_multi_layout') ? document.getElementById('p_multi_layout').value : 'grid',
+        module_order: editingPanelId ? (dash.panels.find(x => x.id === editingPanelId)?.module_order || []) : [],
         color_palette: document.getElementById('p_color_palette') ? document.getElementById('p_color_palette').value : 'vibrant',
         chart_color: document.getElementById('p_chart_color_hex') ? document.getElementById('p_chart_color_hex').value.trim() : '',
         series_colors: window.__editingPanelSeriesColors ? { ...window.__editingPanelSeriesColors } : (editingPanelId ? (dash.panels.find(x => x.id === editingPanelId)?.series_colors || {}) : {}),
@@ -6527,7 +6804,15 @@ function resizeGridItem(item) {
     const targetMinH = (panel && panel.height) ? parseInt(panel.height) : 0;
 
     if (targetMinH > 0) {
-        const rowSpan = Math.ceil((targetMinH + rowGap) / (rowHeight + rowGap));
+        let totalMinH = targetMinH;
+        if (cards.length > 1) {
+            const isVertical = (panel && panel.multi_layout === 'vertical');
+            const pSpan = parseInt(panel?.width) || 12;
+            const cols = isVertical ? 1 : Math.min(cards.length, Math.max(1, Math.floor(pSpan / 3)) || cards.length);
+            const numRows = Math.ceil(cards.length / cols);
+            totalMinH = (numRows * targetMinH) + ((numRows - 1) * 12);
+        }
+        const rowSpan = Math.ceil((totalMinH + rowGap) / (rowHeight + rowGap));
         item.style.gridRowEnd = "span " + Math.max(1, rowSpan);
         cards.forEach(c => { 
             c.style.height = '100%'; 
