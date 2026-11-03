@@ -7639,20 +7639,40 @@ function renderStatusTimelineContent(p, modules) {
             ></div>`;
         }
 
+        const rawAgentId = String(m.agent_id || '').includes(':') ? String(m.agent_id).split(':')[1] : m.agent_id;
+        const rawModId = String(m.id || '').includes(':') ? String(m.id).split(':')[1] : m.id;
+
         const agentTitle = m.agent_name ? `${m.agent_name}${m.ip_address && m.ip_address !== m.agent_name ? ' (' + m.ip_address + ')' : ''}` : (m.ip_address || 'Node');
         const labelsRowHtml = `
             <div class="timeline-labels-row" style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-weight:500; margin-top:3px; padding:0 2px; user-select:none; flex-shrink:0;">
                 ${labelTicks.map(t => `<span class="${t.cls}">${t.text}</span>`).join('')}
             </div>`;
 
+        const isSingle = (modules.length === 1);
+        const agentMaxWidth = isSingle ? '60%' : '55%';
+
+        let agentLinkHtml = '';
+        if (rawAgentId && rawAgentId != '0' && rawAgentId !== 'undefined') {
+            agentLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}" target="_blank" class="agent-link" style="font-weight:700; color:#0284c7; font-size:12px; max-width:${agentMaxWidth}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:1; text-decoration:none; cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${escapeHtml(agentTitle)} (Buka agent di Pandora FMS)">${escapeHtml(agentTitle)}</a>`;
+        } else {
+            agentLinkHtml = `<span style="font-weight:700; color:#0284c7; font-size:12px; max-width:${agentMaxWidth}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:1;" title="${escapeHtml(agentTitle)}">${escapeHtml(agentTitle)}</span>`;
+        }
+
+        let moduleLinkHtml = '';
+        if (rawModId && rawModId != '0' && rawModId !== 'undefined') {
+            moduleLinkHtml = `<a href="${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}" target="_blank" class="module-link" style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; text-decoration:none; cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${escapeHtml(m.module_name)} (Buka module di Pandora FMS)">${escapeHtml(m.module_name)}</a>`;
+        } else {
+            moduleLinkHtml = `<span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;" title="${escapeHtml(m.module_name)}">${escapeHtml(m.module_name)}</span>`;
+        }
+
         if (modules.length === 1) {
             return `
             <div class="status-timeline-single" style="width:100%; height:100%; flex:1 1 0%; min-height:0; display:flex; flex-direction:column; justify-content:center; padding:2px 2px; gap:4px; box-sizing:border-box;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; gap:8px; flex-shrink:0;">
                     <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; flex:1;">
-                        <span style="font-weight:700; color:#0284c7; font-size:12px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:1;" title="${escapeHtml(agentTitle)}">${escapeHtml(agentTitle)}</span>
+                        ${agentLinkHtml}
                         <span style="color:#cbd5e1; flex-shrink:0;">•</span>
-                        <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; flex:1; min-width:0;" onclick="openNativeModuleDetailModal('${m.id}', '${((m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
+                        ${moduleLinkHtml}
                     </div>
                     <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                         <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28; flex-shrink:0;"></span>
@@ -7677,9 +7697,9 @@ function renderStatusTimelineContent(p, modules) {
         <div class="status-timeline-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; margin-bottom:4px; box-shadow:0 1px 3px rgba(0,0,0,0.02); display:flex; flex-direction:column; gap:3px; ${itemFlexStyle} box-sizing:border-box;">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-shrink:0;">
                 <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; flex:1;">
-                    <span style="font-weight:700; color:#0284c7; font-size:12px; max-width:55%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:1;" title="${escapeHtml(agentTitle)}">${escapeHtml(agentTitle)}</span>
+                    ${agentLinkHtml}
                     <span style="color:#cbd5e1; flex-shrink:0;">•</span>
-                    <span style="font-weight:600; color:#0f172a; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; flex:1; min-width:0;" onclick="openNativeModuleDetailModal('${m.id}', '${((m.agent_name || '') + ' - ' + (m.module_name || '')).replace(/'/g, "\\'")}')" title="${escapeHtml(m.module_name)} (Click to view history)">${escapeHtml(m.module_name)}</span>
+                    ${moduleLinkHtml}
                 </div>
                 <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                     <span style="width:8px; height:8px; border-radius:50%; background:${curEval.color}; box-shadow:0 0 0 2px ${curEval.color}28; flex-shrink:0;"></span>

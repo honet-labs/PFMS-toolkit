@@ -2,6 +2,23 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.33] - 2026-11-03 (Status Timeline - Direct Agent & Module Console Navigation Links)
+### Fixed & Enhanced
+- **Tautan Langsung Navigasi Modul & Agen pada Tampilan Status Timeline (*Status Timeline Direct Navigation Links*):**
+  - Mengatasi kendala pada perenderan widget bergaya `status_timeline` di [Dynamic Dashboard](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php) dan [Metrics Dashboard](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php).
+  - **Akar Masalah (*Root Cause*):**
+    - Sebelumnya, teks nama modul (`m.module_name`) pada setiap baris status timeline hanya berupa elemen `<span>` dengan pemicu klik internal `onclick="openNativeModuleDetailModal(...)"` yang membuka modal popup riwayat grafik di dalam dashboard alih-alih mengarahkan ke modul pada agen di konsol Pandora FMS.
+    - Selain itu, teks nama/IP agen (`agentTitle`) sebelumnya hanya berupa teks statis tanpa tautan navigasi.
+  - **Peningkatan yang Diterapkan:**
+    - **Tautan Modul ke Pandora FMS Console:**
+      - Mengubah nama modul menjadi tautan aktif (`<a>` dengan kelas `module-link` dan `target="_blank"`) yang langsung membuka halaman monitor status modul pada agen bersangkutan di Pandora FMS: `${PANDORA_URL}/index.php?sec=view&sec2=operation%2Fagentes%2Fstatus_monitor&id_module=${rawModId}`.
+    - **Tautan Agen ke Pandora FMS Console:**
+      - Mengubah nama agen menjadi tautan aktif (`<a>` dengan kelas `agent-link` dan `target="_blank"`) yang langsung membuka tampilan detail agen di Pandora FMS: `${PANDORA_URL}/index.php?sec=estado&sec2=operation/agentes/ver_agente&id_agente=${rawAgentId}`.
+    - **Preservasi Riwayat pada Balok Timeline:**
+      - Aksi klik pada balok-balok timeline (`.status-timeline-block`) tetap dipertahankan untuk membuka modal riwayat dan grafik interaktif bawaan dashboard (`openNativeModuleDetailModal`) beserta tooltip hover status dan penanda waktu.
+    - **Sinkronisasi Antar Dashboard:**
+      - Perubahan diterapkan secara konsisten pada [dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php) dan [metrics-dashboard.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php).
+
 ## [2.11.32] - 2026-11-03 (Dynamic Dashboard - Multi-Module Parallel Grid Layout, Independent Subcard Dragging, and Split into Standalone Panels)
 ### Fixed & Enhanced
 - **Tata Letak Sejajar / Grid Otomatis untuk Panel Multi-Modul (*Multi-Module Side-by-Side Grid Layout*):**
