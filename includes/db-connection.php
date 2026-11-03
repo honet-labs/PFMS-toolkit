@@ -409,7 +409,9 @@ if (!function_exists('is_percentage_metric_php')) {
 
         // If unit is empty / undefined / none / '-', check if module name explicitly contains percentage notation
         if ($u === '' || $u === 'none' || $u === '-') {
-            if (strpos($n, '%') !== false || strpos($n, 'in %') !== false || strpos($n, '(%)') !== false || strpos($n, 'percent') !== false) {
+            if (strpos($n, '%') !== false || strpos($n, 'in %') !== false || strpos($n, '(%)') !== false || strpos($n, 'percent') !== false
+                || strpos($n, 'usage.average') !== false || strpos($n, 'mem.usage') !== false || strpos($n, 'cpu.usage') !== false || strpos($n, 'disk.usage') !== false
+                || strpos($n, 'utiliz') !== false) {
                 return true;
             }
         }
@@ -717,8 +719,8 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
         $is_percent = is_percentage_metric_php($raw_unit, $raw_nombre);
         
         if ($is_percent) {
-            // Percentage metrics must strictly stay within [0, 100] unless configured otherwise
-            $min_bound = ($mod_min != 0.0) ? $mod_min : 0.0;
+            // Percentage metrics must strictly stay within [0, 100]. Negative values (e.g. -0.01 error codes) must be discarded.
+            $min_bound = ($mod_min > 0.0) ? $mod_min : 0.0;
             $max_bound = ($mod_max > 0.0) ? $mod_max : 100.0;
         } else {
             // Non-percentage metrics: do NOT use template default max (e.g. 100) to discard genuine data points
@@ -868,6 +870,7 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
         $pNum = is_numeric($preData['datos']) ? (float)$preData['datos'] : null;
         $pValid = true;
         if (in_array($target_table, ['tagente_datos', 'tagente_datos_inc']) && $pNum !== null) {
+            if ($is_percent && $pNum < 0.0) $pValid = false;
             if ($max_bound !== null && $pNum > $max_bound) $pValid = false;
             if ($min_bound !== null && $pNum < $min_bound) $pValid = false;
         }
@@ -885,6 +888,9 @@ function get_module_history_data($pdo, $pdo_history, $id_mod, $start, $end, $lim
     foreach ($merged as $item) {
         if (in_array($target_table, ['tagente_datos', 'tagente_datos_inc']) && is_numeric($item['datos'])) {
             $num = (float)$item['datos'];
+            if ($is_percent && $num < 0.0) {
+                continue; // Discard negative error sentinel (e.g. -0.01 API timeout) for percentage metrics
+            }
             if ($max_bound !== null && $num > $max_bound) {
                 continue; // Discard outlier above max / 100%
             }

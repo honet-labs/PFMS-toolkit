@@ -2077,9 +2077,13 @@ function isPercentageMetric(moduleName = '', rawUnit = '', cardTitle = '') {
         return true;
     }
 
-    // 4. If unit is empty / undefined / none / '-', check if module name explicitly contains percentage notation
+    // 4. Positive check: card title or module name explicitly indicates percentage / usage utilization
     if (!u || u === 'none' || u === '-') {
-        if (m.includes('%') || m.includes('in %') || m.includes('(%)') || m.includes('percent')) {
+        if (m.includes('%') || m.includes('in %') || m.includes('(%)') || m.includes('percent') ||
+            m.includes('usage.average') || m.includes('mem.usage') || m.includes('cpu.usage') || m.includes('disk.usage') ||
+            m.includes('utiliz') ||
+            t.includes('%') || t.includes('percentage') || t.includes('percent') ||
+            ((t.includes('used') || t.includes('utiliz') || t.includes('usage')) && !t.includes('mhz') && !t.includes('byte') && !t.includes('bps'))) {
             return true;
         }
     }
@@ -2139,8 +2143,14 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true, moduleName =
     }
 
     // 3. Percentage
-    if (uLower === '%') {
-        return (num % 1 === 0 ? num : num.toFixed(2)) + '%';
+    if (uLower === '%' || isPercentageMetric(moduleName, unit, cardTitle)) {
+        let pct = num;
+        if (pct > 100) {
+            pct = 100;
+        } else if (pct < 0) {
+            pct = 0;
+        }
+        return (pct % 1 === 0 ? pct : pct.toFixed(2)) + '%';
     }
 
     // 4. Latency / Time
@@ -6571,6 +6581,11 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                         lastVal = (typeof h.val === 'number') ? h.val : parseFloat(h.val);
                     }
                     if (lastVal !== null && !isNaN(lastVal)) {
+                        const isPct = isPercentageMetric(m.module_name, m.unit, card.title);
+                        if (isPct) {
+                            if (lastVal > 100) lastVal = 100;
+                            if (lastVal < 0) return null;
+                        }
                         return isByte ? (lastVal * 8) : lastVal;
                     }
                     return null;
@@ -6649,6 +6664,8 @@ function renderWidgetChart(cardId, viewType, data, chartLimit = 0, stats = {}, h
                 xAxis: { type: 'category', boundaryGap: viewType === 'bar', data: labels, axisLabel: { fontSize: Math.max(8, chartFontSize - 2), color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                 yAxis: { 
                     type: 'value', 
+                    min: (card.force_100 || (commonUnit === '%' || isPercentageMetric('', commonUnit, card.title))) ? 0 : null,
+                    max: (card.force_100 || (commonUnit === '%' || isPercentageMetric('', commonUnit, card.title))) ? 100 : null,
                     splitLine: { lineStyle: { color: '#f0f3f5' } }, 
                     axisLabel: { 
                         fontSize: Math.max(8, chartFontSize - 2), 

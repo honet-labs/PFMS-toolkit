@@ -2,6 +2,25 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.31] - 2026-11-03 (Dynamic Dashboard & Backend - Percentage Metric Range Normalization, Outlier Sentinel Filtering, and Y-Axis Bounds Fix)
+### Fixed & Enhanced
+- **Normalisasi Rentang Metrik Persentase dan Eliminasi Nilai Sentinel Eror Negatif (-0.01%):**
+  - Mengatasi inkonsistensi data pada panel grafik multi-overlay **Dynamic Dashboard** ([dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php)), seperti panel `MEMORY USED ESXI` (`Host:10.10.6.100 (host-16010):mem.usage.average`), di mana terjadi penurunan mendadak ke nilai anomali `-0.01%` yang menyebabkan sumbu Y melar ke bawah hingga `-20%`.
+  - **Akar Penyebab (*Root Cause*):**
+    1. **Kode Sentinel Plugin VMware:** Ketika skrip/plugin VMware vCenter di Pandora FMS mengalami timeout atau kegagalan API sementara saat mengambil metrik memori/CPU host ESXi, plugin mengembalikan kode kesalahan negatif `-0.01` (atau `-1`) yang kemudian tercatat ke tabel `tagente_datos`.
+    2. **Perbedaan dengan Grafik Native Pandora FMS:** Grafik bawaan Pandora FMS (`stat_win.php?type=sparse`) melakukan agregasi rata-rata per bucket 5 menit sehingga menghitung `(89.57 + 0) / 2 = 44.785%` (ditandai label `(Avg)`). Sebaliknya, Dynamic Dashboard menampilkan titik data diskret secara langsung sehingga memplot angka mentah `-0.01%`.
+    3. **Deteksi Metrik di Backend PHP:** Fungsi `is_percentage_metric_php()` pada [includes/db-connection.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/includes/db-connection.php) sebelumnya hanya mengenali simbol `%` atau `percent`, dan belum mendeteksi metrik pemanfaatan VMware/OS bertipe `usage.average` atau `.usage` ketika kolom `unit` pada modul kosong. Selain itu, batasan `$min_bound` belum membuang nilai negatif error untuk metrik persentase.
+    4. **Absensi Batas Bawah Sumbu Y ECharts:** Pada perenderan multi-overlay dan single chart, konfigurasi `yAxis` hanya menyertakan `max: 100` tanpa menetapkan `min: 0`. Saat ECharts menerima nilai `-0.01`, algoritma auto-scale ECharts secara otomatis menambahkan tick negatif hingga `-20%`.
+  - **Peningkatan yang Diterapkan:**
+    - **Backend PHP ([includes/db-connection.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/includes/db-connection.php)):**
+      - Memperbarui `is_percentage_metric_php()` agar otomatis mendeteksi keyword `usage.average`, `mem.usage`, `cpu.usage`, `disk.usage`, dan `utiliz` meskipun kolom satuan kosong.
+      - Menetapkan `$min_bound = 0.0` untuk semua metrik persentase pada `get_module_history_data()`, serta secara tegas membuang semua data point bernilai negatif (`< 0.0`) seperti `-0.01` atau `-1`.
+    - **Frontend JavaScript ([Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Dynamic-Dashboard/dynamic-dashboard-template.php) & [Dashboard/Metrics-Dashboard/metrics-dashboard.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/Dashboard/Metrics-Dashboard/metrics-dashboard.php)):**
+      - Memperbarui `isPercentageMetric()` untuk mengenali nama modul dan judul kartu yang mengindikasikan pemanfaatan/utilisasi persentase.
+      - Pada pemetaan data multi-overlay dan single chart, jika metrik berupa persentase (`isPct`) dan bernilai `< 0`, nilai diubah menjadi `null` sehingga fitur `connectNulls: true` menjembatani jeda timeout pengumpulan data secara mulus tanpa membuat garis grafik anjlok atau merusak sumbu Y.
+      - Mengunci sumbu Y metrik persentase dengan `min: 0` dan `max: 100`, memastikan rentang sumbu Y selalu stabil di `[0%, 100%]` dan tidak pernah lagi melebar ke rentang negatif.
+      - Menyempurnakan `formatHumanMetric()` agar nilai negatif pada metrik persentase otomatis di-clamp ke `0%`.
+
 ## [2.11.30] - 2026-11-03 (Dynamic Dashboard - Fix Module Value Fallback, Status Timeline String Mapping, and History Heatmap Multi-Module Grouping)
 ### Fixed & Enhanced
 - **Sinkronisasi Nilai Modul Terkini dari Riwayat Historis (*Module Value Fallback from Historical Data*):**

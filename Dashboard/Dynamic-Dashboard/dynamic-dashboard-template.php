@@ -2,7 +2,7 @@
 /* dynamic-dashboard-template.php
  *
  * Universal Grafana-Style Dynamic Dashboard
- * - Version: 4.9.7 (Fix Module Value Fallback from History, Status Timeline Labeling, and History Heatmap Multi-Module Grouping)
+ * - Version: 4.9.8 (Percentage Metric Range Normalization, Outlier Sentinel Filtering, and Y-Axis Bounds Fix)
  * - Features: 12-Column Smart Grid, Drag & Drop Flow, Auto-Clone Panels, Real-Time HUD.
  */
 
@@ -575,8 +575,12 @@ if ($api === 'bulk_panel_data') {
                     $u_trim = trim($mod['unit'] ?? '');
                     $n_trim = strtolower(trim($mod['nombre'] ?? ''));
                     $is_pct = is_percentage_metric_php($u_trim, $n_trim);
-                    if ($is_pct && (float)$cur_val > 100.0) {
-                        $cur_val = ($mod['max'] > 0) ? min(100.0, (float)$mod['max']) : 100.0;
+                    if ($is_pct) {
+                        if ((float)$cur_val > 100.0) {
+                            $cur_val = ($mod['max'] > 0) ? min(100.0, (float)$mod['max']) : 100.0;
+                        } elseif ((float)$cur_val < 0.0) {
+                            $cur_val = 0.0;
+                        }
                     }
                 }
 
@@ -2091,9 +2095,13 @@ function isPercentageMetric(moduleName = '', rawUnit = '', cardTitle = '') {
         return true;
     }
 
-    // 4. If unit is empty / undefined / none / '-', check if module name explicitly contains percentage notation
+    // 4. Positive check: card title or module name explicitly indicates percentage / usage utilization
     if (!u || u === 'none' || u === '-') {
-        if (m.includes('%') || m.includes('in %') || m.includes('(%)') || m.includes('percent')) {
+        if (m.includes('%') || m.includes('in %') || m.includes('(%)') || m.includes('percent') ||
+            m.includes('usage.average') || m.includes('mem.usage') || m.includes('cpu.usage') || m.includes('disk.usage') ||
+            m.includes('utiliz') ||
+            t.includes('%') || t.includes('percentage') || t.includes('percent') ||
+            ((t.includes('used') || t.includes('utiliz') || t.includes('usage')) && !t.includes('mhz') && !t.includes('byte') && !t.includes('bps'))) {
             return true;
         }
     }
@@ -2153,12 +2161,12 @@ function formatHumanMetric(val, rawUnit, autoConvertTraffic = true, moduleName =
     }
 
     // 3. Percentage
-    if (uLower === '%') {
+    if (uLower === '%' || isPercentageMetric(moduleName, unit, cardTitle)) {
         let pct = num;
-        const mLow = (moduleName || '').toLowerCase();
-        const cLow = (cardTitle || '').toLowerCase();
-        if (pct > 100 && (mLow.includes('load') || mLow.includes('used') || mLow.includes('cpu') || mLow.includes('mem') || mLow.includes('disk') || cLow.includes('utiliz'))) {
+        if (pct > 100) {
             pct = 100;
+        } else if (pct < 0) {
+            pct = 0;
         }
         return (pct % 1 === 0 ? pct : pct.toFixed(2)) + '%';
     }
@@ -2216,8 +2224,9 @@ function formatChartAxisLabel(value, unitStr = '', isTraffic = false, useRaw = f
     }
 
     // 4. Percentage
-    if (u === '%') {
-        return (Number.isInteger(val) ? val : parseFloat(val.toFixed(1))) + '%';
+    if (u === '%' || isPercentageMetric('', unitStr, '')) {
+        const clamped = Math.max(0, Math.min(100, val));
+        return (Number.isInteger(clamped) ? clamped : parseFloat(clamped.toFixed(1))) + '%';
     }
 
     // 5. Latency / Time
@@ -5019,7 +5028,10 @@ function refreshCurrentNodeData() {
                             if (historyMap[ts] !== undefined) lastVal = historyMap[ts];
                             if (lastVal !== null && !isNaN(lastVal)) {
                                 let v = Number(lastVal);
-                                if (isPct && v > 100) v = 100;
+                                if (isPct) {
+                                    if (v > 100) v = 100;
+                                    if (v < 0) return null; // Discard negative error sentinel (e.g. -0.01) so connectNulls bridges smoothly
+                                }
                                 return isByte ? (v * 8) : v;
                             }
                             return null;
@@ -5097,6 +5109,7 @@ function refreshCurrentNodeData() {
                             yAxis: { 
                                 type: 'value', 
                                 show: (p.show_yaxis !== false),
+                                min: (p.force_100 || (commonUnit === '%' || isPercentageMetric('', commonUnit, p.title))) ? 0 : null,
                                 max: (p.force_100 || (commonUnit === '%' || isPercentageMetric('', commonUnit, p.title))) ? 100 : null, 
                                 splitLine: { show: (p.show_yaxis !== false), lineStyle: { color: '#f0f3f5' } }, 
                                 axisLine: { show: false },
@@ -5206,15 +5219,19 @@ function refreshCurrentNodeData() {
                                 : true;
                             const isModTraffic = (p.use_raw !== true) && (autoConvert !== false) && isTrafficMetric(m.module_name, m.unit, p.title);
                             const isByte = isModTraffic && isByteTrafficMetric(m.module_name, m.unit, p.title);
+                            const unitStr = (m.unit || '').trim();
+                            const isPct = isPercentageMetric(m.module_name, unitStr, p.title);
                             const singleChartData = (history || []).map(h => {
                                 if (h.val !== null && h.val !== undefined && h.val !== '' && !isNaN(h.val)) {
-                                    return isByte ? (Number(h.val) * 8) : h.val;
+                                    let v = Number(h.val);
+                                    if (isPct) {
+                                        if (v > 100) v = 100;
+                                        if (v < 0) return null; // Discard negative error sentinel (e.g. -0.01) so connectNulls bridges smoothly
+                                    }
+                                    return isByte ? (v * 8) : v;
                                 }
                                 return null;
                             });
-
-                            const unitStr = (m.unit || '').trim();
-                            const isPct = isPercentageMetric(m.module_name, unitStr, p.title);
 
                             chartInstances[uniqueId].setOption({
                                 tooltip: { 
@@ -5251,6 +5268,7 @@ function refreshCurrentNodeData() {
                                 yAxis: { 
                                     type: 'value', 
                                     show: (p.show_yaxis !== false),
+                                    min: (p.force_100 || (unitStr === '%' || (isPct && !isModTraffic))) ? 0 : null,
                                     max: (p.force_100 || (unitStr === '%' || (isPct && !isModTraffic))) ? 100 : null,
                                     splitLine: { 
                                         show: (p.show_yaxis !== false), 
@@ -6363,7 +6381,10 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                 formattedDate = `${ymd[2]}/${ymd[1]}/${ymd[0]} ${parts[1]}`;
             }
             let valNum = parseFloat(row.datos);
-            if (isDetailPct && valNum > 100) valNum = 100;
+            if (isDetailPct) {
+                if (valNum > 100) valNum = 100;
+                if (valNum < 0) valNum = 0;
+            }
             const displayVal = (valNum % 1 === 0) ? valNum : valNum.toFixed(2);
             html += `<tr>
                 <td style="font-weight: normal; color: #475569;">${formattedDate}</td>
@@ -6383,7 +6404,10 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
             });
             const dataset = data.map(row => {
                 let v = parseFloat(row.datos);
-                if (isDetailPct && v > 100) v = 100;
+                if (isDetailPct) {
+                    if (v > 100) v = 100;
+                    if (v < 0) return null;
+                }
                 return v;
             });
             
@@ -6416,6 +6440,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                     xAxis: { type: 'category', boundaryGap: false, data: labels, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { show: false }, axisTick: { show: false } },
                     yAxis: { 
                         type: 'value', 
+                        min: isDetailPct ? 0 : null,
                         max: isDetailPct ? 100 : null,
                         splitLine: { lineStyle: { color: '#f1f5f9' } }, 
                         axisLabel: { 
@@ -6435,6 +6460,7 @@ async function openNativeModuleDetailModal(moduleId, title, rangeSeconds = 86400
                         name: title,
                         type: 'line',
                         data: dataset,
+                        connectNulls: true,
                         itemStyle: { color: '#004d40' },
                         areaStyle: { opacity: 0.2, color: '#004d40' },
                         smooth: true,
