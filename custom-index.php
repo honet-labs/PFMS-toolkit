@@ -91,7 +91,8 @@ $config_data = [
     'primary_override' => null,
     'history_override' => null,
     'github_repository' => 'honet-labs/PFMS-toolkit',
-    'github_token' => ''
+    'github_token' => '',
+    'disabled_menus' => []
 ];
 
 // Load Configuration if exists
@@ -100,6 +101,7 @@ if (file_exists($portal_config_file)) {
     if (is_array($loaded_config)) {
         $config_data['exclude_dirs'] = $loaded_config['exclude_dirs'] ?? $config_data['exclude_dirs'];
         $config_data['exclude_files'] = $loaded_config['exclude_files'] ?? $config_data['exclude_files'];
+        $config_data['disabled_menus'] = $loaded_config['disabled_menus'] ?? $config_data['disabled_menus'];
         $config_data['custom_connections'] = $loaded_config['custom_connections'] ?? $config_data['custom_connections'];
         $config_data['primary_override'] = $loaded_config['primary_override'] ?? null;
         $config_data['history_override'] = $loaded_config['history_override'] ?? null;
@@ -109,6 +111,55 @@ if (file_exists($portal_config_file)) {
 }
 $primary_override = $config_data['primary_override'];
 $history_override = $config_data['history_override'];
+$disabled_menus = is_array($config_data['disabled_menus']) ? $config_data['disabled_menus'] : [];
+
+// Helper functions for menu path normalization and disabled state checking
+function normalizeMenuPath($path) {
+    return trim(str_replace('\\', '/', (string)$path), '/');
+}
+
+function isMenuPathDisabled($path, $disabled_list) {
+    if (empty($disabled_list) || !is_array($disabled_list) || empty($path)) return false;
+    $normTarget = strtolower(normalizeMenuPath($path));
+    if ($normTarget === '') return false;
+    
+    foreach ($disabled_list as $dm) {
+        $normDm = strtolower(normalizeMenuPath($dm));
+        if ($normDm === '') continue;
+        
+        // Exact match (file or folder)
+        if ($normTarget === $normDm) {
+            return true;
+        }
+        // Folder match: target starts with folder path + '/'
+        if (strpos($normTarget, $normDm . '/') === 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function filterDisabledMenus($tree, $disabled_list) {
+    if (empty($disabled_list) || !is_array($disabled_list) || empty($tree)) return $tree;
+    $filtered = [];
+    foreach ($tree as $node) {
+        $nodePath = $node['path'] ?? '';
+        if (isMenuPathDisabled($nodePath, $disabled_list)) {
+            continue;
+        }
+        if ($node['type'] === 'dir') {
+            $filteredChildren = filterDisabledMenus($node['children'] ?? [], $disabled_list);
+            if (!empty($filteredChildren)) {
+                $nodeCopy = $node;
+                $nodeCopy['children'] = $filteredChildren;
+                $filtered[] = $nodeCopy;
+            }
+        } else {
+            $filtered[] = $node;
+        }
+    }
+    return $filtered;
+}
 
 // Ensure critical system files/dirs are ALWAYS excluded
 $sys_dirs = ['.', '..', '.git'];
@@ -123,6 +174,12 @@ $active_exclude_dirs = array_values(array_diff($active_exclude_dirs, $core_dashb
 // API Forwarding / Routing to sub-pages to prevent 500 errors caused by direct execution blocks in webservers
 if (isset($_GET['api']) && !empty($_GET['page'])) {
     $target_page = $_GET['page'];
+    if (isMenuPathDisabled($target_page, $disabled_menus)) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'error' => 'Akses ditolak: Menu atau fitur ini sedang dinonaktifkan oleh Administrator.']);
+        exit;
+    }
     if (!preg_match('/\.\./', $target_page)) {
         $target_file = $base_dir . '/' . $target_page;
         if (file_exists($target_file) && pathinfo($target_file, PATHINFO_EXTENSION) === 'php') {
@@ -177,6 +234,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'read_docs') {
 if (isset($_GET['api']) && $_GET['api'] === 'save_settings') {
     ob_clean();
     header('Content-Type: application/json');
+    
+    // RESTRICTION: Only Administrator can save settings
+    if (!$is_admin) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'Akses ditolak: Hanya pengguna dengan profil Administrator yang dapat mengubah konfigurasi.']);
+        exit;
+    }
+
     $input = json_decode(file_get_contents('php://input'), true);
     
     // CSRF Validation
@@ -190,6 +255,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'save_settings') {
         $save_data = [
             'exclude_dirs' => array_values(array_filter(array_map('trim', $input['exclude_dirs']))),
             'exclude_files' => array_values(array_filter(array_map('trim', $input['exclude_files']))),
+            'disabled_menus' => isset($input['disabled_menus']) && is_array($input['disabled_menus']) ? array_values(array_unique(array_filter(array_map('trim', $input['disabled_menus'])))) : [],
             'custom_connections' => isset($input['custom_connections']) && is_array($input['custom_connections']) ? $input['custom_connections'] : [],
             'primary_override' => isset($input['primary_override']) ? $input['primary_override'] : null,
             'history_override' => isset($input['history_override']) ? $input['history_override'] : null,
@@ -1050,12 +1116,14 @@ function getMenuTree($dir, $baseDir, $exc_dirs, $exc_files) {
     $tree = [];
     if (!is_dir($dir)) return $tree;
     
+    $normBase = normalizeMenuPath($baseDir);
     $items = scandir($dir);
     foreach ($items as $item) {
         if (in_array($item, $exc_dirs)) continue;
         
         $path = $dir . '/' . $item;
-        $rel_path = str_replace($baseDir . '/', '', $path);
+        $normPath = normalizeMenuPath($path);
+        $rel_path = ltrim(substr($normPath, strlen($normBase)), '/');
 
         if (is_dir($path)) {
             $children = getMenuTree($path, $baseDir, $exc_dirs, $exc_files);
@@ -1063,6 +1131,7 @@ function getMenuTree($dir, $baseDir, $exc_dirs, $exc_files) {
                 $tree[] = [
                     'type' => 'dir',
                     'name' => formatName($item),
+                    'path' => $rel_path,
                     'children' => $children
                 ];
             }
@@ -1079,7 +1148,7 @@ function getMenuTree($dir, $baseDir, $exc_dirs, $exc_files) {
     return $tree;
 }
 
-$menuTree = [];
+$rawMenuTree = [];
 $force_refresh = isset($_GET['t']);
 
 // Clear cache if 't' parameter is present (Force Refresh)
@@ -1092,16 +1161,19 @@ if (!$force_refresh && file_exists($menu_cache_file)) {
     if ((time() - filemtime($menu_cache_file)) < 120) {
         $cached_content = @file_get_contents($menu_cache_file);
         if (!empty($cached_content)) {
-            $menuTree = json_decode($cached_content, true);
+            $rawMenuTree = json_decode($cached_content, true);
         }
     }
 }
 
-if (empty($menuTree) || !is_array($menuTree)) {
-    $menuTree = getMenuTree($base_dir, $base_dir, $active_exclude_dirs, $active_exclude_files);
+if (empty($rawMenuTree) || !is_array($rawMenuTree)) {
+    $rawMenuTree = getMenuTree($base_dir, $base_dir, $active_exclude_dirs, $active_exclude_files);
     if (!is_dir(dirname($menu_cache_file))) @mkdir(dirname($menu_cache_file), 0777, true);
-    @file_put_contents($menu_cache_file, json_encode($menuTree));
+    @file_put_contents($menu_cache_file, json_encode($rawMenuTree));
 }
+
+// Filter disabled menus for rendering sidebar
+$menuTree = filterDisabledMenus($rawMenuTree, $disabled_menus);
 
 // In Viewer Mode (Non-Administrator), only display Dashboard pages
 if (!$is_admin && !empty($menuTree) && is_array($menuTree)) {
@@ -1130,6 +1202,182 @@ if (!$is_admin && !empty($menuTree) && is_array($menuTree)) {
 }
 
 // =====================================================================
+// 5.1 DISABLED MENU RENDER SCREEN
+// =====================================================================
+function render_pfms_menu_disabled(string $page_path, bool $is_admin, string $pandora_base = '/pandora_console'): void {
+    if (!headers_sent()) {
+        http_response_code(403);
+        header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    }
+    if (!empty($_GET['api']) || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false) || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Akses ditolak: Menu atau fitur ini sedang dinonaktifkan oleh Administrator.'
+        ]);
+        exit;
+    }
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Menu Dinonaktifkan - PFMS Toolkit</title>
+        <link rel="stylesheet" href="vendor/fonts/fonts.css">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+        <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body {
+                font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                color: #1e293b;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 24px;
+            }
+            .disabled-card {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 16px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+                max-width: 520px;
+                width: 100%;
+                overflow: hidden;
+                text-align: center;
+                animation: popIn 0.25s ease-out;
+            }
+            @keyframes popIn {
+                from { transform: scale(0.96); opacity: 0; }
+                to { transform: scale(1); opacity: 1; }
+            }
+            .disabled-header {
+                background: #fff7ed;
+                border-bottom: 1px solid #ffedd5;
+                padding: 32px 24px 24px 24px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            .disabled-icon-wrap {
+                width: 64px;
+                height: 64px;
+                border-radius: 50%;
+                background: #ffedd5;
+                color: #ea580c;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-bottom: 16px;
+                box-shadow: 0 4px 12px rgba(234, 88, 12, 0.15);
+            }
+            .disabled-icon-wrap .material-symbols-outlined {
+                font-size: 34px !important;
+            }
+            .disabled-title {
+                font-size: 20px;
+                font-weight: 700;
+                color: #9a3412;
+                margin-bottom: 6px;
+            }
+            .disabled-subtitle {
+                font-size: 13px;
+                color: #c2410c;
+                font-weight: 500;
+            }
+            .disabled-body {
+                padding: 24px;
+                text-align: left;
+            }
+            .info-box {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+                padding: 14px 16px;
+                font-size: 13px;
+                color: #475569;
+                line-height: 1.5;
+                margin-bottom: 18px;
+            }
+            .info-box code {
+                background: #e2e8f0;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 12px;
+                color: #0f172a;
+                font-family: monospace;
+            }
+            .action-buttons {
+                display: flex;
+                gap: 10px;
+                justify-content: center;
+            }
+            .btn {
+                padding: 9px 18px;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 600;
+                text-decoration: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                transition: all 0.2s;
+                border: 1px solid transparent;
+            }
+            .btn-primary {
+                background: #004d40;
+                color: #ffffff;
+            }
+            .btn-primary:hover {
+                background: #00695c;
+            }
+            .btn-outline {
+                background: #ffffff;
+                color: #475569;
+                border-color: #cbd5e1;
+            }
+            .btn-outline:hover {
+                background: #f1f5f9;
+                color: #0f172a;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="disabled-card">
+            <div class="disabled-header">
+                <div class="disabled-icon-wrap">
+                    <span class="material-symbols-outlined">do_not_disturb_on</span>
+                </div>
+                <h1 class="disabled-title">Menu / Fitur Dinonaktifkan</h1>
+                <div class="disabled-subtitle">Akses ke halaman ini sedang dibatasi oleh Administrator</div>
+            </div>
+            <div class="disabled-body">
+                <div class="info-box">
+                    Halaman atau fitur <code><?= htmlspecialchars($page_path) ?></code> saat ini dinonaktifkan dari direktori PFMS-Toolkit. Jika Anda memerlukan akses ke fitur ini, silakan hubungi Administrator sistem untuk mengaktifkannya kembali.
+                </div>
+                <div class="action-buttons">
+                    <a href="custom-index.php" class="btn btn-outline" target="_top">
+                        <span class="material-symbols-outlined" style="font-size: 16px;">arrow_back</span>
+                        Kembali ke Beranda
+                    </a>
+                    <?php if ($is_admin): ?>
+                    <a href="custom-index.php" onclick="if (window.parent && window.parent.openSettings) { window.parent.openSettings(); return false; }" class="btn btn-primary" target="_top">
+                        <span class="material-symbols-outlined" style="font-size: 16px;">settings</span>
+                        Pengaturan Menu
+                    </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    <?php
+}
+
+// =====================================================================
 // 6. SECURITY & PAGE ROUTING
 // =====================================================================
 $current_page = $_GET['page'] ?? '';
@@ -1137,6 +1385,12 @@ $iframe_src = '';
 
 if (!empty($current_page)) {
     if (preg_match('/\.\./', $current_page)) die("Invalid path detected.");
+    
+    // Check if current menu path or file is disabled
+    if (isMenuPathDisabled($current_page, $disabled_menus)) {
+        render_pfms_menu_disabled($current_page, $is_admin, $pandora_base ?: '/pandora_console');
+        exit;
+    }
     
     // Non-administrators are restricted strictly to dashboard pages
     if (!$is_admin && stripos($current_page, 'dashboard') === false) {
@@ -1308,6 +1562,41 @@ if (!empty($current_page)) {
         .btn-outline { background: #fff; color: #4a5568 !important; border: 1px solid #dce1e5; padding: 8px 18px; border-radius: 4px; font-weight: 500; font-size: 13px; cursor: pointer; transition: 0.15s; }
         .btn-outline:hover { background: #f8fafc; color: #0b1a26 !important; border-color: #cbd5e1; }
 
+        /* SETTINGS TABS & MENU MANAGEMENT */
+        .settings-tabs { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 18px; padding-bottom: 0; }
+        .settings-tab-btn { padding: 9px 16px; background: transparent; border: none; border-bottom: 3px solid transparent; margin-bottom: -2px; font-weight: 500; font-size: 13px; color: #64748b; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease; border-radius: 6px 6px 0 0; }
+        .settings-tab-btn:hover { color: #004d40; background: rgba(0, 77, 64, 0.04); }
+        .settings-tab-btn.active { color: #004d40; border-bottom-color: #004d40; font-weight: 600; background: rgba(0, 77, 64, 0.06); }
+
+        .mgmt-folder-block { border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 8px; background: #ffffff; overflow: hidden; transition: border-color 0.2s; }
+        .mgmt-folder-block:hover { border-color: #cbd5e1; }
+        .mgmt-folder-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f8fafc; cursor: pointer; user-select: none; border-bottom: 1px solid transparent; }
+        .mgmt-folder-header.has-children-open { border-bottom-color: #e2e8f0; }
+        .mgmt-folder-title-wrap { display: flex; align-items: center; gap: 8px; flex-grow: 1; min-width: 0; }
+        .mgmt-folder-chevron { font-size: 18px !important; color: #94a3b8 !important; transition: transform 0.2s ease; cursor: pointer; }
+        .mgmt-folder-icon { font-size: 19px !important; color: #d97706 !important; }
+        .mgmt-folder-name { font-weight: 600; font-size: 13px; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .mgmt-folder-children { padding: 8px 12px 10px 24px; background: #ffffff; }
+
+        .mgmt-item-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 5px; margin-bottom: 4px; background: #ffffff; border: 1px solid #f1f5f9; transition: all 0.15s ease; }
+        .mgmt-item-row:hover { background: #f8fafc; border-color: #e2e8f0; }
+        .mgmt-item-title-wrap { display: flex; align-items: center; gap: 8px; flex-grow: 1; min-width: 0; }
+        .mgmt-item-icon { font-size: 17px !important; color: #004d40 !important; }
+        .mgmt-item-name { font-size: 12.5px; font-weight: 500; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .mgmt-switch { position: relative; display: inline-block; width: 38px; height: 20px; flex-shrink: 0; margin-left: 10px; }
+        .mgmt-switch input { opacity: 0; width: 0; height: 0; margin: 0; }
+        .mgmt-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .2s; border-radius: 20px; }
+        .mgmt-slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .mgmt-switch input:checked + .mgmt-slider { background-color: #004d40; }
+        .mgmt-switch input:checked + .mgmt-slider:before { transform: translateX(18px); }
+        .mgmt-switch input:disabled + .mgmt-slider { opacity: 0.45; cursor: not-allowed; background-color: #94a3b8; }
+
+        .badge-status-pill { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 10px; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        .badge-status-pill.active { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .badge-status-pill.disabled { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .badge-status-pill.inherited { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+
         /* DOCS MODAL */
         .docs-modal-box { width: 800px !important; max-width: 95%; display: flex; flex-direction: column; max-height: 85vh; }
         .docs-tabs { display: flex; gap: 20px; border-bottom: 1px solid #e0e4e8; margin-bottom: 20px; }
@@ -1459,243 +1748,306 @@ if (!empty($current_page)) {
 </div>
 
 <div class="modal-overlay" id="settingsModal">
-    <div class="modal-box" style="width: 650px; max-width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
+    <div class="modal-box" style="width: 780px; max-width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
         <div class="modal-header">
             <h5 class="modal-title"><span class="material-symbols-outlined" style="color:#004d40;">settings_suggest</span> Portal Settings</h5>
             <button class="nav-icon-btn" onclick="closeSettings()" style="height:28px; width:28px;"><span class="material-symbols-outlined" style="font-size:16px!important;">close</span></button>
         </div>
         
+        <!-- Settings Tabs Navigation -->
+        <div class="settings-tabs">
+            <button type="button" class="settings-tab-btn active" id="tabBtn_menu" onclick="switchSettingsTab('menu')">
+                <span class="material-symbols-outlined" style="font-size: 17px !important;">account_tree</span>
+                Menu & Fitur
+            </button>
+            <button type="button" class="settings-tab-btn" id="tabBtn_db" onclick="switchSettingsTab('db')">
+                <span class="material-symbols-outlined" style="font-size: 17px !important;">database</span>
+                Database Connections
+            </button>
+            <button type="button" class="settings-tab-btn" id="tabBtn_system" onclick="switchSettingsTab('system')">
+                <span class="material-symbols-outlined" style="font-size: 17px !important;">tune</span>
+                Sistem & Eksklusi
+            </button>
+        </div>
+        
         <div style="flex-grow: 1; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;">
-            <div class="form-group">
-                <label class="form-label">Excluded Directories (Folders)</label>
-                <textarea class="form-control" id="cfg_dirs" placeholder="e.g. temp, cache, assets"></textarea>
-                <div class="form-hint">Separate folder names with commas (,). '..' and '.' systems will always be excluded automatically.</div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Excluded Files</label>
-                <textarea class="form-control" id="cfg_files" placeholder="e.g. config.php, utils.php"></textarea>
-                <div class="form-hint">Separate file names with commas (,). 'custom-index.php' file will always be excluded automatically.</div>
-            </div>
-
-            <div class="form-group" style="margin-top: 15px;">
-                <label class="form-label">GitHub Repository</label>
-                <input type="text" class="form-control" id="cfg_github_repository" style="min-height: auto; height: 38px; font-family: inherit !important; font-size: 13px !important;" placeholder="honet-labs/PFMS-toolkit">
-                <div class="form-hint">Target GitHub repository formatted as <code>owner/repository</code> (default: <code>honet-labs/PFMS-toolkit</code>).</div>
-            </div>
-
-            <div class="form-group" style="margin-top: 15px;">
-                <label class="form-label">GitHub Personal Access Token (PAT)</label>
-                <input type="password" class="form-control" id="cfg_github_token" style="min-height: auto; height: 38px; font-family: inherit !important; font-size: 13px !important;" placeholder="Optional (ghp_xxxxxxxxxxxxxxxxx)">
-                <div class="form-hint">Optional. Input a GitHub Personal Access Token if the toolkit repository is private or to avoid rate-limiting and connection errors with api.github.com.</div>
-            </div>
-
-            <div class="form-group" style="margin-top: 25px; border-top: 1px solid #e0e4e8; padding-top: 20px;">
-                <label class="form-label" style="display: flex; align-items: center; gap: 5px; margin-bottom: 12px; color: #0b1a26; font-weight: 600;">
-                    <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">database</span>
-                    Core Database Connections
-                </label>
-                
-                <!-- Primary Database Connection Card -->
-                <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="font-weight: 600; color: #334155; font-size: 13px;">Primary Database</span>
-                            <?php if ($primary_override): ?>
-                                <span style="font-size: 9px; color: #0284c7; background: #e0f2fe; padding: 1px 6px; border-radius: 4px; font-weight: 600;">Overridden</span>
-                            <?php endif; ?>
-                        </div>
-                        <span style="font-family: monospace; font-size: 11px; color: #64748b;">
-                            Host: <?= htmlspecialchars($config['dbhost'] ?? 'N/A') ?> | DB: <?= htmlspecialchars($config['dbname'] ?? 'N/A') ?> | User: <?= htmlspecialchars($config['dbuser'] ?? 'N/A') ?>
-                        </span>
-                        <span style="font-size: 11px; color: #475569; margin-top: 2px;">
-                            Server UUID: <code id="primary_server_uuid" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;"><?= htmlspecialchars($node_id_to_uuid['primary'] ?? 'Not Found') ?></code>
-                        </span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div id="primary_conn_status" style="display: flex; align-items: center; gap: 6px;">
-                            <?php if ($db_status): ?>
-                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
-                                <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
-                            <?php else: ?>
-                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
-                                <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;" title="<?= htmlspecialchars($db_error) ?>">Failed</span>
-                            <?php endif; ?>
-                        </div>
-                        <button class="nav-icon-btn" style="height:28px; width:28px;" title="Test Connection" onclick="testCoreConnection('primary')">
-                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40!important;">sync</span>
-                        </button>
-                        <button class="nav-icon-btn" style="height:28px; width:28px;" title="Override Credentials" onclick="editCoreOverride('primary')">
-                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#0284c7!important;">edit</span>
-                        </button>
-                        <?php if ($primary_override): ?>
-                            <button class="nav-icon-btn" style="height:28px; width:28px;" title="Restore Defaults" onclick="restoreCoreOverride('primary')">
-                                <span class="material-symbols-outlined" style="font-size:16px!important; color:#ef4444!important;">settings_backup_restore</span>
-                            </button>
-                        <?php endif; ?>
+            
+            <!-- TAB 1: MENU & FITUR -->
+            <div id="settingsTab_menu">
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 10px;">
+                    <span class="material-symbols-outlined" style="color: #16a34a; font-size: 20px !important; margin-top: 1px;">admin_panel_settings</span>
+                    <div style="font-size: 12px; color: #166534; line-height: 1.45;">
+                        <strong>Manajemen Menu & Fitur:</strong> Aktifkan atau nonaktifkan kategori menu, sub-menu folder, atau halaman fitur tertentu. Menu yang dinonaktifkan akan disembunyikan dari sidebar pengguna dan akses langsung via URL akan diblokir dengan aman.
                     </div>
                 </div>
 
-                <!-- Historical Database Connection Card -->
-                <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="font-weight: 600; color: #334155; font-size: 13px;">Default Historical Database</span>
-                            <?php if ($history_override): ?>
-                                <span style="font-size: 9px; color: #0284c7; background: #e0f2fe; padding: 1px 6px; border-radius: 4px; font-weight: 600;">Overridden</span>
-                            <?php endif; ?>
-                        </div>
-                        <?php if ($history_db_host): ?>
+                <!-- Menu Management Toolbar -->
+                <div style="display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap;">
+                    <div style="position: relative; flex-grow: 1; min-width: 220px;">
+                        <span class="material-symbols-outlined" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 16px !important;">search</span>
+                        <input type="text" id="mgmtMenuSearch" class="form-control" style="min-height: auto; height: 34px; padding-left: 32px; font-family: inherit !important; font-size: 12.5px !important;" placeholder="Cari nama menu, sub-menu, atau file...">
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <button type="button" class="btn-outline" style="padding: 5px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;" onclick="toggleAllMenus(true)" title="Aktifkan seluruh menu">
+                            <span class="material-symbols-outlined" style="font-size: 14px !important; color: #16a34a;">check_circle</span> Aktifkan Semua
+                        </button>
+                        <button type="button" class="btn-outline" style="padding: 5px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;" onclick="toggleAllMenus(false)" title="Nonaktifkan seluruh menu">
+                            <span class="material-symbols-outlined" style="font-size: 14px !important; color: #dc2626;">block</span> Nonaktifkan Semua
+                        </button>
+                        <button type="button" class="btn-outline" style="padding: 5px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;" onclick="toggleAllFoldersCollapse()" title="Buka / Tutup Seluruh Folder">
+                            <span class="material-symbols-outlined" style="font-size: 14px !important;">unfold_more</span> Buka/Tutup
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Summary Pill -->
+                <div id="mgmtMenuSummary" style="font-size: 11.5px; color: #64748b; margin-bottom: 10px; padding: 6px 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;">
+                    <span>Memuat daftar menu...</span>
+                </div>
+
+                <!-- Menu Tree Container -->
+                <div id="menuMgmtTreeContainer" style="border: 1px solid #e2e8f0; border-radius: 6px; max-height: 420px; overflow-y: auto; background: #ffffff; padding: 10px;">
+                    <!-- Dynamically populated via JavaScript -->
+                </div>
+            </div>
+
+            <!-- TAB 2: DATABASE CONNECTIONS -->
+            <div id="settingsTab_db" style="display: none;">
+                <div class="form-group" style="margin-top: 5px;">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 5px; margin-bottom: 12px; color: #0b1a26; font-weight: 600;">
+                        <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">database</span>
+                        Core Database Connections
+                    </label>
+                    
+                    <!-- Primary Database Connection Card -->
+                    <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="font-weight: 600; color: #334155; font-size: 13px;">Primary Database</span>
+                                <?php if ($primary_override): ?>
+                                    <span style="font-size: 9px; color: #0284c7; background: #e0f2fe; padding: 1px 6px; border-radius: 4px; font-weight: 600;">Overridden</span>
+                                <?php endif; ?>
+                            </div>
                             <span style="font-family: monospace; font-size: 11px; color: #64748b;">
-                                Host: <?= htmlspecialchars($history_db_host) ?> | DB: <?= htmlspecialchars($history_db_name) ?> | User: <?= htmlspecialchars($history_db_user) ?>
+                                Host: <?= htmlspecialchars($config['dbhost'] ?? 'N/A') ?> | DB: <?= htmlspecialchars($config['dbname'] ?? 'N/A') ?> | User: <?= htmlspecialchars($config['dbuser'] ?? 'N/A') ?>
                             </span>
                             <span style="font-size: 11px; color: #475569; margin-top: 2px;">
-                                Server UUID: <code id="history_server_uuid" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;"><?= htmlspecialchars($node_id_to_uuid['history'] ?? 'Not Found') ?></code>
+                                Server UUID: <code id="primary_server_uuid" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;"><?= htmlspecialchars($node_id_to_uuid['primary'] ?? 'Not Found') ?></code>
                             </span>
-                        <?php else: ?>
-                            <span style="font-size: 11px; color: #94a3b8; font-style: italic;">No core historical DB configured.</span>
-                        <?php endif; ?>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div id="default_history_conn_status" style="display: flex; align-items: center; gap: 6px;">
-                            <?php if ($history_db_status): ?>
-                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
-                                <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
-                            <?php elseif ($history_db_host): ?>
-                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
-                                <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;">Failed</span>
-                            <?php else: ?>
-                                <span style="display: inline-block; width: 8px; height: 8px; background-color: #94a3b8; border-radius: 50%;"></span>
-                                <span style="font-size: 11px; color: #475569; font-weight: 600; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">Not Configured</span>
-                            <?php endif; ?>
                         </div>
-                        <?php if ($history_db_host || $history_override): ?>
-                            <button class="nav-icon-btn" style="height:28px; width:28px;" title="Test Connection" onclick="testCoreConnection('history')">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div id="primary_conn_status" style="display: flex; align-items: center; gap: 6px;">
+                                <?php if ($db_status): ?>
+                                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                                    <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
+                                <?php else: ?>
+                                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                                    <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;" title="<?= htmlspecialchars($db_error) ?>">Failed</span>
+                                <?php endif; ?>
+                            </div>
+                            <button class="nav-icon-btn" style="height:28px; width:28px;" title="Test Connection" onclick="testCoreConnection('primary')">
                                 <span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40!important;">sync</span>
                             </button>
-                        <?php endif; ?>
-                        <button class="nav-icon-btn" style="height:28px; width:28px;" title="Override Credentials" onclick="editCoreOverride('history')">
-                            <span class="material-symbols-outlined" style="font-size:16px!important; color:#0284c7!important;">edit</span>
-                        </button>
-                        <?php if ($history_override): ?>
-                            <button class="nav-icon-btn" style="height:28px; width:28px;" title="Restore Defaults" onclick="restoreCoreOverride('history')">
-                                <span class="material-symbols-outlined" style="font-size:16px!important; color:#ef4444!important;">settings_backup_restore</span>
+                            <button class="nav-icon-btn" style="height:28px; width:28px;" title="Override Credentials" onclick="editCoreOverride('primary')">
+                                <span class="material-symbols-outlined" style="font-size:16px!important; color:#0284c7!important;">edit</span>
                             </button>
-                        <?php endif; ?>
+                            <?php if ($primary_override): ?>
+                                <button class="nav-icon-btn" style="height:28px; width:28px;" title="Restore Defaults" onclick="restoreCoreOverride('primary')">
+                                    <span class="material-symbols-outlined" style="font-size:16px!important; color:#ef4444!important;">settings_backup_restore</span>
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- Historical Database Connection Card -->
+                    <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="font-weight: 600; color: #334155; font-size: 13px;">Default Historical Database</span>
+                                <?php if ($history_override): ?>
+                                    <span style="font-size: 9px; color: #0284c7; background: #e0f2fe; padding: 1px 6px; border-radius: 4px; font-weight: 600;">Overridden</span>
+                                <?php endif; ?>
+                            </div>
+                            <?php if ($history_db_host): ?>
+                                <span style="font-family: monospace; font-size: 11px; color: #64748b;">
+                                    Host: <?= htmlspecialchars($history_db_host) ?> | DB: <?= htmlspecialchars($history_db_name) ?> | User: <?= htmlspecialchars($history_db_user) ?>
+                                </span>
+                                <span style="font-size: 11px; color: #475569; margin-top: 2px;">
+                                    Server UUID: <code id="history_server_uuid" style="background: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #0f172a;"><?= htmlspecialchars($node_id_to_uuid['history'] ?? 'Not Found') ?></code>
+                                </span>
+                            <?php else: ?>
+                                <span style="font-size: 11px; color: #94a3b8; font-style: italic;">No core historical DB configured.</span>
+                            <?php endif; ?>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div id="default_history_conn_status" style="display: flex; align-items: center; gap: 6px;">
+                                <?php if ($history_db_status): ?>
+                                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%;"></span>
+                                    <span style="font-size: 11px; color: #065f46; font-weight: 600; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px;">Connected</span>
+                                <?php elseif ($history_db_host): ?>
+                                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%;"></span>
+                                    <span style="font-size: 11px; color: #991b1b; font-weight: 600; background-color: #fee2e2; padding: 2px 6px; border-radius: 4px;">Failed</span>
+                                <?php else: ?>
+                                    <span style="display: inline-block; width: 8px; height: 8px; background-color: #94a3b8; border-radius: 50%;"></span>
+                                    <span style="font-size: 11px; color: #475569; font-weight: 600; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">Not Configured</span>
+                                <?php endif; ?>
+                            </div>
+                            <?php if ($history_db_host || $history_override): ?>
+                                <button class="nav-icon-btn" style="height:28px; width:28px;" title="Test Connection" onclick="testCoreConnection('history')">
+                                    <span class="material-symbols-outlined" style="font-size:16px!important; color:#004d40!important;">sync</span>
+                                </button>
+                            <?php endif; ?>
+                            <button class="nav-icon-btn" style="height:28px; width:28px;" title="Override Credentials" onclick="editCoreOverride('history')">
+                                <span class="material-symbols-outlined" style="font-size:16px!important; color:#0284c7!important;">edit</span>
+                            </button>
+                            <?php if ($history_override): ?>
+                                <button class="nav-icon-btn" style="height:28px; width:28px;" title="Restore Defaults" onclick="restoreCoreOverride('history')">
+                                    <span class="material-symbols-outlined" style="font-size:16px!important; color:#ef4444!important;">settings_backup_restore</span>
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- Core DB Override Form (Hidden by default) -->
+                    <div id="coreOverrideForm" style="display: none; background: #f8f9fa; border: 1px solid #004d40; border-radius: 6px; padding: 15px; margin-top: 15px; margin-bottom: 10px;">
+                        <h6 id="coreFormTitle" style="margin: 0 0 12px 0; color: #004d40; font-size: 13px; font-weight: 600;">Override Core Database Connection</h6>
+                        <input type="hidden" id="core_override_type" value="">
+                        
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 10px;">
+                            <div>
+                                <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Host</label>
+                                <input type="text" id="core_override_host" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. 127.0.0.1">
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                            <div>
+                                <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Port</label>
+                                <input type="text" id="core_override_port" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="3306" value="3306">
+                            </div>
+                            <div>
+                                <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Database Name</label>
+                                <input type="text" id="core_override_dbname" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. pandora">
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                            <div>
+                                <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">User</label>
+                                <input type="text" id="core_override_user" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. pandora">
+                            </div>
+                            <div>
+                                <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Password</label>
+                                <input type="password" id="core_override_pass" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="Enter password">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" id="btnTestCoreOverride" onclick="testCoreOverrideConnection()">Test Connection</button>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" onclick="cancelCoreOverrideForm()">Cancel</button>
+                                <button class="btn-apply" style="padding: 4px 15px; font-size: 11px; background: #004d40;" onclick="saveCoreOverrideConnection()">Save Override</button>
+                            </div>
+                        </div>
+                        <div id="testCoreOverrideResult" style="margin-top: 8px; font-size: 11px; display: none;"></div>
                     </div>
                 </div>
 
-                <!-- Core DB Override Form (Hidden by default) -->
-                <div id="coreOverrideForm" style="display: none; background: #f8f9fa; border: 1px solid #004d40; border-radius: 6px; padding: 15px; margin-top: 15px; margin-bottom: 10px;">
-                    <h6 id="coreFormTitle" style="margin: 0 0 12px 0; color: #004d40; font-size: 13px; font-weight: 600;">Override Core Database Connection</h6>
-                    <input type="hidden" id="core_override_type" value="">
+                <!-- Custom Connections Header -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px; border-top: 1px solid #e0e4e8; padding-top: 15px; margin-bottom: 8px;">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 5px; color: #0b1a26; font-weight: 600; margin-bottom: 0;">
+                        <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">dns</span>
+                        Custom Connections (Pandora FMS DB Nodes)
+                    </label>
+                    <button class="btn-outline" style="padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 4px;" onclick="showAddConnectionForm()">
+                        <span class="material-symbols-outlined" style="font-size: 14px !important;">add</span> Add Connection
+                    </button>
+                </div>
+                <div style="font-size: 11px; color: #64748b; margin-bottom: 12px; padding: 6px 10px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 4px; line-height: 1.4;">
+                    <strong>Note:</strong> Custom connections must point to a <strong>full Pandora FMS database</strong> (containing <code>tagente</code>, <code>tagente_modulo</code> tables). History-only databases without agent tables will not show agents in the dashboard.
+                </div>
+
+                <!-- Custom Connection Form (Hidden by default) -->
+                <div id="customConnForm" style="display: none; background: #f8f9fa; border: 1px solid #004d40; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                    <h6 id="formTitle" style="margin: 0 0 12px 0; color: #004d40; font-size: 13px; font-weight: 600;">Add Custom Connection</h6>
+                    <input type="hidden" id="conn_index" value="">
                     
-                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                        <div>
+                            <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Connection Name</label>
+                            <input type="text" id="conn_name" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. Historical Node 2">
+                        </div>
                         <div>
                             <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Host</label>
-                            <input type="text" id="core_override_host" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. 127.0.0.1">
+                            <input type="text" id="conn_host" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. 192.168.1.100">
                         </div>
                     </div>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
                         <div>
                             <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Port</label>
-                            <input type="text" id="core_override_port" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="3306" value="3306">
+                            <input type="text" id="conn_port" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="3306" value="3306">
                         </div>
                         <div>
                             <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Database Name</label>
-                            <input type="text" id="core_override_dbname" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. pandora">
+                            <input type="text" id="conn_dbname" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. pandora_history2">
                         </div>
                     </div>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
                         <div>
                             <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">User</label>
-                            <input type="text" id="core_override_user" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. pandora">
+                            <input type="text" id="conn_user" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. root">
                         </div>
                         <div>
                             <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Password</label>
-                            <input type="password" id="core_override_pass" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="Enter password">
+                            <input type="password" id="conn_pass" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="Enter password">
                         </div>
                     </div>
 
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" id="btnTestCoreOverride" onclick="testCoreOverrideConnection()">Test Connection</button>
+                        <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" id="btnTestConn" onclick="testCustomConnection()">Test Connection</button>
                         <div style="display: flex; gap: 8px;">
-                            <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" onclick="cancelCoreOverrideForm()">Cancel</button>
-                            <button class="btn-apply" style="padding: 4px 15px; font-size: 11px; background: #004d40;" onclick="saveCoreOverrideConnection()">Save Override</button>
+                            <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" onclick="cancelConnectionForm()">Cancel</button>
+                            <button class="btn-apply" style="padding: 4px 15px; font-size: 11px; background: #004d40;" onclick="saveCustomConnection()">Save Node</button>
                         </div>
                     </div>
-                    <div id="testCoreOverrideResult" style="margin-top: 8px; font-size: 11px; display: none;"></div>
+                    <div id="testConnResult" style="margin-top: 8px; font-size: 11px; display: none;"></div>
+                </div>
+
+                <!-- Custom Connections List Container -->
+                <div id="customConnsList">
+                    <!-- Will be dynamically populated by Javascript -->
                 </div>
             </div>
 
-            <!-- Custom Connections Header -->
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px; border-top: 1px solid #e0e4e8; padding-top: 15px; margin-bottom: 8px;">
-                <label class="form-label" style="display: flex; align-items: center; gap: 5px; color: #0b1a26; font-weight: 600; margin-bottom: 0;">
-                    <span class="material-symbols-outlined" style="color: #004d40; font-size: 20px !important;">dns</span>
-                    Custom Connections (Pandora FMS DB Nodes)
-                </label>
-                <button class="btn-outline" style="padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 4px;" onclick="showAddConnectionForm()">
-                    <span class="material-symbols-outlined" style="font-size: 14px !important;">add</span> Add Connection
-                </button>
-            </div>
-            <div style="font-size: 11px; color: #64748b; margin-bottom: 12px; padding: 6px 10px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 4px; line-height: 1.4;">
-                <strong>Note:</strong> Custom connections must point to a <strong>full Pandora FMS database</strong> (containing <code>tagente</code>, <code>tagente_modulo</code> tables). History-only databases without agent tables will not show agents in the dashboard.
-            </div>
-
-            <!-- Custom Connection Form (Hidden by default) -->
-            <div id="customConnForm" style="display: none; background: #f8f9fa; border: 1px solid #004d40; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-                <h6 id="formTitle" style="margin: 0 0 12px 0; color: #004d40; font-size: 13px; font-weight: 600;">Add Custom Connection</h6>
-                <input type="hidden" id="conn_index" value="">
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                    <div>
-                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Connection Name</label>
-                        <input type="text" id="conn_name" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. Historical Node 2">
-                    </div>
-                    <div>
-                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Host</label>
-                        <input type="text" id="conn_host" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. 192.168.1.100">
-                    </div>
+            <!-- TAB 3: SISTEM & EKSKLUSI -->
+            <div id="settingsTab_system" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Excluded Directories (Folders)</label>
+                    <textarea class="form-control" id="cfg_dirs" placeholder="e.g. temp, cache, assets"></textarea>
+                    <div class="form-hint">Separate folder names with commas (,). '..' and '.' systems will always be excluded automatically.</div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                    <div>
-                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Port</label>
-                        <input type="text" id="conn_port" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="3306" value="3306">
-                    </div>
-                    <div>
-                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Database Name</label>
-                        <input type="text" id="conn_dbname" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. pandora_history2">
-                    </div>
+                <div class="form-group">
+                    <label class="form-label">Excluded Files</label>
+                    <textarea class="form-control" id="cfg_files" placeholder="e.g. config.php, utils.php"></textarea>
+                    <div class="form-hint">Separate file names with commas (,). 'custom-index.php' file will always be excluded automatically.</div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                    <div>
-                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">User</label>
-                        <input type="text" id="conn_user" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="e.g. root">
-                    </div>
-                    <div>
-                        <label class="form-label" style="font-size: 10px !important; margin-bottom: 4px;">Password</label>
-                        <input type="password" id="conn_pass" class="form-control" style="min-height: auto; height: 32px; font-family: inherit !important; font-size: 12px !important;" placeholder="Enter password">
-                    </div>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label class="form-label">GitHub Repository</label>
+                    <input type="text" class="form-control" id="cfg_github_repository" style="min-height: auto; height: 38px; font-family: inherit !important; font-size: 13px !important;" placeholder="honet-labs/PFMS-toolkit">
+                    <div class="form-hint">Target GitHub repository formatted as <code>owner/repository</code> (default: <code>honet-labs/PFMS-toolkit</code>).</div>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" id="btnTestConn" onclick="testCustomConnection()">Test Connection</button>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn-outline" style="padding: 4px 12px; font-size: 11px;" onclick="cancelConnectionForm()">Cancel</button>
-                        <button class="btn-apply" style="padding: 4px 15px; font-size: 11px; background: #004d40;" onclick="saveCustomConnection()">Save Node</button>
-                    </div>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label class="form-label">GitHub Personal Access Token (PAT)</label>
+                    <input type="password" class="form-control" id="cfg_github_token" style="min-height: auto; height: 38px; font-family: inherit !important; font-size: 13px !important;" placeholder="Optional (ghp_xxxxxxxxxxxxxxxxx)">
+                    <div class="form-hint">Optional. Input a GitHub Personal Access Token if the toolkit repository is private or to avoid rate-limiting and connection errors with api.github.com.</div>
                 </div>
-                <div id="testConnResult" style="margin-top: 8px; font-size: 11px; display: none;"></div>
             </div>
 
-            <!-- Custom Connections List Container -->
-            <div id="customConnsList">
-                <!-- Will be dynamically populated by Javascript -->
-            </div>
         </div>
         
         <div style="display:flex; justify-content:flex-end; gap:10px; border-top: 1px solid #e0e4e8; padding-top: 15px;">
@@ -1794,6 +2146,8 @@ if (!empty($current_page)) {
 
 <script>
     const currentConfig = <?= json_encode($config_data) ?>;
+    const rawMenuTree = <?= json_encode($rawMenuTree) ?>;
+    const isAdmin = <?= json_encode($is_admin) ?>;
 
     // --- SIDEBAR SEARCH FUNCTION ONLY ---
     document.getElementById('globalSearch').addEventListener('input', function(e) {
@@ -1872,8 +2226,257 @@ if (!empty($current_page)) {
     let customConnectionsCopy = [];
     let primaryOverrideCopy = null;
     let historyOverrideCopy = null;
+    let currentDisabledMenus = new Set();
+    let mgmtSearchTerm = '';
+    let allFoldersCollapsed = false;
+
+    function switchSettingsTab(tab) {
+        const tabs = ['menu', 'db', 'system'];
+        tabs.forEach(t => {
+            const btn = document.getElementById('tabBtn_' + t);
+            const pane = document.getElementById('settingsTab_' + t);
+            if (btn) btn.classList.toggle('active', t === tab);
+            if (pane) pane.style.display = (t === tab) ? 'block' : 'none';
+        });
+    }
+
+    // Build Menu Management Tree HTML
+    function buildMgmtTreeHtml(nodes, parentDisabled = false, depth = 0) {
+        if (!nodes || !Array.isArray(nodes) || nodes.length === 0) return '';
+        let html = '';
+
+        nodes.forEach(node => {
+            const path = node.path || '';
+            const isSelfDisabled = currentDisabledMenus.has(path);
+            const isEffDisabled = parentDisabled || isSelfDisabled;
+            
+            if (node.type === 'dir') {
+                const hasChildren = node.children && node.children.length > 0;
+                const childHtml = hasChildren ? buildMgmtTreeHtml(node.children, isEffDisabled, depth + 1) : '';
+
+                // Filtering by search term: if searching, match node name, path, or has matching children
+                if (mgmtSearchTerm !== '') {
+                    const matchSelf = node.name.toLowerCase().includes(mgmtSearchTerm) || path.toLowerCase().includes(mgmtSearchTerm);
+                    if (!matchSelf && childHtml === '') {
+                        return; // Skip if neither this dir nor any child matches
+                    }
+                }
+
+                let badgeHtml = '';
+                if (parentDisabled) {
+                    badgeHtml = '<span class="badge-status-pill inherited"><span class="material-symbols-outlined" style="font-size:12px;">lock</span> Nonaktif (Parent)</span>';
+                } else if (isSelfDisabled) {
+                    badgeHtml = '<span class="badge-status-pill disabled"><span class="material-symbols-outlined" style="font-size:12px;">cancel</span> Nonaktif</span>';
+                } else {
+                    badgeHtml = '<span class="badge-status-pill active"><span class="material-symbols-outlined" style="font-size:12px;">check_circle</span> Aktif</span>';
+                }
+
+                const folderIcon = isEffDisabled ? 'folder_off' : 'folder';
+                const folderIconColor = isEffDisabled ? '#94a3b8' : '#d97706';
+
+                html += `
+                    <div class="mgmt-folder-block" data-path="${escapeHtml(path)}" style="${depth > 0 ? 'margin-left: 14px; margin-top: 6px;' : ''}">
+                        <div class="mgmt-folder-header ${hasChildren && !allFoldersCollapsed ? 'has-children-open' : ''}" onclick="toggleMgmtFolder(this, event)">
+                            <div class="mgmt-folder-title-wrap">
+                                ${hasChildren ? `<span class="material-symbols-outlined mgmt-folder-chevron" style="transform: ${allFoldersCollapsed && mgmtSearchTerm === '' ? 'rotate(-90deg)' : 'rotate(0deg)'};">expand_more</span>` : '<span style="width:18px;"></span>'}
+                                <span class="material-symbols-outlined mgmt-folder-icon" style="color: ${folderIconColor} !important;">${folderIcon}</span>
+                                <span class="mgmt-folder-name" title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</span>
+                                <code style="font-size:10px; color:#64748b; background:#f1f5f9; padding:1px 5px; border-radius:3px;">${escapeHtml(path)}</code>
+                                ${badgeHtml}
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation()">
+                                <label class="mgmt-switch" title="${parentDisabled ? 'Nonaktifkan/Aktifkan folder induk' : (isSelfDisabled ? 'Klik untuk mengaktifkan folder' : 'Klik untuk menonaktifkan folder')}">
+                                    <input type="checkbox" data-path="${escapeHtml(path)}" data-type="dir" ${isEffDisabled ? '' : 'checked'} ${parentDisabled ? 'disabled' : ''} onchange="onMenuToggleChange(this)">
+                                    <span class="mgmt-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        ${hasChildren ? `<div class="mgmt-folder-children" style="display: ${allFoldersCollapsed && mgmtSearchTerm === '' ? 'none' : 'block'};">${childHtml}</div>` : ''}
+                    </div>
+                `;
+            } else {
+                // File item
+                if (mgmtSearchTerm !== '') {
+                    const matchSelf = node.name.toLowerCase().includes(mgmtSearchTerm) || path.toLowerCase().includes(mgmtSearchTerm);
+                    if (!matchSelf) return;
+                }
+
+                let badgeHtml = '';
+                if (parentDisabled) {
+                    badgeHtml = '<span class="badge-status-pill inherited"><span class="material-symbols-outlined" style="font-size:12px;">lock</span> Nonaktif (Parent)</span>';
+                } else if (isSelfDisabled) {
+                    badgeHtml = '<span class="badge-status-pill disabled"><span class="material-symbols-outlined" style="font-size:12px;">cancel</span> Nonaktif</span>';
+                } else {
+                    badgeHtml = '<span class="badge-status-pill active"><span class="material-symbols-outlined" style="font-size:12px;">check_circle</span> Aktif</span>';
+                }
+
+                const iconColor = isEffDisabled ? '#94a3b8' : '#004d40';
+
+                html += `
+                    <div class="mgmt-item-row" data-path="${escapeHtml(path)}">
+                        <div class="mgmt-item-title-wrap">
+                            <span class="material-symbols-outlined mgmt-item-icon" style="color: ${iconColor} !important;">description</span>
+                            <span class="mgmt-item-name" title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</span>
+                            <code style="font-size:10px; color:#64748b; background:#f1f5f9; padding:1px 5px; border-radius:3px;">${escapeHtml(path)}</code>
+                            ${badgeHtml}
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label class="mgmt-switch" title="${parentDisabled ? 'Nonaktifkan/Aktifkan folder induk' : (isSelfDisabled ? 'Klik untuk mengaktifkan menu' : 'Klik untuk menonaktifkan menu')}">
+                                <input type="checkbox" data-path="${escapeHtml(path)}" data-type="file" ${isEffDisabled ? '' : 'checked'} ${parentDisabled ? 'disabled' : ''} onchange="onMenuToggleChange(this)">
+                                <span class="mgmt-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+
+        return html;
+    }
+
+    // Render Menu Management Tree in Container
+    function renderMenuManagementTree(filterText = '') {
+        const container = document.getElementById('menuMgmtTreeContainer');
+        if (!container) return;
+
+        mgmtSearchTerm = (filterText || '').toLowerCase().trim();
+        const treeHtml = buildMgmtTreeHtml(rawMenuTree || [], false, 0);
+
+        if (treeHtml.trim() === '') {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 30px 15px; color: #94a3b8; font-size: 13px;">
+                    <span class="material-symbols-outlined" style="font-size: 36px !important; margin-bottom: 8px; color: #cbd5e1;">search_off</span>
+                    <div>Tidak ada menu atau file yang cocok dengan pencarian <b>"${escapeHtml(mgmtSearchTerm)}"</b></div>
+                </div>
+            `;
+        } else {
+            container.innerHTML = treeHtml;
+        }
+
+        updateMgmtSummary();
+    }
+
+    // Toggle Menu ON/OFF handler
+    function onMenuToggleChange(inputEl) {
+        const path = inputEl.getAttribute('data-path');
+        const isChecked = inputEl.checked;
+        const type = inputEl.getAttribute('data-type');
+
+        if (!isChecked) {
+            // Disable item
+            currentDisabledMenus.add(path);
+            if (type === 'dir') {
+                // If disabling a directory, clean redundant sub-paths from set
+                const prefix = path.toLowerCase() + '/';
+                for (const item of currentDisabledMenus) {
+                    if (item.toLowerCase().startsWith(prefix)) {
+                        currentDisabledMenus.delete(item);
+                    }
+                }
+            }
+        } else {
+            // Enable item
+            currentDisabledMenus.delete(path);
+            if (type === 'dir') {
+                // If enabling a directory, also remove any disabled children inside it
+                const prefix = path.toLowerCase() + '/';
+                for (const item of currentDisabledMenus) {
+                    if (item.toLowerCase().startsWith(prefix)) {
+                        currentDisabledMenus.delete(item);
+                    }
+                }
+            }
+        }
+
+        renderMenuManagementTree(mgmtSearchTerm);
+    }
+
+    // Quick Action: Enable / Disable All
+    function toggleAllMenus(enable) {
+        if (enable) {
+            currentDisabledMenus.clear();
+        } else {
+            currentDisabledMenus.clear();
+            (rawMenuTree || []).forEach(node => {
+                if (node.path) {
+                    currentDisabledMenus.add(node.path);
+                }
+            });
+        }
+        renderMenuManagementTree(mgmtSearchTerm);
+    }
+
+    // Quick Action: Collapse / Expand All
+    function toggleAllFoldersCollapse() {
+        allFoldersCollapsed = !allFoldersCollapsed;
+        const bodies = document.querySelectorAll('.mgmt-folder-children');
+        const chevrons = document.querySelectorAll('.mgmt-folder-chevron');
+        const headers = document.querySelectorAll('.mgmt-folder-header');
+        
+        bodies.forEach(b => {
+            b.style.display = allFoldersCollapsed ? 'none' : 'block';
+        });
+        chevrons.forEach(c => {
+            c.style.transform = allFoldersCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+        });
+        headers.forEach(h => {
+            h.classList.toggle('has-children-open', !allFoldersCollapsed);
+        });
+    }
+
+    // Individual Folder Collapse
+    function toggleMgmtFolder(headerEl, evt) {
+        if (evt && (evt.target.closest('.mgmt-switch') || evt.target.tagName === 'INPUT')) {
+            return;
+        }
+        const block = headerEl.closest('.mgmt-folder-block');
+        if (!block) return;
+        const body = block.querySelector(':scope > .mgmt-folder-children');
+        const chevron = headerEl.querySelector('.mgmt-folder-chevron');
+        if (body) {
+            const isHidden = body.style.display === 'none';
+            body.style.display = isHidden ? 'block' : 'none';
+            headerEl.classList.toggle('has-children-open', isHidden);
+            if (chevron) {
+                chevron.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+            }
+        }
+    }
+
+    // Update Live Summary Bar
+    function updateMgmtSummary() {
+        let totalItems = 0;
+        let disabledItems = 0;
+
+        function countNodes(nodes, parentDisabled = false) {
+            nodes.forEach(node => {
+                totalItems++;
+                const isSelfDisabled = currentDisabledMenus.has(node.path);
+                const isEff = parentDisabled || isSelfDisabled;
+                if (isEff) disabledItems++;
+                if (node.type === 'dir' && node.children) {
+                    countNodes(node.children, isEff);
+                }
+            });
+        }
+        countNodes(rawMenuTree || []);
+
+        const activeItems = totalItems - disabledItems;
+        const summaryEl = document.getElementById('mgmtMenuSummary');
+        if (summaryEl) {
+            summaryEl.innerHTML = `
+                <span><b>Total Item:</b> ${totalItems} &bull; <span style="color:#16a34a; font-weight:600;">Aktif: ${activeItems}</span> &bull; <span style="color:#dc2626; font-weight:600;">Dinonaktifkan: ${disabledItems}</span></span>
+                <span style="font-size:11px; color:#94a3b8;">Hanya dapat diubah oleh Administrator</span>
+            `;
+        }
+    }
 
     function openSettings() {
+        if (!isAdmin) {
+            alert('Akses ditolak: Hanya Administrator yang dapat membuka pengaturan.');
+            return;
+        }
+
         let dirs = currentConfig.exclude_dirs.filter(d => d !== '.' && d !== '..').join(', ');
         let files = currentConfig.exclude_files.filter(f => f !== 'custom-index.php').join(', ');
         
@@ -1881,6 +2484,13 @@ if (!empty($current_page)) {
         document.getElementById('cfg_files').value = files;
         document.getElementById('cfg_github_repository').value = currentConfig.github_repository || 'honet-labs/PFMS-toolkit';
         document.getElementById('cfg_github_token').value = currentConfig.github_token || '';
+
+        // Initialize disabled menus
+        currentDisabledMenus = new Set(currentConfig.disabled_menus || []);
+        mgmtSearchTerm = '';
+        allFoldersCollapsed = false;
+        const searchInput = document.getElementById('mgmtMenuSearch');
+        if (searchInput) searchInput.value = '';
 
         // Deep copy custom connections
         customConnectionsCopy = JSON.parse(JSON.stringify(currentConfig.custom_connections || []));
@@ -1892,6 +2502,8 @@ if (!empty($current_page)) {
         cancelConnectionForm();
         cancelCoreOverrideForm();
         renderCustomConnectionsList();
+        renderMenuManagementTree();
+        switchSettingsTab('menu');
         
         document.getElementById('settingsModal').style.display = 'flex';
     }
@@ -1899,6 +2511,17 @@ if (!empty($current_page)) {
     function closeSettings() {
         document.getElementById('settingsModal').style.display = 'none';
     }
+
+    // Attach search input listener once loaded
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.getElementById('mgmtMenuSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                mgmtSearchTerm = e.target.value;
+                renderMenuManagementTree(mgmtSearchTerm);
+            });
+        }
+    });
 
     // Render the custom connections list
     function renderCustomConnectionsList() {
@@ -2353,6 +2976,7 @@ if (!empty($current_page)) {
         const payload = {
             exclude_dirs: dirsInput.split(','),
             exclude_files: filesInput.split(','),
+            disabled_menus: Array.from(currentDisabledMenus),
             custom_connections: customConnectionsCopy,
             primary_override: primaryOverrideCopy,
             history_override: historyOverrideCopy,

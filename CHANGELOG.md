@@ -2,6 +2,25 @@
 
 Semua perubahan signifikan pada proyek ini akan didokumentasikan di file ini.
 
+## [2.11.35] - 2026-11-04 (Portal Settings - Administrator Menu & Sub-Menu Enable/Disable Management)
+### Added & Enhanced
+- **Fitur Manajemen Aktif/Nonaktif Menu dan Sub-Menu Khusus Administrator (*Administrator Menu & Sub-Menu Enable/Disable Feature*):**
+  - Menghadirkan antarmuka visual terpadu pada modal **Portal Settings** ([custom-index.php](file:///c:/Users/yushan/Documents/clone-repo/PFMS-toolkit/custom-index.php)) yang memungkinkan administrator untuk mengaktifkan (*enable*) atau menonaktifkan (*disable*) kategori menu, folder sub-menu, maupun file/fitur individual di PFMS-Toolkit.
+  - **Kontrol Akses Ketat Administrator (*Strict Administrator Access Control*):**
+    - Sesuai spesifikasi, modal Portal Settings dan endpoint penyimpanan konfigurasi hanya dapat diakses dan diubah oleh akun dengan profil Administrator (`is_pandora_administrator($pdo, $current_user_id)`).
+    - Validasi keamanan ganda diterapkan di sisi backend PHP: `save_settings` memeriksa status admin sebelum menyimpan data, dan otorisasi sesi CSRF tetap divalidasi.
+  - **Penyembunyian Menu & Pemblokiran Akses URL Mandiri (*Menu Hiding & URL Access Guard*):**
+    - Setiap menu atau sub-menu yang dinonaktifkan akan secara otomatis disembunyikan seutuhnya dari *Directory Menu* pada sidebar untuk semua pengguna.
+    - Akses langsung melalui parameter URL (`?page=...` maupun penerusan API `?api=...&page=...`) ke menu/file yang dinonaktifkan dicegah dengan aman. Pengguna akan diarahkan ke layar bersih *Menu / Fitur Dinonaktifkan* dengan tombol navigasi kembali ke beranda dan pintasan pengaturan (khusus administrator).
+  - **Antarmuka Pengaturan Bertab Modern (*Tabbed Portal Settings Interface*):**
+    - Modal Portal Settings kini dibagi menjadi 3 tab navigasi terorganisir:
+      1. **Menu & Fitur:** Menyajikan pohon direktori interaktif seluruh menu dan sub-menu dengan sakelar toggle ON/OFF modern, kolom pencarian instan (*live search*), tombol pintas *Aktifkan Semua*, *Nonaktifkan Semua*, serta *Buka/Tutup Semua Folder*. Disertai ringkasan status langsung (*live counter*) jumlah total item, item aktif, dan item yang dinonaktifkan.
+      2. **Database Connections:** Pengaturan koneksi database utama (Primary), default historis, dan node custom DB Pandora FMS.
+      3. **Sistem & Eksklusi:** Direktori dan file yang dikecualikan dari pemindaian sistem serta kredensial integrasi GitHub.
+  - **Penyimpanan Persisten & Manajemen Cache (*Persistent Storage & Cache Invalidation*):**
+    - Konfigurasi menu yang dinonaktifkan disimpan secara persisten di `portal_config_local.json` pada properti `disabled_menus`.
+    - Cache menu di `temp/menu_cache.json` otomatis dibersihkan saat perubahan disimpan agar pembaruan langsung terlihat secara instan tanpa perlu menunggu masa berlaku cache habis.
+
 ## [2.11.34] - 2026-11-03 (Topology Network - Complete Node Agent Name Display & Smart Multi-Line Label Wrapping)
 ### Fixed & Enhanced
 - **Tampilan Utuh & Pembungkusan Pintar Nama Agen pada Topology Network (*Node Label Full Display & Smart Wrapping*):**

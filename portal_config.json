@@ -34,5 +34,6 @@
         "cron_route_parser.php",
         "network-mapping.php"
     ],
+    "disabled_menus": [],
     "github_repository": "honet-labs/PFMS-toolkit"
 }
